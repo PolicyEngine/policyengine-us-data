@@ -226,6 +226,12 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: total_self_employment_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: age_head,filing_status,tax_unit_dependents
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: age_head,filing_status
 
   # === NATIONAL — identity / population count targets from old loss.py ===
   - variable: person_count

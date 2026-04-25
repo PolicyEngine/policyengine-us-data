@@ -50,6 +50,300 @@ ITEMIZED_DEDUCTION_VARIABLES = {
 # IRS SOI data is typically available ~2 years after the tax year
 IRS_SOI_LAG_YEARS = 2
 
+FILER_DEMOGRAPHIC_CELL_SHARE_PATH = (
+    STORAGE_FOLDER
+    / "calibration_targets"
+    / "puf_filer_demographic_cell_shares_2015.csv"
+)
+
+COMMON_FILER_DEMOGRAPHIC_AGI_GROUPS = (
+    "no_agi",
+    "1_5k",
+    "5_10k",
+    "10_20k",
+    "20_30k",
+    "30_50k",
+    "50_200k",
+    "200k_plus",
+)
+
+TABLE_1_2_FINE_AGI_GROUPS = (
+    "no_agi",
+    "1_5k",
+    "5_10k",
+    "10_15k",
+    "15_20k",
+    "20_25k",
+    "25_30k",
+    "30_40k",
+    "40_50k",
+    "50_75k",
+    "75_100k",
+    "100_200k",
+    "200_500k",
+    "500k_1m",
+    "1m_1.5m",
+    "1.5m_2m",
+    "2m_5m",
+    "5m_10m",
+    "10m_plus",
+)
+
+TABLE_1_2_FINE_TO_COMMON_AGI_GROUP = {
+    "no_agi": "no_agi",
+    "1_5k": "1_5k",
+    "5_10k": "5_10k",
+    "10_15k": "10_20k",
+    "15_20k": "10_20k",
+    "20_25k": "20_30k",
+    "25_30k": "20_30k",
+    "30_40k": "30_50k",
+    "40_50k": "30_50k",
+    "50_75k": "50_200k",
+    "75_100k": "50_200k",
+    "100_200k": "50_200k",
+    "200_500k": "200k_plus",
+    "500k_1m": "200k_plus",
+    "1m_1.5m": "200k_plus",
+    "1.5m_2m": "200k_plus",
+    "2m_5m": "200k_plus",
+    "5m_10m": "200k_plus",
+    "10m_plus": "200k_plus",
+}
+
+TABLE_1_2_COUNT_COLUMN_BY_VARIABLE = {
+    "single_total": 49,
+    "joint_total": 13,
+    "sep_total": 25,
+    "hoh_total": 37,
+}
+
+TABLE_1_6_65PLUS_ROW_BY_VARIABLE = {
+    "single_65plus": 45,
+    "joint_65plus": 24,
+    "sep_65plus": 31,
+    "hoh_65plus": 38,
+}
+
+TABLE_1_7_DEPENDENT_AGI_LABEL_TO_COMMON_GROUP = {
+    "No adjusted gross income": "no_agi",
+    "$1 under $1,000": "1_5k",
+    "$1,000 under $2,000": "1_5k",
+    "$2,000 under $3,000": "1_5k",
+    "$3,000 under $4,000": "1_5k",
+    "$4,000 under $5,000": "1_5k",
+    "$5,000 under $10,000": "5_10k",
+    "$10,000 under $20,000": "10_20k",
+    "$20,000 under $30,000": "20_30k",
+    "$30,000 under $50,000": "30_50k",
+    "$50,000 under $200,000": "50_200k",
+    "$200,000 or more": "200k_plus",
+}
+
+MARRIED_FILING_STATUS_CONSTRAINT_VALUE = "JOINT,SEPARATE,SURVIVING_SPOUSE"
+
+FILER_DEMOGRAPHIC_UNDER65_TARGET_SPECS = (
+    {
+        "cell_key": "single_under65_0dep",
+        "label": "Single, <65, 0 dep.",
+        "status_group": "SINGLE",
+        "dependent_bucket": "0",
+        "count_column": "single_under65_nondep",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "SINGLE"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "0"),
+        ],
+    },
+    {
+        "cell_key": "single_under65_1dep",
+        "label": "Single, <65, 1 dep.",
+        "status_group": "SINGLE",
+        "dependent_bucket": "1",
+        "count_column": "single_under65_nondep",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "SINGLE"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "1"),
+        ],
+    },
+    {
+        "cell_key": "single_under65_2plusdep",
+        "label": "Single, <65, 2+ dep.",
+        "status_group": "SINGLE",
+        "dependent_bucket": "2+",
+        "count_column": "single_under65_nondep",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "SINGLE"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", ">=", "2"),
+        ],
+    },
+    {
+        "cell_key": "married_under65_0dep",
+        "label": "Married, <65, 0 dep.",
+        "status_group": "MARRIED",
+        "dependent_bucket": "0",
+        "count_column": "married_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            (
+                "filing_status",
+                "in",
+                MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
+            ),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "0"),
+        ],
+    },
+    {
+        "cell_key": "married_under65_1dep",
+        "label": "Married, <65, 1 dep.",
+        "status_group": "MARRIED",
+        "dependent_bucket": "1",
+        "count_column": "married_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            (
+                "filing_status",
+                "in",
+                MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
+            ),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "1"),
+        ],
+    },
+    {
+        "cell_key": "married_under65_2dep",
+        "label": "Married, <65, 2 dep.",
+        "status_group": "MARRIED",
+        "dependent_bucket": "2",
+        "count_column": "married_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            (
+                "filing_status",
+                "in",
+                MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
+            ),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "2"),
+        ],
+    },
+    {
+        "cell_key": "married_under65_3plusdep",
+        "label": "Married, <65, 3+ dep.",
+        "status_group": "MARRIED",
+        "dependent_bucket": "3+",
+        "count_column": "married_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            (
+                "filing_status",
+                "in",
+                MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
+            ),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", ">=", "3"),
+        ],
+    },
+    {
+        "cell_key": "hoh_under65_1dep",
+        "label": "Head of household, <65, 1 dep.",
+        "status_group": "HEAD_OF_HOUSEHOLD",
+        "dependent_bucket": "1",
+        "count_column": "hoh_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "HEAD_OF_HOUSEHOLD"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "1"),
+        ],
+    },
+    {
+        "cell_key": "hoh_under65_2dep",
+        "label": "Head of household, <65, 2 dep.",
+        "status_group": "HEAD_OF_HOUSEHOLD",
+        "dependent_bucket": "2",
+        "count_column": "hoh_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "HEAD_OF_HOUSEHOLD"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", "==", "2"),
+        ],
+    },
+    {
+        "cell_key": "hoh_under65_3plusdep",
+        "label": "Head of household, <65, 3+ dep.",
+        "status_group": "HEAD_OF_HOUSEHOLD",
+        "dependent_bucket": "3+",
+        "count_column": "hoh_under65",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "HEAD_OF_HOUSEHOLD"),
+            ("age_head", "<", "65"),
+            ("tax_unit_dependents", ">=", "3"),
+        ],
+    },
+)
+
+FILER_DEMOGRAPHIC_AGE65PLUS_TARGET_SPECS = (
+    {
+        "cell_key": "single_65plus",
+        "label": "Single, 65+",
+        "count_column": "single_65plus_total",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "SINGLE"),
+            ("age_head", ">=", "65"),
+        ],
+    },
+    {
+        "cell_key": "married_65plus",
+        "label": "Married, 65+",
+        "count_column": "married_65plus_total",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            (
+                "filing_status",
+                "in",
+                MARRIED_FILING_STATUS_CONSTRAINT_VALUE,
+            ),
+            ("age_head", ">=", "65"),
+        ],
+    },
+    {
+        "cell_key": "hoh_65plus",
+        "label": "Head of household, 65+",
+        "count_column": "hoh_65plus_total",
+        "constraints": [
+            ("tax_unit_is_filer", "==", "1"),
+            ("filing_status", "==", "HEAD_OF_HOUSEHOLD"),
+            ("age_head", ">=", "65"),
+        ],
+    },
+)
+
+DEPENDENT_RETURN_TARGET_SPEC = {
+    "cell_key": "dependent_returns",
+    "label": "Dependents",
+    "count_column": "dependent_total",
+    "constraints": [
+        ("tax_unit_is_filer", "==", "1"),
+        ("head_is_dependent_elsewhere", "==", "1"),
+    ],
+}
+
+ALL_FILER_DEMOGRAPHIC_TARGET_SPECS = (
+    FILER_DEMOGRAPHIC_UNDER65_TARGET_SPECS
+    + FILER_DEMOGRAPHIC_AGE65PLUS_TARGET_SPECS
+    + (DEPENDENT_RETURN_TARGET_SPEC,)
+)
+
 # IRS geography-file line codes are external identifiers from the published
 # `incd` schema. Keep the mapping in one shared registry so the transform path
 # and the national aggregate overlay do not drift.
@@ -470,6 +764,7 @@ def _upsert_target(
     value: float,
     source: str,
     notes: Optional[str] = None,
+    active: bool = True,
 ) -> None:
     existing_target = session.exec(
         select(Target).where(
@@ -482,6 +777,7 @@ def _upsert_target(
     if existing_target:
         existing_target.value = value
         existing_target.source = source
+        existing_target.active = active
         if notes is not None:
             existing_target.notes = notes
         return
@@ -492,11 +788,326 @@ def _upsert_target(
             variable=variable,
             period=period,
             value=value,
-            active=True,
+            active=active,
             source=source,
             notes=notes,
         )
     )
+
+
+def _get_or_create_custom_stratum(
+    session: Session,
+    *,
+    parent_stratum_id: int,
+    note: str,
+    constraints: list[tuple[str, str, str]],
+) -> Stratum:
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == parent_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    stratum = Stratum(parent_stratum_id=parent_stratum_id, notes=note)
+    stratum.constraints_rel = [
+        StratumConstraint(
+            constraint_variable=constraint_variable,
+            operation=operation,
+            value=value,
+        )
+        for constraint_variable, operation, value in constraints
+    ]
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
+def load_puf_filer_demographic_cell_shares(
+    path=FILER_DEMOGRAPHIC_CELL_SHARE_PATH,
+) -> pd.DataFrame:
+    """Load validated PUF-based share splits for the national filer cells.
+
+    The checked-in share table is derived from the repo's 2015 IRS PUF inputs
+    after demographic imputation. We only use it to split current-year IRS SOI
+    totals across dependent-count buckets where recent IRS tables no longer
+    publish the needed cross-classification after TCJA.
+    """
+    shares = pd.read_csv(path)
+    required_columns = {
+        "status_group",
+        "agi_group",
+        "dependent_bucket",
+        "share",
+    }
+    missing_columns = required_columns - set(shares.columns)
+    if missing_columns:
+        raise ValueError(
+            "Missing required columns in filer demographic share file: "
+            f"{sorted(missing_columns)}"
+        )
+
+    expected_buckets = {
+        "SINGLE": {"0", "1", "2+"},
+        "MARRIED": {"0", "1", "2", "3+"},
+        "HEAD_OF_HOUSEHOLD": {"1", "2", "3+"},
+    }
+    expected_agi_groups = set(COMMON_FILER_DEMOGRAPHIC_AGI_GROUPS)
+    for status_group, buckets in expected_buckets.items():
+        status_rows = shares[shares["status_group"] == status_group]
+        found_agi_groups = set(status_rows["agi_group"])
+        if found_agi_groups != expected_agi_groups:
+            raise ValueError(
+                f"Share file AGI groups for {status_group} differ from the "
+                f"expected set: {sorted(found_agi_groups)}"
+            )
+        for agi_group in COMMON_FILER_DEMOGRAPHIC_AGI_GROUPS:
+            cell_rows = status_rows[status_rows["agi_group"] == agi_group]
+            found_buckets = set(cell_rows["dependent_bucket"])
+            if found_buckets != buckets:
+                raise ValueError(
+                    f"Share file buckets for {status_group}/{agi_group} differ "
+                    f"from expected: {sorted(found_buckets)}"
+                )
+
+    grouped_shares = shares.groupby(["status_group", "agi_group"])["share"].sum()
+    if not np.allclose(grouped_shares.to_numpy(dtype=float), 1.0, atol=1e-6):
+        raise ValueError(
+            "Filer demographic share file does not sum to 1 within each cell"
+        )
+
+    return shares.copy()
+
+
+def _build_table_1_2_and_1_6_common_counts(
+    table_1_2: pd.DataFrame,
+    table_1_6: pd.DataFrame,
+) -> pd.DataFrame:
+    fine_counts = pd.DataFrame({"fine_agi_group": TABLE_1_2_FINE_AGI_GROUPS})
+
+    for variable, column_index in TABLE_1_2_COUNT_COLUMN_BY_VARIABLE.items():
+        fine_counts[variable] = [
+            float(table_1_2.iat[row_number - 1, column_index])
+            for row_number in range(10, 29)
+        ]
+
+    for variable, row_number in TABLE_1_6_65PLUS_ROW_BY_VARIABLE.items():
+        fine_counts[variable] = [
+            float(table_1_6.iat[row_number - 1, column_index])
+            for column_index in range(2, 21)
+        ]
+
+    fine_counts["agi_group"] = fine_counts["fine_agi_group"].map(
+        TABLE_1_2_FINE_TO_COMMON_AGI_GROUP
+    )
+    return fine_counts.groupby("agi_group", as_index=False).sum(numeric_only=True)
+
+
+def _build_table_1_7_common_dependent_counts(
+    table_1_7: pd.DataFrame,
+) -> pd.DataFrame:
+    rows = []
+    for row_number in range(10, len(table_1_7) + 1):
+        raw_label = table_1_7.iat[row_number - 1, 0]
+        if pd.isna(raw_label):
+            continue
+        label = str(raw_label).strip()
+        if (
+            label.startswith("*")
+            or label.startswith("NOTE")
+            or label.startswith("SOURCE")
+        ):
+            break
+        agi_group = TABLE_1_7_DEPENDENT_AGI_LABEL_TO_COMMON_GROUP.get(label)
+        if agi_group is None:
+            raise ValueError(f"Unrecognized Table 1.7 AGI label: {label}")
+        rows.append(
+            {
+                "agi_group": agi_group,
+                "dependent_total": float(table_1_7.iat[row_number - 1, 1]),
+            }
+        )
+
+    dependent_counts = (
+        pd.DataFrame(rows).groupby("agi_group", as_index=False).sum(numeric_only=True)
+    )
+    table_total = float(table_1_7.iat[8, 1])
+    if not np.isclose(dependent_counts["dependent_total"].sum(), table_total):
+        raise ValueError(
+            "Aggregated Table 1.7 dependent counts do not match the workbook total"
+        )
+    return dependent_counts
+
+
+def build_national_filer_demographic_common_counts(
+    table_year: int,
+) -> pd.DataFrame:
+    """Build common-AGI-band IRS totals for the filer demographic cells."""
+    table_1_2 = _load_workbook("Table 1.2", table_year)
+    table_1_6 = _load_workbook("Table 1.6", table_year)
+    table_1_7 = _load_workbook("Table 1.7", table_year)
+
+    common_counts = _build_table_1_2_and_1_6_common_counts(table_1_2, table_1_6)
+    dependent_counts = _build_table_1_7_common_dependent_counts(table_1_7)
+
+    work = common_counts.merge(
+        dependent_counts,
+        on="agi_group",
+        how="left",
+        validate="one_to_one",
+    ).fillna({"dependent_total": 0.0})
+    work["single_under65_nondep"] = (
+        work["single_total"] - work["single_65plus"] - work["dependent_total"]
+    )
+    work["married_under65"] = (
+        work["joint_total"]
+        + work["sep_total"]
+        - work["joint_65plus"]
+        - work["sep_65plus"]
+    )
+    work["hoh_under65"] = work["hoh_total"] - work["hoh_65plus"]
+    work["single_65plus_total"] = work["single_65plus"]
+    work["married_65plus_total"] = work["joint_65plus"] + work["sep_65plus"]
+    work["hoh_65plus_total"] = work["hoh_65plus"]
+
+    if (
+        (work[["single_under65_nondep", "married_under65", "hoh_under65"]] < -1e-6)
+        .any()
+        .any()
+    ):
+        raise ValueError("IRS filer demographic cell counts produced a negative bucket")
+
+    return work[
+        [
+            "agi_group",
+            "single_under65_nondep",
+            "married_under65",
+            "hoh_under65",
+            "single_65plus_total",
+            "married_65plus_total",
+            "hoh_65plus_total",
+            "dependent_total",
+        ]
+    ].copy()
+
+
+def allocate_national_filer_demographic_cell_targets(
+    common_counts_df: pd.DataFrame,
+    shares_df: pd.DataFrame,
+    table_year: int,
+) -> pd.DataFrame:
+    """Allocate IRS filer totals into the PWBM-inspired demographic cells."""
+    rows = []
+
+    for spec in FILER_DEMOGRAPHIC_UNDER65_TARGET_SPECS:
+        share_subset = shares_df[
+            (shares_df["status_group"] == spec["status_group"])
+            & (shares_df["dependent_bucket"] == spec["dependent_bucket"])
+        ][["agi_group", "share"]]
+        merged = common_counts_df[["agi_group", spec["count_column"]]].merge(
+            share_subset,
+            on="agi_group",
+            how="left",
+            validate="one_to_one",
+        )
+        if merged["share"].isna().any():
+            raise ValueError(
+                "Missing PUF share rows for "
+                f"{spec['status_group']}/{spec['dependent_bucket']}"
+            )
+        target_value = float((merged[spec["count_column"]] * merged["share"]).sum())
+        rows.append(
+            {
+                "cell_key": spec["cell_key"],
+                "label": spec["label"],
+                "period": table_year,
+                "target_value": target_value,
+                "active": True,
+            }
+        )
+
+    for spec in FILER_DEMOGRAPHIC_AGE65PLUS_TARGET_SPECS:
+        rows.append(
+            {
+                "cell_key": spec["cell_key"],
+                "label": spec["label"],
+                "period": table_year,
+                "target_value": float(common_counts_df[spec["count_column"]].sum()),
+                "active": True,
+            }
+        )
+
+    rows.append(
+        {
+            "cell_key": DEPENDENT_RETURN_TARGET_SPEC["cell_key"],
+            "label": DEPENDENT_RETURN_TARGET_SPEC["label"],
+            "period": table_year,
+            "target_value": float(common_counts_df["dependent_total"].sum()),
+            "active": False,
+        }
+    )
+    return pd.DataFrame(rows)
+
+
+def load_national_filer_demographic_cell_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    table_year: int,
+) -> None:
+    """Load national filer-count targets for the PWBM 14-cell demographic grid.
+
+    Recent IRS publications no longer provide a current-year exemptions-by-filing-
+    status table, so this loader combines:
+    - IRS SOI Table 1.2 for filing-status AGI counts,
+    - IRS SOI Table 1.6 for age-65-plus counts by filing status and AGI,
+    - IRS SOI Table 1.7 for dependent-return counts, and
+    - 2015 IRS PUF-derived shares to split under-65 nondependent counts across
+      dependent-count buckets within coarse AGI groups.
+    """
+    common_counts = build_national_filer_demographic_common_counts(table_year)
+    shares = load_puf_filer_demographic_cell_shares()
+    target_rows = allocate_national_filer_demographic_cell_targets(
+        common_counts,
+        shares,
+        table_year,
+    )
+    target_row_by_key = {
+        row["cell_key"]: row for row in target_rows.to_dict(orient="records")
+    }
+
+    base_notes = (
+        "IRS SOI demographic filer-count target derived from Tables 1.2, 1.6, "
+        f"and 1.7 (TY {table_year}) with 2015 IRS PUF share splits"
+    )
+    inactive_suffix = (
+        "; stored inactive because current calibration H5s do not populate "
+        "head_is_dependent_elsewhere, so this row would currently be impossible"
+    )
+
+    for spec in ALL_FILER_DEMOGRAPHIC_TARGET_SPECS:
+        row = target_row_by_key[spec["cell_key"]]
+        note = f"National filers demographic cell: {spec['label']}"
+        stratum = _get_or_create_custom_stratum(
+            session,
+            parent_stratum_id=national_filer_stratum_id,
+            note=note,
+            constraints=spec["constraints"],
+        )
+        notes = base_notes
+        if not row["active"]:
+            notes += inactive_suffix
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=int(row["period"]),
+            value=float(row["target_value"]),
+            source="IRS SOI",
+            notes=notes,
+            active=bool(row["active"]),
+        )
 
 
 def _get_or_create_national_domain_stratum(
@@ -1093,6 +1704,11 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             national_year,
         )
         load_national_fine_agi_targets(session, filer_strata["national"], national_year)
+        load_national_filer_demographic_cell_targets(
+            session,
+            filer_strata["national"],
+            national_year,
+        )
 
     load_state_fine_agi_targets(session, filer_strata, year)
     session.commit()

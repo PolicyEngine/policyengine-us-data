@@ -18,7 +18,10 @@ import logging
 import numpy as np
 import pandas as pd
 from . import aggregate_record_utils as utils
-from .forbes_backbone import build_forbes_top_tail_bucket
+from .forbes_backbone import (
+    FORBES_TOP_TAIL_METADATA_DEFAULTS,
+    build_forbes_top_tail_bucket,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,17 @@ def disaggregate_aggregate_records(
     agg_mask = puf.RECID.isin(AGGREGATE_RECIDS)
     if agg_mask.sum() == 0:
         return puf
+
+    if use_forbes_top_tail:
+        missing_metadata = [
+            column
+            for column in FORBES_TOP_TAIL_METADATA_DEFAULTS
+            if column not in puf.columns
+        ]
+        if missing_metadata:
+            puf = puf.copy()
+            for column in missing_metadata:
+                puf[column] = FORBES_TOP_TAIL_METADATA_DEFAULTS[column]
 
     agg_rows = puf[agg_mask].copy().set_index("RECID")
     regular = puf[~agg_mask].copy()

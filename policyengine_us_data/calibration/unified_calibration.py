@@ -1054,6 +1054,80 @@ def compute_diagnostics(
     )
 
 
+def _raw_time_period_array(
+    raw_dataset: dict,
+    variable: str,
+    time_period: int,
+) -> np.ndarray | None:
+    """Extract one variable array from a raw Dataset.load_dataset() dict."""
+
+    if variable not in raw_dataset:
+        return None
+
+    values = raw_dataset[variable]
+    if isinstance(values, dict):
+        if time_period in values:
+            values = values[time_period]
+        elif str(time_period) in values:
+            values = values[str(time_period)]
+        else:
+            return None
+
+    try:
+        return np.asarray(values[...])
+    except (TypeError, ValueError):
+        return np.asarray(values)
+
+
+def _extract_forbes_state_fips_overrides(
+    raw_dataset: dict,
+    time_period: int,
+    n_records: int,
+) -> np.ndarray | None:
+    """Return fixed-state overrides for Forbes synthetic PUF households."""
+
+    from policyengine_us_data.datasets.puf.aggregate_record_utils import (
+        SYNTHETIC_RECID_START,
+    )
+
+    household_id = _raw_time_period_array(raw_dataset, "household_id", time_period)
+    forbes_state_fips = _raw_time_period_array(
+        raw_dataset,
+        "forbes_state_fips",
+        time_period,
+    )
+    if household_id is None or forbes_state_fips is None:
+        return None
+    if len(household_id) != n_records or len(forbes_state_fips) != n_records:
+        logger.info(
+            "Skipping Forbes fixed-state overrides because "
+            "household_id/forbes_state_fips "
+            "lengths do not match household records: %s/%s vs %s",
+            len(household_id),
+            len(forbes_state_fips),
+            n_records,
+        )
+        return None
+
+    forbes_state_fips = np.nan_to_num(
+        np.asarray(forbes_state_fips, dtype=float),
+        nan=0.0,
+    ).astype(np.int32)
+    household_id = np.asarray(household_id, dtype=float)
+
+    fixed_mask = (forbes_state_fips > 0) & (household_id >= SYNTHETIC_RECID_START)
+    if not fixed_mask.any():
+        return None
+
+    fixed_state_fips = np.zeros(n_records, dtype=np.int32)
+    fixed_state_fips[fixed_mask] = forbes_state_fips[fixed_mask]
+    logger.info(
+        "Detected %d Forbes synthetic households with fixed state_fips",
+        int(fixed_mask.sum()),
+    )
+    return fixed_state_fips
+
+
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -1193,7 +1267,8 @@ def run_calibration(
     logger.info("Loading dataset from %s", dataset_path)
     sim = Microsimulation(dataset=dataset_path)
     n_records = len(sim.calculate("household_id", map_to="household").values)
-    raw_keys = sim.dataset.load_dataset()["household_id"]
+    raw_dataset = sim.dataset.load_dataset()
+    raw_keys = raw_dataset["household_id"]
     if isinstance(raw_keys, dict):
         time_period = int(next(iter(raw_keys)))
     else:
@@ -1221,6 +1296,11 @@ def run_calibration(
         "Loaded %d CD AGI targets for conditional assignment",
         len(cd_agi_targets),
     )
+    fixed_state_fips = _extract_forbes_state_fips_overrides(
+        raw_dataset=raw_dataset,
+        time_period=time_period,
+        n_records=n_records,
+    )
 
     # Step 2: Clone and assign geography
     logger.info(
@@ -1235,6 +1315,7 @@ def run_calibration(
         seed=seed,
         household_agi=base_agi,
         cd_agi_targets=cd_agi_targets,
+        fixed_state_fips=fixed_state_fips,
     )
 
     # Step 3: Source imputation (if requested)
@@ -1245,7 +1326,7 @@ def run_calibration(
 
         base_states = geography.state_fips[:n_records]
 
-        raw_data = sim.dataset.load_dataset()
+        raw_data = raw_dataset
         data_dict = {}
         for var in raw_data:
             val = raw_data[var]

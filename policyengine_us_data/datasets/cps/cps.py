@@ -3,7 +3,16 @@ from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
 import h5py
-from policyengine_us_data.datasets.cps.census_cps import *
+from policyengine_us_data.datasets.cps.census_cps import (
+    CensusCPS,
+    CensusCPS_2018,
+    CensusCPS_2019,
+    CensusCPS_2020,
+    CensusCPS_2021,
+    CensusCPS_2022,
+    CensusCPS_2023,
+    CensusCPS_2024,
+)
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
@@ -138,6 +147,7 @@ class CPS(Dataset):
             person, tax_unit, family, spm_unit, household = [
                 raw_data[entity] for entity in ENTITIES
             ]
+        _validate_raw_cps_schema(person, tax_unit, self.raw_cps.name)
 
         logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
@@ -562,6 +572,33 @@ def uprate_cps_data(data, from_period, to_period):
     return data
 
 
+def _validate_raw_cps_schema(
+    person: DataFrame,
+    tax_unit: DataFrame,
+    raw_cps_name: str,
+) -> None:
+    required_person_columns = {
+        "CENSUS_TAX_ID",
+    }
+    required_tax_unit_columns = set()
+
+    missing_person = sorted(required_person_columns - set(person.columns))
+    missing_tax_unit = sorted(required_tax_unit_columns - set(tax_unit.columns))
+    if not missing_person and not missing_tax_unit:
+        return
+
+    missing_parts = []
+    if missing_person:
+        missing_parts.append("person: " + ", ".join(missing_person))
+    if missing_tax_unit:
+        missing_parts.append("tax_unit: " + ", ".join(missing_tax_unit))
+
+    raise ValueError(
+        f"Raw CPS dataset {raw_cps_name} is stale and must be regenerated; "
+        f"missing constructed tax-unit columns ({'; '.join(missing_parts)})."
+    )
+
+
 def add_id_variables(
     cps: h5py.File,
     person: DataFrame,
@@ -717,8 +754,12 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_surviving_spouse"] = person.A_MARITL == 4
     cps["is_separated"] = person.A_MARITL == 6
     # High school or college/university enrollment status.
-    cps["is_full_time_college_student"] = person.A_HSCOL == 2
-
+    if "A_FTPT" in person.columns:
+        cps["is_full_time_college_student"] = (person.A_HSCOL == 2) & (
+            person.A_FTPT == 1
+        )
+    else:
+        cps["is_full_time_college_student"] = person.A_HSCOL == 2
     cps["detailed_occupation_recode"] = person.POCCU2
     cps["treasury_tipped_occupation_code"] = derive_treasury_tipped_occupation_code(
         person.PEIOOCC

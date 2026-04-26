@@ -6,7 +6,7 @@ import pandas as pd
 
 from sqlmodel import Session, create_engine, select
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -30,7 +30,11 @@ from policyengine_us_data.utils.raw_cache import (
     cache_path,
     save_bytes,
 )
-from policyengine_us_data.utils.soi import get_tracked_soi_row
+from policyengine_us_data.utils.soi import (
+    get_tracked_soi_row,
+    load_tracked_soi_targets,
+    select_best_tracked_soi_rows,
+)
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
@@ -163,6 +167,20 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
 }
 
 CTC_GEOGRAPHY_TARGET_VARIABLES = ("refundable_ctc", "non_refundable_ctc")
+EITC_AGI_CHILD_TARGET_SOURCE_YEAR = 2022
+SOI_TAXABLE_AGI_TARGET_VARIABLES = {
+    "adjusted_gross_income": "adjusted_gross_income",
+    "count": "tax_unit_count",
+}
+SOI_FILING_STATUS_CONSTRAINTS = {
+    "Single": ("==", "SINGLE"),
+    "Head of Household": ("==", "HEAD_OF_HOUSEHOLD"),
+    "Married Filing Separately": ("==", "SEPARATE"),
+    "Married Filing Jointly/Surviving Spouse": (
+        "in",
+        "JOINT|SURVIVING_SPOUSE",
+    ),
+}
 
 
 def create_records(df, breakdown_variable, target_variable):
@@ -450,6 +468,49 @@ def get_national_geography_soi_target(
     return _get_national_geography_soi_target_from_year(variable, geography_year)
 
 
+def _get_state_geography_soi_targets_from_year(
+    variable: str,
+    geography_year: int,
+) -> list[dict]:
+    spec = _get_geography_file_aggregate_target_spec(variable)
+    code = spec["code"]
+
+    raw_df = extract_soi_data(geography_year)
+    state_rows = raw_df[(raw_df["STATE"] != "US") & (raw_df["agi_stub"] == 0)]
+    if "CONG_DISTRICT" in state_rows.columns:
+        state_rows = state_rows[state_rows["CONG_DISTRICT"] == 0]
+    if state_rows.empty:
+        raise ValueError(
+            f"IRS geography SOI file for {geography_year} is missing state rows "
+            f"for {variable}"
+        )
+
+    targets = []
+    for row in state_rows.itertuples(index=False):
+        targets.append(
+            {
+                "variable": variable,
+                "source_year": geography_year,
+                "state_code": row.STATE,
+                "count": float(getattr(row, f"N{code}")),
+                "amount": float(getattr(row, f"A{code}")) * 1_000,
+            }
+        )
+
+    return sorted(targets, key=lambda target: target["state_code"])
+
+
+def get_state_geography_soi_targets(
+    variable: str,
+    dataset_year: int,
+    *,
+    lag: int = IRS_SOI_LAG_YEARS,
+) -> list[dict]:
+    """Return state count and amount targets from the IRS geography file."""
+    geography_year = get_geography_soi_year(dataset_year, lag=lag)
+    return _get_state_geography_soi_targets_from_year(variable, geography_year)
+
+
 def get_national_geography_soi_agi_targets(
     variable: str,
     dataset_year: int,
@@ -588,6 +649,138 @@ def _get_or_create_national_agi_domain_stratum(
     return stratum
 
 
+def _get_or_create_national_eitc_agi_child_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    count_children: int,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+) -> Stratum:
+    if count_children < 3:
+        child_operation = "=="
+        child_value = str(count_children)
+        child_note = f"EITC child count = {count_children}"
+    else:
+        child_operation = ">"
+        child_value = "2"
+        child_note = "EITC child count > 2"
+
+    note = (
+        "National EITC filers, "
+        f"{child_note}, AGI >= {agi_lower_bound}, AGI < {agi_upper_bound}"
+    )
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(
+        [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable="eitc",
+                operation=">",
+                value="0",
+            ),
+            StratumConstraint(
+                constraint_variable="eitc_child_count",
+                operation=child_operation,
+                value=child_value,
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation=">=",
+                value=str(agi_lower_bound),
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation="<",
+                value=str(agi_upper_bound),
+            ),
+        ]
+    )
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
+def _get_or_create_national_taxable_agi_filing_status_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+    filing_status: str,
+) -> Stratum:
+    note = f"National taxable filers, AGI >= {agi_lower_bound}, AGI < {agi_upper_bound}"
+    filing_constraint = SOI_FILING_STATUS_CONSTRAINTS.get(filing_status)
+    if filing_constraint is not None:
+        note += f", filing status = {filing_status}"
+
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    constraints = [
+        StratumConstraint(
+            constraint_variable="tax_unit_is_filer",
+            operation="==",
+            value="1",
+        ),
+        StratumConstraint(
+            constraint_variable="income_tax_before_credits",
+            operation=">",
+            value="0",
+        ),
+        StratumConstraint(
+            constraint_variable="adjusted_gross_income",
+            operation=">=",
+            value=str(agi_lower_bound),
+        ),
+        StratumConstraint(
+            constraint_variable="adjusted_gross_income",
+            operation="<",
+            value=str(agi_upper_bound),
+        ),
+    ]
+    if filing_constraint is not None:
+        operation, value = filing_constraint
+        constraints.append(
+            StratumConstraint(
+                constraint_variable="filing_status",
+                operation=operation,
+                value=value,
+            )
+        )
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(constraints)
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
 def load_national_geography_ctc_targets(
     session: Session, national_filer_stratum_id: int, geography_year: int
 ) -> None:
@@ -662,6 +855,113 @@ def load_national_geography_ctc_agi_targets(
                 source="IRS SOI",
                 notes=notes,
             )
+
+
+def load_national_eitc_agi_child_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    source_year: int = EITC_AGI_CHILD_TARGET_SOURCE_YEAR,
+) -> None:
+    """Create national EITC targets by AGI bucket and qualifying children.
+
+    The source CSV is IRS SOI Publication 1304 Table 2.5. It is also used by
+    the PE-native Enhanced CPS loss matrix, so keeping it in ``policy_data.db``
+    lets downstream diagnostics map legacy PE-native labels to structured
+    target rows.
+    """
+    path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    if not path.exists():
+        return
+
+    df = pd.read_csv(path, comment="#")
+    df["agi_lower"] = df["agi_lower"].astype(float)
+    df["agi_upper"] = df["agi_upper"].astype(float)
+
+    for row in df.itertuples(index=False):
+        count_children = int(row.count_children)
+        agi_lower = float(row.agi_lower)
+        agi_upper = float(row.agi_upper)
+        returns = float(row.returns)
+        amount = float(row.amount)
+
+        if returns == 0 and amount == 0:
+            continue
+
+        stratum = _get_or_create_national_eitc_agi_child_stratum(
+            session,
+            national_filer_stratum_id,
+            count_children=count_children,
+            agi_lower_bound=agi_lower,
+            agi_upper_bound=agi_upper,
+        )
+        notes = (
+            "IRS SOI Publication 1304 Table 2.5 EITC target "
+            f"(source year {source_year}, count_children={count_children}, "
+            f"agi_lower={agi_lower}, agi_upper={agi_upper})"
+        )
+        if returns != 0:
+            _upsert_target(
+                session,
+                stratum_id=stratum.stratum_id,
+                variable="tax_unit_count",
+                period=source_year,
+                value=returns,
+                source="IRS SOI",
+                notes=notes,
+            )
+        if amount != 0:
+            _upsert_target(
+                session,
+                stratum_id=stratum.stratum_id,
+                variable="eitc",
+                period=source_year,
+                value=amount,
+                source="IRS SOI",
+                notes=notes,
+            )
+
+
+def load_national_taxable_agi_filing_status_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    target_year: int,
+) -> None:
+    """Create taxable-filer AGI/count targets by AGI band and filing status.
+
+    These rows mirror the broad IRS SOI labels used by the legacy national
+    loss matrix, including the combined married-joint/surviving-spouse cell.
+    """
+    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), target_year)
+    rows = soi[
+        soi["Variable"].isin(SOI_TAXABLE_AGI_TARGET_VARIABLES)
+        & (soi["Taxable only"])
+        & (soi["AGI upper bound"] > 10_000)
+    ].copy()
+
+    for _, row in rows.iterrows():
+        variable = row["Variable"]
+        target_variable = SOI_TAXABLE_AGI_TARGET_VARIABLES[variable]
+        stratum = _get_or_create_national_taxable_agi_filing_status_stratum(
+            session,
+            national_filer_stratum_id,
+            agi_lower_bound=float(row["AGI lower bound"]),
+            agi_upper_bound=float(row["AGI upper bound"]),
+            filing_status=row["Filing status"],
+        )
+        notes = (
+            f"Publication 1304 {row['SOI table']} taxable AGI/filing-status "
+            f"target (source year {int(row['Year'])}, row {int(row['XLSX row'])})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=target_variable,
+            period=int(row["Year"]),
+            value=float(row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
 
 
 def load_national_workbook_soi_targets(
@@ -1085,9 +1385,15 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
 
     load_national_geography_ctc_targets(session, filer_strata["national"], year)
     load_national_geography_ctc_agi_targets(session, filer_strata["national"], year)
+    load_national_eitc_agi_child_targets(session, filer_strata["national"])
 
     if national_year is not None:
         load_national_workbook_soi_targets(
+            session,
+            filer_strata["national"],
+            national_year,
+        )
+        load_national_taxable_agi_filing_status_targets(
             session,
             filer_strata["national"],
             national_year,

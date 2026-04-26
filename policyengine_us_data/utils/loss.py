@@ -15,7 +15,10 @@ from policyengine_us_data.storage.calibration_targets.soi_metadata import (
 from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
 )
-from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
+from policyengine_us_data.db.etl_irs_soi import (
+    get_national_geography_soi_target,
+    get_state_geography_soi_targets,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
@@ -27,24 +30,10 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
-    "health_insurance_premiums_without_medicare_part_b": 385e9,
-    "other_medical_expenses": 278e9,
     "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
         2024
     ),
-    "over_the_counter_health_expenses": 72e9,
-    "spm_unit_spm_threshold": 3_945e9,
-    "child_support_expense": 33e9,
-    "child_support_received": 33e9,
-    "spm_unit_capped_work_childcare_expenses": 348e9,
-    "spm_unit_capped_housing_subsidy": 35e9,
     "tanf": 7_788_317_474.55,
-    # Alimony could be targeted via SOI
-    "alimony_income": 13e9,
-    "alimony_expense": 13e9,
-    # Rough estimate, not CPS derived
-    "real_estate_taxes": 500e9,  # Rough estimate between 350bn and 600bn total property tax collections
-    "rent": 735e9,  # ACS total uprated by CPI
     # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
     # shows $38,316,190,000 in Box 7: Social security tips (2018)
     # Wages and salaries grew 32% from 2018 to 2023: https://fred.stlouisfed.org/graph/?g=1J0CC
@@ -108,6 +97,35 @@ HARD_CODED_TOTALS = {
     "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
         "value"
     ],
+}
+
+AGE_BUCKETED_HEALTH_TARGETS = ("medicare_part_b_premiums",)
+
+BLS_CE_TOTALS = {
+    # BLS Consumer Expenditure Surveys, CE LABSTAT series
+    # CXU670320LB0101M, aggregate expenditure (AG) in 2024.
+    # Item: "Babysitting, childcare, daycare, preschool";
+    # AG is reported in millions of dollars.
+    "childcare_expenses": 63_092e6,
+}
+
+TRANSFER_BALANCE_TARGETS = {
+    "nation/accounting/alimony_paid_minus_received": (
+        "alimony_expense",
+        "alimony_income",
+    ),
+    "nation/accounting/child_support_paid_minus_received": (
+        "child_support_expense",
+        "child_support_received",
+    ),
+}
+
+ABSOLUTE_ERROR_SCALE_TARGETS = {
+    # These are accounting identities, not gross flow targets. Use a
+    # target-specific scale so zero-dollar targets do not get dropped
+    # by sparse ECPS or dominate the dense reweighting objective.
+    target: 1e9
+    for target in TRANSFER_BALANCE_TARGETS
 }
 
 ACA_SPENDING_TARGETS = {
@@ -511,6 +529,166 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _add_real_estate_tax_targets(loss_matrix, targets_list, sim, time_period):
+    """Add IRS SOI real-estate-tax amount and count targets.
+
+    These targets correspond to itemizing filers with positive Schedule A
+    real-estate-tax amounts from the IRS geography file, not total
+    owner-occupied property-tax payments.
+    """
+    target = get_national_geography_soi_target("real_estate_taxes", time_period)
+
+    real_estate_taxes_person = sim.calculate(
+        "real_estate_taxes",
+        period=time_period,
+    ).values.astype(np.float32)
+    real_estate_taxes_tax_unit = sim.map_result(
+        real_estate_taxes_person,
+        "person",
+        "tax_unit",
+    ).astype(np.float32)
+    is_filer = sim.calculate("tax_unit_is_filer", period=time_period).values > 0
+    itemizes = sim.calculate("tax_unit_itemizes", period=time_period).values > 0
+    domain_mask = is_filer & itemizes & (real_estate_taxes_tax_unit > 0)
+
+    household_amount = sim.map_result(
+        real_estate_taxes_tax_unit * domain_mask.astype(np.float32),
+        "tax_unit",
+        "household",
+    ).astype(np.float32)
+    household_count = sim.map_result(
+        domain_mask.astype(np.float32),
+        "tax_unit",
+        "household",
+    ).astype(np.float32)
+
+    label = "nation/irs/real_estate_taxes"
+    loss_matrix[label] = household_amount
+    if any(pd.isna(loss_matrix[label])):
+        raise ValueError(f"Missing values for {label}")
+    targets_list.append(target["amount"])
+
+    label = "nation/irs/real_estate_taxes_count"
+    loss_matrix[label] = household_count
+    if any(pd.isna(loss_matrix[label])):
+        raise ValueError(f"Missing values for {label}")
+    targets_list.append(target["count"])
+
+    state_code = sim.calculate(
+        "state_code",
+        map_to="household",
+        period=time_period,
+    ).values
+    for state_target in get_state_geography_soi_targets(
+        "real_estate_taxes",
+        time_period,
+    ):
+        in_state = (state_code == state_target["state_code"]).astype(np.float32)
+
+        label = f"state/irs/real_estate_taxes/{state_target['state_code']}"
+        loss_matrix[label] = household_amount * in_state
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(state_target["amount"])
+
+        label = f"state/irs/real_estate_taxes_count/{state_target['state_code']}"
+        loss_matrix[label] = household_count * in_state
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(state_target["count"])
+
+    return targets_list, loss_matrix
+
+
+def _add_acs_housing_cost_targets(loss_matrix, targets_list, sim, time_period):
+    """Add ACS component targets for rent and all-owner property taxes."""
+    targets, _ = _load_yeared_target_csv("acs_housing_costs", time_period)
+    state_code = sim.calculate(
+        "state_code",
+        map_to="household",
+        period=time_period,
+    ).values
+
+    target_columns = {
+        "rent": "annual_contract_rent",
+        "real_estate_taxes": "real_estate_taxes",
+    }
+    for variable, target_column in target_columns.items():
+        values = sim.calculate(
+            variable,
+            map_to="household",
+            period=time_period,
+        ).values
+
+        label = f"nation/census/acs/{variable}"
+        loss_matrix[label] = values
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(float(targets[target_column].sum()))
+
+        for row in targets.itertuples(index=False):
+            in_state = (state_code == row.state_code).astype(np.float32)
+            label = f"state/census/acs/{variable}/{row.state_code}"
+            loss_matrix[label] = values * in_state
+            if any(pd.isna(loss_matrix[label])):
+                raise ValueError(f"Missing values for {label}")
+            targets_list.append(float(getattr(row, target_column)))
+
+    return targets_list, loss_matrix
+
+
+def _add_bls_ce_targets(loss_matrix, targets_list, sim, time_period):
+    """Add BLS Consumer Expenditure component-spending targets."""
+    for variable, target in BLS_CE_TOTALS.items():
+        label = f"nation/bls/ce/{variable}"
+        loss_matrix[label] = sim.calculate(
+            variable,
+            map_to="household",
+            period=time_period,
+        ).values
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(target)
+
+    return targets_list, loss_matrix
+
+
+def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
+    """Add paid-minus-received accounting targets for private transfers."""
+    for label, (paid_variable, received_variable) in TRANSFER_BALANCE_TARGETS.items():
+        paid = sim.calculate(
+            paid_variable,
+            map_to="household",
+            period=time_period,
+        ).values
+        received = sim.calculate(
+            received_variable,
+            map_to="household",
+            period=time_period,
+        ).values
+        loss_matrix[label] = paid - received
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(0.0)
+
+    return targets_list, loss_matrix
+
+
+def get_target_error_normalisation(target_names, targets_array):
+    """Return numerator shifts and denominators for target loss scaling."""
+    target_names = np.asarray(target_names)
+    targets_array = np.asarray(targets_array, dtype=np.float64)
+    numerator_shift = np.ones_like(targets_array, dtype=np.float64)
+    denominator = targets_array + 1
+
+    for label, scale in ABSOLUTE_ERROR_SCALE_TARGETS.items():
+        mask = target_names == label
+        numerator_shift[mask] = 0.0
+        denominator[mask] = scale
+
+    return numerator_shift, denominator
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -778,6 +956,13 @@ def build_loss_matrix(dataset: type, time_period):
         time_period,
     )
 
+    targets_array, loss_matrix = _add_real_estate_tax_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
     # Tax filer counts by AGI band (SOI Table 1.1). Calibrates total
     # filers (not just taxable returns), with granular bands sourced
     # from the latest SOI year <= calibration year to avoid hardcoding
@@ -820,6 +1005,27 @@ def build_loss_matrix(dataset: type, time_period):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
 
+    targets_array, loss_matrix = _add_acs_housing_cost_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
+    targets_array, loss_matrix = _add_bls_ce_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
+    targets_array, loss_matrix = _add_transfer_balance_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
     # Negative household market income total rough estimate from the IRS SOI PUF
 
     market_income = sim.calculate("household_market_income").values
@@ -838,6 +1044,8 @@ def build_loss_matrix(dataset: type, time_period):
     # The top row is treated as unbounded (age >= lower_bound) so the
     # 90+ population is constrained by an age-specific target rather than
     # only by the national total. See issue #768.
+    # Keep only Medicare Part B: the other household medical-expense
+    # aggregates are survey-based and should not drive national calibration.
 
     healthcare = pd.read_csv(CALIBRATION_FOLDER / "healthcare_spending.csv")
     top_age_lower_bound = int(healthcare["age_10_year_lower_bound"].max())
@@ -851,38 +1059,13 @@ def build_loss_matrix(dataset: type, time_period):
         else:
             in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
             label_suffix = f"age_{age_lower_bound}_to_{age_lower_bound + 9}"
-        for expense_type in [
-            "health_insurance_premiums_without_medicare_part_b",
-            "over_the_counter_health_expenses",
-            "other_medical_expenses",
-            "medicare_part_b_premiums",
-        ]:
+        for expense_type in AGE_BUCKETED_HEALTH_TARGETS:
             label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
             )
             targets_array.append(row[expense_type])
-
-    # AGI by SPM threshold totals
-
-    spm_threshold_agi = pd.read_csv(CALIBRATION_FOLDER / "spm_threshold_agi.csv")
-
-    for _, row in spm_threshold_agi.iterrows():
-        spm_unit_agi = sim.calculate("adjusted_gross_income", map_to="spm_unit").values
-        spm_threshold = sim.calculate("spm_unit_spm_threshold").values
-        in_threshold_range = (spm_threshold >= row["lower_spm_threshold"]) * (
-            spm_threshold < row["upper_spm_threshold"]
-        )
-        label = f"nation/census/agi_in_spm_threshold_decile_{int(row['decile'])}"
-        loss_matrix[label] = sim.map_result(
-            in_threshold_range * spm_unit_agi, "spm_unit", "household"
-        )
-        targets_array.append(row["adjusted_gross_income"])
-
-        label = f"nation/census/count_in_spm_threshold_decile_{int(row['decile'])}"
-        loss_matrix[label] = sim.map_result(in_threshold_range, "spm_unit", "household")
-        targets_array.append(row["count"])
 
     # Population by state and population under 5 by state
 
@@ -1080,10 +1263,6 @@ def build_loss_matrix(dataset: type, time_period):
     targets_array.extend(agi_state_targets)
     loss_matrix = _add_agi_metric_columns(loss_matrix, sim)
 
-    targets_array, loss_matrix = _add_state_real_estate_taxes(
-        loss_matrix, targets_array, sim
-    )
-
     snap_state_target_names, snap_state_targets = _add_snap_state_targets(sim)
     targets_array.extend(snap_state_targets)
     loss_matrix = _add_snap_metric_columns(loss_matrix, sim)
@@ -1219,41 +1398,6 @@ def _add_agi_metric_columns(
     return loss_matrix
 
 
-def _add_state_real_estate_taxes(loss_matrix, targets_list, sim):
-    """
-    Add state real estate taxes to the loss matrix and targets list.
-    """
-    # Read the real estate taxes data
-    real_estate_taxes_targets = pd.read_csv(
-        CALIBRATION_FOLDER / "real_estate_taxes_by_state_acs.csv"
-    )
-    national_total = HARD_CODED_TOTALS["real_estate_taxes"]
-    state_sum = real_estate_taxes_targets["real_estate_taxes_bn"].sum() * 1e9
-    national_to_state_diff = national_total / state_sum
-    real_estate_taxes_targets["real_estate_taxes_bn"] *= national_to_state_diff
-    real_estate_taxes_targets["real_estate_taxes_bn"] = (
-        real_estate_taxes_targets["real_estate_taxes_bn"] * 1e9
-    )
-
-    assert np.isclose(
-        real_estate_taxes_targets["real_estate_taxes_bn"].sum(),
-        national_total,
-        rtol=1e-8,
-    ), "Real estate tax totals do not sum to national target"
-
-    targets_list.extend(real_estate_taxes_targets["real_estate_taxes_bn"].tolist())
-
-    real_estate_taxes = sim.calculate("real_estate_taxes", map_to="household").values
-    state = sim.calculate("state_code", map_to="household").values
-
-    for _, r in real_estate_taxes_targets.iterrows():
-        in_state = (state == r["state_code"]).astype(float)
-        label = f"state/real_estate_taxes/{r['state_code']}"
-        loss_matrix[label] = real_estate_taxes * in_state
-
-    return targets_list, loss_matrix
-
-
 def _add_snap_state_targets(sim):
     """
     Add snap targets at the state level, adjusted in aggregate to the sim
@@ -1317,7 +1461,9 @@ def _add_snap_metric_columns(
     return loss_matrix
 
 
-def print_reweighting_diagnostics(optimised_weights, loss_matrix, targets_array, label):
+def print_reweighting_diagnostics(
+    optimised_weights, loss_matrix, targets_array, label, target_names=None
+):
     # Convert all inputs to NumPy arrays right at the start
     optimised_weights_np = (
         optimised_weights.numpy()
@@ -1334,6 +1480,10 @@ def print_reweighting_diagnostics(optimised_weights, loss_matrix, targets_array,
         if hasattr(targets_array, "numpy")
         else np.asarray(targets_array)
     )
+    if target_names is None and hasattr(loss_matrix, "columns"):
+        target_names = np.asarray(loss_matrix.columns)
+    elif target_names is not None:
+        target_names = np.asarray(target_names)
 
     logging.info(f"\n\n---{label}: reweighting quick diagnostics----\n")
     logging.info(
@@ -1344,10 +1494,20 @@ def print_reweighting_diagnostics(optimised_weights, loss_matrix, targets_array,
     # All subsequent calculations use the guaranteed NumPy versions
     estimate = optimised_weights_np @ loss_matrix_np
 
-    rel_error = (((estimate - targets_array_np) + 1) / (targets_array_np + 1)) ** 2
-    within_10_percent_mask = np.abs(estimate - targets_array_np) <= (
-        0.10 * np.abs(targets_array_np)
-    )
+    if target_names is None:
+        numerator_shift = np.ones_like(targets_array_np, dtype=np.float64)
+        denominator = targets_array_np + 1
+    else:
+        numerator_shift, denominator = get_target_error_normalisation(
+            target_names, targets_array_np
+        )
+    rel_error = ((estimate - targets_array_np + numerator_shift) / denominator) ** 2
+    tolerance = 0.10 * np.abs(targets_array_np)
+    if target_names is not None:
+        for target_name, scale in ABSOLUTE_ERROR_SCALE_TARGETS.items():
+            mask = target_names == target_name
+            tolerance[mask] = 0.10 * scale
+    within_10_percent_mask = np.abs(estimate - targets_array_np) <= tolerance
     percent_within_10 = np.mean(within_10_percent_mask) * 100
     logging.info(
         f"rel_error: min: {np.min(rel_error):.2f}\n"

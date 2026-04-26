@@ -110,11 +110,35 @@ class TestEqualityOperations:
         ]
         ensure_consistent_constraint_set(constraints)  # No exception
 
+    def test_in_alone_is_valid(self):
+        """filing_status in a pipe-delimited set should pass."""
+        constraints = [
+            Constraint(
+                variable="filing_status",
+                operation="in",
+                value="JOINT|SURVIVING_SPOUSE",
+            ),
+        ]
+        ensure_consistent_constraint_set(constraints)  # No exception
+
     def test_equality_with_range_fails(self):
         """state_fips == '06' AND state_fips > '05' should fail."""
         constraints = [
             Constraint(variable="state_fips", operation="==", value="06"),
             Constraint(variable="state_fips", operation=">", value="05"),
+        ]
+        with pytest.raises(ConstraintValidationError, match="cannot combine"):
+            ensure_consistent_constraint_set(constraints)
+
+    def test_in_with_not_equal_fails(self):
+        """filing_status in 'A|B' AND filing_status != 'C' should fail."""
+        constraints = [
+            Constraint(
+                variable="filing_status",
+                operation="in",
+                value="JOINT|SURVIVING_SPOUSE",
+            ),
+            Constraint(variable="filing_status", operation="!=", value="SEPARATE"),
         ]
         with pytest.raises(ConstraintValidationError, match="cannot combine"):
             ensure_consistent_constraint_set(constraints)

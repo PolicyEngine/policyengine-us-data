@@ -121,6 +121,43 @@ def test_national_targets_loaded(built_db):
         )
 
 
+def test_national_taxable_agi_filing_status_targets_loaded(built_db):
+    """SOI taxable-return AGI/status targets should survive the full DB build."""
+    conn = sqlite3.connect(str(built_db))
+    rows_by_variable = dict(
+        conn.execute(
+            """
+            SELECT variable, COUNT(*)
+            FROM target_overview
+            WHERE geo_level = 'national'
+              AND domain_variable
+                  = 'adjusted_gross_income,filing_status,income_tax_before_credits'
+              AND variable IN ('adjusted_gross_income', 'tax_unit_count')
+            GROUP BY variable
+            """
+        ).fetchall()
+    )
+    joint_status_rows = conn.execute(
+        """
+        SELECT COUNT(DISTINCT t.target_id)
+        FROM targets t
+        JOIN target_overview tv ON tv.target_id = t.target_id
+        JOIN stratum_constraints sc ON sc.stratum_id = t.stratum_id
+        WHERE tv.geo_level = 'national'
+          AND tv.domain_variable
+              = 'adjusted_gross_income,filing_status,income_tax_before_credits'
+          AND sc.constraint_variable = 'filing_status'
+          AND sc.operation = 'in'
+          AND sc.value = 'JOINT|SURVIVING_SPOUSE'
+        """
+    ).fetchone()[0]
+    conn.close()
+
+    assert rows_by_variable.get("adjusted_gross_income", 0) > 0
+    assert rows_by_variable.get("tax_unit_count", 0) > 0
+    assert joint_status_rows > 0
+
+
 def test_jct_mortgage_tax_expenditure_uses_mortgage_specific_variable(built_db):
     """The mortgage JCT target should point at a mortgage-specific variable."""
     conn = sqlite3.connect(str(built_db))

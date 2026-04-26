@@ -23,6 +23,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     load_national_eitc_agi_child_targets,
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
+    load_national_taxable_agi_filing_status_targets,
     load_national_workbook_soi_targets,
 )
 
@@ -500,3 +501,105 @@ def test_load_national_eitc_agi_child_targets_creates_structured_db_rows(
     assert ("eitc_child_count", ">", "2") in constraints_by_target[2000.0]
     assert ("adjusted_gross_income", ">=", "1.0") in constraints_by_target[2000.0]
     assert ("adjusted_gross_income", "<", "1000.0") in constraints_by_target[2000.0]
+
+
+def test_load_national_taxable_agi_filing_status_targets_creates_structured_rows(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    soi_rows = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.1",
+                "XLSX column": "I",
+                "XLSX row": 20,
+                "Variable": "adjusted_gross_income",
+                "Filing status": "All",
+                "AGI lower bound": 50_000.0,
+                "AGI upper bound": 75_000.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 1_000_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.2",
+                "XLSX column": "AP",
+                "XLSX row": 14,
+                "Variable": "count",
+                "Filing status": "Married Filing Jointly/Surviving Spouse",
+                "AGI lower bound": 20_000.0,
+                "AGI upper bound": 25_000.0,
+                "Count": True,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 2_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.2",
+                "XLSX column": "AP",
+                "XLSX row": 12,
+                "Variable": "count",
+                "Filing status": "Single",
+                "AGI lower bound": 1.0,
+                "AGI upper bound": 10_000.0,
+                "Count": True,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 999.0,
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.load_tracked_soi_targets",
+        lambda: soi_rows,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_taxable_agi_filing_status_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            target_year=2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["adjusted_gross_income", "tax_unit_count"],
+            "domain_variables": [
+                "adjusted_gross_income,income_tax_before_credits",
+                "adjusted_gross_income,filing_status,income_tax_before_credits",
+            ],
+        }
+    )
+
+    assert set(rows["variable"]) == {"adjusted_gross_income", "tax_unit_count"}
+    assert set(rows["value"].astype(float)) == {1_000_000.0, 2_000.0}
+    assert 999.0 not in set(rows["value"].astype(float))
+
+    with engine.connect() as conn:
+        constraints = conn.execute(
+            text(
+                """
+                SELECT tv.value, sc.constraint_variable, sc.operation, sc.value
+                FROM target_overview tv
+                JOIN stratum_constraints sc ON tv.stratum_id = sc.stratum_id
+                WHERE tv.variable = 'tax_unit_count'
+                ORDER BY sc.constraint_variable
+                """
+            )
+        ).fetchall()
+
+    count_constraints = {
+        (variable, operation, constraint_value)
+        for _, variable, operation, constraint_value in constraints
+    }
+    assert ("filing_status", "in", "JOINT|SURVIVING_SPOUSE") in count_constraints
+    assert ("income_tax_before_credits", ">", "0") in count_constraints
+    assert ("adjusted_gross_income", ">=", "20000.0") in count_constraints
+    assert ("adjusted_gross_income", "<", "25000.0") in count_constraints

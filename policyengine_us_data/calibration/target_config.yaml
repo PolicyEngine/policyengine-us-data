@@ -92,6 +92,18 @@ include:
   - variable: adjusted_gross_income
     geo_level: national
     domain_variable: adjusted_gross_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits
+  - variable: adjusted_gross_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits
+  - variable: adjusted_gross_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits
 
   # === NATIONAL — wealth target (Federal Reserve SCF, no filer filter) ===
   - variable: net_worth
@@ -107,6 +119,8 @@ include:
   - variable: child_support_expense
     geo_level: national
   - variable: child_support_received
+    geo_level: national
+  - variable: childcare_expenses
     geo_level: national
   - variable: eitc
     geo_level: national

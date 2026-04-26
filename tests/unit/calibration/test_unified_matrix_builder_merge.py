@@ -65,6 +65,18 @@ def test_apply_op_matches_fixed_width_byte_string_constraints():
     )
 
 
+def test_apply_op_matches_pipe_delimited_string_membership_constraints():
+    values = np.array(
+        [b"SINGLE", b"JOINT", b"SURVIVING_SPOUSE"],
+        dtype="S24",
+    )
+
+    np.testing.assert_array_equal(
+        apply_op(values, "in", "JOINT|SURVIVING_SPOUSE"),
+        np.array([False, True, True]),
+    )
+
+
 def test_builder_assemble_clone_values_preserves_string_constraints():
     builder = UnifiedMatrixBuilder.__new__(UnifiedMatrixBuilder)
 

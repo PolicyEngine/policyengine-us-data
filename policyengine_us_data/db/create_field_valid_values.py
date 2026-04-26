@@ -45,6 +45,7 @@ def populate_field_valid_values(session: Session) -> None:
     operation_values = [
         ("operation", "==", "Equals"),
         ("operation", "!=", "Not equals"),
+        ("operation", "in", "In pipe-delimited set"),
         ("operation", ">", "Greater than"),
         ("operation", ">=", "Greater than or equal"),
         ("operation", "<", "Less than"),

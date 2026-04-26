@@ -450,6 +450,49 @@ def get_national_geography_soi_target(
     return _get_national_geography_soi_target_from_year(variable, geography_year)
 
 
+def _get_state_geography_soi_targets_from_year(
+    variable: str,
+    geography_year: int,
+) -> list[dict]:
+    spec = _get_geography_file_aggregate_target_spec(variable)
+    code = spec["code"]
+
+    raw_df = extract_soi_data(geography_year)
+    state_rows = raw_df[(raw_df["STATE"] != "US") & (raw_df["agi_stub"] == 0)]
+    if "CONG_DISTRICT" in state_rows.columns:
+        state_rows = state_rows[state_rows["CONG_DISTRICT"] == 0]
+    if state_rows.empty:
+        raise ValueError(
+            f"IRS geography SOI file for {geography_year} is missing state rows "
+            f"for {variable}"
+        )
+
+    targets = []
+    for row in state_rows.itertuples(index=False):
+        targets.append(
+            {
+                "variable": variable,
+                "source_year": geography_year,
+                "state_code": row.STATE,
+                "count": float(getattr(row, f"N{code}")),
+                "amount": float(getattr(row, f"A{code}")) * 1_000,
+            }
+        )
+
+    return sorted(targets, key=lambda target: target["state_code"])
+
+
+def get_state_geography_soi_targets(
+    variable: str,
+    dataset_year: int,
+    *,
+    lag: int = IRS_SOI_LAG_YEARS,
+) -> list[dict]:
+    """Return state count and amount targets from the IRS geography file."""
+    geography_year = get_geography_soi_year(dataset_year, lag=lag)
+    return _get_state_geography_soi_targets_from_year(variable, geography_year)
+
+
 def get_national_geography_soi_agi_targets(
     variable: str,
     dataset_year: int,

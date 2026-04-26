@@ -22,6 +22,7 @@ node_modules
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv
 !aca_spending_and_enrollment_2025.csv
+!policyengine_us_data/storage/calibration_targets/acs_housing_costs_2024.csv
 !real_estate_taxes_by_state_acs.csv
 !snap_state.csv
 !age_state.csv

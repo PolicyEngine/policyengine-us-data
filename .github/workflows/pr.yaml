@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: codecov/codecov-action@v6
         with:
-          file: coverage.xml
+          files: coverage.xml
           flags: unit
           fail_ci_if_error: false
         env:

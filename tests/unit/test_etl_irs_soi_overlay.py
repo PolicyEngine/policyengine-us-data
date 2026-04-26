@@ -20,6 +20,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     _skip_coarse_state_agi_person_count_target,
     _get_or_create_national_domain_stratum,
     _upsert_target,
+    load_national_eitc_agi_child_targets,
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
     load_national_workbook_soi_targets,
@@ -433,3 +434,69 @@ def test_load_national_geography_ctc_agi_targets_creates_agi_domain_strata(
 
     assert overview_rows
     assert all(row.geographic_id == "US" for row in overview_rows)
+
+
+def test_load_national_eitc_agi_child_targets_creates_structured_db_rows(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    calibration_dir = tmp_path / "calibration_targets"
+    calibration_dir.mkdir()
+    (calibration_dir / "eitc_by_agi_and_children.csv").write_text(
+        "# IRS SOI Table 2.5 sample\n"
+        "count_children,agi_lower,agi_upper,returns,amount\n"
+        "0,1,1000,10,1000\n"
+        "3,1,1000,20,2000\n"
+        "3,1000,2000,0,0\n"
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.CALIBRATION_FOLDER",
+        calibration_dir,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_eitc_agi_child_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            source_year=2022,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count", "eitc"],
+            "domain_variables": ["adjusted_gross_income,eitc,eitc_child_count"],
+        }
+    )
+
+    assert len(rows) == 4
+    assert set(rows["period"].astype(int)) == {2022}
+    assert set(rows["variable"]) == {"tax_unit_count", "eitc"}
+    assert set(rows["value"].astype(float)) == {10.0, 20.0, 1000.0, 2000.0}
+
+    with engine.connect() as conn:
+        constraints = conn.execute(
+            text(
+                """
+                SELECT tv.value, sc.constraint_variable, sc.operation, sc.value
+                FROM target_overview tv
+                JOIN stratum_constraints sc ON tv.stratum_id = sc.stratum_id
+                WHERE tv.variable = 'eitc'
+                  AND tv.domain_variable = 'adjusted_gross_income,eitc,eitc_child_count'
+                ORDER BY tv.value, sc.constraint_variable, sc.operation
+                """
+            )
+        ).fetchall()
+
+    constraints_by_target = {}
+    for target_value, variable, operation, constraint_value in constraints:
+        constraints_by_target.setdefault(float(target_value), set()).add(
+            (variable, operation, constraint_value)
+        )
+
+    assert ("eitc_child_count", "==", "0") in constraints_by_target[1000.0]
+    assert ("eitc_child_count", ">", "2") in constraints_by_target[2000.0]
+    assert ("adjusted_gross_income", ">=", "1.0") in constraints_by_target[2000.0]
+    assert ("adjusted_gross_income", "<", "1000.0") in constraints_by_target[2000.0]

@@ -6,7 +6,7 @@ import pandas as pd
 
 from sqlmodel import Session, create_engine, select
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -163,6 +163,7 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
 }
 
 CTC_GEOGRAPHY_TARGET_VARIABLES = ("refundable_ctc", "non_refundable_ctc")
+EITC_AGI_CHILD_TARGET_SOURCE_YEAR = 2022
 
 
 def create_records(df, breakdown_variable, target_variable):
@@ -631,6 +632,74 @@ def _get_or_create_national_agi_domain_stratum(
     return stratum
 
 
+def _get_or_create_national_eitc_agi_child_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    count_children: int,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+) -> Stratum:
+    if count_children < 3:
+        child_operation = "=="
+        child_value = str(count_children)
+        child_note = f"EITC child count = {count_children}"
+    else:
+        child_operation = ">"
+        child_value = "2"
+        child_note = "EITC child count > 2"
+
+    note = (
+        "National EITC filers, "
+        f"{child_note}, AGI >= {agi_lower_bound}, AGI < {agi_upper_bound}"
+    )
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(
+        [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable="eitc",
+                operation=">",
+                value="0",
+            ),
+            StratumConstraint(
+                constraint_variable="eitc_child_count",
+                operation=child_operation,
+                value=child_value,
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation=">=",
+                value=str(agi_lower_bound),
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation="<",
+                value=str(agi_upper_bound),
+            ),
+        ]
+    )
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
 def load_national_geography_ctc_targets(
     session: Session, national_filer_stratum_id: int, geography_year: int
 ) -> None:
@@ -702,6 +771,71 @@ def load_national_geography_ctc_agi_targets(
                 variable=variable,
                 period=geography_year,
                 value=target["amount"],
+                source="IRS SOI",
+                notes=notes,
+            )
+
+
+def load_national_eitc_agi_child_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    source_year: int = EITC_AGI_CHILD_TARGET_SOURCE_YEAR,
+) -> None:
+    """Create national EITC targets by AGI bucket and qualifying children.
+
+    The source CSV is IRS SOI Publication 1304 Table 2.5. It is also used by
+    the PE-native Enhanced CPS loss matrix, so keeping it in ``policy_data.db``
+    lets downstream diagnostics map legacy PE-native labels to structured
+    target rows.
+    """
+    path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    if not path.exists():
+        return
+
+    df = pd.read_csv(path, comment="#")
+    df["agi_lower"] = df["agi_lower"].astype(float)
+    df["agi_upper"] = df["agi_upper"].astype(float)
+
+    for row in df.itertuples(index=False):
+        count_children = int(row.count_children)
+        agi_lower = float(row.agi_lower)
+        agi_upper = float(row.agi_upper)
+        returns = float(row.returns)
+        amount = float(row.amount)
+
+        if returns == 0 and amount == 0:
+            continue
+
+        stratum = _get_or_create_national_eitc_agi_child_stratum(
+            session,
+            national_filer_stratum_id,
+            count_children=count_children,
+            agi_lower_bound=agi_lower,
+            agi_upper_bound=agi_upper,
+        )
+        notes = (
+            "IRS SOI Publication 1304 Table 2.5 EITC target "
+            f"(source year {source_year}, count_children={count_children}, "
+            f"agi_lower={agi_lower}, agi_upper={agi_upper})"
+        )
+        if returns != 0:
+            _upsert_target(
+                session,
+                stratum_id=stratum.stratum_id,
+                variable="tax_unit_count",
+                period=source_year,
+                value=returns,
+                source="IRS SOI",
+                notes=notes,
+            )
+        if amount != 0:
+            _upsert_target(
+                session,
+                stratum_id=stratum.stratum_id,
+                variable="eitc",
+                period=source_year,
+                value=amount,
                 source="IRS SOI",
                 notes=notes,
             )
@@ -1128,6 +1262,7 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
 
     load_national_geography_ctc_targets(session, filer_strata["national"], year)
     load_national_geography_ctc_agi_targets(session, filer_strata["national"], year)
+    load_national_eitc_agi_child_targets(session, filer_strata["national"])
 
     if national_year is not None:
         load_national_workbook_soi_targets(

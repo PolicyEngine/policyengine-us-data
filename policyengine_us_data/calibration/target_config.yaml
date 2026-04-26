@@ -171,6 +171,9 @@ include:
   - variable: eitc
     geo_level: national
     domain_variable: eitc_child_count
+  - variable: eitc
+    geo_level: national
+    domain_variable: adjusted_gross_income,eitc,eitc_child_count
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
@@ -206,6 +209,9 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: eitc_child_count
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,eitc,eitc_child_count
   # Restore old loss.py's ACA enrollment count target.
   - variable: person_count
     geo_level: national

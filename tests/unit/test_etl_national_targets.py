@@ -8,6 +8,7 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_national_targets import (
+    extract_national_targets,
     load_national_targets,
 )
 
@@ -199,3 +200,31 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646
+
+
+def test_extract_national_targets_drops_survey_spm_targets():
+    targets = extract_national_targets(year=2024)
+    direct_sum_variables = {
+        target["variable"] for target in targets["direct_sum_targets"]
+    }
+    removed_targets = {
+        "alimony_income",
+        "alimony_expense",
+        "child_support_expense",
+        "child_support_received",
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_medical_expenses",
+        "over_the_counter_health_expenses",
+        "spm_unit_capped_housing_subsidy",
+        "spm_unit_capped_work_childcare_expenses",
+    }
+
+    assert removed_targets.isdisjoint(direct_sum_variables)
+    assert {"rent", "real_estate_taxes", "childcare_expenses"} <= direct_sum_variables
+
+    direct_sum_targets = {
+        target["variable"]: target for target in targets["direct_sum_targets"]
+    }
+    assert direct_sum_targets["rent"]["value"] == 764_925_694_800
+    assert direct_sum_targets["real_estate_taxes"]["value"] == 370_014_207_400
+    assert direct_sum_targets["childcare_expenses"]["value"] == 63_092e6

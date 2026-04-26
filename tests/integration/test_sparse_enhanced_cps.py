@@ -11,6 +11,7 @@ from policyengine_core.data import Dataset
 from policyengine_core.reforms import Reform
 from policyengine_us import Microsimulation
 from policyengine_us_data.utils import (
+    ABSOLUTE_ERROR_SCALE_TARGETS,
     build_loss_matrix,
     print_reweighting_diagnostics,
 )
@@ -106,7 +107,12 @@ def test_sparse_ecps(sim):
     ]
 
     loss_matrix, targets_array = build_loss_matrix(sim.dataset, 2024)
-    zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+    scaled_zero_target_mask = loss_matrix.columns.isin(
+        ABSOLUTE_ERROR_SCALE_TARGETS.keys()
+    )
+    zero_mask = np.isclose(targets_array, 0.0, atol=0.1) & (
+        ~scaled_zero_target_mask
+    )
     bad_mask = loss_matrix.columns.isin(bad_targets)
     keep_mask_bool = ~(zero_mask | bad_mask)
     keep_idx = np.where(keep_mask_bool)[0]

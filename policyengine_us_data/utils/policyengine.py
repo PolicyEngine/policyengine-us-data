@@ -121,10 +121,15 @@ def assert_locked_policyengine_us_version() -> PolicyEngineUSBuildInfo:
 
 
 @lru_cache(maxsize=1)
-def _policyengine_us_variable_names() -> frozenset[str]:
+def _policyengine_us_variables():
     from policyengine_us import CountryTaxBenefitSystem
 
-    return frozenset(CountryTaxBenefitSystem().variables)
+    return CountryTaxBenefitSystem().variables
+
+
+@lru_cache(maxsize=1)
+def _policyengine_us_variable_names() -> frozenset[str]:
+    return frozenset(_policyengine_us_variables())
 
 
 def has_policyengine_us_variables(*variables: str) -> bool:
@@ -136,8 +141,31 @@ def has_policyengine_us_variables(*variables: str) -> bool:
     return set(variables).issubset(available_variables)
 
 
+def has_policyengine_us_pure_input_variables(*variables: str) -> bool:
+    try:
+        available_variables = _policyengine_us_variables()
+    except Exception:
+        return False
+
+    for variable in variables:
+        variable_definition = available_variables.get(variable)
+        if variable_definition is None:
+            return False
+        if not variable_definition.is_input_variable():
+            return False
+        if getattr(variable_definition, "defined_for", None) is not None:
+            return False
+        if getattr(variable_definition, "adds", None):
+            return False
+        if getattr(variable_definition, "subtracts", None):
+            return False
+        if getattr(variable_definition, "formulas", None):
+            return False
+    return True
+
+
 def supports_medicare_enrollment_input() -> bool:
-    return has_policyengine_us_variables("medicare_enrolled")
+    return has_policyengine_us_pure_input_variables("medicare_enrolled")
 
 
 def supports_modeled_medicare_part_b_inputs() -> bool:

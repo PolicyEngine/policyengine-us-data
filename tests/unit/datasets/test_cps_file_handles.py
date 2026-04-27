@@ -84,11 +84,11 @@ def test_add_previous_year_income_closes_raw_cps_handles():
 def test_add_previous_year_income_imputes_unavailable_rows():
     current_person = pd.DataFrame(
         {
-            "PERIDNUM": [10, 20, 30, 40],
-            "WSAL_VAL": [1_100, 2_100, 3_100, 4_100],
-            "SEMP_VAL": [110, 210, 310, 410],
-            "I_ERNVAL": [0, 0, 0, 0],
-            "I_SEVAL": [0, 0, 0, 0],
+            "PERIDNUM": [10, 20, 30, 40, 50],
+            "WSAL_VAL": [1_100, 2_100, 3_100, 4_100, -1],
+            "SEMP_VAL": [110, 210, 310, 410, -9999],
+            "I_ERNVAL": [0, 0, 0, 0, 0],
+            "I_SEVAL": [0, 0, 0, 0, 0],
         }
     )
     previous_person = pd.DataFrame(
@@ -119,15 +119,15 @@ def test_add_previous_year_income_imputes_unavailable_rows():
 
     np.testing.assert_array_equal(
         cps["employment_income_last_year"],
-        [1_000, 2_100, 3_100, 4_100],
+        [1_000, 2_100, 3_100, 4_100, 0],
     )
     np.testing.assert_array_equal(
         cps["self_employment_income_last_year"],
-        [100, 210, 310, 410],
+        [100, 210, 310, 410, 0],
     )
     np.testing.assert_array_equal(
         cps["previous_year_income_available"],
-        [True, False, False, False],
+        [True, False, False, False, False],
     )
 
 

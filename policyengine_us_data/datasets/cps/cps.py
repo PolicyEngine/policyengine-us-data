@@ -1152,15 +1152,22 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
             axis=1,
         )
 
-    invalid_previous_year_income = (
-        joined_data.employment_income_last_year.isin(prior_year_income_sentinels)
-        | joined_data.self_employment_income_last_year.isin(
-            prior_year_income_sentinels
-        )
-    )
+    invalid_previous_year_income = joined_data.employment_income_last_year.isin(
+        prior_year_income_sentinels
+    ) | joined_data.self_employment_income_last_year.isin(prior_year_income_sentinels)
     joined_data.loc[
         invalid_previous_year_income,
         ["employment_income_last_year", "self_employment_income_last_year"],
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_employment_income.isin(prior_year_income_sentinels),
+        "current_year_employment_income",
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_self_employment_income.isin(
+            prior_year_income_sentinels
+        ),
+        "current_year_self_employment_income",
     ] = np.nan
 
     joined_data["previous_year_income_available"] = (

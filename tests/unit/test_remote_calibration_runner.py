@@ -1,3 +1,4 @@
+import inspect
 import importlib
 import sys
 from types import ModuleType, SimpleNamespace
@@ -36,14 +37,27 @@ def _load_remote_calibration_runner_module():
     return importlib.import_module("modal_app.remote_calibration_runner")
 
 
-def test_collect_outputs_reads_checkpoint_bytes(tmp_path):
+def test_remote_runner_does_not_expose_optimizer_checkpoint_contract():
+    remote_runner = _load_remote_calibration_runner_module()
+
+    assert not hasattr(remote_runner, "_append_checkpoint_args")
+    for func in (
+        remote_runner._fit_weights_impl,
+        remote_runner._fit_from_package_impl,
+        remote_runner.fit_weights_t4,
+        remote_runner.fit_from_package_t4,
+        remote_runner.main,
+    ):
+        assert "checkpoint_name" not in inspect.signature(func).parameters
+
+
+def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
     remote_runner = _load_remote_calibration_runner_module()
     weights = tmp_path / "weights.npy"
     geography = tmp_path / "geography.npz"
     log_path = tmp_path / "diag.csv"
     cal_log = tmp_path / "calibration.csv"
     config = tmp_path / "config.json"
-    checkpoint = tmp_path / "weights.checkpoint.pt"
 
     paths_and_bytes = {
         weights: b"weights",
@@ -51,7 +65,6 @@ def test_collect_outputs_reads_checkpoint_bytes(tmp_path):
         log_path: b"log",
         cal_log: b"cal-log",
         config: b"config",
-        checkpoint: b"checkpoint",
     }
     for path, content in paths_and_bytes.items():
         path.write_bytes(content)
@@ -63,7 +76,6 @@ def test_collect_outputs_reads_checkpoint_bytes(tmp_path):
             f"LOG_PATH:{log_path}",
             f"CAL_LOG_PATH:{cal_log}",
             f"CONFIG_PATH:{config}",
-            f"CHECKPOINT_PATH:{checkpoint}",
         ]
     )
 
@@ -73,50 +85,10 @@ def test_collect_outputs_reads_checkpoint_bytes(tmp_path):
         "log": b"log",
         "cal_log": b"cal-log",
         "config": b"config",
-        "checkpoint": b"checkpoint",
     }
 
 
-def test_fit_weights_impl_saves_and_resumes_checkpoint_on_volume(
-    monkeypatch,
-    tmp_path,
-):
-    remote_runner = _load_remote_calibration_runner_module()
-    (tmp_path / "policy_data.db").write_bytes(b"db")
-    (tmp_path / "source_imputed_stratified_extended_cps.h5").write_bytes(b"h5")
-    checkpoint = tmp_path / "test.checkpoint.pt"
-    checkpoint.write_bytes(b"old-checkpoint")
-    weights = tmp_path / "weights.npy"
-
-    volume = SimpleNamespace(reload=Mock(), commit=Mock())
-    monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
-    monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
-
-    def fake_run_streaming(cmd, env=None, label=""):
-        assert "--resume-from" in cmd
-        assert cmd[cmd.index("--resume-from") + 1] == str(checkpoint)
-        assert "--checkpoint-output" in cmd
-        assert cmd[cmd.index("--checkpoint-output") + 1] == str(checkpoint)
-        weights.write_bytes(b"weights")
-        checkpoint.write_bytes(b"new-checkpoint")
-        return 0, [f"OUTPUT_PATH:{weights}", f"CHECKPOINT_PATH:{checkpoint}"]
-
-    monkeypatch.setattr(remote_runner, "_run_streaming", fake_run_streaming)
-
-    result = remote_runner._fit_weights_impl(
-        branch="main",
-        epochs=1,
-        artifacts_dir=str(tmp_path),
-        checkpoint_name="test.checkpoint.pt",
-    )
-
-    assert result["weights"] == b"weights"
-    assert result["checkpoint"] == b"new-checkpoint"
-    volume.reload.assert_called_once()
-    volume.commit.assert_called_once()
-
-
-def test_fit_weights_impl_omits_checkpoint_flags_by_default(
+def test_fit_weights_impl_does_not_use_optimizer_checkpoint_artifacts(
     monkeypatch,
     tmp_path,
 ):
@@ -144,6 +116,6 @@ def test_fit_weights_impl_omits_checkpoint_flags_by_default(
     )
 
     assert result["weights"] == b"weights"
-    assert result["checkpoint"] is None
+    assert "checkpoint" not in result
     volume.reload.assert_called_once()
     volume.commit.assert_not_called()

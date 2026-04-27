@@ -70,15 +70,6 @@ def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq
         cmd.extend(["--log-freq", str(log_freq)])
 
 
-def _append_checkpoint_args(cmd, checkpoint_path: str | None):
-    """Append checkpoint flags only when checkpointing is explicitly enabled."""
-    if not checkpoint_path:
-        return
-    if os.path.exists(checkpoint_path):
-        cmd.extend(["--resume-from", checkpoint_path])
-    cmd.extend(["--checkpoint-output", checkpoint_path])
-
-
 def _collect_outputs(cal_lines):
     """Extract weights and log bytes from calibration output lines."""
     output_path = None
@@ -86,7 +77,6 @@ def _collect_outputs(cal_lines):
     log_path = None
     cal_log_path = None
     config_path = None
-    checkpoint_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -98,8 +88,6 @@ def _collect_outputs(cal_lines):
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
-        elif "CHECKPOINT_PATH:" in line:
-            checkpoint_path = line.split("CHECKPOINT_PATH:")[1].strip()
 
     with open(output_path, "rb") as f:
         weights_bytes = f.read()
@@ -124,18 +112,12 @@ def _collect_outputs(cal_lines):
         with open(config_path, "rb") as f:
             config_bytes = f.read()
 
-    checkpoint_bytes = None
-    if checkpoint_path:
-        with open(checkpoint_path, "rb") as f:
-            checkpoint_bytes = f.read()
-
     return {
         "weights": weights_bytes,
         "geography": geography_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
-        "checkpoint": checkpoint_bytes,
     }
 
 
@@ -189,7 +171,6 @@ def _fit_weights_impl(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     """Full pipeline: read data from pipeline volume, build matrix, fit."""
     _setup_repo()
@@ -198,7 +179,6 @@ def _fit_weights_impl(
     artifacts = artifacts_dir if artifacts_dir else f"{PIPELINE_MOUNT}/artifacts"
     db_path = f"{artifacts}/policy_data.db"
     dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
-    checkpoint_path = f"{artifacts}/{checkpoint_name}" if checkpoint_name else None
     for label, p in [("database", db_path), ("dataset", dataset_path)]:
         if not os.path.exists(p):
             raise RuntimeError(
@@ -223,7 +203,6 @@ def _fit_weights_impl(
     if workers > 1:
         cmd.extend(["--workers", str(workers)])
     _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
-    _append_checkpoint_args(cmd, checkpoint_path)
 
     cal_rc, cal_lines = _run_streaming(
         cmd,
@@ -231,11 +210,7 @@ def _fit_weights_impl(
         label="calibrate",
     )
     if cal_rc != 0:
-        if checkpoint_path and os.path.exists(checkpoint_path):
-            pipeline_vol.commit()
         raise RuntimeError(f"Script failed with code {cal_rc}")
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        pipeline_vol.commit()
 
     return _collect_outputs(cal_lines)
 
@@ -250,7 +225,6 @@ def _fit_from_package_impl(
     lambda_l2: float = None,
     learning_rate: float = None,
     log_freq: int = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     """Fit weights from a pre-built calibration package."""
     if not volume_package_path:
@@ -258,8 +232,6 @@ def _fit_from_package_impl(
 
     _setup_repo()
 
-    artifacts = os.path.dirname(volume_package_path) or f"{PIPELINE_MOUNT}/artifacts"
-    checkpoint_path = f"{artifacts}/{checkpoint_name}" if checkpoint_name else None
     pkg_path = "/root/calibration_package.pkl"
     import shutil
 
@@ -282,7 +254,6 @@ def _fit_from_package_impl(
     if target_config:
         cmd.extend(["--target-config", target_config])
     _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq)
-    _append_checkpoint_args(cmd, checkpoint_path)
 
     print(f"Running command: {' '.join(cmd)}", flush=True)
 
@@ -292,11 +263,7 @@ def _fit_from_package_impl(
         label="calibrate",
     )
     if cal_rc != 0:
-        if checkpoint_path and os.path.exists(checkpoint_path):
-            pipeline_vol.commit()
         raise RuntimeError(f"Script failed with code {cal_rc}")
-    if checkpoint_path and os.path.exists(checkpoint_path):
-        pipeline_vol.commit()
 
     return _collect_outputs(cal_lines)
 
@@ -528,7 +495,6 @@ def fit_weights_t4(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -542,7 +508,6 @@ def fit_weights_t4(
         skip_county=skip_county,
         workers=workers,
         artifacts_dir=artifacts_dir,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -567,7 +532,6 @@ def fit_weights_a10(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -581,7 +545,6 @@ def fit_weights_a10(
         skip_county=skip_county,
         workers=workers,
         artifacts_dir=artifacts_dir,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -606,7 +569,6 @@ def fit_weights_a100_40(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -620,7 +582,6 @@ def fit_weights_a100_40(
         skip_county=skip_county,
         workers=workers,
         artifacts_dir=artifacts_dir,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -645,7 +606,6 @@ def fit_weights_a100_80(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -659,7 +619,6 @@ def fit_weights_a100_80(
         skip_county=skip_county,
         workers=workers,
         artifacts_dir=artifacts_dir,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -684,7 +643,6 @@ def fit_weights_h100(
     skip_county: bool = True,
     workers: int = 8,
     artifacts_dir: str = "",
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_weights_impl(
         branch,
@@ -698,7 +656,6 @@ def fit_weights_h100(
         skip_county=skip_county,
         workers=workers,
         artifacts_dir=artifacts_dir,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -732,7 +689,6 @@ def fit_from_package_t4(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
@@ -744,7 +700,6 @@ def fit_from_package_t4(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         log_freq=log_freq,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -766,7 +721,6 @@ def fit_from_package_a10(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
@@ -778,7 +732,6 @@ def fit_from_package_a10(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         log_freq=log_freq,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -800,7 +753,6 @@ def fit_from_package_a100_40(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
@@ -812,7 +764,6 @@ def fit_from_package_a100_40(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         log_freq=log_freq,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -834,7 +785,6 @@ def fit_from_package_a100_80(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
@@ -846,7 +796,6 @@ def fit_from_package_a100_80(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         log_freq=log_freq,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -868,7 +817,6 @@ def fit_from_package_h100(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
-    checkpoint_name: str | None = None,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
@@ -880,7 +828,6 @@ def fit_from_package_h100(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         log_freq=log_freq,
-        checkpoint_name=checkpoint_name,
     )
 
 
@@ -913,10 +860,8 @@ def main(
     push_results: bool = False,
     trigger_publish: bool = False,
     national: bool = False,
-    checkpoint_name: str = "",
 ):
     prefix = "national_" if national else ""
-    checkpoint_name = checkpoint_name or None
     if national:
         if lambda_l0 is None:
             lambda_l0 = 1e-4
@@ -969,7 +914,6 @@ def main(
             learning_rate=learning_rate,
             log_freq=log_freq,
             volume_package_path=vol_path,
-            checkpoint_name=checkpoint_name,
         )
     elif full_pipeline:
         print(
@@ -1000,7 +944,6 @@ def main(
             log_freq=log_freq,
             skip_county=not county_level,
             workers=workers,
-            checkpoint_name=checkpoint_name,
         )
     else:
         vol_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
@@ -1058,7 +1001,6 @@ def main(
             learning_rate=learning_rate,
             log_freq=log_freq,
             volume_package_path=vol_path,
-            checkpoint_name=checkpoint_name,
         )
 
     with open(output, "wb") as f:
@@ -1088,12 +1030,6 @@ def main(
             f.write(result["config"])
         print(f"Run config saved to: {config_output}")
 
-    checkpoint_output = f"{prefix}calibration_weights.checkpoint.pt"
-    if result.get("checkpoint"):
-        with open(checkpoint_output, "wb") as f:
-            f.write(result["checkpoint"])
-        print(f"Checkpoint saved to: {checkpoint_output}")
-
     # Push weights to pipeline volume for downstream steps
     from io import BytesIO
 
@@ -1113,11 +1049,6 @@ def main(
                 BytesIO(result["config"]),
                 f"artifacts/{prefix}unified_run_config.json",
             )
-        if result.get("checkpoint"):
-            batch.put_file(
-                BytesIO(result["checkpoint"]),
-                f"artifacts/{prefix}calibration_weights.checkpoint.pt",
-            )
     pipeline_vol.commit()
     print("Weights committed to pipeline volume", flush=True)
 
@@ -1129,7 +1060,6 @@ def main(
         upload_calibration_artifacts(
             weights_path=output,
             geography_path=(geography_output if result.get("geography") else None),
-            checkpoint_path=(checkpoint_output if result.get("checkpoint") else None),
             log_dir=".",
             prefix=prefix,
         )

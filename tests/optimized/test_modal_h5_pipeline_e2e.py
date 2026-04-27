@@ -119,23 +119,6 @@ def test_package_fallback_case_builds_and_stages_one_h5():
         cleanup.remote(run_id)
 
 
-def test_checkpoint_artifacts_are_ignored_in_preflight():
-    _require_modal_tokens()
-
-    run_id = _run_id("checkpoint-ignored")
-    seed = _function(HARNESS_APP_NAME, "seed_h5_case")
-    preflight = _function(HARNESS_APP_NAME, "preflight_h5_case")
-    cleanup = _function(HARNESS_APP_NAME, "cleanup_h5_case")
-
-    try:
-        seed.remote(run_id, "checkpoint_artifact_ignored")
-        preflight_result = preflight.remote(run_id, n_clones=1)
-
-        assert preflight_result["geography_source"] == "saved_geography"
-    finally:
-        cleanup.remote(run_id)
-
-
 def test_misnamed_package_breaks_worker_geography_resolution():
     _require_modal_tokens()
 

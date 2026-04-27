@@ -510,27 +510,13 @@ def verify_runtime_seams() -> dict:
             "stderr_tail": proc.stderr[-500:],
         }
 
-    from modal_app.remote_calibration_runner import _append_checkpoint_args
+    import modal_app.remote_calibration_runner as calibration_runner
 
-    default_checkpoint_cmd = [
-        *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration")
-    ]
-    _append_checkpoint_args(default_checkpoint_cmd, None)
-    opt_in_checkpoint_cmd = [
-        *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration")
-    ]
-    _append_checkpoint_args(
-        opt_in_checkpoint_cmd,
-        "/pipeline/artifacts/test-run/calibration_weights.checkpoint.pt",
-    )
-    result["calibration_checkpoint_policy"] = {
-        "default_omits_checkpoint_flags": (
-            "--resume-from" not in default_checkpoint_cmd
-            and "--checkpoint-output" not in default_checkpoint_cmd
-        ),
-        "opt_in_includes_checkpoint_output": (
-            "--checkpoint-output" in opt_in_checkpoint_cmd
-        ),
+    runner_source = Path(calibration_runner.__file__).read_text()
+    result["calibration_optimizer_checkpoint_policy"] = {
+        "runner_exposes_checkpoint_name": "checkpoint_name" in runner_source,
+        "runner_passes_checkpoint_output": "--checkpoint-output" in runner_source,
+        "runner_collects_checkpoint_path": "CHECKPOINT_PATH:" in runner_source,
     }
 
     return result

@@ -1,1 +1,1 @@
-Stop writing calibration fit checkpoints by default and ignore deprecated checkpoint entries during H5 artifact validation.
+Remove calibration optimizer checkpoint artifacts from the Modal calibration pipeline.

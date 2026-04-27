@@ -47,11 +47,7 @@ def test_pipeline_image_runtime_seams():
     assert result["interpreter"]["child_matches_parent"] is True
     assert result["subprocess"]["worker_help"]["returncode"] == 0
     assert result["subprocess"]["calibration_help"]["returncode"] == 0
-    assert (
-        result["calibration_checkpoint_policy"]["default_omits_checkpoint_flags"]
-        is True
-    )
-    assert (
-        result["calibration_checkpoint_policy"]["opt_in_includes_checkpoint_output"]
-        is True
-    )
+    checkpoint_policy = result["calibration_optimizer_checkpoint_policy"]
+    assert checkpoint_policy["runner_exposes_checkpoint_name"] is False
+    assert checkpoint_policy["runner_passes_checkpoint_output"] is False
+    assert checkpoint_policy["runner_collects_checkpoint_path"] is False

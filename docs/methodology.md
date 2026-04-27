@@ -247,9 +247,9 @@ and balance-sheet components needed to express net worth as a formula. The SCF a
 identifiers, so these imputations are likewise state-blind.
 
 The asset fields are a mixed-source balance sheet. The SIPP liquid-asset and vehicle fields are
-policy-relevant inputs in their own right. For overlapping bank-account, stock, and bond asset
-variables, we use a stable household-level 50/50 source-model draw between the SIPP QRF prediction
-and the comparable SCF QRF prediction, with a single draw shared across the financial-asset block.
+policy-relevant inputs in their own right. For overlapping bank-account, stock, bond, and vehicle
+value variables, we use a stable household-level 50/50 source-model draw between the SIPP QRF
+prediction and the comparable SCF QRF prediction, with a single draw shared across the asset block.
 We then impute the non-overlapping SCF balance-sheet components - home value, mortgage debt,
 retirement assets, business equity, other real estate, other financial assets, other debts, and
 related categories including vehicle, student, and other installment debt - and compute `net_worth`

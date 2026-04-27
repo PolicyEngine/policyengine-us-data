@@ -23,6 +23,12 @@ SCF_FINANCIAL_ASSET_POLICY_VARIABLES = {
     "scf_stock_assets": "stock_assets",
     "scf_bond_assets": "bond_assets",
 }
+SCF_HOUSEHOLD_ASSET_TARGETS = {
+    "scf_household_vehicles_value": ("vehic",),
+}
+SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES = {
+    "scf_household_vehicles_value": "household_vehicles_value",
+}
 SCF_NET_WORTH_COMPONENT_TARGETS = {
     "scf_certificates_of_deposit": ("cds",),
     "scf_savings_bonds": ("savbnd",),
@@ -172,17 +178,28 @@ def add_scf_net_worth_component_targets(scf: pd.DataFrame) -> tuple[str, ...]:
     return _add_scf_targets(scf, SCF_NET_WORTH_COMPONENT_TARGETS)
 
 
+def add_scf_household_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add SCF asset targets comparable to household-level SIPP leaves."""
+    return _add_scf_targets(scf, SCF_HOUSEHOLD_ASSET_TARGETS)
+
+
 def require_scf_net_worth_formula_targets(
     *,
     scf_financial_asset_targets: Sequence[str],
+    scf_household_asset_targets: Sequence[str],
     scf_component_targets: Sequence[str],
 ) -> None:
     """Fail loudly if the SCF source cannot supply the formula leaves."""
-    available_targets = set(scf_financial_asset_targets) | set(scf_component_targets)
+    available_targets = (
+        set(scf_financial_asset_targets)
+        | set(scf_household_asset_targets)
+        | set(scf_component_targets)
+    )
     missing_targets = [
         target
         for target in (
             *SCF_FINANCIAL_ASSET_TARGETS,
+            *SCF_HOUSEHOLD_ASSET_TARGETS,
             *SCF_NET_WORTH_COMPONENT_TARGETS,
         )
         if target not in available_targets
@@ -217,10 +234,10 @@ def financial_asset_source_is_scf(
     time_period: int,
     probability: float = FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
 ) -> np.ndarray:
-    """Return a stable 50/50 source-model draw for financial assets.
+    """Return a stable 50/50 source-model draw for overlapping assets.
 
     The draw is at the household asset-block level, so bank accounts, stocks,
-    and bonds all come from the same source for a household.
+    bonds, and vehicle value all come from the same source for a household.
     """
     if not 0 <= probability <= 1:
         raise ValueError("probability must be between 0 and 1")
@@ -275,6 +292,38 @@ def combine_sipp_and_scf_financial_assets(
         time_period=time_period,
     )
     return np.where(use_scf, scf_person_values, sipp_values).astype(np.float32)
+
+
+def combine_sipp_and_scf_household_assets(
+    *,
+    sipp_household_values: Sequence[float],
+    scf_household_values: Sequence[float],
+    household_ids: Sequence,
+    reference_household_ids: Sequence,
+    time_period: int,
+) -> np.ndarray:
+    """Apply the stable SIPP/SCF source draw to a household-level asset leaf."""
+    sipp_household_values = np.asarray(sipp_household_values, dtype=np.float32)
+    scf_household_values = np.asarray(scf_household_values, dtype=np.float32)
+    household_ids = np.asarray(household_ids)
+    reference_household_ids = np.asarray(reference_household_ids)
+
+    if sipp_household_values.shape != household_ids.shape:
+        raise ValueError("sipp_household_values and household_ids must align")
+    if scf_household_values.shape != reference_household_ids.shape:
+        raise ValueError("scf_household_values and reference_household_ids must align")
+
+    scf_values = (
+        pd.Series(scf_household_values, index=reference_household_ids)
+        .reindex(household_ids)
+        .fillna(0)
+        .to_numpy(dtype=np.float32)
+    )
+    use_scf = financial_asset_source_is_scf(
+        household_ids,
+        time_period=time_period,
+    )
+    return np.where(use_scf, scf_values, sipp_household_values).astype(np.float32)
 
 
 def aggregate_person_values_to_reference_households(

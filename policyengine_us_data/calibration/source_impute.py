@@ -48,13 +48,16 @@ from policyengine_us_data.datasets.org import (
 )
 from policyengine_us_data.utils.asset_imputation import (
     SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
     SCF_NET_WORTH_COMPONENT_VARIABLES,
     add_scf_financial_asset_targets,
+    add_scf_household_asset_targets,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
     build_household_vehicle_receiver,
     combine_sipp_and_scf_financial_assets,
+    combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
     require_scf_net_worth_formula_targets,
 )
@@ -780,9 +783,11 @@ def _impute_scf(
         scf_predictors = available_preds
 
     scf_financial_asset_targets = add_scf_financial_asset_targets(scf_df)
+    scf_household_asset_targets = add_scf_household_asset_targets(scf_df)
     scf_component_targets = add_scf_net_worth_component_targets(scf_df)
     require_scf_net_worth_formula_targets(
         scf_financial_asset_targets=scf_financial_asset_targets,
+        scf_household_asset_targets=scf_household_asset_targets,
         scf_component_targets=scf_component_targets,
     )
 
@@ -790,6 +795,7 @@ def _impute_scf(
     qrf_vars = (
         available_vars
         + [v for v in scf_financial_asset_targets if v in scf_df.columns]
+        + [v for v in scf_household_asset_targets if v in scf_df.columns]
         + [v for v in scf_component_targets if v in scf_df.columns]
     )
     if not qrf_vars:
@@ -915,6 +921,18 @@ def _impute_scf(
                     scf_household_values=preds.loc[first_person_mask, scf_var].values,
                     person_household_ids=person_hh_ids,
                     reference_person_mask=first_person_mask,
+                    time_period=time_period,
+                )
+            }
+        for scf_var, policy_var in SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES.items():
+            if scf_var not in preds or policy_var not in data:
+                continue
+            data[policy_var] = {
+                time_period: combine_sipp_and_scf_household_assets(
+                    sipp_household_values=data[policy_var][time_period],
+                    scf_household_values=preds.loc[first_person_mask, scf_var].values,
+                    household_ids=hh_ids,
+                    reference_household_ids=reference_household_ids,
                     time_period=time_period,
                 )
             }

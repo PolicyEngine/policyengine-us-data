@@ -49,13 +49,16 @@ from policyengine_us_data.utils.takeup import (
 )
 from policyengine_us_data.utils.asset_imputation import (
     SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
     SCF_NET_WORTH_COMPONENT_VARIABLES,
     add_scf_financial_asset_targets,
+    add_scf_household_asset_targets,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
     build_household_vehicle_receiver,
     combine_sipp_and_scf_financial_assets,
+    combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
     require_scf_net_worth_formula_targets,
 )
@@ -2575,9 +2578,11 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         "social_security_pension_income",
     ]
     scf_financial_asset_targets = add_scf_financial_asset_targets(scf_data)
+    scf_household_asset_targets = add_scf_household_asset_targets(scf_data)
     scf_component_targets = add_scf_net_worth_component_targets(scf_data)
     require_scf_net_worth_formula_targets(
         scf_financial_asset_targets=scf_financial_asset_targets,
+        scf_household_asset_targets=scf_household_asset_targets,
         scf_component_targets=scf_component_targets,
     )
     IMPUTED_VARIABLES = (
@@ -2586,6 +2591,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
             "auto_loan_interest",
         ]
         + list(scf_financial_asset_targets)
+        + list(scf_household_asset_targets)
         + list(scf_component_targets)
     )
     weights = ["wgt"]
@@ -2631,6 +2637,27 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
             del cps[scf_var]
 
     reference_household_ids = original_person_household_ids[mask]
+    for scf_var, policy_var in SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES.items():
+        if (
+            scf_var not in imputations
+            or policy_var not in cps_data
+            or "household_id" not in cps_data
+        ):
+            continue
+        blended_values = combine_sipp_and_scf_household_assets(
+            sipp_household_values=cps_data[policy_var],
+            scf_household_values=imputations[scf_var].values,
+            household_ids=cps_data["household_id"],
+            reference_household_ids=reference_household_ids,
+            time_period=self.time_period,
+        )
+        cps_data[policy_var] = blended_values
+        if policy_var in cps:
+            del cps[policy_var]
+        cps[policy_var] = blended_values
+        if scf_var in cps:
+            del cps[scf_var]
+
     net_worth_components = {}
     for variable in ("bank_account_assets", "stock_assets", "bond_assets"):
         if variable in cps:

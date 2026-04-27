@@ -4,12 +4,14 @@ import pandas as pd
 from policyengine_us_data.utils.asset_imputation import (
     NET_WORTH_COMPONENTS_ARE_COMPLETE,
     add_scf_financial_asset_targets,
+    add_scf_household_asset_targets,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
     build_household_vehicle_receiver,
     check_household_net_worth_reconciliation,
     combine_sipp_and_scf_financial_assets,
+    combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
     financial_asset_source_is_scf,
 )
@@ -139,6 +141,15 @@ def test_add_scf_financial_asset_targets_builds_sipp_comparable_columns():
     assert scf["scf_bond_assets"].tolist() == [5.0, 6.0]
 
 
+def test_add_scf_household_asset_targets_builds_sipp_comparable_columns():
+    scf = pd.DataFrame({"vehic": [12_000.0, 6_000.0]})
+
+    targets = add_scf_household_asset_targets(scf)
+
+    assert targets == ("scf_household_vehicles_value",)
+    assert scf["scf_household_vehicles_value"].tolist() == [12_000.0, 6_000.0]
+
+
 def test_add_scf_net_worth_component_targets_builds_formula_columns():
     scf = pd.DataFrame(
         {
@@ -213,6 +224,22 @@ def test_combine_sipp_and_scf_financial_assets_preserves_household_scf_total():
                 combined[household_mask],
                 np.array([1.0, 2.0, 3.0, 4.0])[household_mask],
             )
+
+
+def test_combine_sipp_and_scf_household_assets_uses_same_source_draw():
+    household_ids = np.array([10, 20])
+    use_scf = financial_asset_source_is_scf(household_ids, time_period=2024)
+
+    combined = combine_sipp_and_scf_household_assets(
+        sipp_household_values=np.array([1.0, 2.0]),
+        scf_household_values=np.array([100.0, 200.0]),
+        household_ids=household_ids,
+        reference_household_ids=np.array([10, 20]),
+        time_period=2024,
+    )
+
+    expected = np.where(use_scf, [100.0, 200.0], [1.0, 2.0])
+    np.testing.assert_array_equal(combined, expected.astype(np.float32))
 
 
 def test_aggregate_and_align_household_components():

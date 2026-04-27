@@ -9,6 +9,7 @@ from policyengine_us_data.datasets.cps.cps import (
     add_auto_loan_interest_and_net_worth,
     add_previous_year_income,
 )
+from policyengine_us_data.utils.asset_imputation import financial_asset_source_is_scf
 
 
 class _FakeStore:
@@ -157,17 +158,20 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
         def __init__(self):
             self.raw_cps = FakeRawCPS()
             self.saved_dataset = None
+            self.time_period = 2024
 
         def save_dataset(self, data):
             self.saved_dataset = data
 
         def load_dataset(self):
             return {
+                "household_id": np.array([10, 20]),
                 "person_household_id": np.array([10, 20]),
                 "age": np.array([35, 40]),
                 "is_female": np.array([False, True]),
                 "cps_race": np.array([1, 2]),
                 "own_children_in_household": np.array([0, 1]),
+                "household_vehicles_value": np.array([5_000.0, 1_000.0]),
                 "employment_income": np.array([40_000.0, 25_000.0]),
                 "taxable_interest_income": np.array([100.0, 0.0]),
                 "tax_exempt_interest_income": np.array([0.0, 0.0]),
@@ -193,6 +197,7 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "stocks": np.array([0.0, 0.0]),
                 "nmmf": np.array([0.0, 0.0]),
                 "bond": np.array([0.0, 0.0]),
+                "vehic": np.array([3_000.0, 2_000.0]),
                 "cds": np.array([12_000.0, 6_000.0]),
                 "savbnd": np.array([0.0, 0.0]),
                 "retqliq": np.array([0.0, 0.0]),
@@ -237,6 +242,7 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
             values.update(
                 {
                     "scf_certificates_of_deposit": [12_000.0, 6_000.0],
+                    "scf_household_vehicles_value": [3_000.0, 2_000.0],
                     "scf_vehicle_installment_debt": [2_000.0, 1_000.0],
                     "auto_loan_balance": [2_000.0, 1_000.0],
                     "auto_loan_interest": [200.0, 100.0],
@@ -254,8 +260,17 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
     add_auto_loan_interest_and_net_worth(dataset, {})
 
     assert raw_store.closed is True
+    vehicle_values = np.where(
+        financial_asset_source_is_scf(np.array([10, 20]), time_period=2024),
+        [3_000.0, 2_000.0],
+        [5_000.0, 1_000.0],
+    )
     np.testing.assert_array_equal(
-        dataset.saved_dataset["net_worth"], [10_000.0, 5_000.0]
+        dataset.saved_dataset["net_worth"],
+        np.array([12_000.0, 6_000.0]) + vehicle_values - [2_000.0, 1_000.0],
+    )
+    np.testing.assert_array_equal(
+        dataset.saved_dataset["household_vehicles_value"], vehicle_values
     )
     np.testing.assert_array_equal(
         dataset.saved_dataset["auto_loan_interest"], [200.0, 100.0]

@@ -70,10 +70,10 @@ missing from the CPS:
 The SIPP provides income and program participation data. We use SIPP primarily to impute tip income
 and policy-relevant asset inputs through Quantile Regression Forest models trained on SIPP data.
 The asset imputations currently cover bank accounts, stocks, bonds, household vehicle counts, and
-household vehicle values. Bank accounts, stocks, and bonds are then combined with comparable SCF
-predictions through a stable household-level 50/50 source-model draw. These fields are not a
-complete household balance sheet; they are exposed so policy models can select the resources that
-matter for a specific program.
+household vehicle values. Bank accounts, stocks, bonds, and household vehicle values are then
+combined with comparable SCF predictions through a stable household-level 50/50 source-model draw.
+These fields are not a complete household balance sheet; they are exposed so policy models can
+select the resources that matter for a specific program.
 
 ### Survey of Consumer Finances (SCF)
 

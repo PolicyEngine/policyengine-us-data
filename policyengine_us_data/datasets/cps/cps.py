@@ -48,7 +48,6 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.asset_imputation import (
-    NET_WORTH_RESIDUAL_VARIABLE,
     SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
     SCF_NET_WORTH_COMPONENT_VARIABLES,
     add_scf_financial_asset_targets,
@@ -57,7 +56,8 @@ from policyengine_us_data.utils.asset_imputation import (
     align_household_values_to_reference_households,
     build_household_vehicle_receiver,
     combine_sipp_and_scf_financial_assets,
-    compute_net_worth_residual,
+    compute_net_worth_from_components,
+    require_scf_net_worth_formula_targets,
 )
 from policyengine_us_data.utils.policyengine import (
     supports_medicare_enrollment_input,
@@ -2555,9 +2555,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     reference_persons = person_data[mask]
     receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
 
-    # Impute SCF net_worth as an aggregate, selected auto-loan fields, SCF
-    # equivalents for overlapping financial asset leaves, and SCF-only
-    # balance-sheet leaves needed to make net_worth a formula with a residual.
+    # Impute selected auto-loan fields, SCF equivalents for overlapping
+    # financial asset leaves, and SCF-only balance-sheet leaves. We compute
+    # net_worth from those components rather than storing an SCF aggregate.
     from policyengine_us_data.datasets.scf.scf import SCF_2022
 
     scf_dataset = SCF_2022()
@@ -2576,8 +2576,11 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     ]
     scf_financial_asset_targets = add_scf_financial_asset_targets(scf_data)
     scf_component_targets = add_scf_net_worth_component_targets(scf_data)
+    require_scf_net_worth_formula_targets(
+        scf_financial_asset_targets=scf_financial_asset_targets,
+        scf_component_targets=scf_component_targets,
+    )
     IMPUTED_VARIABLES = [
-        "networth",
         "auto_loan_balance",
         "auto_loan_interest",
     ] + list(scf_financial_asset_targets) + list(scf_component_targets)
@@ -2623,8 +2626,6 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         if scf_var in cps:
             del cps[scf_var]
 
-    cps["net_worth"] = cps["networth"]
-    del cps["networth"]
     reference_household_ids = original_person_household_ids[mask]
     net_worth_components = {}
     for variable in ("bank_account_assets", "stock_assets", "bond_assets"):
@@ -2644,12 +2645,11 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
                 reference_household_ids,
             )
         )
-    for variable in SCF_NET_WORTH_COMPONENT_VARIABLES + ("auto_loan_balance",):
+    for variable in SCF_NET_WORTH_COMPONENT_VARIABLES:
         if variable in cps:
             net_worth_components[variable] = cps[variable]
-    cps[NET_WORTH_RESIDUAL_VARIABLE] = compute_net_worth_residual(
-        net_worth=cps["net_worth"],
-        components=net_worth_components,
+    cps["net_worth"] = compute_net_worth_from_components(
+        components=net_worth_components
     )
 
     self.save_dataset(cps)

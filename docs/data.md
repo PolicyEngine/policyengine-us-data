@@ -83,10 +83,10 @@ calculate interest on auto loans from these imputed balances. We also impute the
 components needed to express `net_worth` as a formula: certificates of deposit, savings bonds,
 retirement assets, cash-value life insurance, managed assets, other financial assets, home value,
 other real estate, business equity, other nonfinancial assets, mortgages, other residential debt,
-lines of credit, credit card debt, student debt, other installment debt, other debt, and a
-`net_worth_residual`. The residual captures remaining source and definition differences after the
-SIPP/SCF asset blend, so resource-tested policy leaves are not rescaled to force the SCF aggregate.
-The SCF imputation uses their reference person definition to ensure proper matching.
+lines of credit, credit card debt, vehicle installment debt, student debt, other installment debt,
+and other debt. We compute `net_worth` from these components and the final SIPP/SCF-blended policy
+leaves rather than rescaling resource-tested policy leaves to force an independently imputed SCF
+aggregate. The SCF imputation uses their reference person definition to ensure proper matching.
 
 ### American Community Survey (ACS)
 

@@ -13,8 +13,6 @@ SIPP_LIQUID_ASSET_VARIABLES = (
 )
 SIPP_VEHICLE_ASSET_VARIABLES = ("household_vehicles_value",)
 SCF_NET_WORTH_VARIABLE = "net_worth"
-NET_WORTH_RESIDUAL_VARIABLE = "net_worth_residual"
-SCF_BALANCE_SHEET_DEBT_VARIABLES = ("auto_loan_balance",)
 SCF_FINANCIAL_ASSET_TARGETS = {
     "scf_bank_account_assets": ("liq",),
     "scf_stock_assets": ("stocks", "nmmf"),
@@ -41,6 +39,7 @@ SCF_NET_WORTH_COMPONENT_TARGETS = {
     "scf_other_residential_debt": ("resdbt",),
     "scf_other_lines_of_credit": ("othloc",),
     "scf_credit_card_debt": ("ccbal",),
+    "scf_vehicle_installment_debt": ("veh_inst",),
     "scf_student_loan_debt": ("edn_inst",),
     "scf_other_installment_debt": ("oth_inst",),
     "scf_other_debt": ("odebt",),
@@ -51,8 +50,6 @@ EXPOSED_NET_WORTH_COMPONENT_VARIABLES = (
     SIPP_LIQUID_ASSET_VARIABLES
     + SIPP_VEHICLE_ASSET_VARIABLES
     + SCF_NET_WORTH_COMPONENT_VARIABLES
-    + SCF_BALANCE_SHEET_DEBT_VARIABLES
-    + (NET_WORTH_RESIDUAL_VARIABLE,)
 )
 NET_WORTH_COMPONENT_SIGNS = {
     "auto_loan_balance": -1.0,
@@ -60,14 +57,13 @@ NET_WORTH_COMPONENT_SIGNS = {
     "scf_other_residential_debt": -1.0,
     "scf_other_lines_of_credit": -1.0,
     "scf_credit_card_debt": -1.0,
+    "scf_vehicle_installment_debt": -1.0,
     "scf_student_loan_debt": -1.0,
     "scf_other_installment_debt": -1.0,
     "scf_other_debt": -1.0,
 }
-UNOBSERVED_NET_WORTH_COMPONENT_GROUPS = (
-    "SCF/SIPP source and definition differences captured in net_worth_residual",
-)
-NET_WORTH_COMPONENTS_ARE_COMPLETE = False
+UNOBSERVED_NET_WORTH_COMPONENT_GROUPS = ()
+NET_WORTH_COMPONENTS_ARE_COMPLETE = True
 FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5
 
 
@@ -96,11 +92,9 @@ def check_household_net_worth_reconciliation(
 ) -> NetWorthReconciliationReport:
     """Check whether household net worth equals signed balance-sheet components.
 
-    The current CPS asset fields are intentionally not a complete balance sheet:
-    liquid assets and vehicles are imputed from SIPP, while net worth and auto
-    loan balances are imputed from SCF. Leave ``components_are_complete`` false
-    for current public datasets. Set it to true only for a household-aligned data
-    frame whose component variables are intended to exhaust net worth.
+    The current CPS asset fields use blended SIPP/SCF liquid assets plus SCF-only
+    balance-sheet components. They are intended to reconstruct net worth without
+    an accounting residual when aligned to household rows.
     """
     component_variables = tuple(component_variables)
     available_components = tuple(
@@ -119,9 +113,8 @@ def check_household_net_worth_reconciliation(
             max_abs_difference=None,
             is_reconciled=None,
             message=(
-                "Net worth is an independently imputed SCF aggregate. The "
-                "available SIPP/SCF asset fields are partial and should not be "
-                "expected to reconstruct it."
+                "Net worth component reconciliation was skipped because the "
+                "component set was marked incomplete."
             ),
         )
 
@@ -177,6 +170,28 @@ def add_scf_financial_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
 def add_scf_net_worth_component_targets(scf: pd.DataFrame) -> tuple[str, ...]:
     """Add SCF-only balance-sheet targets needed for a net worth formula."""
     return _add_scf_targets(scf, SCF_NET_WORTH_COMPONENT_TARGETS)
+
+
+def require_scf_net_worth_formula_targets(
+    *,
+    scf_financial_asset_targets: Sequence[str],
+    scf_component_targets: Sequence[str],
+) -> None:
+    """Fail loudly if the SCF source cannot supply the formula leaves."""
+    available_targets = set(scf_financial_asset_targets) | set(scf_component_targets)
+    missing_targets = [
+        target
+        for target in (
+            *SCF_FINANCIAL_ASSET_TARGETS,
+            *SCF_NET_WORTH_COMPONENT_TARGETS,
+        )
+        if target not in available_targets
+    ]
+    if missing_targets:
+        raise KeyError(
+            "SCF data is missing source columns needed to build these net "
+            f"worth formula targets: {', '.join(missing_targets)}"
+        )
 
 
 def _add_scf_targets(
@@ -289,26 +304,33 @@ def align_household_values_to_reference_households(
     return values.reindex(reference_household_ids).fillna(0).to_numpy(dtype=np.float32)
 
 
-def compute_net_worth_residual(
+def compute_net_worth_from_components(
     *,
-    net_worth: Sequence[float],
     components: Mapping[str, Sequence[float]],
     component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
 ) -> np.ndarray:
-    """Compute the residual that makes net worth reconcile exactly."""
-    net_worth = np.asarray(net_worth, dtype=np.float32)
-    component_total = np.zeros_like(net_worth, dtype=np.float32)
+    """Compute household net worth from signed balance-sheet components."""
+    iterator = iter(components.items())
+    try:
+        first_variable, first_values = next(iterator)
+    except StopIteration:
+        return np.array([], dtype=np.float32)
 
-    for variable, values in components.items():
+    first_values = np.asarray(first_values, dtype=np.float32)
+    component_total = (
+        component_signs.get(first_variable, 1.0) * first_values
+    ).astype(np.float32)
+
+    for variable, values in iterator:
         values = np.asarray(values, dtype=np.float32)
-        if values.shape != net_worth.shape:
+        if values.shape != component_total.shape:
             raise ValueError(
-                f"{variable} has shape {values.shape}, but net_worth has "
-                f"shape {net_worth.shape}."
+                f"{variable} has shape {values.shape}, but expected "
+                f"{component_total.shape}."
             )
         component_total += component_signs.get(variable, 1.0) * values
 
-    return (net_worth - component_total).astype(np.float32)
+    return component_total.astype(np.float32)
 
 
 def build_household_vehicle_receiver(

@@ -189,7 +189,29 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "employment_income": np.array([35_000.0, 20_000.0]),
                 "interest_dividend_income": np.array([100.0, 50.0]),
                 "social_security_pension_income": np.array([0.0, 0.0]),
-                "networth": np.array([10_000.0, 5_000.0]),
+                "liq": np.array([0.0, 0.0]),
+                "stocks": np.array([0.0, 0.0]),
+                "nmmf": np.array([0.0, 0.0]),
+                "bond": np.array([0.0, 0.0]),
+                "cds": np.array([12_000.0, 6_000.0]),
+                "savbnd": np.array([0.0, 0.0]),
+                "retqliq": np.array([0.0, 0.0]),
+                "cashli": np.array([0.0, 0.0]),
+                "othma": np.array([0.0, 0.0]),
+                "othfin": np.array([0.0, 0.0]),
+                "houses": np.array([0.0, 0.0]),
+                "oresre": np.array([0.0, 0.0]),
+                "nnresre": np.array([0.0, 0.0]),
+                "bus": np.array([0.0, 0.0]),
+                "othnfin": np.array([0.0, 0.0]),
+                "mrthel": np.array([0.0, 0.0]),
+                "resdbt": np.array([0.0, 0.0]),
+                "othloc": np.array([0.0, 0.0]),
+                "ccbal": np.array([0.0, 0.0]),
+                "veh_inst": np.array([2_000.0, 1_000.0]),
+                "edn_inst": np.array([0.0, 0.0]),
+                "oth_inst": np.array([0.0, 0.0]),
+                "odebt": np.array([0.0, 0.0]),
                 "auto_loan_balance": np.array([2_000.0, 1_000.0]),
                 "auto_loan_interest": np.array([200.0, 100.0]),
                 "wgt": np.array([1.0, 1.0]),
@@ -211,13 +233,16 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
 
         def predict(self, X_test):
             assert X_test["is_married"].tolist() == [True, False]
-            return pd.DataFrame(
+            values = {var: [0.0, 0.0] for var in self.imputed_variables}
+            values.update(
                 {
-                    "networth": [10_000.0, 5_000.0],
+                    "scf_certificates_of_deposit": [12_000.0, 6_000.0],
+                    "scf_vehicle_installment_debt": [2_000.0, 1_000.0],
                     "auto_loan_balance": [2_000.0, 1_000.0],
                     "auto_loan_interest": [200.0, 100.0],
                 }
             )
+            return pd.DataFrame(values)
 
     import policyengine_us_data.datasets.scf.scf as scf_module
     import microimpute.models.qrf as qrf_module

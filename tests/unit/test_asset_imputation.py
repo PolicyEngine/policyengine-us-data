@@ -143,6 +143,7 @@ def test_add_scf_net_worth_component_targets_builds_formula_columns():
     scf = pd.DataFrame(
         {
             "cds": [1.0],
+            "savbnd": [1.5],
             "retqliq": [2.0],
             "cashli": [3.0],
             "othma": [4.0],
@@ -158,15 +159,17 @@ def test_add_scf_net_worth_component_targets_builds_formula_columns():
             "ccbal": [9.0],
             "edn_inst": [10.0],
             "oth_inst": [11.0],
-            "bnpl": [12.0],
             "odebt": [13.0],
         }
     )
 
     targets = add_scf_net_worth_component_targets(scf)
 
+    assert "scf_savings_bonds" in targets
     assert "scf_retirement_assets" in targets
     assert "scf_mortgage_debt" in targets
+    assert "scf_buy_now_pay_later_debt" not in targets
+    assert scf["scf_savings_bonds"].tolist() == [1.5]
     assert scf["scf_retirement_assets"].tolist() == [2.0]
     assert scf["scf_mortgage_debt"].tolist() == [50.0]
 

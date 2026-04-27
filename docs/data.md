@@ -80,10 +80,10 @@ matter for a specific program.
 The SCF provides wealth and debt information that we use to impute several financial variables
 missing from the CPS. We match auto loan balances based on household demographics and income, then
 calculate interest on auto loans from these imputed balances. We also impute the SCF balance-sheet
-components needed to express `net_worth` as a formula: certificates of deposit, retirement assets,
-cash-value life insurance, managed assets, other financial assets, home value, other real estate,
-business equity, other nonfinancial assets, mortgages, other residential debt, lines of credit,
-credit card debt, student debt, other installment debt, buy-now-pay-later debt, other debt, and a
+components needed to express `net_worth` as a formula: certificates of deposit, savings bonds,
+retirement assets, cash-value life insurance, managed assets, other financial assets, home value,
+other real estate, business equity, other nonfinancial assets, mortgages, other residential debt,
+lines of credit, credit card debt, student debt, other installment debt, other debt, and a
 `net_worth_residual`. The residual captures remaining source and definition differences after the
 SIPP/SCF asset blend, so resource-tested policy leaves are not rescaled to force the SCF aggregate.
 The SCF imputation uses their reference person definition to ensure proper matching.

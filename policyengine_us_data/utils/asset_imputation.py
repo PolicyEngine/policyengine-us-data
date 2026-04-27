@@ -27,6 +27,7 @@ SCF_FINANCIAL_ASSET_POLICY_VARIABLES = {
 }
 SCF_NET_WORTH_COMPONENT_TARGETS = {
     "scf_certificates_of_deposit": ("cds",),
+    "scf_savings_bonds": ("savbnd",),
     "scf_retirement_assets": ("retqliq",),
     "scf_cash_value_life_insurance": ("cashli",),
     "scf_other_managed_assets": ("othma",),
@@ -42,7 +43,6 @@ SCF_NET_WORTH_COMPONENT_TARGETS = {
     "scf_credit_card_debt": ("ccbal",),
     "scf_student_loan_debt": ("edn_inst",),
     "scf_other_installment_debt": ("oth_inst",),
-    "scf_buy_now_pay_later_debt": ("bnpl",),
     "scf_other_debt": ("odebt",),
 }
 SCF_NET_WORTH_COMPONENT_VARIABLES = tuple(SCF_NET_WORTH_COMPONENT_TARGETS)
@@ -62,7 +62,6 @@ NET_WORTH_COMPONENT_SIGNS = {
     "scf_credit_card_debt": -1.0,
     "scf_student_loan_debt": -1.0,
     "scf_other_installment_debt": -1.0,
-    "scf_buy_now_pay_later_debt": -1.0,
     "scf_other_debt": -1.0,
 }
 UNOBSERVED_NET_WORTH_COMPONENT_GROUPS = (

@@ -216,7 +216,7 @@ def seed_case(
         package_path = _write_calibration_package(artifact_dir, n_records=n_records)
         _write_run_config(artifact_dir, weights_path=weights_path)
         calibration_inputs["calibration_package"] = str(package_path)
-    elif case_name == "checkpoint_name_mismatch":
+    elif case_name == "checkpoint_artifact_ignored":
         geography_path = _write_saved_geography(artifact_dir, n_records=n_records)
         checkpoint_path = artifact_dir / "calibration_weights.checkpoint.pt"
         checkpoint_path.write_bytes(b"checkpoint")

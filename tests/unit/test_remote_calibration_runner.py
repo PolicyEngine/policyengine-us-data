@@ -114,3 +114,36 @@ def test_fit_weights_impl_saves_and_resumes_checkpoint_on_volume(
     assert result["checkpoint"] == b"new-checkpoint"
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()
+
+
+def test_fit_weights_impl_omits_checkpoint_flags_by_default(
+    monkeypatch,
+    tmp_path,
+):
+    remote_runner = _load_remote_calibration_runner_module()
+    (tmp_path / "policy_data.db").write_bytes(b"db")
+    (tmp_path / "source_imputed_stratified_extended_cps.h5").write_bytes(b"h5")
+    weights = tmp_path / "weights.npy"
+
+    volume = SimpleNamespace(reload=Mock(), commit=Mock())
+    monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
+    monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+
+    def fake_run_streaming(cmd, env=None, label=""):
+        assert "--resume-from" not in cmd
+        assert "--checkpoint-output" not in cmd
+        weights.write_bytes(b"weights")
+        return 0, [f"OUTPUT_PATH:{weights}"]
+
+    monkeypatch.setattr(remote_runner, "_run_streaming", fake_run_streaming)
+
+    result = remote_runner._fit_weights_impl(
+        branch="main",
+        epochs=1,
+        artifacts_dir=str(tmp_path),
+    )
+
+    assert result["weights"] == b"weights"
+    assert result["checkpoint"] is None
+    volume.reload.assert_called_once()
+    volume.commit.assert_not_called()

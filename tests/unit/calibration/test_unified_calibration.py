@@ -428,6 +428,9 @@ class TestParseArgsNewFlags:
         assert args.resume_from == "weights.npy"
         assert args.checkpoint_output == "weights.checkpoint.pt"
 
+        args_default = parse_args([])
+        assert args_default.checkpoint_output is None
+
 
 class FakeSparseCalibrationWeights:
     def __init__(

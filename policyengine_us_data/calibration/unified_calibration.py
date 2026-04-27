@@ -379,7 +379,7 @@ def parse_args(argv=None):
         "--checkpoint-output",
         default=None,
         help="Where to save resumable fit checkpoints "
-        "(default: <output>.checkpoint.pt).",
+        "(omit to disable checkpoint writing).",
     )
     return parser.parse_args(argv)
 
@@ -1548,9 +1548,7 @@ def main(argv=None):
         cal_log_path = str(output_dir / "calibration_log.csv")
     checkpoint_output_path = None
     if not args.build_only:
-        checkpoint_output_path = args.checkpoint_output or str(
-            default_checkpoint_path(output_path)
-        )
+        checkpoint_output_path = args.checkpoint_output
     (
         weights,
         targets_df,

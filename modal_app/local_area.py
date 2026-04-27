@@ -279,7 +279,11 @@ def validate_artifacts(
         return
 
     remap = filename_remap or {}
+    validated_count = 0
     for filename, expected_hash in artifacts.items():
+        if _is_calibration_checkpoint_artifact(filename):
+            print(f"Skipping execution checkpoint artifact validation: {filename}")
+            continue
         actual_filename = remap.get(filename, filename)
         filepath = artifact_dir / actual_filename
         if not filepath.exists():
@@ -298,8 +302,15 @@ def validate_artifacts(
                 f"  Expected: {expected_hash}\n"
                 f"  Actual:   {actual}"
             )
+        validated_count += 1
 
-    print(f"Validated {len(artifacts)} artifact(s) against run config checksums")
+    print(f"Validated {validated_count} artifact(s) against run config checksums")
+
+
+def _is_calibration_checkpoint_artifact(filename: str) -> bool:
+    """Return True for deprecated calibration fit checkpoint artifacts."""
+    name = Path(filename).name.lower()
+    return name.endswith(".checkpoint.pt") or name == "calibration_checkpoint.pt"
 
 
 def get_version() -> str:

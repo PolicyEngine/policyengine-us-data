@@ -68,16 +68,24 @@ missing from the CPS:
 ### Survey of Income and Program Participation (SIPP)
 
 The SIPP provides income and program participation data. We use SIPP primarily to impute tip income
-through a Quantile Regression Forest model trained on SIPP data, using employment income, age, and
-household composition as predictors.
+and policy-relevant asset inputs through Quantile Regression Forest models trained on SIPP data.
+The asset imputations currently cover bank accounts, stocks, bonds, household vehicle counts, and
+household vehicle values. Bank accounts, stocks, and bonds are then combined with comparable SCF
+predictions through a stable household-level 50/50 source-model draw. These fields are not a
+complete household balance sheet; they are exposed so policy models can select the resources that
+matter for a specific program.
 
 ### Survey of Consumer Finances (SCF)
 
 The SCF provides wealth and debt information that we use to impute several financial variables
 missing from the CPS. We match auto loan balances based on household demographics and income, then
-calculate interest on auto loans from these imputed balances. Additionally, we impute various net
-worth components and other wealth measures not available in CPS. The SCF imputation uses their
-reference person definition to ensure proper matching.
+calculate interest on auto loans from these imputed balances. We also impute `net_worth` as an SCF
+aggregate. This aggregate is not reconstructible from the currently exposed asset and liability
+fields because those fields combine SIPP liquid-asset and vehicle imputations with selected SCF debt
+inputs and omit major balance-sheet categories such as home equity, mortgage debt, retirement
+assets, business equity, other real estate, and other debts. Use the specific asset variables for
+resource-tested policy rules; use `net_worth` only as a broad wealth aggregate. The SCF imputation
+uses their reference person definition to ensure proper matching.
 
 ### American Community Survey (ACS)
 

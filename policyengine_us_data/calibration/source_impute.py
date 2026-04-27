@@ -12,7 +12,8 @@ Sources and variables:
             household_vehicles_value  (no state predictor)
     ORG  -> hourly_wage, is_paid_hourly,
             is_union_member_or_covered
-    SCF  -> net_worth, auto_loan_balance, auto_loan_interest
+    SCF  -> net_worth, auto_loan_balance, auto_loan_interest, and
+            50/50 source-model averaging for overlapping financial assets
             (no state predictor)
 
 Usage in unified calibration pipeline:
@@ -45,7 +46,10 @@ from policyengine_us_data.datasets.org import (
     predict_org_features,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    add_scf_financial_asset_targets,
     build_household_vehicle_receiver,
+    combine_sipp_and_scf_financial_assets,
 )
 
 logger = logging.getLogger(__name__)
@@ -765,15 +769,19 @@ def _impute_scf(
 
     if "networth" in scf_df.columns and "net_worth" not in scf_df.columns:
         scf_df["net_worth"] = scf_df["networth"]
+    scf_financial_asset_targets = add_scf_financial_asset_targets(scf_df)
 
     available_vars = [v for v in SCF_IMPUTED_VARIABLES if v in scf_df.columns]
+    qrf_vars = available_vars + [
+        v for v in scf_financial_asset_targets if v in scf_df.columns
+    ]
     if not available_vars:
-        logger.warning("No SCF imputed variables available. Skipping.")
+        logger.warning("No SCF aggregate imputed variables available. Skipping.")
         return data
 
     weights = scf_df.get("wgt")
 
-    donor = scf_df[scf_predictors + available_vars].copy()
+    donor = scf_df[scf_predictors + qrf_vars].copy()
     if weights is not None:
         donor["wgt"] = weights
     donor = donor.dropna(subset=scf_predictors)
@@ -834,12 +842,12 @@ def _impute_scf(
         "SCF QRF: %d train, %d test, vars=%s",
         len(donor),
         len(cps_df),
-        available_vars,
+        qrf_vars,
     )
     fitted = qrf.fit(
         X_train=donor,
         predictors=scf_predictors,
-        imputed_variables=available_vars,
+        imputed_variables=qrf_vars,
         weight_col="wgt" if weights is not None else None,
         tune_hyperparameters=False,
     )
@@ -869,6 +877,22 @@ def _impute_scf(
             )
         else:
             data[var] = {time_period: person_vals}
+
+    person_hh_ids = data.get("person_household_id", {}).get(time_period)
+    if person_hh_ids is not None:
+        first_person_mask = ~pd.Series(person_hh_ids).duplicated().values
+        for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
+            if scf_var not in preds or policy_var not in data:
+                continue
+            data[policy_var] = {
+                time_period: combine_sipp_and_scf_financial_assets(
+                    sipp_values=data[policy_var][time_period],
+                    scf_household_values=preds.loc[first_person_mask, scf_var].values,
+                    person_household_ids=person_hh_ids,
+                    reference_person_mask=first_person_mask,
+                    time_period=time_period,
+                )
+            }
 
     del fitted, preds
     gc.collect()

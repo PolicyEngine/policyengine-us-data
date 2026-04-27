@@ -48,7 +48,10 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    add_scf_financial_asset_targets,
     build_household_vehicle_receiver,
+    combine_sipp_and_scf_financial_assets,
 )
 from policyengine_us_data.utils.policyengine import (
     supports_medicare_enrollment_input,
@@ -2156,7 +2159,9 @@ def add_tips(self, cps: h5py.File):
         mean_quantile=0.5,
     ).tip_income.values
 
-    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+    # Impute SIPP liquid assets used directly by resource-tested policy rules.
+    # The SCF step below applies a stable 50/50 source-model draw for the
+    # overlapping bank, stock, and bond leaves.
 
     from policyengine_us_data.datasets.sipp import get_asset_model
 
@@ -2473,6 +2478,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     mask = create_scf_reference_person_mask(cps_data, person_data)
     mask_len = mask.shape[0]
+    original_person_household_ids = np.asarray(cps_data["person_household_id"])
 
     cps_data = {
         var: data[mask] if data.shape[0] == mask_len else data
@@ -2543,7 +2549,10 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     reference_persons = person_data[mask]
     receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
 
-    # Impute auto loan balance from the SCF
+    # Impute SCF net_worth as an aggregate, selected auto-loan fields, and
+    # SCF equivalents for overlapping financial asset leaves.
+    # Current public asset components are partial and mixed-source, so row-level
+    # net_worth identity checks are not expected to pass.
     from policyengine_us_data.datasets.scf.scf import SCF_2022
 
     scf_dataset = SCF_2022()
@@ -2560,7 +2569,12 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         "interest_dividend_income",
         "social_security_pension_income",
     ]
-    IMPUTED_VARIABLES = ["networth", "auto_loan_balance", "auto_loan_interest"]
+    scf_financial_asset_targets = add_scf_financial_asset_targets(scf_data)
+    IMPUTED_VARIABLES = [
+        "networth",
+        "auto_loan_balance",
+        "auto_loan_interest",
+    ] + list(scf_financial_asset_targets)
     weights = ["wgt"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -2588,6 +2602,20 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     for var in IMPUTED_VARIABLES:
         cps[var] = imputations[var]
+
+    for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
+        if scf_var not in imputations:
+            continue
+        if policy_var in cps:
+            cps[policy_var] = combine_sipp_and_scf_financial_assets(
+                sipp_values=cps[policy_var],
+                scf_household_values=imputations[scf_var].values,
+                person_household_ids=original_person_household_ids,
+                reference_person_mask=mask,
+                time_period=self.time_period,
+            )
+        if scf_var in cps:
+            del cps[scf_var]
 
     cps["net_worth"] = cps["networth"]
     del cps["networth"]

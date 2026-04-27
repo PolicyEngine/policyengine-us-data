@@ -3,11 +3,16 @@ import pandas as pd
 
 from policyengine_us_data.utils.asset_imputation import (
     NET_WORTH_COMPONENTS_ARE_COMPLETE,
+    NET_WORTH_RESIDUAL_VARIABLE,
     UNOBSERVED_NET_WORTH_COMPONENT_GROUPS,
     add_scf_financial_asset_targets,
+    add_scf_net_worth_component_targets,
+    aggregate_person_values_to_reference_households,
+    align_household_values_to_reference_households,
     build_household_vehicle_receiver,
     check_household_net_worth_reconciliation,
     combine_sipp_and_scf_financial_assets,
+    compute_net_worth_residual,
     financial_asset_source_is_scf,
 )
 
@@ -61,7 +66,7 @@ def test_current_net_worth_components_are_marked_incomplete():
     assert report.components_are_complete is False
     assert report.is_reconciled is None
     assert report.max_abs_difference is None
-    assert "retirement_assets" in UNOBSERVED_NET_WORTH_COMPONENT_GROUPS
+    assert "net_worth_residual" in UNOBSERVED_NET_WORTH_COMPONENT_GROUPS[0]
     assert "independently imputed SCF aggregate" in report.message
 
 
@@ -134,6 +139,38 @@ def test_add_scf_financial_asset_targets_builds_sipp_comparable_columns():
     assert scf["scf_bond_assets"].tolist() == [5.0, 6.0]
 
 
+def test_add_scf_net_worth_component_targets_builds_formula_columns():
+    scf = pd.DataFrame(
+        {
+            "cds": [1.0],
+            "retqliq": [2.0],
+            "cashli": [3.0],
+            "othma": [4.0],
+            "othfin": [5.0],
+            "houses": [100.0],
+            "oresre": [20.0],
+            "nnresre": [30.0],
+            "bus": [40.0],
+            "othnfin": [6.0],
+            "mrthel": [50.0],
+            "resdbt": [7.0],
+            "othloc": [8.0],
+            "ccbal": [9.0],
+            "edn_inst": [10.0],
+            "oth_inst": [11.0],
+            "bnpl": [12.0],
+            "odebt": [13.0],
+        }
+    )
+
+    targets = add_scf_net_worth_component_targets(scf)
+
+    assert "scf_retirement_assets" in targets
+    assert "scf_mortgage_debt" in targets
+    assert scf["scf_retirement_assets"].tolist() == [2.0]
+    assert scf["scf_mortgage_debt"].tolist() == [50.0]
+
+
 def test_financial_asset_source_draw_is_household_stable():
     household_ids = np.array([10, 10, 20, 30])
 
@@ -170,3 +207,37 @@ def test_combine_sipp_and_scf_financial_assets_preserves_household_scf_total():
                 combined[household_mask],
                 np.array([1.0, 2.0, 3.0, 4.0])[household_mask],
             )
+
+
+def test_aggregate_and_align_household_components():
+    person_household_ids = np.array([20, 10, 20, 10])
+    reference_person_mask = np.array([True, True, False, False])
+
+    aggregated = aggregate_person_values_to_reference_households(
+        [1.0, 2.0, 3.0, 4.0],
+        person_household_ids,
+        reference_person_mask,
+    )
+    aligned = align_household_values_to_reference_households(
+        household_values=[100.0, 200.0],
+        household_ids=np.array([10, 20]),
+        reference_household_ids=person_household_ids[reference_person_mask],
+    )
+
+    assert aggregated.tolist() == [4.0, 6.0]
+    assert aligned.tolist() == [200.0, 100.0]
+
+
+def test_compute_net_worth_residual_makes_formula_exact():
+    residual = compute_net_worth_residual(
+        net_worth=np.array([1_000.0]),
+        components={
+            "bank_account_assets": np.array([100.0]),
+            "scf_retirement_assets": np.array([300.0]),
+            "auto_loan_balance": np.array([50.0]),
+            "scf_mortgage_debt": np.array([200.0]),
+        },
+    )
+
+    assert NET_WORTH_RESIDUAL_VARIABLE == "net_worth_residual"
+    assert residual.tolist() == [850.0]

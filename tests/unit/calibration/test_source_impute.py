@@ -87,6 +87,9 @@ class TestConstants:
         assert "net_worth" in SCF_IMPUTED_VARIABLES
         assert "auto_loan_balance" in SCF_IMPUTED_VARIABLES
         assert "auto_loan_interest" in SCF_IMPUTED_VARIABLES
+        assert "scf_retirement_assets" in SCF_IMPUTED_VARIABLES
+        assert "scf_mortgage_debt" in SCF_IMPUTED_VARIABLES
+        assert "net_worth_residual" in SCF_IMPUTED_VARIABLES
 
     def test_org_variables_defined(self):
         assert "hourly_wage" in ORG_IMPUTED_VARIABLES

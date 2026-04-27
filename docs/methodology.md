@@ -242,20 +242,19 @@ identifiers, so these imputations are state-blind at the microdata level - geogr
 tip income and assets enters only through calibration weights, not through the imputed values
 themselves.
 
-**SCF (Survey of Consumer Finances)**: Aggregate net worth, auto loan balances, and auto loan
-interest. The SCF also lacks state identifiers, so these imputations are likewise state-blind.
+**SCF (Survey of Consumer Finances)**: Aggregate net worth, auto loan balances, auto loan interest,
+and balance-sheet components needed to express net worth as a formula. The SCF also lacks state
+identifiers, so these imputations are likewise state-blind.
 
-The current asset fields are a mixed-source partial balance sheet. `net_worth` is independently
-imputed from the SCF aggregate and includes components that are not currently exposed in the public
-CPS file, such as primary residence equity, mortgage debt, retirement assets, business equity,
-other real estate, other financial assets, and other debts. The SIPP liquid-asset and vehicle fields
-are policy-relevant inputs in their own right. For overlapping bank-account, stock, and bond asset
+The asset fields are a mixed-source balance sheet. The SIPP liquid-asset and vehicle fields are
+policy-relevant inputs in their own right. For overlapping bank-account, stock, and bond asset
 variables, we use a stable household-level 50/50 source-model draw between the SIPP QRF prediction
 and the comparable SCF QRF prediction, with a single draw shared across the financial-asset block.
-We do not rescale these policy leaves to force them to add up to SCF `net_worth`. Therefore,
-row-level reconciliation between `net_worth` and the exposed component fields is not expected. A
-net-worth component diagnostic should only be enabled when the component set is explicitly intended
-to be complete and household-aligned.
+We then impute the non-overlapping SCF balance-sheet components - home value, mortgage debt,
+retirement assets, business equity, other real estate, other financial assets, other debts, and
+related categories - and compute `net_worth_residual` so that a downstream `net_worth` formula can
+reconcile exactly without rescaling resource-tested policy leaves. The residual captures remaining
+source and definition differences after the SIPP/SCF blend.
 
 The output of this stage is the source-imputed stratified CPS
 (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the

@@ -13,6 +13,7 @@ SIPP_LIQUID_ASSET_VARIABLES = (
 )
 SIPP_VEHICLE_ASSET_VARIABLES = ("household_vehicles_value",)
 SCF_NET_WORTH_VARIABLE = "net_worth"
+NET_WORTH_RESIDUAL_VARIABLE = "net_worth_residual"
 SCF_BALANCE_SHEET_DEBT_VARIABLES = ("auto_loan_balance",)
 SCF_FINANCIAL_ASSET_TARGETS = {
     "scf_bank_account_assets": ("liq",),
@@ -24,23 +25,48 @@ SCF_FINANCIAL_ASSET_POLICY_VARIABLES = {
     "scf_stock_assets": "stock_assets",
     "scf_bond_assets": "bond_assets",
 }
+SCF_NET_WORTH_COMPONENT_TARGETS = {
+    "scf_certificates_of_deposit": ("cds",),
+    "scf_retirement_assets": ("retqliq",),
+    "scf_cash_value_life_insurance": ("cashli",),
+    "scf_other_managed_assets": ("othma",),
+    "scf_other_financial_assets": ("othfin",),
+    "scf_primary_residence_value": ("houses",),
+    "scf_other_residential_real_estate": ("oresre",),
+    "scf_nonresidential_real_estate_equity": ("nnresre",),
+    "scf_business_equity": ("bus",),
+    "scf_other_nonfinancial_assets": ("othnfin",),
+    "scf_mortgage_debt": ("mrthel",),
+    "scf_other_residential_debt": ("resdbt",),
+    "scf_other_lines_of_credit": ("othloc",),
+    "scf_credit_card_debt": ("ccbal",),
+    "scf_student_loan_debt": ("edn_inst",),
+    "scf_other_installment_debt": ("oth_inst",),
+    "scf_buy_now_pay_later_debt": ("bnpl",),
+    "scf_other_debt": ("odebt",),
+}
+SCF_NET_WORTH_COMPONENT_VARIABLES = tuple(SCF_NET_WORTH_COMPONENT_TARGETS)
 
 EXPOSED_NET_WORTH_COMPONENT_VARIABLES = (
     SIPP_LIQUID_ASSET_VARIABLES
     + SIPP_VEHICLE_ASSET_VARIABLES
+    + SCF_NET_WORTH_COMPONENT_VARIABLES
     + SCF_BALANCE_SHEET_DEBT_VARIABLES
+    + (NET_WORTH_RESIDUAL_VARIABLE,)
 )
 NET_WORTH_COMPONENT_SIGNS = {
     "auto_loan_balance": -1.0,
+    "scf_mortgage_debt": -1.0,
+    "scf_other_residential_debt": -1.0,
+    "scf_other_lines_of_credit": -1.0,
+    "scf_credit_card_debt": -1.0,
+    "scf_student_loan_debt": -1.0,
+    "scf_other_installment_debt": -1.0,
+    "scf_buy_now_pay_later_debt": -1.0,
+    "scf_other_debt": -1.0,
 }
 UNOBSERVED_NET_WORTH_COMPONENT_GROUPS = (
-    "primary_residence_value",
-    "mortgage_debt",
-    "retirement_assets",
-    "business_equity",
-    "other_real_estate",
-    "other_financial_assets",
-    "other_debts",
+    "SCF/SIPP source and definition differences captured in net_worth_residual",
 )
 NET_WORTH_COMPONENTS_ARE_COMPLETE = False
 FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5
@@ -146,8 +172,20 @@ def check_household_net_worth_reconciliation(
 
 def add_scf_financial_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
     """Add SCF financial asset targets comparable to SIPP policy leaves."""
+    return _add_scf_targets(scf, SCF_FINANCIAL_ASSET_TARGETS)
+
+
+def add_scf_net_worth_component_targets(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add SCF-only balance-sheet targets needed for a net worth formula."""
+    return _add_scf_targets(scf, SCF_NET_WORTH_COMPONENT_TARGETS)
+
+
+def _add_scf_targets(
+    scf: pd.DataFrame,
+    target_map: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
     added_targets = []
-    for target, source_columns in SCF_FINANCIAL_ASSET_TARGETS.items():
+    for target, source_columns in target_map.items():
         if all(column in scf.columns for column in source_columns):
             scf[target] = sum(scf[column].fillna(0) for column in source_columns)
             added_targets.append(target)
@@ -223,6 +261,55 @@ def combine_sipp_and_scf_financial_assets(
         time_period=time_period,
     )
     return np.where(use_scf, scf_person_values, sipp_values).astype(np.float32)
+
+
+def aggregate_person_values_to_reference_households(
+    person_values: Sequence[float],
+    person_household_ids: Sequence,
+    reference_person_mask: Sequence[bool],
+) -> np.ndarray:
+    """Aggregate person values to households in reference-person order."""
+    person_values = np.asarray(person_values, dtype=np.float32)
+    person_household_ids = np.asarray(person_household_ids)
+    reference_person_mask = np.asarray(reference_person_mask, dtype=bool)
+    reference_household_ids = person_household_ids[reference_person_mask]
+    totals = pd.Series(person_values).groupby(person_household_ids).sum()
+    return totals.reindex(reference_household_ids).fillna(0).to_numpy(dtype=np.float32)
+
+
+def align_household_values_to_reference_households(
+    household_values: Sequence[float],
+    household_ids: Sequence,
+    reference_household_ids: Sequence,
+) -> np.ndarray:
+    """Align household values from household-id order to reference-person order."""
+    household_values = np.asarray(household_values, dtype=np.float32)
+    household_ids = np.asarray(household_ids)
+    reference_household_ids = np.asarray(reference_household_ids)
+    values = pd.Series(household_values, index=household_ids)
+    return values.reindex(reference_household_ids).fillna(0).to_numpy(dtype=np.float32)
+
+
+def compute_net_worth_residual(
+    *,
+    net_worth: Sequence[float],
+    components: Mapping[str, Sequence[float]],
+    component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
+) -> np.ndarray:
+    """Compute the residual that makes net worth reconcile exactly."""
+    net_worth = np.asarray(net_worth, dtype=np.float32)
+    component_total = np.zeros_like(net_worth, dtype=np.float32)
+
+    for variable, values in components.items():
+        values = np.asarray(values, dtype=np.float32)
+        if values.shape != net_worth.shape:
+            raise ValueError(
+                f"{variable} has shape {values.shape}, but net_worth has "
+                f"shape {net_worth.shape}."
+            )
+        component_total += component_signs.get(variable, 1.0) * values
+
+    return (net_worth - component_total).astype(np.float32)
 
 
 def build_household_vehicle_receiver(

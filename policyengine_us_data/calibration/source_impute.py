@@ -786,14 +786,12 @@ def _impute_scf(
         scf_component_targets=scf_component_targets,
     )
 
-    available_vars = [
-        v for v in SCF_CORE_IMPUTED_VARIABLES if v in scf_df.columns
-    ]
-    qrf_vars = available_vars + [
-        v for v in scf_financial_asset_targets if v in scf_df.columns
-    ] + [
-        v for v in scf_component_targets if v in scf_df.columns
-    ]
+    available_vars = [v for v in SCF_CORE_IMPUTED_VARIABLES if v in scf_df.columns]
+    qrf_vars = (
+        available_vars
+        + [v for v in scf_financial_asset_targets if v in scf_df.columns]
+        + [v for v in scf_component_targets if v in scf_df.columns]
+    )
     if not qrf_vars:
         logger.warning("No SCF imputed variables available. Skipping.")
         return data
@@ -923,10 +921,12 @@ def _impute_scf(
         net_worth_components = {}
         for var in ("bank_account_assets", "stock_assets", "bond_assets"):
             if var in data:
-                net_worth_components[var] = aggregate_person_values_to_reference_households(
-                    data[var][time_period],
-                    person_hh_ids,
-                    first_person_mask,
+                net_worth_components[var] = (
+                    aggregate_person_values_to_reference_households(
+                        data[var][time_period],
+                        person_hh_ids,
+                        first_person_mask,
+                    )
                 )
         if "household_vehicles_value" in data:
             net_worth_components["household_vehicles_value"] = (

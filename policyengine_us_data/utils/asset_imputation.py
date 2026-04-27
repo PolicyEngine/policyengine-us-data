@@ -317,9 +317,9 @@ def compute_net_worth_from_components(
         return np.array([], dtype=np.float32)
 
     first_values = np.asarray(first_values, dtype=np.float32)
-    component_total = (
-        component_signs.get(first_variable, 1.0) * first_values
-    ).astype(np.float32)
+    component_total = (component_signs.get(first_variable, 1.0) * first_values).astype(
+        np.float32
+    )
 
     for variable, values in iterator:
         values = np.asarray(values, dtype=np.float32)

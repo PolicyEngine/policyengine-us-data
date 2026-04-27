@@ -2580,10 +2580,14 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         scf_financial_asset_targets=scf_financial_asset_targets,
         scf_component_targets=scf_component_targets,
     )
-    IMPUTED_VARIABLES = [
-        "auto_loan_balance",
-        "auto_loan_interest",
-    ] + list(scf_financial_asset_targets) + list(scf_component_targets)
+    IMPUTED_VARIABLES = (
+        [
+            "auto_loan_balance",
+            "auto_loan_interest",
+        ]
+        + list(scf_financial_asset_targets)
+        + list(scf_component_targets)
+    )
     weights = ["wgt"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()

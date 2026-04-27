@@ -1,0 +1,1 @@
+- Require `medicare_enrolled` to be a pure PolicyEngine US input before CPS writes Medicare enrollment values.

@@ -42,6 +42,8 @@ def test_add_previous_year_income_closes_raw_cps_handles():
     current_person = pd.DataFrame(
         {
             "PERIDNUM": [10, 20],
+            "WSAL_VAL": [1_100, 2_100],
+            "SEMP_VAL": [110, 210],
             "I_ERNVAL": [0, 0],
             "I_SEVAL": [0, 0],
         }
@@ -79,6 +81,56 @@ def test_add_previous_year_income_closes_raw_cps_handles():
     assert previous_store.closed is True
 
 
+def test_add_previous_year_income_imputes_unavailable_rows():
+    current_person = pd.DataFrame(
+        {
+            "PERIDNUM": [10, 20, 30, 40],
+            "WSAL_VAL": [1_100, 2_100, 3_100, 4_100],
+            "SEMP_VAL": [110, 210, 310, 410],
+            "I_ERNVAL": [0, 0, 0, 0],
+            "I_SEVAL": [0, 0, 0, 0],
+        }
+    )
+    previous_person = pd.DataFrame(
+        {
+            "PERIDNUM": [10, 20, 30],
+            "WSAL_VAL": [1_000, 2_000, -9999],
+            "SEMP_VAL": [100, -1, 300],
+            "I_ERNVAL": [0, 0, 0],
+            "I_SEVAL": [0, 0, 0],
+        }
+    )
+
+    current_store = _FakeStore(current_person)
+    previous_store = _FakeStore(previous_person)
+
+    current_dataset = type("CurrentDataset", (_FakeDataset,), {"store": current_store})
+    previous_dataset = type(
+        "PreviousDataset", (_FakeDataset,), {"store": previous_store}
+    )
+
+    holder = SimpleNamespace(
+        raw_cps=current_dataset,
+        previous_year_raw_cps=previous_dataset,
+    )
+    cps = {}
+
+    add_previous_year_income(holder, cps)
+
+    np.testing.assert_array_equal(
+        cps["employment_income_last_year"],
+        [1_000, 2_100, 3_100, 4_100],
+    )
+    np.testing.assert_array_equal(
+        cps["self_employment_income_last_year"],
+        [100, 210, 310, 410],
+    )
+    np.testing.assert_array_equal(
+        cps["previous_year_income_available"],
+        [True, False, False, False],
+    )
+
+
 def test_add_previous_year_income_opens_hdfstores_read_only(tmp_path, monkeypatch):
     current_path = tmp_path / "current.h5"
     previous_path = tmp_path / "previous.h5"
@@ -87,6 +139,8 @@ def test_add_previous_year_income_opens_hdfstores_read_only(tmp_path, monkeypatc
         store["person"] = pd.DataFrame(
             {
                 "PERIDNUM": [10, 20],
+                "WSAL_VAL": [1_100, 2_100],
+                "SEMP_VAL": [110, 210],
                 "I_ERNVAL": [0, 0],
                 "I_SEVAL": [0, 0],
             }

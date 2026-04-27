@@ -2329,7 +2329,8 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     """ "Add auto loan balance, interest and net_worth variable."""
     self.save_dataset(cps)
-    cps_data = self.load_dataset()
+    full_cps_data = self.load_dataset()
+    cps_data = dict(full_cps_data)
 
     # Access raw CPS for additional variables
     with _open_dataset_read_only(self.raw_cps) as raw_data:
@@ -2623,16 +2624,19 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         cps[var] = imputations[var]
 
     for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
-        if scf_var not in imputations:
+        if scf_var not in imputations or policy_var not in full_cps_data:
             continue
+        blended_values = combine_sipp_and_scf_financial_assets(
+            sipp_values=full_cps_data[policy_var],
+            scf_household_values=imputations[scf_var].values,
+            person_household_ids=original_person_household_ids,
+            reference_person_mask=mask,
+            time_period=self.time_period,
+        )
+        full_cps_data[policy_var] = blended_values
         if policy_var in cps:
-            cps[policy_var] = combine_sipp_and_scf_financial_assets(
-                sipp_values=cps[policy_var],
-                scf_household_values=imputations[scf_var].values,
-                person_household_ids=original_person_household_ids,
-                reference_person_mask=mask,
-                time_period=self.time_period,
-            )
+            del cps[policy_var]
+        cps[policy_var] = blended_values
         if scf_var in cps:
             del cps[scf_var]
 
@@ -2640,18 +2644,18 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     for scf_var, policy_var in SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES.items():
         if (
             scf_var not in imputations
-            or policy_var not in cps_data
-            or "household_id" not in cps_data
+            or policy_var not in full_cps_data
+            or "household_id" not in full_cps_data
         ):
             continue
         blended_values = combine_sipp_and_scf_household_assets(
-            sipp_household_values=cps_data[policy_var],
+            sipp_household_values=full_cps_data[policy_var],
             scf_household_values=imputations[scf_var].values,
-            household_ids=cps_data["household_id"],
+            household_ids=full_cps_data["household_id"],
             reference_household_ids=reference_household_ids,
             time_period=self.time_period,
         )
-        cps_data[policy_var] = blended_values
+        full_cps_data[policy_var] = blended_values
         if policy_var in cps:
             del cps[policy_var]
         cps[policy_var] = blended_values
@@ -2660,19 +2664,19 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     net_worth_components = {}
     for variable in ("bank_account_assets", "stock_assets", "bond_assets"):
-        if variable in cps:
+        if variable in full_cps_data:
             net_worth_components[variable] = (
                 aggregate_person_values_to_reference_households(
-                    cps[variable],
+                    full_cps_data[variable],
                     original_person_household_ids,
                     mask,
                 )
             )
-    if "household_vehicles_value" in cps_data and "household_id" in cps_data:
+    if "household_vehicles_value" in full_cps_data and "household_id" in full_cps_data:
         net_worth_components["household_vehicles_value"] = (
             align_household_values_to_reference_households(
-                cps_data["household_vehicles_value"],
-                cps_data["household_id"],
+                full_cps_data["household_vehicles_value"],
+                full_cps_data["household_id"],
                 reference_household_ids,
             )
         )

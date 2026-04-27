@@ -9,7 +9,10 @@ from policyengine_us_data.datasets.cps.cps import (
     add_auto_loan_interest_and_net_worth,
     add_previous_year_income,
 )
-from policyengine_us_data.utils.asset_imputation import financial_asset_source_is_scf
+from policyengine_us_data.utils.asset_imputation import (
+    combine_sipp_and_scf_financial_assets,
+    financial_asset_source_is_scf,
+)
 
 
 class _FakeStore:
@@ -171,6 +174,9 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "is_female": np.array([False, True]),
                 "cps_race": np.array([1, 2]),
                 "own_children_in_household": np.array([0, 1]),
+                "bank_account_assets": np.array([1_000.0, 2_000.0]),
+                "stock_assets": np.array([300.0, 400.0]),
+                "bond_assets": np.array([50.0, 60.0]),
                 "household_vehicles_value": np.array([5_000.0, 1_000.0]),
                 "employment_income": np.array([40_000.0, 25_000.0]),
                 "taxable_interest_income": np.array([100.0, 0.0]),
@@ -193,10 +199,10 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "employment_income": np.array([35_000.0, 20_000.0]),
                 "interest_dividend_income": np.array([100.0, 50.0]),
                 "social_security_pension_income": np.array([0.0, 0.0]),
-                "liq": np.array([0.0, 0.0]),
-                "stocks": np.array([0.0, 0.0]),
-                "nmmf": np.array([0.0, 0.0]),
-                "bond": np.array([0.0, 0.0]),
+                "liq": np.array([10_000.0, 20_000.0]),
+                "stocks": np.array([100.0, 200.0]),
+                "nmmf": np.array([1.0, 2.0]),
+                "bond": np.array([10.0, 20.0]),
                 "vehic": np.array([3_000.0, 2_000.0]),
                 "cds": np.array([12_000.0, 6_000.0]),
                 "savbnd": np.array([0.0, 0.0]),
@@ -242,6 +248,9 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
             values.update(
                 {
                     "scf_certificates_of_deposit": [12_000.0, 6_000.0],
+                    "scf_bank_account_assets": [10_000.0, 20_000.0],
+                    "scf_stock_assets": [101.0, 202.0],
+                    "scf_bond_assets": [10.0, 20.0],
                     "scf_household_vehicles_value": [3_000.0, 2_000.0],
                     "scf_vehicle_installment_debt": [2_000.0, 1_000.0],
                     "auto_loan_balance": [2_000.0, 1_000.0],
@@ -265,10 +274,41 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
         [3_000.0, 2_000.0],
         [5_000.0, 1_000.0],
     )
+    bank_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([1_000.0, 2_000.0]),
+        scf_household_values=np.array([10_000.0, 20_000.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
+    stock_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([300.0, 400.0]),
+        scf_household_values=np.array([101.0, 202.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
+    bond_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([50.0, 60.0]),
+        scf_household_values=np.array([10.0, 20.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
     np.testing.assert_array_equal(
         dataset.saved_dataset["net_worth"],
-        np.array([12_000.0, 6_000.0]) + vehicle_values - [2_000.0, 1_000.0],
+        bank_assets
+        + stock_assets
+        + bond_assets
+        + np.array([12_000.0, 6_000.0])
+        + vehicle_values
+        - [2_000.0, 1_000.0],
     )
+    np.testing.assert_array_equal(
+        dataset.saved_dataset["bank_account_assets"], bank_assets
+    )
+    np.testing.assert_array_equal(dataset.saved_dataset["stock_assets"], stock_assets)
+    np.testing.assert_array_equal(dataset.saved_dataset["bond_assets"], bond_assets)
     np.testing.assert_array_equal(
         dataset.saved_dataset["household_vehicles_value"], vehicle_values
     )

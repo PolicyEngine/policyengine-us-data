@@ -199,6 +199,7 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "employment_income": np.array([35_000.0, 20_000.0]),
                 "interest_dividend_income": np.array([100.0, 50.0]),
                 "social_security_pension_income": np.array([0.0, 0.0]),
+                "networth": np.array([100_000.0, 80_000.0]),
                 "liq": np.array([10_000.0, 20_000.0]),
                 "stocks": np.array([100.0, 200.0]),
                 "nmmf": np.array([1.0, 2.0]),
@@ -248,6 +249,7 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
             values.update(
                 {
                     "scf_certificates_of_deposit": [12_000.0, 6_000.0],
+                    "scf_net_worth": [100_000.0, 80_000.0],
                     "scf_bank_account_assets": [10_000.0, 20_000.0],
                     "scf_stock_assets": [101.0, 202.0],
                     "scf_bond_assets": [10.0, 20.0],
@@ -297,13 +299,9 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
     )
     np.testing.assert_array_equal(
         dataset.saved_dataset["net_worth"],
-        bank_assets
-        + stock_assets
-        + bond_assets
-        + np.array([12_000.0, 6_000.0])
-        + vehicle_values
-        - [2_000.0, 1_000.0],
+        np.array([100_000.0, 80_000.0], dtype=np.float32),
     )
+    assert "scf_net_worth" not in dataset.saved_dataset
     np.testing.assert_array_equal(
         dataset.saved_dataset["bank_account_assets"], bank_assets
     )

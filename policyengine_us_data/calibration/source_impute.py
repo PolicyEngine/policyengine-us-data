@@ -47,11 +47,13 @@ from policyengine_us_data.datasets.org import (
     predict_org_features,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_NET_WORTH_TARGET,
     SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
     SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
     SCF_NET_WORTH_COMPONENT_VARIABLES,
     add_scf_financial_asset_targets,
     add_scf_household_asset_targets,
+    add_scf_net_worth_target,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
@@ -59,6 +61,7 @@ from policyengine_us_data.utils.asset_imputation import (
     combine_sipp_and_scf_financial_assets,
     combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
+    rebalance_scf_net_worth_components,
     require_scf_net_worth_formula_targets,
 )
 
@@ -782,6 +785,7 @@ def _impute_scf(
         logger.warning("SCF missing predictors: %s", missing_preds)
         scf_predictors = available_preds
 
+    scf_net_worth_targets = add_scf_net_worth_target(scf_df)
     scf_financial_asset_targets = add_scf_financial_asset_targets(scf_df)
     scf_household_asset_targets = add_scf_household_asset_targets(scf_df)
     scf_component_targets = add_scf_net_worth_component_targets(scf_df)
@@ -789,11 +793,13 @@ def _impute_scf(
         scf_financial_asset_targets=scf_financial_asset_targets,
         scf_household_asset_targets=scf_household_asset_targets,
         scf_component_targets=scf_component_targets,
+        scf_net_worth_targets=scf_net_worth_targets,
     )
 
     available_vars = [v for v in SCF_CORE_IMPUTED_VARIABLES if v in scf_df.columns]
     qrf_vars = (
-        available_vars
+        [v for v in scf_net_worth_targets if v in scf_df.columns]
+        + available_vars
         + [v for v in scf_financial_asset_targets if v in scf_df.columns]
         + [v for v in scf_household_asset_targets if v in scf_df.columns]
         + [v for v in scf_component_targets if v in scf_df.columns]
@@ -957,6 +963,16 @@ def _impute_scf(
         for var in SCF_NET_WORTH_COMPONENT_VARIABLES:
             if var in data:
                 net_worth_components[var] = data[var][time_period]
+        if SCF_NET_WORTH_TARGET in preds:
+            net_worth_components = rebalance_scf_net_worth_components(
+                components=net_worth_components,
+                target_net_worth=preds.loc[
+                    first_person_mask, SCF_NET_WORTH_TARGET
+                ].values.astype(np.float32),
+            )
+            for var in SCF_NET_WORTH_COMPONENT_VARIABLES:
+                if var in net_worth_components:
+                    data[var] = {time_period: net_worth_components[var]}
         data["net_worth"] = {
             time_period: compute_net_worth_from_components(
                 components=net_worth_components,

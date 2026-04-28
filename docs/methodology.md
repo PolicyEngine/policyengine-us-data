@@ -252,10 +252,11 @@ value variables, we use a stable household-level 50/50 source-model draw between
 prediction and the comparable SCF QRF prediction, with a single draw shared across the asset block.
 We then impute the non-overlapping SCF balance-sheet components - home value, mortgage debt,
 retirement assets, business equity, other real estate, other financial assets, other debts, and
-related categories including vehicle, student, and other installment debt - and compute `net_worth`
-from those components and the final SIPP/SCF-blended policy leaves. This gives downstream code a
-direct component formula without an accounting residual or rescaling of resource-tested policy
-leaves.
+related categories including vehicle, student, and other installment debt. Because independently
+imputed leaves do not preserve the SCF balance-sheet covariance exactly, we impute a direct SCF net
+worth anchor and proportionally rebalance the SCF-only leaves to that anchor. This gives downstream
+code a direct component formula without an accounting residual while preserving resource-tested
+policy leaves.
 
 The output of this stage is the source-imputed stratified CPS
 (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the

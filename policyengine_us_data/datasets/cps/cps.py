@@ -48,11 +48,13 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_NET_WORTH_TARGET,
     SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
     SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
     SCF_NET_WORTH_COMPONENT_VARIABLES,
     add_scf_financial_asset_targets,
     add_scf_household_asset_targets,
+    add_scf_net_worth_target,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
@@ -60,6 +62,7 @@ from policyengine_us_data.utils.asset_imputation import (
     combine_sipp_and_scf_financial_assets,
     combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
+    rebalance_scf_net_worth_components,
     require_scf_net_worth_formula_targets,
 )
 from policyengine_us_data.utils.policyengine import (
@@ -2578,6 +2581,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         "interest_dividend_income",
         "social_security_pension_income",
     ]
+    scf_net_worth_targets = add_scf_net_worth_target(scf_data)
     scf_financial_asset_targets = add_scf_financial_asset_targets(scf_data)
     scf_household_asset_targets = add_scf_household_asset_targets(scf_data)
     scf_component_targets = add_scf_net_worth_component_targets(scf_data)
@@ -2585,9 +2589,11 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         scf_financial_asset_targets=scf_financial_asset_targets,
         scf_household_asset_targets=scf_household_asset_targets,
         scf_component_targets=scf_component_targets,
+        scf_net_worth_targets=scf_net_worth_targets,
     )
     IMPUTED_VARIABLES = (
-        [
+        list(scf_net_worth_targets)
+        + [
             "auto_loan_balance",
             "auto_loan_interest",
         ]
@@ -2621,6 +2627,8 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:
+        if var == SCF_NET_WORTH_TARGET:
+            continue
         cps[var] = imputations[var]
 
     for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
@@ -2683,6 +2691,19 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     for variable in SCF_NET_WORTH_COMPONENT_VARIABLES:
         if variable in cps:
             net_worth_components[variable] = cps[variable]
+    if SCF_NET_WORTH_TARGET in imputations:
+        net_worth_components = rebalance_scf_net_worth_components(
+            components=net_worth_components,
+            target_net_worth=imputations[SCF_NET_WORTH_TARGET].values,
+        )
+        for variable in SCF_NET_WORTH_COMPONENT_VARIABLES:
+            if variable not in net_worth_components:
+                continue
+            if variable in cps:
+                del cps[variable]
+            cps[variable] = net_worth_components[variable]
+    if "net_worth" in cps:
+        del cps["net_worth"]
     cps["net_worth"] = compute_net_worth_from_components(
         components=net_worth_components
     )

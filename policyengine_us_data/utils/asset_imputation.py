@@ -13,6 +13,10 @@ SIPP_LIQUID_ASSET_VARIABLES = (
 )
 SIPP_VEHICLE_ASSET_VARIABLES = ("household_vehicles_value",)
 SCF_NET_WORTH_VARIABLE = "net_worth"
+SCF_NET_WORTH_TARGET = "scf_net_worth"
+SCF_NET_WORTH_TARGETS = {
+    SCF_NET_WORTH_TARGET: ("networth",),
+}
 SCF_FINANCIAL_ASSET_TARGETS = {
     "scf_bank_account_assets": ("liq",),
     "scf_stock_assets": ("stocks", "nmmf"),
@@ -51,6 +55,8 @@ SCF_NET_WORTH_COMPONENT_TARGETS = {
     "scf_other_debt": ("odebt",),
 }
 SCF_NET_WORTH_COMPONENT_VARIABLES = tuple(SCF_NET_WORTH_COMPONENT_TARGETS)
+SCF_OTHER_ASSET_COMPONENT = "scf_other_financial_assets"
+SCF_OTHER_DEBT_COMPONENT = "scf_other_debt"
 
 EXPOSED_NET_WORTH_COMPONENT_VARIABLES = (
     SIPP_LIQUID_ASSET_VARIABLES
@@ -173,6 +179,11 @@ def add_scf_financial_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
     return _add_scf_targets(scf, SCF_FINANCIAL_ASSET_TARGETS)
 
 
+def add_scf_net_worth_target(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add a direct SCF net worth anchor target for component rebalancing."""
+    return _add_scf_targets(scf, SCF_NET_WORTH_TARGETS)
+
+
 def add_scf_net_worth_component_targets(scf: pd.DataFrame) -> tuple[str, ...]:
     """Add SCF-only balance-sheet targets needed for a net worth formula."""
     return _add_scf_targets(scf, SCF_NET_WORTH_COMPONENT_TARGETS)
@@ -188,16 +199,19 @@ def require_scf_net_worth_formula_targets(
     scf_financial_asset_targets: Sequence[str],
     scf_household_asset_targets: Sequence[str],
     scf_component_targets: Sequence[str],
+    scf_net_worth_targets: Sequence[str] = (),
 ) -> None:
     """Fail loudly if the SCF source cannot supply the formula leaves."""
     available_targets = (
         set(scf_financial_asset_targets)
         | set(scf_household_asset_targets)
         | set(scf_component_targets)
+        | set(scf_net_worth_targets)
     )
     missing_targets = [
         target
         for target in (
+            *SCF_NET_WORTH_TARGETS,
             *SCF_FINANCIAL_ASSET_TARGETS,
             *SCF_HOUSEHOLD_ASSET_TARGETS,
             *SCF_NET_WORTH_COMPONENT_TARGETS,
@@ -380,6 +394,110 @@ def compute_net_worth_from_components(
         component_total += component_signs.get(variable, 1.0) * values
 
     return component_total.astype(np.float32)
+
+
+def rebalance_scf_net_worth_components(
+    *,
+    components: Mapping[str, Sequence[float]],
+    target_net_worth: Sequence[float],
+    adjustable_variables: Sequence[str] = SCF_NET_WORTH_COMPONENT_VARIABLES,
+    protected_variables: Sequence[str] = (
+        SIPP_LIQUID_ASSET_VARIABLES + SIPP_VEHICLE_ASSET_VARIABLES
+    ),
+    component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
+) -> dict[str, np.ndarray]:
+    """Rebalance SCF-only leaves so the component formula matches net worth.
+
+    Component QRFs are fit sequentially but still predict each leaf separately,
+    so their sum can drift from the direct SCF net worth distribution. Preserve
+    the final SIPP/SCF-blended policy leaves and proportionally scale SCF-only
+    same-sign leaves to the direct SCF net worth anchor.
+    """
+    adjusted = {
+        variable: np.asarray(values, dtype=np.float32).copy()
+        for variable, values in components.items()
+    }
+    if not adjusted:
+        return adjusted
+
+    target_net_worth = np.asarray(target_net_worth, dtype=np.float32)
+    first_shape = target_net_worth.shape
+    for variable, values in adjusted.items():
+        if values.shape != first_shape:
+            raise ValueError(
+                f"{variable} has shape {values.shape}, but target_net_worth "
+                f"has shape {first_shape}."
+            )
+
+    protected_variables = set(protected_variables)
+    adjustable_variables = tuple(
+        variable
+        for variable in adjustable_variables
+        if variable in adjusted and variable not in protected_variables
+    )
+    if not adjustable_variables:
+        return adjusted
+
+    fixed_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable, values in adjusted.items():
+        if variable not in adjustable_variables:
+            fixed_total += component_signs.get(variable, 1.0) * values
+
+    asset_variables = [
+        variable
+        for variable in adjustable_variables
+        if component_signs.get(variable, 1.0) >= 0
+    ]
+    debt_variables = [
+        variable
+        for variable in adjustable_variables
+        if component_signs.get(variable, 1.0) < 0
+    ]
+
+    asset_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable in asset_variables:
+        asset_total += adjusted[variable]
+
+    debt_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable in debt_variables:
+        debt_total += adjusted[variable]
+
+    desired_adjustable_total = target_net_worth - fixed_total
+    positive_target = desired_adjustable_total >= 0
+
+    required_assets = np.maximum(desired_adjustable_total + debt_total, 0)
+    asset_scale = np.divide(
+        required_assets,
+        asset_total,
+        out=np.ones_like(required_assets, dtype=np.float32),
+        where=(asset_total > 0) & positive_target,
+    )
+    for variable in asset_variables:
+        adjusted[variable][positive_target] *= asset_scale[positive_target]
+
+    needs_asset_fallback = positive_target & (asset_total <= 0) & (required_assets > 0)
+    if needs_asset_fallback.any() and SCF_OTHER_ASSET_COMPONENT in adjusted:
+        adjusted[SCF_OTHER_ASSET_COMPONENT][needs_asset_fallback] = required_assets[
+            needs_asset_fallback
+        ]
+
+    required_debts = np.maximum(asset_total - desired_adjustable_total, 0)
+    debt_scale = np.divide(
+        required_debts,
+        debt_total,
+        out=np.ones_like(required_debts, dtype=np.float32),
+        where=(debt_total > 0) & ~positive_target,
+    )
+    for variable in debt_variables:
+        adjusted[variable][~positive_target] *= debt_scale[~positive_target]
+
+    needs_debt_fallback = (~positive_target) & (debt_total <= 0) & (required_debts > 0)
+    if needs_debt_fallback.any() and SCF_OTHER_DEBT_COMPONENT in adjusted:
+        adjusted[SCF_OTHER_DEBT_COMPONENT][needs_debt_fallback] = required_debts[
+            needs_debt_fallback
+        ]
+
+    return adjusted
 
 
 def build_household_vehicle_receiver(

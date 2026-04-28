@@ -84,9 +84,10 @@ components needed to express `net_worth` as a formula: certificates of deposit, 
 retirement assets, cash-value life insurance, managed assets, other financial assets, home value,
 other real estate, business equity, other nonfinancial assets, mortgages, other residential debt,
 lines of credit, credit card debt, vehicle installment debt, student debt, other installment debt,
-and other debt. We compute `net_worth` from these components and the final SIPP/SCF-blended policy
-leaves rather than rescaling resource-tested policy leaves to force an independently imputed SCF
-aggregate. The SCF imputation uses their reference person definition to ensure proper matching.
+and other debt. We also impute a direct SCF net-worth anchor, then proportionally rebalance the
+SCF-only leaves so `net_worth` remains a component formula while preserving the final
+SIPP/SCF-blended policy leaves. The SCF imputation uses their reference person definition to ensure
+proper matching.
 
 ### American Community Survey (ACS)
 

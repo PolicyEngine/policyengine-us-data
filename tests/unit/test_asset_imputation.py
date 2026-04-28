@@ -5,6 +5,7 @@ from policyengine_us_data.utils.asset_imputation import (
     NET_WORTH_COMPONENTS_ARE_COMPLETE,
     add_scf_financial_asset_targets,
     add_scf_household_asset_targets,
+    add_scf_net_worth_target,
     add_scf_net_worth_component_targets,
     aggregate_person_values_to_reference_households,
     align_household_values_to_reference_households,
@@ -14,6 +15,7 @@ from policyengine_us_data.utils.asset_imputation import (
     combine_sipp_and_scf_household_assets,
     compute_net_worth_from_components,
     financial_asset_source_is_scf,
+    rebalance_scf_net_worth_components,
 )
 
 
@@ -150,6 +152,15 @@ def test_add_scf_household_asset_targets_builds_sipp_comparable_columns():
     assert scf["scf_household_vehicles_value"].tolist() == [12_000.0, 6_000.0]
 
 
+def test_add_scf_net_worth_target_builds_direct_anchor():
+    scf = pd.DataFrame({"networth": [125_000.0, -10_000.0]})
+
+    targets = add_scf_net_worth_target(scf)
+
+    assert targets == ("scf_net_worth",)
+    assert scf["scf_net_worth"].tolist() == [125_000.0, -10_000.0]
+
+
 def test_add_scf_net_worth_component_targets_builds_formula_columns():
     scf = pd.DataFrame(
         {
@@ -272,3 +283,26 @@ def test_compute_net_worth_from_components_applies_signs():
     )
 
     assert net_worth.tolist() == [150.0]
+
+
+def test_rebalance_scf_net_worth_components_preserves_policy_leaves():
+    components = {
+        "bank_account_assets": np.array([100.0, 400.0]),
+        "scf_retirement_assets": np.array([300.0, 100.0]),
+        "scf_other_financial_assets": np.array([0.0, 0.0]),
+        "scf_other_debt": np.array([50.0, 0.0]),
+    }
+
+    adjusted = rebalance_scf_net_worth_components(
+        components=components,
+        target_net_worth=np.array([200.0, 50.0]),
+    )
+
+    np.testing.assert_array_equal(
+        adjusted["bank_account_assets"],
+        np.array([100.0, 400.0], dtype=np.float32),
+    )
+    net_worth = compute_net_worth_from_components(components=adjusted)
+    np.testing.assert_allclose(net_worth, np.array([200.0, 50.0]))
+    assert adjusted["scf_retirement_assets"].tolist() == [150.0, 100.0]
+    assert adjusted["scf_other_debt"].tolist() == [50.0, 450.0]

@@ -128,7 +128,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --dev
       - name: Install optimized test deps
-        run: uv pip install modal
+        run: uv pip install modal pytest numpy pandas
       - name: Ensure PR Modal environment exists
         run: uv run python .github/scripts/ensure_modal_environment.py
       - name: Sync Modal secrets to PR environment

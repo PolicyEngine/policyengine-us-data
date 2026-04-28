@@ -18,6 +18,18 @@ def test_premium_residual_subtracts_computed_premiums() -> None:
     np.testing.assert_allclose(result, [375.0, -50.0, 50.0])
 
 
+def test_premium_residual_preserves_reported_input() -> None:
+    reported = np.array([500.0, 200.0])
+    computed = np.array([125.0, 250.0])
+
+    _ = compute_premium_residual(
+        reported_premium=reported,
+        baseline_computed_premium=computed,
+    )
+
+    np.testing.assert_allclose(reported, [500.0, 200.0])
+
+
 def test_tax_unit_premiums_allocate_to_first_person_only() -> None:
     data = {
         "person_id": np.array([1, 2, 3, 4]),

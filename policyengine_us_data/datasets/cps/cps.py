@@ -522,22 +522,26 @@ def add_marketplace_plan_benchmark_ratio(self):
 
 
 MODELED_PREMIUM_RESIDUALIZATION_TARGETS = {
-    "health_insurance_premiums_without_medicare_part_b": (
-        "chip_premium",
-        "marketplace_net_premium",
-        "medicaid_premium",
-    ),
-    "medicare_part_b_premiums_reported": ("income_adjusted_part_b_premium",),
+    "health_insurance_premium_residual": {
+        "reported_variable": "health_insurance_premiums_without_medicare_part_b",
+        "modeled_variables": (
+            "chip_premium",
+            "marketplace_net_premium",
+            "medicaid_premium",
+        ),
+    },
 }
 
 
 def residualize_modeled_health_premium_components(self):
-    """Subtract baseline computed premiums from imputed premium inputs.
+    """Create residual premium inputs net of baseline computed premiums.
 
-    The model adds computed premiums back in SPM MOOP, so CPS-reported
-    premium inputs need to carry only the residual not explained by baseline
-    computed premiums. Variables are version-gated because the data package
-    may be built against a policyengine-us release before a modeled premium
+    The SPM model adds computed premiums back explicitly, so it needs a
+    separate residual premium input for the parts of CPS-reported premiums not
+    explained by baseline computed premiums. The original CPS-reported premium
+    inputs remain unchanged for consumers that use reported medical expenses
+    directly. Variables are version-gated because the data package may be built
+    against a policyengine-us release before a residual or modeled premium
     variable exists.
     """
     from policyengine_us import Microsimulation
@@ -548,11 +552,14 @@ def residualize_modeled_health_premium_components(self):
     period = self.time_period
     changed = False
 
-    for target, premium_variables in MODELED_PREMIUM_RESIDUALIZATION_TARGETS.items():
-        if target not in data:
+    for output_variable, config in MODELED_PREMIUM_RESIDUALIZATION_TARGETS.items():
+        reported_variable = config["reported_variable"]
+        premium_variables = config["modeled_variables"]
+
+        if reported_variable not in data or output_variable not in tbs.variables:
             continue
 
-        computed_premium = np.zeros(len(data[target]), dtype=float)
+        computed_premium = np.zeros(len(data[reported_variable]), dtype=float)
         available_variables = [
             variable for variable in premium_variables if variable in tbs.variables
         ]
@@ -567,17 +574,17 @@ def residualize_modeled_health_premium_components(self):
                 values=values,
             )
 
-        if available_variables:
-            data[target] = compute_premium_residual(
-                reported_premium=data[target],
-                baseline_computed_premium=computed_premium,
-            )
-            logging.info(
-                "Residualized %s by subtracting baseline computed premiums: %s",
-                target,
-                ", ".join(available_variables),
-            )
-            changed = True
+        data[output_variable] = compute_premium_residual(
+            reported_premium=data[reported_variable],
+            baseline_computed_premium=computed_premium,
+        )
+        logging.info(
+            "Created %s from %s by subtracting baseline computed premiums: %s",
+            output_variable,
+            reported_variable,
+            ", ".join(available_variables) if available_variables else "none",
+        )
+        changed = True
 
     if changed:
         self.save_dataset(data)

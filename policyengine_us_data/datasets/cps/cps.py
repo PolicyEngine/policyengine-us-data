@@ -193,6 +193,8 @@ class CPS(Dataset):
         add_takeup(self)
         logging.info("Imputing Marketplace plan benchmark ratio")
         add_marketplace_plan_benchmark_ratio(self)
+        logging.info("Residualizing imputed health premium components")
+        residualize_modeled_health_premium_components(self)
         logging.info("Downsampling")
 
         # Downsample
@@ -517,6 +519,120 @@ def add_marketplace_plan_benchmark_ratio(self):
     )
 
     self.save_dataset(data)
+
+
+MODELED_PREMIUM_RESIDUALIZATION_TARGETS = {
+    "health_insurance_premiums_without_medicare_part_b": (
+        "chip_premium",
+        "marketplace_net_premium",
+        "medicaid_premium",
+    ),
+    "medicare_part_b_premiums_reported": ("income_adjusted_part_b_premium",),
+}
+
+
+def residualize_modeled_health_premium_components(self):
+    """Subtract baseline computed premiums from imputed premium inputs.
+
+    The model adds computed premiums back in SPM MOOP, so CPS-reported
+    premium inputs need to carry only the residual not explained by baseline
+    computed premiums. Variables are version-gated because the data package
+    may be built against a policyengine-us release before a modeled premium
+    variable exists.
+    """
+    from policyengine_us import Microsimulation
+
+    data = self.load_dataset()
+    baseline = Microsimulation(dataset=self)
+    tbs = baseline.tax_benefit_system
+    period = self.time_period
+    changed = False
+
+    for target, premium_variables in MODELED_PREMIUM_RESIDUALIZATION_TARGETS.items():
+        if target not in data:
+            continue
+
+        computed_premium = np.zeros(len(data[target]), dtype=float)
+        available_variables = [
+            variable for variable in premium_variables if variable in tbs.variables
+        ]
+        for variable in available_variables:
+            values = np.asarray(
+                baseline.calculate(variable, period=period).values,
+                dtype=float,
+            )
+            computed_premium += _premium_values_to_person(
+                data=data,
+                source_entity=tbs.variables[variable].entity.key,
+                values=values,
+            )
+
+        if available_variables:
+            data[target] = compute_premium_residual(
+                reported_premium=data[target],
+                baseline_computed_premium=computed_premium,
+            )
+            logging.info(
+                "Residualized %s by subtracting baseline computed premiums: %s",
+                target,
+                ", ".join(available_variables),
+            )
+            changed = True
+
+    if changed:
+        self.save_dataset(data)
+
+
+def compute_premium_residual(
+    reported_premium: np.ndarray,
+    baseline_computed_premium: np.ndarray,
+) -> np.ndarray:
+    """Return the imputed premium residual after baseline computed premiums."""
+    return np.asarray(reported_premium, dtype=float) - np.asarray(
+        baseline_computed_premium, dtype=float
+    )
+
+
+def _premium_values_to_person(
+    data: dict,
+    source_entity: str,
+    values: np.ndarray,
+) -> np.ndarray:
+    """Map computed premiums to person rows for person-level residualization."""
+    person_ids = data["person_id"]
+    if source_entity == "person":
+        if len(values) != len(person_ids):
+            raise ValueError(
+                "Person-level computed premium length does not match person rows: "
+                f"got {len(values)}, expected {len(person_ids)}."
+            )
+        return values
+
+    entity_id_variable = f"{source_entity}_id"
+    person_entity_id_variable = f"person_{source_entity}_id"
+    if entity_id_variable not in data or person_entity_id_variable not in data:
+        raise ValueError(
+            f"Cannot allocate {source_entity}-level premiums to people: missing "
+            f"{entity_id_variable} or {person_entity_id_variable}."
+        )
+
+    entity_ids = data[entity_id_variable]
+    person_entity_ids = data[person_entity_id_variable]
+    if len(values) != len(entity_ids):
+        raise ValueError(
+            f"{source_entity}-level computed premium length does not match "
+            f"{source_entity} rows: got {len(values)}, expected {len(entity_ids)}."
+        )
+
+    entity_position = {entity_id: index for index, entity_id in enumerate(entity_ids)}
+    allocated = np.zeros(len(person_ids), dtype=float)
+    seen_entities = set()
+    for person_index, entity_id in enumerate(person_entity_ids):
+        if entity_id in seen_entities:
+            continue
+        allocated[person_index] = values[entity_position[entity_id]]
+        seen_entities.add(entity_id)
+    return allocated
 
 
 MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN = 0.5

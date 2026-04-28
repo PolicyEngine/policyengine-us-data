@@ -521,8 +521,7 @@ def _get_refundable_aotc_target(time_period: int) -> dict:
     count_year = int(count_row["Year"])
     if amount_year != count_year:
         raise ValueError(
-            "AOTC count and amount source years differ: "
-            f"{count_year} vs {amount_year}"
+            f"AOTC count and amount source years differ: {count_year} vs {amount_year}"
         )
     return {
         "source_year": amount_year,

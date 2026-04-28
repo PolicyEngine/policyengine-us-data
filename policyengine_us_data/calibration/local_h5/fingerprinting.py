@@ -148,7 +148,9 @@ class FingerprintingService:
     ) -> ArtifactIdentity:
         actual_path = Path(path)
         if not actual_path.exists():
-            raise FileNotFoundError(f"Expected {logical_name} artifact at {actual_path}")
+            raise FileNotFoundError(
+                f"Expected {logical_name} artifact at {actual_path}"
+            )
         return ArtifactIdentity(
             logical_name=logical_name,
             path=actual_path,
@@ -203,14 +205,18 @@ class FingerprintingService:
             metadata=metadata,
         )
 
-    def _extract_code_version(self, run_config_payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _extract_code_version(
+        self, run_config_payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
         return {
             "git_commit": run_config_payload.get("git_commit"),
             "git_branch": run_config_payload.get("git_branch"),
             "git_dirty": run_config_payload.get("git_dirty"),
         }
 
-    def _extract_model_build(self, run_config_payload: Mapping[str, Any]) -> dict[str, Any]:
+    def _extract_model_build(
+        self, run_config_payload: Mapping[str, Any]
+    ) -> dict[str, Any]:
         return {
             "locked_version": run_config_payload.get("package_version"),
             "git_commit": run_config_payload.get("git_commit"),
@@ -249,6 +255,4 @@ class FingerprintingService:
         from policyengine_us import Microsimulation
 
         simulation = Microsimulation(dataset=str(source_dataset_path))
-        return int(
-            len(simulation.calculate("household_id", map_to="household").values)
-        )
+        return int(len(simulation.calculate("household_id", map_to="household").values))

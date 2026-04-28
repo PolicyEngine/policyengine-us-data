@@ -367,9 +367,7 @@ def _resolve_scope_fingerprint(
                 f"  Current:  {computed_fingerprint}"
             )
         else:
-            print(
-                f"Using pinned fingerprint from pipeline: {expected_fingerprint}"
-            )
+            print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
         return expected_fingerprint
     return computed_fingerprint
 

@@ -51,6 +51,8 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 
 
 META_FILE = WORK_DIR / "checkpoint_meta.json"
+
+
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,

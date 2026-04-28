@@ -119,14 +119,20 @@ class RunMetadata:
 
     def to_dict(self) -> dict:
         data = asdict(self)
-        if data.get("fingerprint") is None and data.get("regional_fingerprint") is not None:
+        if (
+            data.get("fingerprint") is None
+            and data.get("regional_fingerprint") is not None
+        ):
             data["fingerprint"] = data["regional_fingerprint"]
         return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "RunMetadata":
         data = dict(data)
-        if data.get("regional_fingerprint") is None and data.get("fingerprint") is not None:
+        if (
+            data.get("regional_fingerprint") is None
+            and data.get("fingerprint") is not None
+        ):
             data["regional_fingerprint"] = data["fingerprint"]
         return cls(**data)
 

@@ -17,7 +17,7 @@ from policyengine_us_data.utils.cms_medicare import (
 )
 from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
 from policyengine_core.reforms import Reform
-from policyengine_us_data.utils.soi import pe_to_soi, get_soi
+from policyengine_us_data.utils.soi import pe_to_soi, get_soi, get_tracked_soi_row
 
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to
@@ -511,6 +511,48 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _get_refundable_aotc_target(time_period: int) -> dict:
+    """Return national refundable AOTC amount and count from IRS SOI Table 3.3."""
+
+    variable = "refundable_american_opportunity_credit"
+    amount_row = get_tracked_soi_row(variable, time_period, count=False)
+    count_row = get_tracked_soi_row(variable, time_period, count=True)
+    amount_year = int(amount_row["Year"])
+    count_year = int(count_row["Year"])
+    if amount_year != count_year:
+        raise ValueError(
+            "AOTC count and amount source years differ: "
+            f"{count_year} vs {amount_year}"
+        )
+    return {
+        "source_year": amount_year,
+        "amount": float(amount_row["Value"]),
+        "count": float(count_row["Value"]),
+    }
+
+
+def _add_aotc_targets(loss_matrix, targets_list, sim, time_period):
+    """Add legacy national refundable AOTC amount and recipient-count targets."""
+
+    variable = "refundable_american_opportunity_credit"
+    target = _get_refundable_aotc_target(time_period)
+    label = f"nation/irs/{variable}"
+    loss_matrix[label] = sim.calculate(
+        variable, map_to="household", period=time_period
+    ).values
+    targets_list.append(target["amount"])
+
+    tax_unit_values = sim.calculate(variable, period=time_period).values
+    loss_matrix[f"{label}_count"] = sim.map_result(
+        (tax_unit_values > 0).astype(float),
+        "tax_unit",
+        "household",
+    )
+    targets_list.append(target["count"])
+
+    return targets_list, loss_matrix
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -772,6 +814,13 @@ def build_loss_matrix(dataset: type, time_period):
     )
 
     targets_array, loss_matrix = _add_ctc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
+    targets_array, loss_matrix = _add_aotc_targets(
         loss_matrix,
         targets_array,
         sim,

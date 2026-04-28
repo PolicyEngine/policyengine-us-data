@@ -153,6 +153,9 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
     "dividend_income": "ordinary_dividends",
     "income_tax_before_credits": "income_tax_before_credits",
     "qualified_dividend_income": "qualified_dividends",
+    "refundable_american_opportunity_credit": (
+        "refundable_american_opportunity_credit"
+    ),
     "rental_income": "rent_and_royalty_net_income",
     "tax_exempt_interest_income": "exempt_interest",
     "taxable_interest_income": "taxable_interest_income",

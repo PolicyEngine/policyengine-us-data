@@ -11911,3 +11911,9 @@ Year,SOI table,XLSX column,XLSX row,Variable,Filing status,AGI lower bound,AGI u
 2023,Table 4.3,13,13,capital_gains_gross,All,675602.0,3100950.0,False,True,False,196881345000
 2023,Table 4.3,17,13,business_net_profits,All,675602.0,3100950.0,False,True,False,51448953000
 2023,Table 4.3,21,13,partnership_and_s_corp_income,All,675602.0,3100950.0,False,True,False,380628023000
+2021,Table 3.3,AO,10,refundable_american_opportunity_credit,All,-inf,inf,True,False,True,6027056
+2021,Table 3.3,AP,10,refundable_american_opportunity_credit,All,-inf,inf,False,False,True,5170213000
+2022,Table 3.3,AO,10,refundable_american_opportunity_credit,All,-inf,inf,True,False,True,5957083
+2022,Table 3.3,AP,10,refundable_american_opportunity_credit,All,-inf,inf,False,False,True,5184485000
+2023,Table 3.3,AO,10,refundable_american_opportunity_credit,All,-inf,inf,True,False,True,5821688
+2023,Table 3.3,AP,10,refundable_american_opportunity_credit,All,-inf,inf,False,False,True,5090364000

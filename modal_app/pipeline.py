@@ -510,6 +510,15 @@ def verify_runtime_seams() -> dict:
             "stderr_tail": proc.stderr[-500:],
         }
 
+    import modal_app.remote_calibration_runner as calibration_runner
+
+    runner_source = Path(calibration_runner.__file__).read_text()
+    result["calibration_optimizer_checkpoint_policy"] = {
+        "runner_exposes_checkpoint_name": "checkpoint_name" in runner_source,
+        "runner_passes_checkpoint_output": "--checkpoint-output" in runner_source,
+        "runner_collects_checkpoint_path": "CHECKPOINT_PATH:" in runner_source,
+    }
+
     return result
 
 

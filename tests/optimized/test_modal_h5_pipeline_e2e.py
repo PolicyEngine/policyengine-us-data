@@ -119,22 +119,6 @@ def test_package_fallback_case_builds_and_stages_one_h5():
         cleanup.remote(run_id)
 
 
-def test_checkpoint_manifest_name_mismatch_fails_in_preflight():
-    _require_modal_tokens()
-
-    run_id = _run_id("checkpoint-mismatch")
-    seed = _function(HARNESS_APP_NAME, "seed_h5_case")
-    preflight = _function(HARNESS_APP_NAME, "preflight_h5_case")
-    cleanup = _function(HARNESS_APP_NAME, "cleanup_h5_case")
-
-    try:
-        seed.remote(run_id, "checkpoint_name_mismatch")
-        with pytest.raises(Exception, match="calibration_checkpoint\\.pt not found"):
-            preflight.remote(run_id, n_clones=1)
-    finally:
-        cleanup.remote(run_id)
-
-
 def test_misnamed_package_breaks_worker_geography_resolution():
     _require_modal_tokens()
 

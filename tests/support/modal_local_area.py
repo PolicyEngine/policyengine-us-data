@@ -1,4 +1,4 @@
-"""Fixture helpers for `test_modal_local_area.py`."""
+"""Helpers for importing `modal_app.local_area` in tests."""
 
 import importlib
 import sys

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tests.unit.fixtures.test_modal_local_area import load_local_area_module
+from tests.support.modal_local_area import load_local_area_module
 
 
 def test_build_promote_national_publish_script_imports_version_manifest_helpers():

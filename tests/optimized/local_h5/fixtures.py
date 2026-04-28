@@ -1,4 +1,4 @@
-"""Shared tiny-artifact fixtures for local H5 integration tests."""
+"""Shared tiny-artifact fixtures for optimized local H5 integration tests."""
 
 from __future__ import annotations
 
@@ -21,7 +21,9 @@ from policyengine_us_data.calibration.local_h5.requests import (
     AreaFilter,
 )
 
-FIXTURE_DATASET_PATH = Path(__file__).resolve().parents[1] / "test_fixture_50hh.h5"
+FIXTURE_DATASET_PATH = (
+    Path(__file__).resolve().parents[2] / "integration" / "test_fixture_50hh.h5"
+)
 DISTRICT_GEOID = "3701"
 COUNTY_FIPS = "37183"
 STATE_FIPS = 37

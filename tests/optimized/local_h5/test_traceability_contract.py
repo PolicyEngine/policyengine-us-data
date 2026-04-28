@@ -3,7 +3,7 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (
     PublishingInputBundle,
 )
 
-from tests.integration.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+from tests.optimized.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
 
 
 def _fingerprint_for(*, inputs, scope: str = "regional") -> str:

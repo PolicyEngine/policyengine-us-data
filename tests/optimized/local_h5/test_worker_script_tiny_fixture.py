@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.integration.local_h5.fixtures import (
+from tests.optimized.local_h5.fixtures import (
     build_request,
     seed_local_h5_artifacts,
 )

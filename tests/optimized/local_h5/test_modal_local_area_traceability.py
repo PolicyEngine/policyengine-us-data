@@ -2,7 +2,7 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (
     FingerprintingService,
 )
 
-from tests.integration.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+from tests.optimized.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
 from tests.support.modal_local_area import load_local_area_module
 
 

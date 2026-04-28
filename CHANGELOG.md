@@ -1,3 +1,10 @@
+## [1.88.1] - 2026-04-28
+
+### Fixed
+
+- Remove calibration optimizer checkpoint artifacts from the Modal calibration pipeline.
+
+
 ## [1.88.0] - 2026-04-25
 
 ### Added

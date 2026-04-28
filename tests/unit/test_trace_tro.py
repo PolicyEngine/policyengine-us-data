@@ -1,4 +1,5 @@
 import hashlib
+import importlib.resources
 import json
 from pathlib import Path
 
@@ -219,8 +220,9 @@ def test_tro_validates_against_shipped_schema(tmp_path):
 
     tro = build_trace_tro_from_release_manifest(manifest)
 
-    schema_path = (
-        Path(__file__).resolve().parents[1] / "schemas" / "trace_tro.schema.json"
+    schema = json.loads(
+        importlib.resources.files("policyengine_us_data")
+        .joinpath("schemas/trace_tro.schema.json")
+        .read_text()
     )
-    schema = json.loads(schema_path.read_text())
     jsonschema.validate(instance=tro, schema=schema)

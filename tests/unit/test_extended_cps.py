@@ -158,6 +158,81 @@ class TestStructuralMortgageValidation:
         assert ExtendedCPS._has_positive_mortgage_input(data, 2024) is True
 
 
+class TestAOTCEligibilityInputImputation:
+    def test_leaves_data_unchanged_without_positive_aotc_signal(self):
+        data = {
+            "american_opportunity_credit": {2024: np.array([0.0])},
+            "tax_unit_id": {2024: np.array([1])},
+            "person_tax_unit_id": {2024: np.array([1])},
+            "qualified_tuition_expenses": {2024: np.array([1_200.0])},
+        }
+
+        result = ExtendedCPS._impute_aotc_eligibility_inputs(data, 2024)
+
+        assert "is_pursuing_credential_for_american_opportunity_credit" not in result
+        np.testing.assert_array_equal(
+            result["qualified_tuition_expenses"][2024],
+            np.array([1_200.0]),
+        )
+
+    def test_marks_tuition_members_in_positive_aotc_tax_units(self):
+        data = {
+            "american_opportunity_credit": {2024: np.array([1_000.0, 0.0])},
+            "tax_unit_id": {2024: np.array([1, 2])},
+            "person_tax_unit_id": {2024: np.array([1, 1, 2])},
+            "qualified_tuition_expenses": {2024: np.array([1_200.0, 0.0, 1_200.0])},
+            "is_full_time_college_student": {2024: np.array([False, True, True])},
+        }
+
+        result = ExtendedCPS._impute_aotc_eligibility_inputs(data, 2024)
+
+        expected = np.array([True, False, False])
+        for variable in (
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+        ):
+            np.testing.assert_array_equal(result[variable][2024], expected)
+        for variable in (
+            "has_completed_first_four_years_of_postsecondary_education",
+            "has_felony_drug_conviction",
+        ):
+            np.testing.assert_array_equal(result[variable][2024], np.zeros(3, bool))
+        np.testing.assert_array_equal(
+            result["american_opportunity_credit_claimed_prior_years"][2024],
+            np.zeros(3, dtype=np.int8),
+        )
+        np.testing.assert_array_equal(
+            result["qualified_tuition_expenses"][2024],
+            np.array([1_200.0, 0.0, 1_200.0]),
+        )
+
+    def test_fills_tuition_when_positive_aotc_unit_has_no_tuition(self):
+        data = {
+            "american_opportunity_credit": {2024: np.array([2_500.0])},
+            "tax_unit_id": {2024: np.array([1])},
+            "person_tax_unit_id": {2024: np.array([1, 1])},
+            "qualified_tuition_expenses": {2024: np.array([0.0, 0.0])},
+            "is_full_time_college_student": {2024: np.array([False, True])},
+        }
+
+        result = ExtendedCPS._impute_aotc_eligibility_inputs(data, 2024)
+
+        expected = np.array([False, True])
+        for variable in (
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+        ):
+            np.testing.assert_array_equal(result[variable][2024], expected)
+        np.testing.assert_array_equal(
+            result["qualified_tuition_expenses"][2024],
+            np.array([0.0, 4_000.0]),
+        )
+
+
 class TestCloneChildcareDerivation:
     """Clone-half capped childcare should be derived deterministically."""
 

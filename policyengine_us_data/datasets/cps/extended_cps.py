@@ -898,6 +898,7 @@ class ExtendedCPS(Dataset):
             dataset_path=str(self.cps.file_path),
         )
 
+        new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)
         new_data = self._rename_imputed_to_inputs(new_data)
         if _supports_structural_mortgage_inputs():
             had_positive_mortgage_input = self._has_positive_mortgage_input(
@@ -919,6 +920,136 @@ class ExtendedCPS(Dataset):
             )
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
+
+    @staticmethod
+    def _aotc_qualifying_expenses_from_credit(credit):
+        capped_credit = min(max(float(credit), 0), 2_500)
+        if capped_credit <= 2_000:
+            return capped_credit
+        return 2_000 + (capped_credit - 2_000) / 0.25
+
+    @classmethod
+    def _impute_aotc_eligibility_inputs(cls, data, time_period):
+        """Convert imputed tax-unit AOTC amounts to person eligibility inputs."""
+        credit = data.get("american_opportunity_credit", {}).get(time_period)
+        tax_unit_ids = data.get("tax_unit_id", {}).get(time_period)
+        person_tax_unit_ids = data.get("person_tax_unit_id", {}).get(time_period)
+        tuition = data.get("qualified_tuition_expenses", {}).get(time_period)
+        if (
+            credit is None
+            or tax_unit_ids is None
+            or person_tax_unit_ids is None
+            or tuition is None
+        ):
+            return data
+
+        credit = np.asarray(credit)
+        tax_unit_ids = np.asarray(tax_unit_ids)
+        person_tax_unit_ids = np.asarray(person_tax_unit_ids)
+        tuition = np.array(tuition, copy=True)
+        if len(credit) != len(tax_unit_ids) or len(tuition) != len(person_tax_unit_ids):
+            logger.warning(
+                "Skipping AOTC eligibility imputation due to entity length mismatch"
+            )
+            return data
+
+        aotc_student = np.zeros(len(person_tax_unit_ids), dtype=bool)
+
+        full_time = data.get("is_full_time_college_student", {}).get(time_period)
+        full_time = (
+            np.asarray(full_time, dtype=bool)
+            if full_time is not None
+            else np.zeros(len(person_tax_unit_ids), dtype=bool)
+        )
+        dependent = data.get("is_tax_unit_dependent", {}).get(time_period)
+        dependent = (
+            np.asarray(dependent, dtype=bool)
+            if dependent is not None
+            else np.zeros(len(person_tax_unit_ids), dtype=bool)
+        )
+
+        positive_credit = credit > 0
+        if not positive_credit.any():
+            return data
+
+        positive_credit_units = tax_unit_ids[positive_credit]
+        credit_by_tax_unit_id = dict(zip(tax_unit_ids, credit))
+        imputed_tuition_count = 0
+        for tax_unit_id in positive_credit_units:
+            member_indices = np.flatnonzero(person_tax_unit_ids == tax_unit_id)
+            if member_indices.size == 0:
+                continue
+
+            tuition_indices = member_indices[tuition[member_indices] > 0]
+            if tuition_indices.size > 0:
+                aotc_student[tuition_indices] = True
+                continue
+
+            preferred = member_indices[full_time[member_indices]]
+            if preferred.size == 0:
+                preferred = member_indices[dependent[member_indices]]
+            if preferred.size == 0:
+                preferred = member_indices
+
+            selected = preferred[0]
+            aotc_student[selected] = True
+            tuition[selected] = max(
+                tuition[selected],
+                cls._aotc_qualifying_expenses_from_credit(
+                    credit_by_tax_unit_id[tax_unit_id]
+                ),
+            )
+            imputed_tuition_count += 1
+
+        for variable in (
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+        ):
+            existing = data.get(variable, {}).get(time_period)
+            values = (
+                np.asarray(existing, dtype=bool).copy()
+                if existing is not None
+                else np.zeros(len(person_tax_unit_ids), dtype=bool)
+            )
+            values[aotc_student] = True
+            data[variable] = {time_period: values}
+
+        for variable in (
+            "has_completed_first_four_years_of_postsecondary_education",
+            "has_felony_drug_conviction",
+        ):
+            existing = data.get(variable, {}).get(time_period)
+            values = (
+                np.asarray(existing, dtype=bool).copy()
+                if existing is not None
+                else np.zeros(len(person_tax_unit_ids), dtype=bool)
+            )
+            values[aotc_student] = False
+            data[variable] = {time_period: values}
+
+        existing_prior_years = data.get(
+            "american_opportunity_credit_claimed_prior_years", {}
+        ).get(time_period)
+        prior_years = (
+            np.asarray(existing_prior_years).copy()
+            if existing_prior_years is not None
+            else np.zeros(len(person_tax_unit_ids), dtype=np.int8)
+        )
+        prior_years[aotc_student] = np.minimum(prior_years[aotc_student], 3)
+        data["american_opportunity_credit_claimed_prior_years"] = {
+            time_period: prior_years
+        }
+        data["qualified_tuition_expenses"] = {time_period: tuition}
+        logger.info(
+            "AOTC eligibility imputation populated inputs for %d people "
+            "across %d tax units and filled tuition for %d people",
+            int(aotc_student.sum()),
+            int(positive_credit.sum()),
+            imputed_tuition_count,
+        )
+        return data
 
     @classmethod
     def _rename_imputed_to_inputs(cls, data):

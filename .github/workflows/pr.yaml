@@ -147,6 +147,7 @@ jobs:
           tests/integration/test_tiny_stage_2_artifacts.py
           tests/integration/test_tiny_stage_3_artifacts.py
           tests/integration/test_tiny_stage_4_artifacts.py
+          tests/integration/test_tiny_stage_5_artifacts.py
           tests/integration/local_h5/
           tests/integration/test_modal_pipeline_seams.py
           tests/integration/test_modal_h5_pipeline_e2e.py

@@ -34,9 +34,23 @@ Methodologically, the benchmark treats the methods as related but not
 identical:
 
 - `L0` and `GREG` can consume arbitrary linear calibration targets.
-- `IPF` is most natural for count-style or indicator-style targets, so the
-  current automatic conversion path supports `person_count` and
-  `household_count`.
+- `IPF` is most natural for count-style or indicator-style targets, and is
+  additionally limited to **at most two entity levels per run**. `surveysd::ipf`
+  has built-in handles only for the person/household pair via `conP` (row-level
+  constraints) and `conH` (constraints aggregated by `hid`); there is no
+  generalised mechanism for additional counted entities such as `tax_unit` or
+  `spm_unit`. The benchmark therefore restricts IPF to `person_count` and
+  `household_count` targets — together or alone — and drops other count
+  families (`tax_unit_count`, `spm_unit_count`, `family_count`,
+  `marital_unit_count`) at the count check with explicit diagnostics. Those
+  targets remain in the shared sparse system that L0 and GREG fit, so the
+  cross-method comparison on the IPF-feasible subset is still apples-to-apples
+  via `--score-on ipf_retained_authored`.
+
+  Producing a single weight vector that simultaneously satisfies targets at
+  three or more entity levels is not possible with classical IPF; running IPF
+  separately per scope and aggregating would give it more degrees of freedom
+  than L0 / GREG and would not be a like-for-like comparison.
 
 The core workflow is:
 
@@ -122,11 +136,15 @@ external overrides are supplied. It reconstructs an IPF microdata table from:
 - the selected count-like targets and their stratum constraints
 
 The generated `unit_metadata.csv` is built for `person_count` and
-`household_count` targets. It expands cloned households to a person-level table
-when person targets are present, carries a repeated household `unit_index` so
-per-person weights collapse cleanly back to per-household, and adds one
-string-valued derived category column per declared bucket schema (e.g.
-`age_bracket`, `agi_bracket_district`, `snap_positive`).
+`household_count` targets only — the two entity levels `surveysd::ipf` supports
+natively via `conP` and `conH`. It expands cloned households to a person-level
+table when person targets are present, carries a repeated household
+`unit_index` so per-person weights collapse cleanly back to per-household, and
+adds one string-valued derived category column per declared bucket schema
+(e.g. `age_bracket`, `agi_bracket_district`, `snap_positive`). Targets at
+other entity levels (e.g. `tax_unit_count`, `spm_unit_count`) are dropped at
+the count check with `non_count_style` diagnostics; they remain in the shared
+sparse target matrix that L0 and GREG fit.
 
 The generated `ipf_target_metadata.csv` contains one `categorical_margin` row
 per retained IPF cell after validation. That means:

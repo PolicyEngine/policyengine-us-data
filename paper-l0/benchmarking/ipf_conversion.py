@@ -353,10 +353,13 @@ def _target_scope(target_variable: str) -> str:
     except KeyError as exc:
         raise ValueError(
             f"IPF conversion does not support target variable "
-            f"'{target_variable}'. Currently supported: "
-            f"{sorted(_SCOPE_BY_VARIABLE)}. "
-            "`tax_unit_count` and `spm_unit_count` remain outside the core "
-            "household/person IPF path in this pass."
+            f"'{target_variable}'. Supported: "
+            f"{sorted(_SCOPE_BY_VARIABLE)}. Classical IPF in this benchmark "
+            "is limited to person and household scopes — the two entity "
+            "levels surveysd::ipf supports natively via `conP` and `conH`. "
+            "Other count families (e.g. `tax_unit_count`, `spm_unit_count`) "
+            "are dropped from the IPF run with explicit diagnostics; they "
+            "remain in the shared sparse system that L0 and GREG fit."
         ) from exc
 
 

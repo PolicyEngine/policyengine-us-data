@@ -1,3 +1,14 @@
+## [1.88.2] - 2026-04-29
+
+### Changed
+
+- Enable all state- and district-level EITC and CTC targets in the default calibration target configuration.
+
+### Fixed
+
+- Fix the Modal pipeline diagnostics-upload helper so its generated `python -c` script is valid Python and covered by a unit test before deployment.
+
+
 ## [1.88.1] - 2026-04-28
 
 ### Fixed

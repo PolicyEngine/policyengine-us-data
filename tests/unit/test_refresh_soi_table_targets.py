@@ -101,16 +101,38 @@ def test_build_target_year_rows_reads_standard_table_cells(monkeypatch):
     assert refreshed["Value"].tolist() == [123_000.0, 789.0]
 
 
-def test_build_target_year_rows_reads_table_3_3_aotc_cells(monkeypatch):
+def test_build_target_year_rows_reads_table_3_3_education_credit_cells(monkeypatch):
     module = load_module()
     assert module.TABLE_FILE_SUFFIX["Table 3.3"] == "in33ar.xls"
 
     workbook = make_workbook(cols=45)
+    workbook.iat[9, module._column_index("I")] = 7_211_349.0
+    workbook.iat[9, module._column_index("J")] = 7_554_668.0
     workbook.iat[9, module._column_index("AO")] = 5_821_688.0
     workbook.iat[9, module._column_index("AP")] = 5_090_364.0
 
     targets = pd.DataFrame(
         [
+            make_target_row(
+                **{
+                    "SOI table": "Table 3.3",
+                    "XLSX column": "I",
+                    "XLSX row": 10,
+                    "Year": 2023,
+                    "Variable": "education_tax_credits",
+                    "Count": True,
+                }
+            ),
+            make_target_row(
+                **{
+                    "SOI table": "Table 3.3",
+                    "XLSX column": "J",
+                    "XLSX row": 10,
+                    "Year": 2023,
+                    "Variable": "education_tax_credits",
+                    "Count": False,
+                }
+            ),
             make_target_row(
                 **{
                     "SOI table": "Table 3.3",
@@ -141,8 +163,13 @@ def test_build_target_year_rows_reads_table_3_3_aotc_cells(monkeypatch):
         targets, source_year=2023, target_year=2024
     )
 
-    assert refreshed["Year"].tolist() == [2024, 2024]
-    assert refreshed["Value"].tolist() == [5_821_688.0, 5_090_364_000.0]
+    assert refreshed["Year"].tolist() == [2024, 2024, 2024, 2024]
+    assert refreshed["Value"].tolist() == [
+        7_211_349.0,
+        7_554_668_000.0,
+        5_821_688.0,
+        5_090_364_000.0,
+    ]
 
 
 def test_build_target_year_rows_uses_semantic_table_1_4_columns(monkeypatch):

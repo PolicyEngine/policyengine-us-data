@@ -552,6 +552,47 @@ def _add_aotc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _get_education_credit_target(time_period: int) -> dict:
+    """Return national nonrefundable education credit target from IRS SOI Table 3.3."""
+
+    variable = "education_tax_credits"
+    amount_row = get_tracked_soi_row(variable, time_period, count=False)
+    count_row = get_tracked_soi_row(variable, time_period, count=True)
+    amount_year = int(amount_row["Year"])
+    count_year = int(count_row["Year"])
+    if amount_year != count_year:
+        raise ValueError(
+            f"Education credit count and amount source years differ: {count_year} vs {amount_year}"
+        )
+    return {
+        "source_year": amount_year,
+        "amount": float(amount_row["Value"]),
+        "count": float(count_row["Value"]),
+    }
+
+
+def _add_education_credit_targets(loss_matrix, targets_list, sim, time_period):
+    """Add legacy national nonrefundable education credit amount and count targets."""
+
+    variable = "education_tax_credits"
+    target = _get_education_credit_target(time_period)
+    label = f"nation/irs/{variable}"
+    loss_matrix[label] = sim.calculate(
+        variable, map_to="household", period=time_period
+    ).values
+    targets_list.append(target["amount"])
+
+    tax_unit_values = sim.calculate(variable, period=time_period).values
+    loss_matrix[f"{label}_count"] = sim.map_result(
+        (tax_unit_values > 0).astype(float),
+        "tax_unit",
+        "household",
+    )
+    targets_list.append(target["count"])
+
+    return targets_list, loss_matrix
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -820,6 +861,12 @@ def build_loss_matrix(dataset: type, time_period):
     )
 
     targets_array, loss_matrix = _add_aotc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+    targets_array, loss_matrix = _add_education_credit_targets(
         loss_matrix,
         targets_array,
         sim,

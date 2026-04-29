@@ -258,6 +258,69 @@ def test_workbook_overlay_loads_refundable_aotc_target(monkeypatch, tmp_path):
     assert set(rows["value"].astype(float)) == {5_821_688.0, 5_090_364_000.0}
 
 
+def test_workbook_overlay_loads_education_tax_credit_target(monkeypatch, tmp_path):
+    db_uri, engine = _create_test_engine(tmp_path)
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.WORKBOOK_NATIONAL_DOMAIN_TARGETS",
+        {"education_tax_credits": "education_tax_credits"},
+    )
+
+    def fake_get_tracked_soi_row(variable, requested_year, **kwargs):
+        count = kwargs["count"]
+        rows = {
+            ("adjusted_gross_income", False): {
+                "Year": 2023,
+                "Value": 1_000_000.0,
+                "SOI table": "Table 1.1",
+            },
+            ("education_tax_credits", True): {
+                "Year": 2023,
+                "Value": 7_211_349.0,
+                "SOI table": "Table 3.3",
+            },
+            ("education_tax_credits", False): {
+                "Year": 2023,
+                "Value": 7_554_668_000.0,
+                "SOI table": "Table 3.3",
+            },
+        }
+        return pd.Series(rows[(variable, count)])
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_tracked_soi_row",
+        fake_get_tracked_soi_row,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_workbook_soi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "geo_level": "national",
+            "variables": [
+                "tax_unit_count",
+                "education_tax_credits",
+            ],
+            "domain_variables": ["education_tax_credits"],
+        }
+    )
+
+    assert set(rows["variable"]) == {
+        "tax_unit_count",
+        "education_tax_credits",
+    }
+    assert set(rows["period"].astype(int)) == {2023}
+    assert set(rows["value"].astype(float)) == {7_211_349.0, 7_554_668_000.0}
+
+
 def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
     assert _skip_coarse_state_agi_person_count_target("state", 9) is True
     assert _skip_coarse_state_agi_person_count_target("state", 8) is False

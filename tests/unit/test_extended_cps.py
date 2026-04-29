@@ -347,6 +347,55 @@ class TestAOTCEligibilityInputImputation:
         assert "is_pursuing_credential_for_american_opportunity_credit" not in result
 
 
+class TestLLCEligibilityInputImputation:
+    @pytest.fixture
+    def pe_us_supports_llc_inputs(self, monkeypatch):
+        monkeypatch.setattr(
+            extended_cps_module,
+            "_supports_llc_eligibility_inputs",
+            lambda: True,
+        )
+
+    def test_marks_non_aotc_tuition_people_as_llc_eligible(
+        self,
+        pe_us_supports_llc_inputs,
+    ):
+        data = {
+            "person_tax_unit_id": {2024: np.array([1, 1, 2])},
+            "qualified_tuition_expenses": {2024: np.array([1_000.0, 2_000.0, 0.0])},
+            "is_pursuing_credential_for_american_opportunity_credit": {
+                2024: np.array([True, False, False])
+            },
+        }
+
+        result = ExtendedCPS._impute_llc_eligibility_inputs(data, 2024)
+
+        expected = np.array([False, True, False])
+        for variable in (
+            "attends_eligible_educational_institution_for_lifetime_learning_credit",
+            "has_lifetime_learning_credit_1098_t_or_exception",
+        ):
+            np.testing.assert_array_equal(result[variable][2024], expected)
+
+    def test_leaves_data_unchanged_when_pe_us_lacks_llc_inputs(self, monkeypatch):
+        monkeypatch.setattr(
+            extended_cps_module,
+            "_supports_llc_eligibility_inputs",
+            lambda: False,
+        )
+        data = {
+            "person_tax_unit_id": {2024: np.array([1])},
+            "qualified_tuition_expenses": {2024: np.array([1_000.0])},
+        }
+
+        result = ExtendedCPS._impute_llc_eligibility_inputs(data, 2024)
+
+        assert (
+            "attends_eligible_educational_institution_for_lifetime_learning_credit"
+            not in result
+        )
+
+
 class TestCloneChildcareDerivation:
     """Clone-half capped childcare should be derived deterministically."""
 

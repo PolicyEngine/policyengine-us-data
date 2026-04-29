@@ -46,8 +46,18 @@ AOTC_ELIGIBILITY_INPUTS = (
 )
 
 
+LLC_ELIGIBILITY_INPUTS = (
+    "attends_eligible_educational_institution_for_lifetime_learning_credit",
+    "has_lifetime_learning_credit_1098_t_or_exception",
+)
+
+
 def _supports_aotc_eligibility_inputs() -> bool:
     return has_policyengine_us_variables(*AOTC_ELIGIBILITY_INPUTS)
+
+
+def _supports_llc_eligibility_inputs() -> bool:
+    return has_policyengine_us_variables(*LLC_ELIGIBILITY_INPUTS)
 
 
 def _supports_structural_mortgage_inputs() -> bool:
@@ -919,6 +929,7 @@ class ExtendedCPS(Dataset):
         )
 
         new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)
+        new_data = self._impute_llc_eligibility_inputs(new_data, self.time_period)
         new_data = self._rename_imputed_to_inputs(new_data)
         if _supports_structural_mortgage_inputs():
             had_positive_mortgage_input = self._has_positive_mortgage_input(
@@ -1100,6 +1111,63 @@ class ExtendedCPS(Dataset):
             int(aotc_student.sum()),
             int(positive_credit.sum()),
             adjusted_tuition_count,
+        )
+        return data
+
+    @classmethod
+    def _impute_llc_eligibility_inputs(cls, data, time_period):
+        """Populate LLC factual eligibility inputs for non-AOTC tuition records."""
+
+        if not _supports_llc_eligibility_inputs():
+            return data
+
+        person_tax_unit_ids = data.get("person_tax_unit_id", {}).get(time_period)
+        tuition = data.get("qualified_tuition_expenses", {}).get(time_period)
+        if person_tax_unit_ids is None or tuition is None:
+            return data
+
+        person_tax_unit_ids = np.asarray(person_tax_unit_ids)
+        tuition = np.asarray(tuition)
+        if len(tuition) != len(person_tax_unit_ids):
+            logger.warning(
+                "Skipping LLC eligibility imputation due to entity length mismatch"
+            )
+            return data
+
+        aotc_student = data.get(
+            "is_pursuing_credential_for_american_opportunity_credit",
+            {},
+        ).get(time_period)
+        if aotc_student is None:
+            aotc_student = data.get(
+                "is_eligible_for_american_opportunity_credit",
+                {},
+            ).get(time_period)
+        aotc_student = (
+            np.asarray(aotc_student, dtype=bool)
+            if aotc_student is not None
+            else np.zeros(len(person_tax_unit_ids), dtype=bool)
+        )
+
+        llc_student = (tuition > 0) & ~aotc_student
+        if not llc_student.any():
+            return data
+
+        for variable in LLC_ELIGIBILITY_INPUTS:
+            existing = data.get(variable, {}).get(time_period)
+            values = (
+                np.asarray(existing, dtype=bool).copy()
+                if existing is not None
+                else np.zeros(len(person_tax_unit_ids), dtype=bool)
+            )
+            values[llc_student] = True
+            data[variable] = {time_period: values}
+
+        logger.info(
+            "LLC eligibility imputation populated inputs for %d people "
+            "across %d tax units",
+            int(llc_student.sum()),
+            int(np.unique(person_tax_unit_ids[llc_student]).size),
         )
         return data
 

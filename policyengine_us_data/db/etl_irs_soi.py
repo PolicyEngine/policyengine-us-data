@@ -151,6 +151,7 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 #     +40.7% / +26.1% / +3.1% definitional mismatch at 2023 values.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
     "dividend_income": "ordinary_dividends",
+    "education_tax_credits": "education_tax_credits",
     "income_tax_before_credits": "income_tax_before_credits",
     "qualified_dividend_income": "qualified_dividends",
     "refundable_american_opportunity_credit": (

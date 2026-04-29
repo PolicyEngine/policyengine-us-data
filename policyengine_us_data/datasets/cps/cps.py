@@ -540,9 +540,10 @@ def derive_other_health_insurance_premiums(self):
     other-premium input for the parts of CPS-reported non-Medicare premiums
     not explained by baseline computed Marketplace, CHIP, or Medicaid
     premiums. The original CPS-reported premium inputs remain unchanged as raw
-    source fields. Variables are version-gated because the data package may be
-    built against a policyengine-us release before a modeled premium variable
-    exists.
+    source fields. Computed premium variables are version-gated because the
+    data package may be built against a policyengine-us release before a
+    modeled premium variable exists. The derived output is still emitted so
+    datasets built on current releases are ready for the decomposed MOOP model.
     """
     from policyengine_us import Microsimulation
 
@@ -556,7 +557,7 @@ def derive_other_health_insurance_premiums(self):
         reported_variable = config["reported_variable"]
         premium_variables = config["modeled_variables"]
 
-        if reported_variable not in data or output_variable not in tbs.variables:
+        if reported_variable not in data:
             continue
 
         computed_premium = np.zeros(len(data[reported_variable]), dtype=float)

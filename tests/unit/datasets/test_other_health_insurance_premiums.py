@@ -1,8 +1,11 @@
+from types import SimpleNamespace
+
 import numpy as np
 
 from policyengine_us_data.datasets.cps.cps import (
     _premium_values_to_person,
     compute_other_health_insurance_premiums,
+    derive_other_health_insurance_premiums,
 )
 
 
@@ -57,3 +60,50 @@ def test_person_premiums_pass_through_to_person_rows() -> None:
     )
 
     np.testing.assert_allclose(result, values)
+
+
+def test_derive_other_health_insurance_premiums_emits_future_output(
+    monkeypatch,
+) -> None:
+    class FakeDataset:
+        time_period = 2024
+
+        def __init__(self):
+            self.saved_data = None
+            self.data = {
+                "person_id": np.array([1, 2]),
+                "health_insurance_premiums_without_medicare_part_b": np.array(
+                    [500.0, 200.0]
+                ),
+            }
+
+        def load_dataset(self):
+            return self.data.copy()
+
+        def save_dataset(self, data):
+            self.saved_data = data
+
+    class FakeMicrosimulation:
+        tax_benefit_system = SimpleNamespace(
+            variables={
+                "chip_premium": SimpleNamespace(entity=SimpleNamespace(key="person")),
+            }
+        )
+
+        def __init__(self, dataset):
+            pass
+
+        def calculate(self, variable, period):
+            assert variable == "chip_premium"
+            return SimpleNamespace(values=np.array([50.0, 75.0]))
+
+    monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
+
+    dataset = FakeDataset()
+    derive_other_health_insurance_premiums(dataset)
+
+    assert dataset.saved_data is not None
+    np.testing.assert_allclose(
+        dataset.saved_data["other_health_insurance_premiums"],
+        [450.0, 125.0],
+    )

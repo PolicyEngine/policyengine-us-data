@@ -114,6 +114,8 @@ include:
     geo_level: national
   - variable: medicaid
     geo_level: national
+  # Target ETL emits only the Part B variable name supported by the installed
+  # policyengine-us version; keep both names so training config matches either.
   - variable: medicare_part_b_premium
     geo_level: national
   - variable: medicare_part_b_premiums

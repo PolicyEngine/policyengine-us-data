@@ -78,15 +78,15 @@ def test_source_imputed_stratified_cps_adds_expected_imputations(tmp_path):
     arrays = _load_period_arrays(artifacts.source_imputed_path)
 
     assert arrays["tip_income"].shape == arrays["person_id"].shape
-    assert arrays["hourly_wage"].shape == arrays["person_id"].shape
+    assert arrays["pre_subsidy_rent"].shape == arrays["person_id"].shape
+    assert arrays["bank_account_assets"].shape == arrays["person_id"].shape
+    assert arrays["stock_assets"].shape == arrays["person_id"].shape
+    assert arrays["bond_assets"].shape == arrays["person_id"].shape
     assert arrays["is_paid_hourly"].dtype == np.bool_
-    assert arrays["is_union_member_or_covered"].dtype == np.bool_
     assert arrays["tip_income"].sum() > 0
-    assert arrays["bank_account_assets"].shape == arrays["household_id"].shape
     assert arrays["net_worth"].shape == arrays["household_id"].shape
     assert (arrays["bank_account_assets"] >= 0).all()
     assert (arrays["net_worth"] >= 0).all()
-    np.testing.assert_allclose(arrays["pre_subsidy_rent"], arrays["rent"])
 
 
 def test_small_enhanced_cps_is_subset_with_enhanced_contract(tmp_path):

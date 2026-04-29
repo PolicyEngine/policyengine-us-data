@@ -25,15 +25,13 @@ STAGE_5_PERIOD = STAGE_4_PERIOD
 
 SOURCE_IMPUTED_PERSON_VARIABLES = (
     "tip_income",
-    "hourly_wage",
-    "is_paid_hourly",
-    "is_union_member_or_covered",
-)
-SOURCE_IMPUTED_HOUSEHOLD_VARIABLES = (
     "pre_subsidy_rent",
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
+    "is_paid_hourly",
+)
+SOURCE_IMPUTED_HOUSEHOLD_VARIABLES = (
     "household_vehicles_value",
     "net_worth",
     "auto_loan_balance",
@@ -219,10 +217,7 @@ def _source_imputed_person_arrays(
 ) -> dict[str, np.ndarray]:
     employment_income = arrays["employment_income"].astype(np.float32)
     hours = arrays["weekly_hours_worked"].astype(np.float32)
-    annual_hours = np.maximum(hours * 52, 1)
-    hourly_wage = np.where(hours > 0, employment_income / annual_hours, 0).astype(
-        np.float32
-    )
+    household_assets = _source_imputed_household_asset_inputs(arrays)
 
     return {
         "tip_income": np.where(
@@ -230,32 +225,38 @@ def _source_imputed_person_arrays(
             np.round(employment_income * 0.08, 2),
             0,
         ).astype(np.float32),
-        "hourly_wage": np.round(hourly_wage, 2).astype(np.float32),
-        "is_paid_hourly": (hours > 0) & (hourly_wage < 60),
-        "is_union_member_or_covered": _resize_pattern(
-            [False, True, False, False],
-            len(arrays["person_id"]),
-            dtype=np.bool_,
+        "pre_subsidy_rent": _household_values_to_person(
+            arrays,
+            arrays["rent"].astype(np.float32),
         ),
+        "bank_account_assets": _household_values_to_person(
+            arrays,
+            household_assets["bank_account_assets"],
+        ),
+        "stock_assets": _household_values_to_person(
+            arrays,
+            household_assets["stock_assets"],
+        ),
+        "bond_assets": _household_values_to_person(
+            arrays,
+            household_assets["bond_assets"],
+        ),
+        "is_paid_hourly": hours > 0,
     }
 
 
 def _source_imputed_household_arrays(
     arrays: dict[str, np.ndarray],
 ) -> dict[str, np.ndarray]:
-    income = arrays["spm_unit_total_income_reported"].astype(np.float32)
+    household_assets = _source_imputed_household_asset_inputs(arrays)
+    bank_account_assets = household_assets["bank_account_assets"]
+    stock_assets = household_assets["stock_assets"]
+    bond_assets = household_assets["bond_assets"]
     vehicles_owned = arrays["household_vehicles_owned"].astype(np.float32)
-    bank_account_assets = np.round(np.maximum(income * 0.06, 250), 2).astype(np.float32)
-    stock_assets = np.round(np.where(income > 80_000, income * 0.35, income * 0.05), 2)
-    bond_assets = np.round(np.where(income > 50_000, income * 0.03, 0), 2)
     vehicle_value = np.round(vehicles_owned * 8_000, 2)
     auto_loan_balance = np.round(vehicles_owned * 2_500, 2)
 
     return {
-        "pre_subsidy_rent": arrays["rent"].astype(np.float32).copy(),
-        "bank_account_assets": bank_account_assets.astype(np.float32),
-        "stock_assets": stock_assets.astype(np.float32),
-        "bond_assets": bond_assets.astype(np.float32),
         "household_vehicles_value": vehicle_value.astype(np.float32),
         "net_worth": (
             bank_account_assets
@@ -267,6 +268,38 @@ def _source_imputed_household_arrays(
         "auto_loan_balance": auto_loan_balance.astype(np.float32),
         "auto_loan_interest": np.round(auto_loan_balance * 0.07, 2).astype(np.float32),
     }
+
+
+def _source_imputed_household_asset_inputs(
+    arrays: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    income = arrays["spm_unit_total_income_reported"].astype(np.float32)
+    return {
+        "bank_account_assets": np.round(np.maximum(income * 0.06, 250), 2).astype(
+            np.float32
+        ),
+        "stock_assets": np.round(
+            np.where(income > 80_000, income * 0.35, income * 0.05),
+            2,
+        ).astype(np.float32),
+        "bond_assets": np.round(np.where(income > 50_000, income * 0.03, 0), 2).astype(
+            np.float32
+        ),
+    }
+
+
+def _household_values_to_person(
+    arrays: dict[str, np.ndarray],
+    household_values: np.ndarray,
+) -> np.ndarray:
+    household_id_to_value = dict(zip(arrays["household_id"], household_values))
+    return np.array(
+        [
+            household_id_to_value[household_id]
+            for household_id in arrays["person_household_id"]
+        ],
+        dtype=np.asarray(household_values).dtype,
+    )
 
 
 def _subset_by_household_ids(

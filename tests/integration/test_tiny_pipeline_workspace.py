@@ -37,7 +37,7 @@ def test_tiny_pipeline_workspace_resolves_expected_artifacts(tmp_path):
         workspace.stage_1 / "irs_puf_2015.h5",
     )
     assert workspace.expected_artifacts("h5_outputs") == (
-        workspace.h5_outputs / "states" / "AL.h5",
+        workspace.h5_outputs / "states" / "NC.h5",
         workspace.h5_outputs / "districts" / "NC-01.h5",
         workspace.h5_outputs / "national" / "US.h5",
     )

@@ -44,7 +44,7 @@ STAGE_ARTIFACTS: dict[str, tuple[str, ...]] = {
         "unified_run_config.json",
     ),
     "h5_outputs": (
-        "states/AL.h5",
+        "states/NC.h5",
         "districts/NC-01.h5",
         "national/US.h5",
     ),

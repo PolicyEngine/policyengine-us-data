@@ -1,3 +1,10 @@
+## [1.88.3] - 2026-04-29
+
+### Fixed
+
+- Added other health insurance premiums as the non-Medicare premium category not covered by modeled Marketplace, CHIP, or Medicaid premiums.
+
+
 ## [1.88.2] - 2026-04-29
 
 ### Changed

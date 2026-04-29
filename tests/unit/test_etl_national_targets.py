@@ -199,3 +199,83 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646
+
+
+def test_load_national_targets_supports_wic_targets(tmp_path, monkeypatch):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        national_id = national.stratum_id
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    direct_targets_df = pd.DataFrame(
+        [
+            {
+                "variable": "wic",
+                "value": 7_332_200_000,
+                "source": "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx",
+                "notes": "FY 2024 WIC total costs from FNS annual summary",
+                "year": 2024,
+            }
+        ]
+    )
+    conditional_targets = [
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx",
+            "notes": "FY 2024 WIC average monthly participation",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=direct_targets_df,
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        wic_total_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == national_id,
+                Target.variable == "wic",
+                Target.period == 2024,
+            )
+        ).first()
+        assert wic_total_target is not None
+        assert wic_total_target.value == 7_332_200_000
+
+        wic_stratum = session.exec(
+            select(Stratum).where(Stratum.notes == "National WIC Recipients")
+        ).first()
+        assert wic_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in wic_stratum.constraints_rel
+        }
+        assert ("wic", ">", "0") in constraints
+
+        wic_count_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == wic_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert wic_count_target is not None
+        assert wic_count_target.value == 6_704_000

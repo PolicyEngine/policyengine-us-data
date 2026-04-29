@@ -23,6 +23,11 @@ from policyengine_us_data.utils.db import (
 )
 
 
+WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
+    "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
+)
+
+
 def extract_national_targets(year: int = DEFAULT_YEAR):
     """
     Extract national calibration targets from various sources.
@@ -197,6 +202,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
+            "variable": "wic",
+            "value": 7_332_200_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC total costs; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row; food costs are $4.9115B",
+            "year": 2024,
+        },
+        {
             "variable": "real_estate_taxes",
             "value": 500e9,
             "source": "Census Bureau",
@@ -314,6 +326,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC average monthly participation; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -736,6 +755,10 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "aca_ptc":
                 stratum_notes = "National ACA Premium Tax Credit Recipients"
+                constraint_operation = ">"
+                constraint_value = "0"
+            elif constraint_var == "wic":
+                stratum_notes = "National WIC Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "spm_unit_energy_subsidy_reported":

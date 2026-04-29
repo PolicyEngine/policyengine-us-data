@@ -41,9 +41,7 @@ MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
 
 pytestmark = pytest.mark.skipif(
     not _SMOKE_ENABLED,
-    reason=(
-        "Modal smoke test; set POLICYENGINE_US_DATA_MODAL_SMOKE=1 to enable"
-    ),
+    reason=("Modal smoke test; set POLICYENGINE_US_DATA_MODAL_SMOKE=1 to enable"),
 )
 
 

@@ -159,8 +159,9 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
 
     assert result == str(artifacts_dir / "calibration_package.pkl")
     assert str(artifacts_dir / "policy_data.db") in captured["cmd"]
-    assert str(artifacts_dir / "source_imputed_stratified_extended_cps.h5") in (
-        captured["cmd"]
+    assert (
+        str(artifacts_dir / "source_imputed_stratified_extended_cps.h5")
+        in (captured["cmd"])
     )
     assert str(artifacts_dir / "calibration_package.pkl") in captured["cmd"]
     assert "--chunk-dir" in captured["cmd"]

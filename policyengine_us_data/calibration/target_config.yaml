@@ -26,6 +26,8 @@ include:
     geo_level: district
   - variable: taxable_pension_income
     geo_level: district
+  - variable: eitc
+    geo_level: district
   - variable: refundable_ctc
     geo_level: district
   - variable: non_refundable_ctc
@@ -58,6 +60,12 @@ include:
   - variable: spm_unit_count
     geo_level: state
     domain_variable: tanf
+  - variable: eitc
+    geo_level: state
+  - variable: refundable_ctc
+    geo_level: state
+  - variable: non_refundable_ctc
+    geo_level: state
 
   # === STATE — ACA marketplace APTC and bronze-plan enrollment counts ===
   - variable: tax_unit_count

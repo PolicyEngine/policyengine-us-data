@@ -51,6 +51,7 @@ from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
 from policyengine_us_data.utils.policyengine import (
+    medicare_part_b_premium_variable_name,
     supports_medicare_enrollment_input,
 )
 
@@ -1133,6 +1134,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["other_medical_expenses"] = person.PMED_VAL
     if supports_medicare_enrollment_input():
         cps["medicare_enrolled"] = person.MCARE == 1
+    if medicare_part_b_premium_variable_name() == "medicare_part_b_premiums":
+        cps["medicare_part_b_premiums"] = person.PEMCPREM
 
     # Get QBI simulation parameters ---
     yamlfilename = (

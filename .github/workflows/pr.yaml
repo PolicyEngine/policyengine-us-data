@@ -100,16 +100,7 @@ jobs:
 
   target-integration-tests:
     runs-on: ubuntu-latest
-    needs:
-      [
-        check-fork,
-        check-lock-freshness,
-        lint,
-        check-changelog,
-        unit-tests,
-        smoke-test,
-        docs-build,
-      ]
+    needs: [check-fork, lint]
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}

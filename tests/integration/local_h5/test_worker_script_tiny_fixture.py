@@ -7,10 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.optimized.local_h5.fixtures import (
+from tests.integration.local_h5.fixtures import (
     build_request,
     seed_local_h5_artifacts,
 )
+
+pytestmark = pytest.mark.integration
 
 pytest.importorskip("scipy")
 pytest.importorskip("spm_calculator")

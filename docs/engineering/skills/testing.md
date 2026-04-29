@@ -5,8 +5,8 @@ Use this skill whenever adding, moving, or reviewing tests.
 ## Canonical Layout
 
 - Put unit tests under `tests/unit/`.
-- Put data-dependent or runtime integration tests under `tests/integration/`.
-- Put deployed Modal/staging tests under `tests/optimized/`.
+- Put data-dependent, runtime, deployed Modal, and staging integration tests
+  under `tests/integration/`.
 - Do not add pytest files under `policyengine_us_data/tests/`; CI does not
   collect that tree.
 
@@ -46,7 +46,7 @@ python scripts/run_quality_guards.py
 The current guard enforces:
 
 - No package-internal pytest files under `policyengine_us_data/tests/`.
-- No pytest files outside the approved top-level test lanes.
+- No pytest files outside `tests/unit/` and `tests/integration/`.
 - No imports from `tests.conftest`.
 - No imports across test lanes.
 

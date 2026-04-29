@@ -1,4 +1,4 @@
-"""Optimized integration tests for the deployed Modal pipeline app.
+"""Integration tests for the deployed Modal pipeline app.
 
 These tests focus on image/runtime seams rather than the full data build.
 They verify that the deployed pipeline image can boot, import critical

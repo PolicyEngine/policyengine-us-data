@@ -98,7 +98,7 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  optimized-integration-tests:
+  target-integration-tests:
     runs-on: ubuntu-latest
     needs:
       [
@@ -119,7 +119,7 @@ jobs:
       MODAL_APP_NAME: policyengine-us-data-pipeline
       MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
       MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness
-    name: Optimized integration tests (PR staging)
+    name: Target integration tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -127,7 +127,7 @@ jobs:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --dev
-      - name: Install optimized test deps
+      - name: Install integration test deps
         run: uv pip install modal pytest numpy pandas
       - name: Ensure PR Modal environment exists
         run: uv run python .github/scripts/ensure_modal_environment.py
@@ -139,8 +139,17 @@ jobs:
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/local_area.py
       - name: Deploy Modal H5 test harness to PR staging
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/h5_test_harness.py
-      - name: Run optimized integration tests against PR staging
-        run: uv run pytest tests/optimized/ -v
+      - name: Run target integration tests
+        run: >
+          uv run pytest
+          tests/integration/test_tiny_pipeline_workspace.py
+          tests/integration/test_tiny_stage_1_artifacts.py
+          tests/integration/test_tiny_stage_2_artifacts.py
+          tests/integration/test_tiny_stage_3_artifacts.py
+          tests/integration/local_h5/
+          tests/integration/test_modal_pipeline_seams.py
+          tests/integration/test_modal_h5_pipeline_e2e.py
+          -v
       - name: Cleanup PR Modal environment
         if: always()
         run: uv run python .github/scripts/delete_modal_environment.py

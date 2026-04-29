@@ -1,4 +1,4 @@
-"""Shared tiny-artifact fixtures for optimized local H5 integration tests."""
+"""Shared tiny-artifact fixtures for local H5 integration tests."""
 
 from __future__ import annotations
 

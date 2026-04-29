@@ -2,8 +2,11 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (
     FingerprintingService,
     PublishingInputBundle,
 )
+import pytest
 
-from tests.optimized.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+from tests.integration.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+
+pytestmark = pytest.mark.integration
 
 
 def _fingerprint_for(*, inputs, scope: str = "regional") -> str:

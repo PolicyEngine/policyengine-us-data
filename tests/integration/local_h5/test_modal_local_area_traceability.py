@@ -1,9 +1,12 @@
 from policyengine_us_data.calibration.local_h5.fingerprinting import (
     FingerprintingService,
 )
+import pytest
 
-from tests.optimized.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+from tests.integration.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
 from tests.support.modal_local_area import load_local_area_module
+
+pytestmark = pytest.mark.integration
 
 
 def test_local_area_helpers_match_publish_traceability_contract(tmp_path):

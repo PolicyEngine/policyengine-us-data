@@ -26,7 +26,7 @@ pytestmark = pytest.mark.integration
 
 def _require_modal_tokens() -> None:
     if not (os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")):
-        pytest.skip("Modal credentials are required for optimized H5 tests")
+        pytest.skip("Modal credentials are required for deployed H5 integration tests")
 
 
 def _function(app_name: str, function_name: str):

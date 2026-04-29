@@ -11,7 +11,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_LANES = {
     "tests/unit": Path("tests/unit"),
     "tests/integration": Path("tests/integration"),
-    "tests/optimized": Path("tests/optimized"),
 }
 ALLOWED_TEST_ROOTS = tuple(TEST_LANES.values())
 PYTEST_FILE_PREFIX = "test_"
@@ -83,7 +82,7 @@ def _check_test_placement(files: list[Path]) -> list[str]:
         if _is_under(path, Path("policyengine_us_data/tests")):
             violations.append(
                 f"{path}: package-internal tests are not collected by CI; "
-                "move tests under tests/unit, tests/integration, or tests/optimized."
+                "move tests under tests/unit or tests/integration."
             )
             continue
 
@@ -91,7 +90,7 @@ def _check_test_placement(files: list[Path]) -> list[str]:
             if not any(_is_under(path, root) for root in ALLOWED_TEST_ROOTS):
                 violations.append(
                     f"{path}: pytest files under tests/ must live under "
-                    "tests/unit, tests/integration, or tests/optimized."
+                    "tests/unit or tests/integration."
                 )
 
     return violations

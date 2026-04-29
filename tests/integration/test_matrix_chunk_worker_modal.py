@@ -40,6 +40,9 @@ _SMOKE_ENABLED = (
     and os.environ.get("POLICYENGINE_US_DATA_MODAL_SMOKE") == "1"
 )
 
+APP_NAME = os.environ.get("MODAL_APP_NAME", "policyengine-us-data-pipeline")
+MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
+
 
 pytestmark = pytest.mark.skipif(
     not _SMOKE_ENABLED,
@@ -55,9 +58,11 @@ def test_worker_function_is_deployed() -> None:
     import modal
 
     worker = modal.Function.from_name(
-        "policyengine-us-data-pipeline",
+        APP_NAME,
         "build_matrix_chunk_worker",
+        environment_name=MODAL_ENVIRONMENT,
     )
+    worker.hydrate()
     assert worker is not None
 
 

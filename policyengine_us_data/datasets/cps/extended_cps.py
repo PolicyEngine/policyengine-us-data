@@ -19,9 +19,6 @@ from policyengine_us_data.utils.mortgage_interest import (
     impute_tax_unit_mortgage_balance_hints,
 )
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
-from policyengine_us_data.utils.policyengine import (
-    supports_modeled_medicare_part_b_inputs,
-)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -151,6 +148,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
     "health_insurance_premiums_without_medicare_part_b",
+    "other_health_insurance_premiums",
     "over_the_counter_health_expenses",
     "other_medical_expenses",
     "child_support_expense",
@@ -165,9 +163,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "employment_income_last_year",
     "self_employment_income_last_year",
 ]
-
-if not supports_modeled_medicare_part_b_inputs():
-    CPS_ONLY_IMPUTED_VARIABLES.append("medicare_part_b_premiums")
 
 # Set for O(1) lookup in the splice loop.
 _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)

@@ -206,6 +206,21 @@ class TestLoadTargetConfig:
             "domain_variable": "adjusted_gross_income,non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_medicare_part_b_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "medicare_part_b_premium",
+            "geo_level": "national",
+        } in config["include"]
+
     def test_training_config_includes_district_non_refundable_ctc_target(self):
         config = load_target_config(
             str(

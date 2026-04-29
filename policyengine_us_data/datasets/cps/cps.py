@@ -50,11 +50,6 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
-from policyengine_us_data.utils.policyengine import (
-    supports_medicare_enrollment_input,
-    supports_modeled_medicare_part_b_inputs,
-)
-
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -193,6 +188,8 @@ class CPS(Dataset):
         add_takeup(self)
         logging.info("Imputing Marketplace plan benchmark ratio")
         add_marketplace_plan_benchmark_ratio(self)
+        logging.info("Deriving other health insurance premiums")
+        derive_other_health_insurance_premiums(self)
         logging.info("Downsampling")
 
         # Downsample
@@ -517,6 +514,124 @@ def add_marketplace_plan_benchmark_ratio(self):
     )
 
     self.save_dataset(data)
+
+
+OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS = {
+    "other_health_insurance_premiums": {
+        "reported_variable": "health_insurance_premiums_without_medicare_part_b",
+        "modeled_variables": (
+            "chip_premium",
+            "marketplace_net_premium",
+            "medicaid_premium",
+        ),
+    },
+}
+
+
+def derive_other_health_insurance_premiums(self):
+    """Create other premium inputs net of baseline computed premiums.
+
+    The model adds computed premiums back explicitly, so it needs a separate
+    other-premium input for the parts of CPS-reported non-Medicare premiums
+    not explained by baseline computed Marketplace, CHIP, or Medicaid
+    premiums. The original CPS-reported premium inputs remain unchanged as raw
+    source fields. The data package requires a policyengine-us release with
+    these modeled premium variables, so missing variables fail fast instead of
+    silently producing an incomplete decomposition.
+    """
+    from policyengine_us import Microsimulation
+
+    data = self.load_dataset()
+    baseline = Microsimulation(dataset=self)
+    tbs = baseline.tax_benefit_system
+    period = self.time_period
+    changed = False
+
+    for output_variable, config in OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS.items():
+        reported_variable = config["reported_variable"]
+        premium_variables = config["modeled_variables"]
+
+        if reported_variable not in data:
+            continue
+
+        computed_premium = np.zeros(len(data[reported_variable]), dtype=float)
+        for variable in premium_variables:
+            values = np.asarray(
+                baseline.calculate(variable, period=period).values,
+                dtype=float,
+            )
+            computed_premium += _premium_values_to_person(
+                data=data,
+                source_entity=tbs.variables[variable].entity.key,
+                values=values,
+            )
+
+        data[output_variable] = compute_other_health_insurance_premiums(
+            reported_premium=data[reported_variable],
+            baseline_computed_premium=computed_premium,
+        )
+        logging.info(
+            "Created %s from %s by subtracting baseline computed premiums: %s",
+            output_variable,
+            reported_variable,
+            ", ".join(premium_variables),
+        )
+        changed = True
+
+    if changed:
+        self.save_dataset(data)
+
+
+def compute_other_health_insurance_premiums(
+    reported_premium: np.ndarray,
+    baseline_computed_premium: np.ndarray,
+) -> np.ndarray:
+    """Return other premiums after subtracting baseline computed premiums."""
+    return np.asarray(reported_premium, dtype=float) - np.asarray(
+        baseline_computed_premium, dtype=float
+    )
+
+
+def _premium_values_to_person(
+    data: dict,
+    source_entity: str,
+    values: np.ndarray,
+) -> np.ndarray:
+    """Map computed premiums to person rows for person-level premium accounting."""
+    person_ids = data["person_id"]
+    if source_entity == "person":
+        if len(values) != len(person_ids):
+            raise ValueError(
+                "Person-level computed premium length does not match person rows: "
+                f"got {len(values)}, expected {len(person_ids)}."
+            )
+        return values
+
+    entity_id_variable = f"{source_entity}_id"
+    person_entity_id_variable = f"person_{source_entity}_id"
+    if entity_id_variable not in data or person_entity_id_variable not in data:
+        raise ValueError(
+            f"Cannot allocate {source_entity}-level premiums to people: missing "
+            f"{entity_id_variable} or {person_entity_id_variable}."
+        )
+
+    entity_ids = data[entity_id_variable]
+    person_entity_ids = data[person_entity_id_variable]
+    if len(values) != len(entity_ids):
+        raise ValueError(
+            f"{source_entity}-level computed premium length does not match "
+            f"{source_entity} rows: got {len(values)}, expected {len(entity_ids)}."
+        )
+
+    entity_position = {entity_id: index for index, entity_id in enumerate(entity_ids)}
+    allocated = np.zeros(len(person_ids), dtype=float)
+    seen_entities = set()
+    for person_index, entity_id in enumerate(person_entity_ids):
+        if entity_id in seen_entities:
+            continue
+        allocated[person_index] = values[entity_position[entity_id]]
+        seen_entities.add(entity_id)
+    return allocated
 
 
 MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN = 0.5
@@ -1009,12 +1124,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
-    if supports_medicare_enrollment_input():
-        cps["medicare_enrolled"] = person.MCARE == 1
-    if supports_modeled_medicare_part_b_inputs():
-        cps["medicare_part_b_premiums_reported"] = person.PEMCPREM
-    else:
-        cps["medicare_part_b_premiums"] = person.PEMCPREM
+    cps["medicare_enrolled"] = person.MCARE == 1
 
     # Get QBI simulation parameters ---
     yamlfilename = (

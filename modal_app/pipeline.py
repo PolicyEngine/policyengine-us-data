@@ -309,7 +309,6 @@ for local_path, repo_path in entries:
     print(f"Uploaded {{repo_path}}")
 """
 
-
 def _run_required_promotion_subprocess(label: str, script: str) -> str:
     """Run a promotion subprocess and fail the release step on error."""
     result = subprocess.run(

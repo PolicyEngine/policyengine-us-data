@@ -154,6 +154,62 @@ python paper-l0/benchmarking/benchmark_cli.py run \
   --score-on ipf_retained_authored
 ```
 
+### Matched IPF / L0 / GREG comparison
+
+When IPF retains a strict subset of the requested targets (because not every
+authored target survives the closure rules), the natural comparison is to fit
+L0 and GREG on the same training set IPF was given. The CLI supports this with
+`--train-on ipf_retained_authored`, which loads the IPF scoring subset as the
+training matrix and target CSV instead of the shared requested bundle. Two-fit
+recipe:
+
+```bash
+# Full-info L0 (default; trains and scores on the shared requested set)
+python paper-l0/benchmarking/benchmark_cli.py run \
+  --method l0 --run-dir <bundle>
+
+# Matched L0 — same training inputs IPF saw, scored on the same subset
+python paper-l0/benchmarking/benchmark_cli.py run \
+  --method l0 --run-dir <bundle> \
+  --train-on ipf_retained_authored \
+  --score-on ipf_retained_authored
+```
+
+The matched run writes its summary to `outputs/{method}_matched_summary.json`
+so it does not overwrite the full-info run's `outputs/{method}_summary.json`.
+GREG follows the same pattern. IPF ignores `--train-on` because its training
+inputs are always its own categorical-margin tables.
+
+### Determinism
+
+L0 is the only method with a stochastic optimizer. Set `method_options.l0.seed`
+in the manifest (the example manifests use `42`). The CLI plumbs this seed
+through to `fit_l0_weights`, which seeds torch, CUDA (when available), and
+numpy at fit-time. Re-running with the same seed produces bit-identical
+weights. GREG and IPF are deterministic by construction.
+
+### GREG and weight non-negativity
+
+The GREG runner uses linear-Δ calibration (`survey:::grake` with `cal.linear`,
+`bounds = (-Inf, Inf)`). This is classical GREG and routinely emits negative
+fitted weights — the trade-off for an exact, closed-form linear-system fit.
+L0 and IPF produce non-negative weights by construction. The benchmark records
+this as `negative_weight_share` in `compute_common_metrics`, and the paper
+should report it prominently when comparing GREG to L0 / IPF on weight quality.
+A bounded raking variant is out of scope for the current benchmark.
+
+### Strictness contract
+
+The export step succeeds with a loud diagnostic summary as long as the
+retained authored IPF target set is coherent. Requested targets that the
+converter dropped (non-count style, unresolvable, missing parent total,
+ambiguous parent, negative complement, unsupported partial margin, mixed
+universe, or incompatible totals) are listed in
+`inputs/ipf_conversion_diagnostics.json`. If no closed system survives, or if
+the package is missing the `target_id` column needed to assemble the scoring
+subset, export fails fast with `IPFConversionError` and the diagnostics file
+is still written so the failure mode is auditable.
+
 External CSVs are still supported through `external_inputs.*` and override the
 automatic conversion path when provided. The external-IPF contract is strict:
 

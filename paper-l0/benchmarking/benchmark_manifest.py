@@ -65,13 +65,9 @@ class ExternalInputs:
         return cls(
             ipf_unit_metadata_csv=raw.get("ipf_unit_metadata_csv"),
             ipf_target_metadata_csv=raw.get("ipf_target_metadata_csv"),
-            ipf_scoring_target_metadata_csv=raw.get(
-                "ipf_scoring_target_metadata_csv"
-            ),
+            ipf_scoring_target_metadata_csv=raw.get("ipf_scoring_target_metadata_csv"),
             ipf_scoring_matrix_mtx=raw.get("ipf_scoring_matrix_mtx"),
-            ipf_conversion_diagnostics_json=raw.get(
-                "ipf_conversion_diagnostics_json"
-            ),
+            ipf_conversion_diagnostics_json=raw.get("ipf_conversion_diagnostics_json"),
         )
 
 

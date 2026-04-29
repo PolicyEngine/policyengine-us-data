@@ -897,6 +897,7 @@ def fit_l0_weights(
     beta: float = BETA,
     lambda_l2: float = LAMBDA_L2,
     learning_rate: float = LEARNING_RATE,
+    seed: Optional[int] = None,
     log_freq: int = None,
     log_path: str = None,
     target_names: list = None,
@@ -919,6 +920,9 @@ def fit_l0_weights(
         beta: L0 gate temperature.
         lambda_l2: L2 regularization strength.
         learning_rate: Optimizer learning rate.
+        seed: If set, seeds torch (and CUDA, when available) and numpy
+            RNGs for reproducible runs. Required for deterministic
+            benchmark output. Default None preserves stochastic behavior.
         log_freq: Epochs between per-target CSV logs.
             None disables logging.
         log_path: Path for the per-target calibration log CSV.
@@ -943,6 +947,12 @@ def fit_l0_weights(
         raise ImportError("l0-python required. Install: pip install l0-python")
 
     import torch
+
+    if seed is not None:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+        np.random.seed(seed)
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 

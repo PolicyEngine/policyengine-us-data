@@ -419,6 +419,183 @@ def test_ipf_runner_single_call_multi_margin_exact_fit(benchmark_cli_module, tmp
     assert not (run_dir / "outputs" / "_ipf_blocks").exists()
 
 
+def test_ipf_runner_single_call_person_and_household_exact_fit(
+    benchmark_cli_module, tmp_path
+):
+    """A coherent IPF problem mixing person-scope and household-scope
+    margins must be solved by surveysd::ipf in one call (conP + conH
+    together), not by separate sequential runs. The runner builds the
+    constraint lists from the per-row scope column and submits a single
+    call.
+    """
+    if not _r_package_available("surveysd"):
+        pytest.skip("R package 'surveysd' is required for this test")
+
+    run_dir = tmp_path / "ipf-person-household-joint"
+    # Two households (units 0 and 1), each with two persons.
+    # HH 0: 2 persons in age 0-4, snap=yes. HH 1: 2 persons in age 5-9, snap=no.
+    # Person targets: age_0_4 = 4, age_5_9 = 4 -> each unit weight = 2.
+    # Household targets: snap=yes = 2, snap=no = 2 -> each unit weight = 2.
+    # The two scopes agree, so a single IPF solution exists at weights [2, 2].
+    matrix = csr_matrix(
+        np.array(
+            [
+                [2.0, 0.0],  # person age 0-4
+                [0.0, 2.0],  # person age 5-9
+                [1.0, 0.0],  # household snap=yes
+                [0.0, 1.0],  # household snap=no
+            ],
+            dtype=np.float64,
+        )
+    )
+    inputs = _write_common_inputs(
+        run_dir=run_dir,
+        matrix=matrix,
+        target_values=[4.0, 4.0, 2.0, 2.0],
+        variables=[
+            "person_count",
+            "person_count",
+            "household_count",
+            "household_count",
+        ],
+        initial_weights=np.ones(2, dtype=np.float64),
+        method_options={
+            "ipf": {"max_iter": 200, "bound": 10.0, "epsP": 1e-9, "epsH": 1e-9}
+        },
+    )
+
+    pd.DataFrame(
+        {
+            "unit_index": [0, 0, 1, 1],
+            "household_id": [0, 0, 1, 1],
+            "age_bracket": ["0-4", "0-4", "5-9", "5-9"],
+            "snap": ["yes", "yes", "no", "no"],
+            "base_weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    ).to_csv(inputs / "unit_metadata.csv", index=False)
+
+    pd.DataFrame(
+        {
+            "scope": ["person", "person", "household", "household"],
+            "target_type": ["categorical_margin"] * 4,
+            "margin_id": [
+                "age_margin",
+                "age_margin",
+                "snap_margin",
+                "snap_margin",
+            ],
+            "variables": [
+                "age_bracket",
+                "age_bracket",
+                "snap",
+                "snap",
+            ],
+            "cell": [
+                "age_bracket=0-4",
+                "age_bracket=5-9",
+                "snap=yes",
+                "snap=no",
+            ],
+            "target_value": [4.0, 4.0, 2.0, 2.0],
+        }
+    ).to_csv(inputs / "ipf_target_metadata.csv", index=False)
+
+    weights_path, _ = benchmark_cli_module._run_ipf(run_dir)
+    fitted_weights = np.load(weights_path)
+
+    np.testing.assert_allclose(
+        fitted_weights, np.array([2.0, 2.0]), atol=1e-6, rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        matrix.dot(fitted_weights), np.array([4.0, 4.0, 2.0, 2.0]), atol=1e-6
+    )
+
+
+def test_ipf_runner_fits_derived_complement_cell(benchmark_cli_module, tmp_path):
+    """When the converter closes a binary subset family by deriving a
+    complement cell from an authored parent total, that derived cell shows
+    up in `ipf_target_metadata.csv` like any authored row. surveysd::ipf
+    must fit it with the same accuracy — otherwise the closure rule does
+    not actually buy us a closed system. Mirrors the metadata shape the
+    converter emits for a (parent total, authored subset, derived
+    complement) triple.
+    """
+    if not _r_package_available("surveysd"):
+        pytest.skip("R package 'surveysd' is required for this test")
+
+    run_dir = tmp_path / "ipf-derived-complement"
+    # Four households in district 601: units 0,1 are snap=yes, units 2,3 are
+    # snap=no. Authored parent total = 4. Authored snap=yes = 1. Derived
+    # complement: snap=no = 4 - 1 = 3.
+    matrix = csr_matrix(
+        np.array(
+            [
+                [1.0, 1.0, 1.0, 1.0],  # district total
+                [1.0, 1.0, 0.0, 0.0],  # snap=yes
+                [0.0, 0.0, 1.0, 1.0],  # snap=no (derived)
+            ],
+            dtype=np.float64,
+        )
+    )
+    inputs = _write_common_inputs(
+        run_dir=run_dir,
+        matrix=matrix,
+        target_values=[4.0, 1.0, 3.0],
+        variables=["household_count"] * 3,
+        initial_weights=np.ones(4, dtype=np.float64),
+        method_options={
+            "ipf": {"max_iter": 200, "bound": 10.0, "epsP": 1e-9, "epsH": 1e-9}
+        },
+    )
+
+    pd.DataFrame(
+        {
+            "unit_index": [0, 1, 2, 3],
+            "household_id": [0, 1, 2, 3],
+            "congressional_district_geoid": ["601", "601", "601", "601"],
+            "snap_positive": [
+                "positive",
+                "positive",
+                "non_positive",
+                "non_positive",
+            ],
+            "base_weight": [1.0, 1.0, 1.0, 1.0],
+        }
+    ).to_csv(inputs / "unit_metadata.csv", index=False)
+
+    pd.DataFrame(
+        {
+            "scope": ["household"] * 3,
+            "target_type": ["categorical_margin"] * 3,
+            "margin_id": ["m_total", "m_snap", "m_snap"],
+            "variables": [
+                "congressional_district_geoid",
+                "congressional_district_geoid|snap_positive",
+                "congressional_district_geoid|snap_positive",
+            ],
+            "cell": [
+                "congressional_district_geoid=601",
+                "congressional_district_geoid=601|snap_positive=positive",
+                "congressional_district_geoid=601|snap_positive=non_positive",
+            ],
+            "target_value": [4.0, 1.0, 3.0],
+            "is_authored": [True, True, False],
+        }
+    ).to_csv(inputs / "ipf_target_metadata.csv", index=False)
+
+    weights_path, _ = benchmark_cli_module._run_ipf(run_dir)
+    fitted_weights = np.load(weights_path)
+
+    # snap=yes units must sum to 1 -> each 0.5; snap=no units must sum to 3
+    # -> each 1.5. Total still equals the authored parent.
+    np.testing.assert_allclose(
+        fitted_weights, np.array([0.5, 0.5, 1.5, 1.5]), atol=1e-6
+    )
+    np.testing.assert_allclose(
+        matrix.dot(fitted_weights), np.array([4.0, 1.0, 3.0]), atol=1e-6
+    )
+
+
 def test_cmd_run_ipf_uses_retained_authored_scoring_subset(
     benchmark_cli_module, tmp_path
 ):
@@ -445,7 +622,7 @@ def test_cmd_run_ipf_uses_retained_authored_scoring_subset(
     weights_path = run_dir / "outputs" / "fitted_weights.npy"
     np.save(weights_path, np.array([2.0, 3.0], dtype=np.float64))
 
-    def _fake_run_ipf(_run_dir):
+    def _fake_run_ipf(_run_dir, **_kwargs):
         return weights_path, 0.0
 
     benchmark_cli_module._run_ipf = _fake_run_ipf
@@ -457,6 +634,140 @@ def test_cmd_run_ipf_uses_retained_authored_scoring_subset(
     summary = json.loads((run_dir / "outputs" / "ipf_summary.json").read_text())
     assert summary["n_targets"] == 2
     assert summary["scoring_target_set"] == "ipf_retained_authored"
+
+
+def test_run_l0_passes_seed_from_manifest_to_fit(
+    benchmark_cli_module, tmp_path, monkeypatch
+):
+    """The CLI must read `method_options.l0.seed` from the manifest and
+    forward it to `fit_l0_weights` as the `seed=` kwarg. Determinism of
+    `fit_l0_weights` itself is a property of the L0 package, not the CLI;
+    this test pins the wire-up so a future refactor can not drop the seed
+    on the floor.
+    """
+    matrix = csr_matrix(np.array([[1.0, 1.0, 0.0], [0.0, 1.0, 1.0]], dtype=np.float64))
+    run_dir = tmp_path / "seed-wireup"
+    _write_common_inputs(
+        run_dir=run_dir,
+        matrix=matrix,
+        target_values=[2.0, 2.0],
+        variables=["household_count", "household_count"],
+        initial_weights=np.ones(matrix.shape[1], dtype=np.float64),
+        method_options={"l0": {"seed": 42}},
+    )
+
+    captured: dict = {}
+
+    def _fake_fit_l0_weights(**kwargs):
+        captured.update(kwargs)
+        return np.ones(matrix.shape[1], dtype=np.float64)
+
+    import policyengine_us_data.calibration.unified_calibration as uc
+
+    monkeypatch.setattr(uc, "fit_l0_weights", _fake_fit_l0_weights)
+    benchmark_cli_module._run_l0(run_dir)
+
+    assert captured.get("seed") == 42
+
+    # When the manifest does not set a seed, the kwarg must be None so
+    # downstream callers can preserve their own non-deterministic default.
+    captured.clear()
+    run_dir_no_seed = tmp_path / "seed-wireup-none"
+    _write_common_inputs(
+        run_dir=run_dir_no_seed,
+        matrix=matrix,
+        target_values=[2.0, 2.0],
+        variables=["household_count", "household_count"],
+        initial_weights=np.ones(matrix.shape[1], dtype=np.float64),
+        method_options={"l0": {}},
+    )
+    benchmark_cli_module._run_l0(run_dir_no_seed)
+    assert captured.get("seed") is None
+
+
+def test_cmd_run_train_on_retained_subset_uses_subset_inputs(
+    benchmark_cli_module, tmp_path
+):
+    """`--train-on ipf_retained_authored` must load the IPF scoring subset
+    (not the shared bundle) and write its summary to a separate
+    `_matched_summary.json` so a follow-up matched run does not overwrite
+    the full-info run's summary.
+    """
+    run_dir = tmp_path / "matched-run"
+    matrix = csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype=float))
+    inputs = _write_common_inputs(
+        run_dir=run_dir,
+        matrix=matrix,
+        target_values=[2.0, 3.0, 5.0],
+        variables=["household_count", "household_count", "household_count"],
+        target_names=["requested_a", "requested_b", "requested_c"],
+    )
+    subset_matrix = csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]], dtype=float))
+    mmwrite(str(inputs / "ipf_scoring_X_targets_by_units.mtx"), subset_matrix)
+    pd.DataFrame(
+        {
+            "value": [2.0, 3.0],
+            "variable": ["household_count", "household_count"],
+            "geo_level": ["national", "national"],
+            "target_name": ["retained_a", "retained_b"],
+        }
+    ).to_csv(inputs / "ipf_scoring_target_metadata.csv", index=False)
+
+    weights_path = run_dir / "outputs" / "fitted_weights.npy"
+    np.save(weights_path, np.array([2.0, 3.0], dtype=np.float64))
+
+    captured = {}
+
+    def _fake_run_l0(run_dir, train_on="shared_requested"):
+        targets_path, matrix_path, label = benchmark_cli_module._select_training_inputs(
+            run_dir, train_on
+        )
+        captured["targets_path"] = targets_path
+        captured["matrix_path"] = matrix_path
+        captured["label"] = label
+        return weights_path
+
+    benchmark_cli_module._run_l0 = _fake_run_l0
+    exit_code = benchmark_cli_module.cmd_run(
+        SimpleNamespace(
+            method="l0",
+            run_dir=str(run_dir),
+            train_on="ipf_retained_authored",
+            score_on="ipf_retained_authored",
+        )
+    )
+
+    assert exit_code == 0
+    assert captured["targets_path"].name == "ipf_scoring_target_metadata.csv"
+    assert captured["matrix_path"].name == "ipf_scoring_X_targets_by_units.mtx"
+    assert captured["label"] == "ipf_retained_authored"
+
+    matched_summary_path = run_dir / "outputs" / "l0_matched_summary.json"
+    assert matched_summary_path.exists()
+    assert not (run_dir / "outputs" / "l0_summary.json").exists()
+    summary = json.loads(matched_summary_path.read_text())
+    assert summary["training_target_set"] == "ipf_retained_authored"
+    assert summary["scoring_target_set"] == "ipf_retained_authored"
+
+
+def test_cmd_run_train_on_retained_subset_fails_when_subset_missing(
+    benchmark_cli_module, tmp_path
+):
+    """Without an IPF scoring subset on disk, --train-on
+    ipf_retained_authored must fail loudly rather than silently fall back
+    to the shared requested set."""
+    run_dir = tmp_path / "matched-missing-subset"
+    matrix = csr_matrix(np.array([[1.0, 0.0]], dtype=float))
+    _write_common_inputs(
+        run_dir=run_dir,
+        matrix=matrix,
+        target_values=[2.0],
+        variables=["household_count"],
+        target_names=["requested_a"],
+    )
+
+    with pytest.raises(FileNotFoundError, match="ipf_scoring_"):
+        benchmark_cli_module._run_l0(run_dir, train_on="ipf_retained_authored")
 
 
 def test_cmd_run_l0_can_opt_into_retained_authored_scoring_subset(
@@ -485,7 +796,7 @@ def test_cmd_run_l0_can_opt_into_retained_authored_scoring_subset(
     weights_path = run_dir / "outputs" / "fitted_weights.npy"
     np.save(weights_path, np.array([2.0, 3.0], dtype=np.float64))
 
-    def _fake_run_l0(_run_dir):
+    def _fake_run_l0(_run_dir, **_kwargs):
         return weights_path
 
     benchmark_cli_module._run_l0 = _fake_run_l0

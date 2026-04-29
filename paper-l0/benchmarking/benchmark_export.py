@@ -228,7 +228,44 @@ def export_bundle(
         retained_target_ids = list(
             ipf_target_metadata.attrs.get("retained_authored_target_ids", [])
         )
-        if retained_target_ids and "target_id" in filtered_targets.columns:
+        if retained_target_ids and "target_id" not in filtered_targets.columns:
+            target_id_diag = {
+                "reason": "missing_target_id_column",
+                "requested_target_count": int(
+                    ipf_target_metadata.attrs.get(
+                        "requested_target_count", len(filtered_targets)
+                    )
+                ),
+                "retained_authored_target_count": int(
+                    ipf_target_metadata.attrs.get("retained_authored_target_count", 0)
+                ),
+                "retained_authored_target_ids": list(retained_target_ids),
+                "derived_complement_count": int(
+                    ipf_target_metadata.attrs.get("derived_complement_count", 0)
+                ),
+                "dropped_targets": dict(
+                    ipf_target_metadata.attrs.get("dropped_targets", {})
+                ),
+                "dropped_target_details": list(
+                    ipf_target_metadata.attrs.get("dropped_target_details", [])
+                ),
+                "margin_consistency_issues": list(
+                    ipf_target_metadata.attrs.get("margin_consistency_issues", [])
+                ),
+                "derived_complement_rows": list(
+                    ipf_target_metadata.attrs.get("derived_complement_rows", [])
+                ),
+            }
+            with open(inputs_dir / "ipf_conversion_diagnostics.json", "w") as f:
+                json.dump(target_id_diag, f, indent=2, sort_keys=True, default=str)
+            raise IPFConversionError(
+                "The calibration package's targets_df is missing a 'target_id' "
+                "column, so the IPF retained-authored scoring subset cannot be "
+                "written. Re-export the calibration package with target_id "
+                "preserved before running the IPF benchmark.",
+                diagnostics=target_id_diag,
+            )
+        if retained_target_ids:
             retained_mask = filtered_targets["target_id"].isin(retained_target_ids)
             ipf_scoring_targets = filtered_targets.loc[retained_mask].reset_index(
                 drop=True
@@ -243,12 +280,12 @@ def export_bundle(
             )
         ipf_diagnostics = {
             "requested_target_count": int(
-                ipf_target_metadata.attrs.get("requested_target_count", len(filtered_targets))
+                ipf_target_metadata.attrs.get(
+                    "requested_target_count", len(filtered_targets)
+                )
             ),
             "retained_authored_target_count": int(
-                ipf_target_metadata.attrs.get(
-                    "retained_authored_target_count", 0
-                )
+                ipf_target_metadata.attrs.get("retained_authored_target_count", 0)
             ),
             "derived_complement_count": int(
                 ipf_target_metadata.attrs.get("derived_complement_count", 0)
@@ -303,9 +340,7 @@ def export_bundle(
         )
         derived_complement_count = ipf_diagnostics.get("derived_complement_count", 0)
         export_info["ipf_derived_complement_count"] = (
-            int(derived_complement_count)
-            if derived_complement_count is not None
-            else 0
+            int(derived_complement_count) if derived_complement_count is not None else 0
         )
         export_info["ipf_converted_target_rows"] = int(
             ipf_diagnostics.get("converted_target_rows", 0)

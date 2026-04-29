@@ -30,9 +30,7 @@ def _load_module(name: str, path: Path):
 
 
 def test_export_bundle_writes_ipf_scoring_subset(tmp_path, monkeypatch):
-    benchmark_export = _load_module(
-        "benchmark_export_for_tests", BENCHMARK_EXPORT_PATH
-    )
+    benchmark_export = _load_module("benchmark_export_for_tests", BENCHMARK_EXPORT_PATH)
     benchmark_manifest = _load_module(
         "benchmark_manifest_for_tests", BENCHMARK_DIR / "benchmark_manifest.py"
     )
@@ -125,9 +123,7 @@ def test_export_bundle_writes_ipf_scoring_subset(tmp_path, monkeypatch):
     assert info["ipf_retained_authored_target_count"] == 2
 
 
-def test_export_bundle_requires_external_ipf_scoring_artifacts(
-    tmp_path, monkeypatch
-):
+def test_export_bundle_requires_external_ipf_scoring_artifacts(tmp_path, monkeypatch):
     benchmark_export = _load_module(
         "benchmark_export_for_external_contract", BENCHMARK_EXPORT_PATH
     )
@@ -185,7 +181,104 @@ def test_export_bundle_requires_external_ipf_scoring_artifacts(
     )
 
     with pytest.raises(ValueError, match="must provide all of"):
-        benchmark_export.export_bundle(manifest=manifest, output_dir=tmp_path / "bundle")
+        benchmark_export.export_bundle(
+            manifest=manifest, output_dir=tmp_path / "bundle"
+        )
+
+
+def test_export_bundle_fails_when_package_missing_target_id(tmp_path, monkeypatch):
+    """The IPF retained-authored scoring subset is built by selecting rows
+    of `filtered_targets` whose ``target_id`` matches the converter's
+    retained set. If the calibration package's targets_df has no
+    `target_id` column, the export must fail loudly with
+    ``IPFConversionError`` and write a diagnostics file — not silently
+    skip the scoring subset and leave a downstream FileNotFoundError to
+    surface it.
+    """
+    benchmark_export = _load_module(
+        "benchmark_export_for_missing_target_id", BENCHMARK_EXPORT_PATH
+    )
+    benchmark_manifest = _load_module(
+        "benchmark_manifest_for_missing_target_id",
+        BENCHMARK_DIR / "benchmark_manifest.py",
+    )
+    # Re-use the IPFConversionError class that benchmark_export imported, so
+    # pytest.raises matches the same class instance the export raised. Loading
+    # ipf_conversion through _load_module here would create a *different*
+    # class with the same name and break isinstance comparisons.
+    IPFConversionError = benchmark_export.IPFConversionError
+
+    package = {
+        "targets_df": pd.DataFrame(
+            {
+                "value": [2.0, 3.0],
+                "variable": ["household_count", "household_count"],
+                "geo_level": ["national", "national"],
+                "geographic_id": ["0", "0"],
+            }
+        ),
+        "target_names": ["requested_a", "requested_b"],
+        "X_sparse": csr_matrix(np.array([[1.0, 0.0], [0.0, 1.0]], dtype=np.float64)),
+        "initial_weights": np.array([1.0, 1.0], dtype=np.float64),
+        "metadata": {},
+    }
+
+    monkeypatch.setattr(
+        benchmark_export, "load_calibration_package_raw", lambda _path: package
+    )
+
+    def _fake_build_ipf_inputs(package, manifest, filtered_targets):
+        unit_metadata = pd.DataFrame(
+            {
+                "unit_index": [0, 1],
+                "household_id": [0, 1],
+                "base_weight": [1.0, 1.0],
+            }
+        )
+        ipf_target_metadata = pd.DataFrame(
+            {
+                "margin_id": ["m0"],
+                "scope": ["household"],
+                "target_type": ["categorical_margin"],
+                "variables": ["district"],
+                "cell": ["district=A"],
+                "target_value": [2.0],
+                "is_authored": [True],
+            }
+        )
+        ipf_target_metadata.attrs["retained_authored_target_ids"] = [1]
+        ipf_target_metadata.attrs["requested_target_count"] = 2
+        ipf_target_metadata.attrs["retained_authored_target_count"] = 1
+        ipf_target_metadata.attrs["derived_complement_count"] = 0
+        ipf_target_metadata.attrs["dropped_targets"] = {}
+        ipf_target_metadata.attrs["dropped_target_details"] = []
+        ipf_target_metadata.attrs["margin_consistency_issues"] = []
+        ipf_target_metadata.attrs["derived_complement_rows"] = []
+        return unit_metadata, ipf_target_metadata
+
+    monkeypatch.setattr(benchmark_export, "build_ipf_inputs", _fake_build_ipf_inputs)
+
+    manifest = benchmark_manifest.BenchmarkManifest(
+        name="ipf-missing-target-id",
+        tier="unit",
+        description="",
+        package_path="/tmp/fake-package.pkl",
+        methods=["ipf"],
+    )
+
+    with pytest.raises(IPFConversionError, match="missing a 'target_id'"):
+        benchmark_export.export_bundle(
+            manifest=manifest,
+            output_dir=tmp_path / "bundle",
+        )
+
+    diagnostics_path = (
+        tmp_path / "bundle" / "inputs" / "ipf_conversion_diagnostics.json"
+    )
+    assert diagnostics_path.exists()
+    diagnostics = json.loads(diagnostics_path.read_text())
+    assert diagnostics["reason"] == "missing_target_id_column"
+    assert diagnostics["retained_authored_target_count"] == 1
 
 
 def test_export_bundle_accepts_fully_specified_external_ipf_inputs(

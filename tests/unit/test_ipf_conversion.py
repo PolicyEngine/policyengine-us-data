@@ -209,9 +209,11 @@ def test_close_margins_binary_subset_derives_complement_from_parent_total(
     subset_rows = emitted.loc[
         emitted["closure_status"] == "binary_subset_with_parent_total"
     ].reset_index(drop=True)
-    derived_rows = subset_rows.loc[~subset_rows["is_authored"]].sort_values(
-        "cell"
-    ).reset_index(drop=True)
+    derived_rows = (
+        subset_rows.loc[~subset_rows["is_authored"]]
+        .sort_values("cell")
+        .reset_index(drop=True)
+    )
     assert len(derived_rows) == 2
     assert set(derived_rows["cell"]) == {
         "congressional_district_geoid=601|snap_positive=non_positive",
@@ -240,6 +242,81 @@ def test_close_margins_missing_parent_total_drops_open_subset(ipf_conversion):
     assert closed_blocks == []
     assert len(dropped) == 1
     assert dropped[0]["reason"] == "missing_parent_total"
+
+
+def test_close_margins_negative_complement_drops_subset(ipf_conversion):
+    """An authored subset that exceeds its authored parent total cannot be
+    closed: the implied complement is negative, which is impossible for a
+    count margin. The converter must drop the family with reason
+    ``negative_derived_complement`` rather than emitting a clamped or
+    forced-positive cell.
+    """
+    targets = pd.DataFrame(
+        [
+            {
+                "target_id": 20,
+                "stratum_id": 20,
+                "variable": "household_count",
+                "value": 10.0,
+                "target_name": "hh_total_d601",
+            },
+            {
+                "target_id": 21,
+                "stratum_id": 21,
+                "variable": "household_count",
+                "value": 12.0,
+                "target_name": "hh_snap_pos_d601",
+            },
+        ]
+    )
+    constraints = {
+        20: [
+            {
+                "variable": "congressional_district_geoid",
+                "operation": "==",
+                "value": "601",
+            }
+        ],
+        21: [
+            {
+                "variable": "congressional_district_geoid",
+                "operation": "==",
+                "value": "601",
+            },
+            {"variable": "snap", "operation": ">", "value": "0"},
+        ],
+    }
+    unit_data = pd.DataFrame(
+        {
+            "unit_index": [0, 1],
+            "household_id": [0, 1],
+            "congressional_district_geoid": [601, 601],
+            "snap_positive": ["positive", "non_positive"],
+        }
+    )
+
+    resolved, unresolved = ipf_conversion.resolve_targets_for_testing(
+        targets, constraints
+    )
+    assert unresolved == []
+
+    closed_blocks, dropped = ipf_conversion.close_margins_for_testing(
+        resolved=resolved,
+        unit_data=unit_data,
+    )
+
+    subset_dropped = [
+        d for d in dropped if d.get("reason") == "negative_derived_complement"
+    ]
+    assert len(subset_dropped) == 1
+    assert pytest.approx(-2.0, abs=1e-9) == subset_dropped[0]["derived_value"]
+    assert 21 in subset_dropped[0]["target_ids"]
+
+    # The parent total is a full partition on its own and should still be
+    # retained as a closed family.
+    full_partitions = [b for b in closed_blocks if b.closure_status == "full_partition"]
+    assert len(full_partitions) == 1
+    assert all(cell.is_authored for cell in full_partitions[0].cells)
 
 
 def test_close_margins_ambiguous_parent_total_drops_subset(ipf_conversion):
@@ -282,6 +359,133 @@ def test_close_margins_ambiguous_parent_total_drops_subset(ipf_conversion):
     assert len(closed_blocks) == 1
     assert len(dropped) == 1
     assert dropped[0]["reason"] == "ambiguous_parent_total"
+
+
+def test_check_margin_consistency_flags_incompatible_geo_totals(ipf_conversion):
+    """Two closed blocks with the same scope and geography that imply
+    different population totals must be reported as inconsistent. This is
+    the guardrail that prevents the converter from handing IPF a system
+    where two margins disagree on how many people / households live in a
+    given geography — surveysd cannot satisfy both at once.
+    """
+    block_age = ipf_conversion.ClosedMarginBlock(
+        margin_id="margin_age",
+        scope="person",
+        source_variable="person_count",
+        cell_dims=("age_bracket",),
+        cell_vars=("age_bracket", "congressional_district_geoid"),
+        geo_var="congressional_district_geoid",
+        closure_status="full_partition",
+        cells=[
+            ipf_conversion.MarginCell(
+                geo_value=601,
+                cell=(("age_bracket", "0-4"),),
+                target_value=500.0,
+                target_name="pc_0_4_d601",
+                is_authored=True,
+                authored_target_id=1,
+                source_target_ids=(1,),
+            ),
+            ipf_conversion.MarginCell(
+                geo_value=601,
+                cell=(("age_bracket", "5-9"),),
+                target_value=500.0,
+                target_name="pc_5_9_d601",
+                is_authored=True,
+                authored_target_id=2,
+                source_target_ids=(2,),
+            ),
+        ],
+    )
+    block_filer = ipf_conversion.ClosedMarginBlock(
+        margin_id="margin_filer",
+        scope="person",
+        source_variable="person_count",
+        cell_dims=("is_filer",),
+        cell_vars=("congressional_district_geoid", "is_filer"),
+        geo_var="congressional_district_geoid",
+        closure_status="full_partition",
+        cells=[
+            ipf_conversion.MarginCell(
+                geo_value=601,
+                cell=(("is_filer", "1"),),
+                target_value=400.0,
+                target_name="pc_filer_d601",
+                is_authored=True,
+                authored_target_id=3,
+                source_target_ids=(3,),
+            ),
+            ipf_conversion.MarginCell(
+                geo_value=601,
+                cell=(("is_filer", "0"),),
+                target_value=400.0,
+                target_name="pc_nonfiler_d601",
+                is_authored=True,
+                authored_target_id=4,
+                source_target_ids=(4,),
+            ),
+        ],
+    )
+    issues = ipf_conversion.check_margin_consistency([block_age, block_filer])
+    assert len(issues) == 1
+    issue = issues[0]
+    assert issue["scope"] == "person"
+    assert issue["geo_value"] == 601
+    assert set(issue["margin_totals"].keys()) == {"margin_age", "margin_filer"}
+    assert pytest.approx(0.2, abs=1e-6) == issue["relative_spread"]
+
+
+def test_close_margins_drops_subset_with_three_or_more_labels(ipf_conversion):
+    """A subset margin whose support spans more than two unique labels
+    cannot be closed by the binary-complement rule. With no authored parent
+    total available either, the family must drop with reason
+    ``unsupported_partial_margin`` rather than be emitted as an open
+    1-cell margin.
+    """
+    targets = pd.DataFrame(
+        [
+            {
+                "target_id": 40,
+                "stratum_id": 40,
+                "variable": "household_count",
+                "value": 5.0,
+                "target_name": "hh_race_white_d601",
+            },
+        ]
+    )
+    constraints = {
+        40: [
+            {
+                "variable": "congressional_district_geoid",
+                "operation": "==",
+                "value": "601",
+            },
+            {"variable": "race", "operation": "==", "value": "white"},
+        ],
+    }
+    unit_data = pd.DataFrame(
+        {
+            "unit_index": [0, 1, 2],
+            "household_id": [0, 1, 2],
+            "congressional_district_geoid": [601, 601, 601],
+            "race": ["white", "black", "asian"],
+        }
+    )
+
+    resolved, unresolved = ipf_conversion.resolve_targets_for_testing(
+        targets, constraints
+    )
+    assert unresolved == []
+
+    closed_blocks, dropped = ipf_conversion.close_margins_for_testing(
+        resolved=resolved,
+        unit_data=unit_data,
+    )
+
+    assert closed_blocks == []
+    assert len(dropped) == 1
+    assert dropped[0]["reason"] == "unsupported_partial_margin"
+    assert 40 in dropped[0]["target_ids"]
 
 
 def test_margin_consistency_uses_closed_subset_totals(ipf_conversion):

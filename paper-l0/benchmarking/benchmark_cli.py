@@ -37,7 +37,35 @@ def cmd_export(args):
     return 0
 
 
-def _run_l0(run_dir: Path):
+def _select_training_inputs(run_dir: Path, train_on: str) -> tuple[Path, Path, str]:
+    """Resolve the training-input pair for L0 / GREG.
+
+    `shared_requested` returns the shared bundle's full target set. The
+    `ipf_retained_authored` mode loads the IPF scoring subset so L0 and GREG
+    can be fit on the same target set IPF was given — required for matched
+    benchmark comparison. Fails fast if the exporter did not produce that
+    subset.
+    """
+    inputs = run_dir / "inputs"
+    if train_on == "ipf_retained_authored":
+        targets_path = inputs / "ipf_scoring_target_metadata.csv"
+        matrix_path = inputs / "ipf_scoring_X_targets_by_units.mtx"
+        if not targets_path.exists() or not matrix_path.exists():
+            raise FileNotFoundError(
+                "Requested --train-on ipf_retained_authored, but the exporter "
+                "did not write inputs/ipf_scoring_*. Re-run export with the "
+                "IPF method enabled and a calibration package that includes "
+                "target_id."
+            )
+        return targets_path, matrix_path, "ipf_retained_authored"
+    return (
+        inputs / "target_metadata.csv",
+        inputs / "X_targets_by_units.mtx",
+        "shared_requested",
+    )
+
+
+def _run_l0(run_dir: Path, train_on: str = "shared_requested"):
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
 
@@ -48,10 +76,12 @@ def _run_l0(run_dir: Path):
         manifest = json.load(f)
 
     options = manifest.get("method_options", {}).get("l0", {})
-    X_sparse = mmread(str(inputs / "X_targets_by_units.mtx")).tocsr()
-    targets_df = pd.read_csv(inputs / "target_metadata.csv")
+    targets_path, matrix_path, _ = _select_training_inputs(run_dir, train_on)
+    X_sparse = mmread(str(matrix_path)).tocsr()
+    targets_df = pd.read_csv(targets_path)
     initial_weights = np.load(inputs / "initial_weights.npy")
 
+    seed_value = options.get("seed")
     weights = fit_l0_weights(
         X_sparse=X_sparse,
         targets=targets_df["value"].to_numpy(dtype=np.float64),
@@ -61,6 +91,7 @@ def _run_l0(run_dir: Path):
         beta=float(options.get("beta", 0.65)),
         lambda_l2=float(options.get("lambda_l2", 1e-12)),
         learning_rate=float(options.get("learning_rate", 0.15)),
+        seed=int(seed_value) if seed_value is not None else None,
         target_names=targets_df["target_name"].tolist(),
         initial_weights=initial_weights,
         targets_df=targets_df,
@@ -71,7 +102,7 @@ def _run_l0(run_dir: Path):
     return weights_path
 
 
-def _run_greg(run_dir: Path):
+def _run_greg(run_dir: Path, train_on: str = "shared_requested"):
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
     temp_csv = outputs / "_greg_weights.csv"
@@ -80,11 +111,12 @@ def _run_greg(run_dir: Path):
         manifest = json.load(f)
     options = manifest.get("method_options", {}).get("greg", {})
 
+    targets_path, matrix_path, _ = _select_training_inputs(run_dir, train_on)
     cmd = [
         "Rscript",
         str(RUNNERS_DIR / "greg_runner.R"),
-        str(inputs / "X_targets_by_units.mtx"),
-        str(inputs / "target_metadata.csv"),
+        str(matrix_path),
+        str(targets_path),
         str(inputs / "initial_weights.npy"),
         str(temp_csv),
         str(int(options.get("maxit", 50))),
@@ -192,7 +224,7 @@ def _run_ipf(run_dir: Path):
         str(inputs / "initial_weights.npy"),
         str(temp_csv),
         str(int(options.get("max_iter", 200))),
-        str(float(options.get("bound", 4.0))),
+        str(float(options.get("bound", 10.0))),
         str(float(options.get("epsP", 1e-6))),
         str(float(options.get("epsH", 1e-2))),
         household_id_col,
@@ -237,11 +269,18 @@ def _select_scoring_inputs(
     )
 
 
+def _summary_filename(method: str, train_on: str) -> str:
+    if train_on == "ipf_retained_authored":
+        return f"{method}_matched_summary.json"
+    return f"{method}_summary.json"
+
+
 def cmd_run(args):
     run_dir = Path(args.run_dir)
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
     outputs.mkdir(parents=True, exist_ok=True)
+    train_on = getattr(args, "train_on", "shared_requested")
     targets_path, matrix_path, scoring_target_set = _select_scoring_inputs(
         run_dir,
         args.method,
@@ -251,11 +290,15 @@ def cmd_run(args):
 
     started = time.time()
     if args.method == "l0":
-        weights_path = _run_l0(run_dir)
+        weights_path = _run_l0(run_dir, train_on=train_on)
+        training_target_set = train_on
     elif args.method == "greg":
-        weights_path, _ = _run_greg(run_dir)
+        weights_path, _ = _run_greg(run_dir, train_on=train_on)
+        training_target_set = train_on
     elif args.method == "ipf":
         weights_path, _ = _run_ipf(run_dir)
+        # IPF always trains on its own categorical-margin inputs.
+        training_target_set = "ipf_categorical_margins"
     else:
         raise ValueError(f"Unsupported method: {args.method}")
     elapsed = time.time() - started
@@ -270,7 +313,13 @@ def cmd_run(args):
     summary["run_dir"] = str(run_dir.resolve())
     summary["runtime_seconds"] = elapsed
     summary["scoring_target_set"] = scoring_target_set
-    write_method_summary(summary, outputs / f"{args.method}_summary.json")
+    summary["training_target_set"] = training_target_set
+    summary_filename = (
+        _summary_filename(args.method, train_on)
+        if args.method != "ipf"
+        else f"{args.method}_summary.json"
+    )
+    write_method_summary(summary, outputs / summary_filename)
     print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
@@ -303,6 +352,20 @@ def build_parser():
             "Scoring target set. 'auto' uses IPF-retained-authored targets only "
             "for method=ipf when available; the other methods default to the "
             "shared requested target set unless explicitly overridden."
+        ),
+    )
+    run_parser.add_argument(
+        "--train-on",
+        default="shared_requested",
+        choices=["shared_requested", "ipf_retained_authored"],
+        help=(
+            "Target set used as L0 / GREG training inputs. Defaults to the "
+            "shared requested set. 'ipf_retained_authored' loads the IPF "
+            "scoring subset for matched-input comparison against IPF. Ignored "
+            "for method=ipf, which always trains on its own categorical-margin "
+            "inputs. When set to ipf_retained_authored the summary is written "
+            "to {method}_matched_summary.json so a follow-up matched run does "
+            "not overwrite the full-info run."
         ),
     )
     run_parser.set_defaults(func=cmd_run)

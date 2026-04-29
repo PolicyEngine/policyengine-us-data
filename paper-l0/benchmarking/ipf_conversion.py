@@ -796,7 +796,9 @@ def _parent_key_for_cell(
 def _group_authored_cells_by_parent(
     block: MarginBlock, subset_dim: str
 ) -> Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], List[ResolvedTarget]]:
-    grouped: Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], List[ResolvedTarget]] = {}
+    grouped: Dict[
+        Tuple[Optional[object], Tuple[Tuple[str, str], ...]], List[ResolvedTarget]
+    ] = {}
     for target in block.targets:
         grouped.setdefault(
             _parent_key_for_cell(target.geo.value, target.cell, subset_dim), []
@@ -818,9 +820,7 @@ def _group_observed_labels_by_parent(
     for row in observed.to_dict("records"):
         geo_value = row[block.geo_var] if block.geo_var is not None else None
         parent_assignments = tuple(
-            sorted(
-                (dim, str(row[dim])) for dim in block.cell_dims if dim != subset_dim
-            )
+            sorted((dim, str(row[dim])) for dim in block.cell_dims if dim != subset_dim)
         )
         grouped.setdefault((geo_value, parent_assignments), set()).add(
             str(row[subset_dim])
@@ -834,7 +834,9 @@ def _build_parent_total_lookup(
     Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], ResolvedTarget],
     Tuple[int, ...],
 ]:
-    lookup: Dict[Tuple[Optional[object], Tuple[Tuple[str, str], ...]], ResolvedTarget] = {}
+    lookup: Dict[
+        Tuple[Optional[object], Tuple[Tuple[str, str], ...]], ResolvedTarget
+    ] = {}
     ambiguous_target_ids: set[int] = set()
     for target in block.targets:
         key = (target.geo.value, tuple(sorted(target.cell)))
@@ -870,7 +872,9 @@ def _try_close_binary_subset(
     missing_parent_reason: Optional[Dict[str, object]] = None
     ambiguous_parent_reason: Optional[Dict[str, object]] = None
     for subset_dim in block.cell_dims:
-        observed_by_parent = _group_observed_labels_by_parent(unit_data, block, subset_dim)
+        observed_by_parent = _group_observed_labels_by_parent(
+            unit_data, block, subset_dim
+        )
         if not observed_by_parent:
             return None, {
                 "reason": "missing_unit_support",
@@ -932,7 +936,9 @@ def _try_close_binary_subset(
                     "parent_margin_key": {
                         "source_variable": block.source_variable,
                         "geo_var": block.geo_var,
-                        "cell_dims": [dim for dim in block.cell_dims if dim != subset_dim],
+                        "cell_dims": [
+                            dim for dim in block.cell_dims if dim != subset_dim
+                        ],
                     },
                     "target_ids": [int(target.target_id) for target in block.targets],
                 }
@@ -983,13 +989,18 @@ def _try_close_binary_subset(
             missing_labels = observed_labels - authored_labels
             if len(missing_labels) == 1:
                 missing_label = next(iter(missing_labels))
-                if complement_value > tolerance and missing_label not in observed_labels:
+                if (
+                    complement_value > tolerance
+                    and missing_label not in observed_labels
+                ):
                     valid = False
                     invalid_reason = {
                         "reason": "missing_unit_support",
                         "margin_id": block.margin_id,
                         "subset_dimension": subset_dim,
-                        "target_ids": [int(target.target_id) for target in block.targets],
+                        "target_ids": [
+                            int(target.target_id) for target in block.targets
+                        ],
                     }
                     break
                 parent_geo_value, parent_assignments = parent_lookup_key
@@ -1010,7 +1021,10 @@ def _try_close_binary_subset(
                             sorted(
                                 {
                                     int(parent_target.target_id),
-                                    *[int(target.target_id) for target in authored_targets],
+                                    *[
+                                        int(target.target_id)
+                                        for target in authored_targets
+                                    ],
                                 }
                             )
                         ),
@@ -1021,9 +1035,22 @@ def _try_close_binary_subset(
         if not valid:
             return None, invalid_reason
 
-        unique_cells = {
-            (cell.geo_value, cell.cell, cell.is_authored): cell for cell in emitted_cells
-        }
+        # An emitted cell is either authored or derived, never both. Keying the
+        # dedupe map on (geo_value, cell) without `is_authored` collapses any
+        # accidental duplicate to one row; the assert flags the genuine bug
+        # case where the same cell would arrive with conflicting authoring.
+        seen_authored: Dict[
+            Tuple[Optional[object], Tuple[Tuple[str, str], ...]], bool
+        ] = {}
+        for cell in emitted_cells:
+            key = (cell.geo_value, cell.cell)
+            if key in seen_authored and seen_authored[key] != cell.is_authored:
+                raise AssertionError(
+                    f"Cell {key} emitted with conflicting is_authored values; "
+                    "this indicates a closure bug."
+                )
+            seen_authored[key] = cell.is_authored
+        unique_cells = {(cell.geo_value, cell.cell): cell for cell in emitted_cells}
         return (
             ClosedMarginBlock(
                 margin_id=block.margin_id,
@@ -1088,7 +1115,8 @@ def _close_margin_blocks(
     tolerance: float = 1e-9,
 ) -> Tuple[List[ClosedMarginBlock], List[Dict[str, object]]]:
     blocks_by_key = {
-        (block.source_variable, block.geo_var, block.cell_dims): block for block in blocks
+        (block.source_variable, block.geo_var, block.cell_dims): block
+        for block in blocks
     }
     closed_blocks: List[ClosedMarginBlock] = []
     dropped: List[Dict[str, object]] = []
@@ -1109,7 +1137,9 @@ def _close_margin_blocks(
                 {
                     "reason": "missing_unit_support",
                     "margin_id": block.margin_id,
-                    "target_ids": [int(target.target_id) for target in unsupported_authored],
+                    "target_ids": [
+                        int(target.target_id) for target in unsupported_authored
+                    ],
                 }
             )
             continue
@@ -1162,18 +1192,52 @@ def build_ipf_inputs(
     system rather than sequentializing it.
     """
     if filtered_targets.empty:
-        raise ValueError("filtered_targets is empty; nothing to convert.")
+        raise IPFConversionError(
+            "filtered_targets is empty; nothing to convert.",
+            diagnostics={
+                "reason": "empty_filtered_targets",
+                "requested_target_count": 0,
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": {},
+                "dropped_target_details": [],
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
+        )
 
     metadata = package.get("metadata", {})
     dataset_path = metadata.get("dataset_path")
     db_path = metadata.get("db_path")
     if not dataset_path or not Path(dataset_path).exists():
-        raise FileNotFoundError(
-            "Automatic IPF conversion requires metadata.dataset_path to exist locally"
+        raise IPFConversionError(
+            "Automatic IPF conversion requires metadata.dataset_path to exist locally",
+            diagnostics={
+                "reason": "missing_dataset_path",
+                "dataset_path": str(dataset_path) if dataset_path else None,
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": {},
+                "dropped_target_details": [],
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
         )
     if not db_path or not Path(db_path).exists():
-        raise FileNotFoundError(
-            "Automatic IPF conversion requires metadata.db_path to exist locally"
+        raise IPFConversionError(
+            "Automatic IPF conversion requires metadata.db_path to exist locally",
+            diagnostics={
+                "reason": "missing_db_path",
+                "db_path": str(db_path) if db_path else None,
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": {},
+                "dropped_target_details": [],
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
         )
 
     # --- Count check: drop non-count-style targets ------------------------
@@ -1183,9 +1247,27 @@ def build_ipf_inputs(
     dropped_non_count = filtered_targets.loc[~supported_mask].copy()
     targets = filtered_targets.loc[supported_mask].reset_index(drop=True)
     if targets.empty:
-        raise ValueError(
+        raise IPFConversionError(
             "No count-style targets in filtered_targets; IPF has nothing to run. "
-            f"Supported variables: {sorted(_SCOPE_BY_VARIABLE)}."
+            f"Supported variables: {sorted(_SCOPE_BY_VARIABLE)}.",
+            diagnostics={
+                "reason": "no_count_style_targets",
+                "supported_variables": sorted(_SCOPE_BY_VARIABLE),
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": {"non_count_style": int(len(dropped_non_count))},
+                "dropped_target_details": [
+                    {
+                        "reason": "non_count_style",
+                        "target_id": int(row.get("target_id", -1)),
+                        "target_name": str(row.get("target_name", "?")),
+                    }
+                    for _, row in dropped_non_count.iterrows()
+                ],
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
         )
     dropped_target_details: List[Dict[str, object]] = [
         {
@@ -1214,9 +1296,29 @@ def build_ipf_inputs(
             continue
         resolved.append(rt)
     if not resolved:
-        raise ValueError(
+        raise IPFConversionError(
             "No targets in filtered_targets resolved through the declared "
-            "bucket schemas. Nothing for IPF to run."
+            "bucket schemas. Nothing for IPF to run.",
+            diagnostics={
+                "reason": "no_resolvable_targets",
+                "requested_target_count": int(len(filtered_targets)),
+                "retained_authored_target_count": 0,
+                "derived_complement_count": 0,
+                "dropped_targets": {
+                    "non_count_style": int(len(dropped_non_count)),
+                    "unresolvable_constraints": int(len(dropped_unresolvable)),
+                },
+                "dropped_target_details": [
+                    {
+                        "reason": "unresolvable_constraints",
+                        "target_id": target_id,
+                        "target_name": target_name,
+                    }
+                    for target_id, target_name in dropped_unresolvable
+                ],
+                "margin_consistency_issues": [],
+                "derived_complement_rows": [],
+            },
         )
     dropped_target_details.extend(
         {
@@ -1270,7 +1372,9 @@ def build_ipf_inputs(
             for detail in invariance_drops
         )
 
-    closed_blocks, closure_drops = _close_margin_blocks(blocks=blocks, unit_data=unit_data)
+    closed_blocks, closure_drops = _close_margin_blocks(
+        blocks=blocks, unit_data=unit_data
+    )
     dropped_target_details.extend(closure_drops)
     dropped_counts: Dict[str, int] = {}
     for detail in dropped_target_details:
@@ -1329,8 +1433,7 @@ def build_ipf_inputs(
                             int(cell.authored_target_id)
                             for block in closed_blocks
                             for cell in block.cells
-                            if cell.is_authored
-                            and cell.authored_target_id is not None
+                            if cell.is_authored and cell.authored_target_id is not None
                         }
                     )
                 ),
@@ -1390,7 +1493,9 @@ def build_ipf_inputs(
     target_metadata.attrs["retained_authored_target_count"] = int(
         len(retained_authored_target_ids)
     )
-    target_metadata.attrs["derived_complement_count"] = int(len(derived_complement_rows))
+    target_metadata.attrs["derived_complement_count"] = int(
+        len(derived_complement_rows)
+    )
     return unit_data, target_metadata
 
 
@@ -1417,7 +1522,9 @@ def _cell_assignments(t: ResolvedTarget, block: MarginBlock) -> List[str]:
     return [f"{col}={assignments[col]}" for col in block.cell_vars]
 
 
-def _cell_assignments_from_cell(block: ClosedMarginBlock, cell: MarginCell) -> List[str]:
+def _cell_assignments_from_cell(
+    block: ClosedMarginBlock, cell: MarginCell
+) -> List[str]:
     assignments: Dict[str, str] = {}
     if block.geo_var is not None:
         assignments[block.geo_var] = str(cell.geo_value)

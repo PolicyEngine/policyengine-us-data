@@ -3411,6 +3411,17 @@ class UnifiedMatrixBuilder:
                     "run_id is required when parallel=True so workers can "
                     "find the shared state on the pipeline volume"
                 )
+            import gc
+
+            # Modal refuses Volume.reload() while this coordinator still
+            # has volume-backed DB/H5 files open. The workers own chunk
+            # materialization from here, so release coordinator handles
+            # before the post-worker reload in dispatch_chunks_modal().
+            self.engine.dispose()
+            assembler._base_sim = None
+            del sim
+            gc.collect()
+
             from policyengine_us_data.calibration.chunked_matrix_modal import (
                 dispatch_chunks_modal,
             )

@@ -143,7 +143,8 @@ jobs:
           tests/integration/test_tiny_pipeline_h5_e2e.py
           tests/integration/local_h5/
           tests/integration/test_modal_pipeline_seams.py
-          tests/integration/test_modal_h5_pipeline_e2e.py
+          tests/integration/test_tiny_h5_pipeline.py
+          tests/integration/test_modal_pipeline_e2e.py
           -v
       - name: Cleanup PR Modal environment
         if: always()

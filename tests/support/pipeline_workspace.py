@@ -168,7 +168,4 @@ class TinyPipelineWorkspace:
     def all_expected_artifacts(self) -> dict[str, tuple[Path, ...]]:
         """Return every currently defined expected artifact path by stage."""
 
-        return {
-            stage: self.expected_artifacts(stage)
-            for stage in STAGE_ARTIFACTS
-        }
+        return {stage: self.expected_artifacts(stage) for stage in STAGE_ARTIFACTS}

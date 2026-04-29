@@ -2,15 +2,15 @@ import numpy as np
 
 from policyengine_us_data.datasets.cps.cps import (
     _premium_values_to_person,
-    compute_premium_residual,
+    compute_other_health_insurance_premiums,
 )
 
 
-def test_premium_residual_subtracts_computed_premiums() -> None:
+def test_other_health_insurance_premiums_subtracts_computed_premiums() -> None:
     reported = np.array([500.0, 200.0, 50.0])
     computed = np.array([125.0, 250.0, 0.0])
 
-    result = compute_premium_residual(
+    result = compute_other_health_insurance_premiums(
         reported_premium=reported,
         baseline_computed_premium=computed,
     )
@@ -18,11 +18,11 @@ def test_premium_residual_subtracts_computed_premiums() -> None:
     np.testing.assert_allclose(result, [375.0, -50.0, 50.0])
 
 
-def test_premium_residual_preserves_reported_input() -> None:
+def test_other_health_insurance_premiums_preserves_reported_input() -> None:
     reported = np.array([500.0, 200.0])
     computed = np.array([125.0, 250.0])
 
-    _ = compute_premium_residual(
+    _ = compute_other_health_insurance_premiums(
         reported_premium=reported,
         baseline_computed_premium=computed,
     )

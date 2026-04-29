@@ -29,7 +29,7 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 HARD_CODED_TOTALS = {
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
+    "medicare_part_b_premium": get_beneficiary_paid_medicare_part_b_premiums_target(
         2024
     ),
     "over_the_counter_health_expenses": 72e9,
@@ -855,7 +855,7 @@ def build_loss_matrix(dataset: type, time_period):
             "health_insurance_premiums_without_medicare_part_b",
             "over_the_counter_health_expenses",
             "other_medical_expenses",
-            "medicare_part_b_premiums",
+            "medicare_part_b_premium",
         ]:
             label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values

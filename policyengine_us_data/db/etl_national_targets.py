@@ -155,7 +155,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "medicare_part_b_premiums",
+            "variable": "medicare_part_b_premium",
             "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
             "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
             "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(2024),

@@ -114,7 +114,7 @@ include:
     geo_level: national
   - variable: medicaid
     geo_level: national
-  - variable: medicare_part_b_premiums
+  - variable: medicare_part_b_premium
     geo_level: national
   - variable: other_medical_expenses
     geo_level: national

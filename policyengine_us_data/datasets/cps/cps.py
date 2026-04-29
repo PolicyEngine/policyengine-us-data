@@ -52,7 +52,6 @@ from policyengine_us_data.utils.asset_imputation import (
 )
 from policyengine_us_data.utils.policyengine import (
     supports_medicare_enrollment_input,
-    supports_modeled_medicare_part_b_inputs,
 )
 
 
@@ -193,8 +192,8 @@ class CPS(Dataset):
         add_takeup(self)
         logging.info("Imputing Marketplace plan benchmark ratio")
         add_marketplace_plan_benchmark_ratio(self)
-        logging.info("Residualizing imputed health premium components")
-        residualize_modeled_health_premium_components(self)
+        logging.info("Deriving other health insurance premiums")
+        derive_other_health_insurance_premiums(self)
         logging.info("Downsampling")
 
         # Downsample
@@ -521,8 +520,8 @@ def add_marketplace_plan_benchmark_ratio(self):
     self.save_dataset(data)
 
 
-MODELED_PREMIUM_RESIDUALIZATION_TARGETS = {
-    "health_insurance_premium_residual": {
+OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS = {
+    "other_health_insurance_premiums": {
         "reported_variable": "health_insurance_premiums_without_medicare_part_b",
         "modeled_variables": (
             "chip_premium",
@@ -533,16 +532,16 @@ MODELED_PREMIUM_RESIDUALIZATION_TARGETS = {
 }
 
 
-def residualize_modeled_health_premium_components(self):
-    """Create residual premium inputs net of baseline computed premiums.
+def derive_other_health_insurance_premiums(self):
+    """Create other premium inputs net of baseline computed premiums.
 
-    The SPM model adds computed premiums back explicitly, so it needs a
-    separate residual premium input for the parts of CPS-reported premiums not
-    explained by baseline computed premiums. The original CPS-reported premium
-    inputs remain unchanged for consumers that use reported medical expenses
-    directly. Variables are version-gated because the data package may be built
-    against a policyengine-us release before a residual or modeled premium
-    variable exists.
+    The model adds computed premiums back explicitly, so it needs a separate
+    other-premium input for the parts of CPS-reported non-Medicare premiums
+    not explained by baseline computed Marketplace, CHIP, or Medicaid
+    premiums. The original CPS-reported premium inputs remain unchanged as raw
+    source fields. Variables are version-gated because the data package may be
+    built against a policyengine-us release before a modeled premium variable
+    exists.
     """
     from policyengine_us import Microsimulation
 
@@ -552,7 +551,7 @@ def residualize_modeled_health_premium_components(self):
     period = self.time_period
     changed = False
 
-    for output_variable, config in MODELED_PREMIUM_RESIDUALIZATION_TARGETS.items():
+    for output_variable, config in OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS.items():
         reported_variable = config["reported_variable"]
         premium_variables = config["modeled_variables"]
 
@@ -574,7 +573,7 @@ def residualize_modeled_health_premium_components(self):
                 values=values,
             )
 
-        data[output_variable] = compute_premium_residual(
+        data[output_variable] = compute_other_health_insurance_premiums(
             reported_premium=data[reported_variable],
             baseline_computed_premium=computed_premium,
         )
@@ -590,11 +589,11 @@ def residualize_modeled_health_premium_components(self):
         self.save_dataset(data)
 
 
-def compute_premium_residual(
+def compute_other_health_insurance_premiums(
     reported_premium: np.ndarray,
     baseline_computed_premium: np.ndarray,
 ) -> np.ndarray:
-    """Return the imputed premium residual after baseline computed premiums."""
+    """Return other premiums after subtracting baseline computed premiums."""
     return np.asarray(reported_premium, dtype=float) - np.asarray(
         baseline_computed_premium, dtype=float
     )
@@ -605,7 +604,7 @@ def _premium_values_to_person(
     source_entity: str,
     values: np.ndarray,
 ) -> np.ndarray:
-    """Map computed premiums to person rows for person-level residualization."""
+    """Map computed premiums to person rows for person-level premium accounting."""
     person_ids = data["person_id"]
     if source_entity == "person":
         if len(values) != len(person_ids):
@@ -1134,10 +1133,6 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["other_medical_expenses"] = person.PMED_VAL
     if supports_medicare_enrollment_input():
         cps["medicare_enrolled"] = person.MCARE == 1
-    if supports_modeled_medicare_part_b_inputs():
-        cps["medicare_part_b_premiums_reported"] = person.PEMCPREM
-    else:
-        cps["medicare_part_b_premiums"] = person.PEMCPREM
 
     # Get QBI simulation parameters ---
     yamlfilename = (

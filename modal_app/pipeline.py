@@ -416,23 +416,7 @@ def upload_run_diagnostics(
     result = subprocess.run(
         _python_cmd(
             "-c",
-            f"""
-import json, os
-from huggingface_hub import HfApi
-
-	entries = json.loads('''{entries_json}''')
-	api = HfApi()
-	token = os.environ.get("HUGGING_FACE_TOKEN")
-	for local_path, repo_path in entries:
-    api.upload_file(
-        path_or_fileobj=local_path,
-        path_in_repo=repo_path,
-        repo_id="policyengine/policyengine-us-data",
-        repo_type="model",
-        token=token,
-	    )
-	    print(f"Uploaded {{repo_path}}")
-	""",
+            _build_diagnostics_upload_script(entries_json),
         ),
         cwd="/root/policyengine-us-data",
         capture_output=True,
@@ -442,6 +426,32 @@ from huggingface_hub import HfApi
     if result.returncode != 0:
         raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
     print(f"  {result.stdout.strip()}")
+
+
+def _build_diagnostics_upload_script(entries_json: str) -> str:
+    """Build the isolated diagnostics-upload script.
+
+    Keep this snippet syntactically self-contained: it is passed directly to
+    ``python -c`` inside the Modal orchestrator container.
+    """
+    return f"""
+import json
+import os
+from huggingface_hub import HfApi
+
+entries = json.loads({entries_json!r})
+api = HfApi()
+token = os.environ.get("HUGGING_FACE_TOKEN")
+for local_path, repo_path in entries:
+    api.upload_file(
+        path_or_fileobj=local_path,
+        path_in_repo=repo_path,
+        repo_id="policyengine/policyengine-us-data",
+        repo_type="model",
+        token=token,
+    )
+    print(f"Uploaded {{repo_path}}")
+"""
 
 
 @app.function(

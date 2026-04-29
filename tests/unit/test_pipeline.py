@@ -1,7 +1,9 @@
 """Tests for pipeline orchestrator metadata and helpers."""
 
 import json
+import sys
 import time
+from types import ModuleType
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -10,6 +12,7 @@ modal = pytest.importorskip("modal")
 
 from modal_app.pipeline import (
     RunMetadata,
+    _build_diagnostics_upload_script,
     _step_completed,
     _record_step,
     generate_run_id,
@@ -259,3 +262,43 @@ class TestRunMetaIO:
         ):
             with pytest.raises(FileNotFoundError):
                 read_run_meta("fake_run", mock_vol)
+
+
+def test_diagnostics_upload_script_is_valid_python(monkeypatch, capsys):
+    entries = [
+        (
+            "/pipeline/runs/test/diagnostics/unified_diagnostics.csv",
+            "calibration/runs/test/diagnostics/unified_diagnostics.csv",
+        )
+    ]
+    entries_json = json.dumps(entries)
+
+    script = _build_diagnostics_upload_script(entries_json)
+
+    compile(script, "<diagnostics-upload>", "exec")
+    assert "\t" not in script
+    assert "api.upload_file(" in script
+
+    calls = []
+
+    class FakeHfApi:
+        def upload_file(self, **kwargs):
+            calls.append(kwargs)
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.HfApi = FakeHfApi
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    monkeypatch.setenv("HUGGING_FACE_TOKEN", "token")
+
+    exec(compile(script, "<diagnostics-upload>", "exec"), {})
+
+    assert calls == [
+        {
+            "path_or_fileobj": entries[0][0],
+            "path_in_repo": entries[0][1],
+            "repo_id": "policyengine/policyengine-us-data",
+            "repo_type": "model",
+            "token": "token",
+        }
+    ]
+    assert capsys.readouterr().out == f"Uploaded {entries[0][1]}\n"

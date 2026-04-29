@@ -35,17 +35,43 @@ def test_pipeline_image_runtime_seams():
 
     assert result["paths"]["repo_root_exists"] is True
     assert result["paths"]["target_config_exists"] is True
+    assert result["paths"]["working_directory_is_repo_root"] is True
+    assert result["paths"]["all_expected_files_exist"] is True
+    assert result["paths"]["expected_files"] == {
+        "pyproject.toml": True,
+        "uv.lock": True,
+        "modal_app/worker_script.py": True,
+        "modal_app/local_area.py": True,
+        "modal_app/h5_test_harness.py": True,
+        "modal_app/fixtures/h5_cases.py": True,
+        "tests/integration/test_fixture_50hh.h5": True,
+        "policyengine_us_data/calibration/target_config.yaml": True,
+        "policyengine_us_data/calibration/target_config_full.yaml": True,
+    }
 
     for module_name in (
+        "google.cloud.storage",
         "pandas",
         "h5py",
+        "huggingface_hub",
+        "modal_app.fixtures.h5_cases",
+        "modal_app.h5_test_harness",
+        "modal_app.local_area",
+        "modal_app.remote_calibration_runner",
+        "numpy",
+        "policyengine_us",
         "policyengine_us_data",
         "modal_app.worker_script",
+        "spm_calculator",
+        "sqlalchemy",
     ):
         assert result["imports"][module_name]["ok"] is True
 
     assert result["interpreter"]["child_matches_parent"] is True
+    assert result["interpreter"]["child_cwd_is_repo_root"] is True
+    assert result["subprocess"]["worker_import"]["returncode"] == 0
     assert result["subprocess"]["worker_help"]["returncode"] == 0
+    assert result["subprocess"]["local_area_import"]["returncode"] == 0
     assert result["subprocess"]["calibration_help"]["returncode"] == 0
     checkpoint_policy = result["calibration_optimizer_checkpoint_policy"]
     assert checkpoint_policy["runner_exposes_checkpoint_name"] is False

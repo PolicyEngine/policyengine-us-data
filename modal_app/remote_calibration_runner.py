@@ -382,9 +382,12 @@ def _build_package_impl(
     if chunked_matrix:
         cmd.extend(["--chunked-matrix", "--chunk-size", str(chunk_size)])
         if parallel_matrix:
+            chunk_dir = f"{artifacts}/matrix_build"
             cmd.extend(
                 [
                     "--parallel",
+                    "--chunk-dir",
+                    chunk_dir,
                     "--num-matrix-workers",
                     str(num_matrix_workers),
                 ]

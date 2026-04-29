@@ -119,3 +119,53 @@ def test_fit_weights_impl_does_not_use_optimizer_checkpoint_artifacts(
     assert "checkpoint" not in result
     volume.reload.assert_called_once()
     volume.commit.assert_not_called()
+
+
+def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
+    monkeypatch,
+    tmp_path,
+):
+    remote_runner = _load_remote_calibration_runner_module()
+    artifacts_dir = tmp_path / "artifacts" / "bench-run"
+    artifacts_dir.mkdir(parents=True)
+    (artifacts_dir / "policy_data.db").write_bytes(b"db")
+    (artifacts_dir / "source_imputed_stratified_extended_cps.h5").write_bytes(b"h5")
+
+    volume = SimpleNamespace(reload=Mock(), commit=Mock())
+    monkeypatch.setattr(remote_runner, "PIPELINE_MOUNT", str(tmp_path))
+    monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
+    monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+    monkeypatch.setattr(remote_runner, "_write_package_sidecar", lambda _: True)
+
+    captured = {}
+
+    def fake_run_streaming(cmd, env=None, label=""):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        (artifacts_dir / "calibration_package.pkl").write_bytes(b"pkg")
+        return 0, []
+
+    monkeypatch.setattr(remote_runner, "_run_streaming", fake_run_streaming)
+
+    result = remote_runner._build_package_impl(
+        branch="main",
+        workers=1,
+        n_clones=10,
+        run_id="bench-run",
+        chunked_matrix=True,
+        parallel_matrix=True,
+        num_matrix_workers=1,
+    )
+
+    assert result == str(artifacts_dir / "calibration_package.pkl")
+    assert str(artifacts_dir / "policy_data.db") in captured["cmd"]
+    assert str(artifacts_dir / "source_imputed_stratified_extended_cps.h5") in (
+        captured["cmd"]
+    )
+    assert str(artifacts_dir / "calibration_package.pkl") in captured["cmd"]
+    assert "--chunk-dir" in captured["cmd"]
+    chunk_dir_idx = captured["cmd"].index("--chunk-dir") + 1
+    assert captured["cmd"][chunk_dir_idx] == str(artifacts_dir / "matrix_build")
+    assert captured["env"]["POLICYENGINE_US_DATA_RUN_ID"] == "bench-run"
+    volume.reload.assert_called_once()
+    volume.commit.assert_called_once()

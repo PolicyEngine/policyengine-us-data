@@ -1,7 +1,6 @@
 """Env-gated Modal smoke test for the matrix-chunk worker.
 
 Skipped by default. Runs only when all of:
-  - ``MODAL_TOKEN_ID`` and ``MODAL_TOKEN_SECRET`` are set (Modal auth)
   - ``POLICYENGINE_US_DATA_MODAL_SMOKE=1`` is set
 
 Assumes the pipeline app (which ``.include()``s the worker) has been
@@ -34,11 +33,7 @@ import os
 import pytest
 
 
-_SMOKE_ENABLED = (
-    os.environ.get("MODAL_TOKEN_ID")
-    and os.environ.get("MODAL_TOKEN_SECRET")
-    and os.environ.get("POLICYENGINE_US_DATA_MODAL_SMOKE") == "1"
-)
+_SMOKE_ENABLED = os.environ.get("POLICYENGINE_US_DATA_MODAL_SMOKE") == "1"
 
 APP_NAME = os.environ.get("MODAL_APP_NAME", "policyengine-us-data-pipeline")
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
@@ -47,8 +42,7 @@ MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
 pytestmark = pytest.mark.skipif(
     not _SMOKE_ENABLED,
     reason=(
-        "Modal smoke test; set MODAL_TOKEN_ID, MODAL_TOKEN_SECRET, and "
-        "POLICYENGINE_US_DATA_MODAL_SMOKE=1 to enable"
+        "Modal smoke test; set POLICYENGINE_US_DATA_MODAL_SMOKE=1 to enable"
     ),
 )
 

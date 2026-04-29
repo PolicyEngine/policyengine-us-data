@@ -98,7 +98,7 @@ def write_tiny_enhanced_cps(path: Path, *, extended_cps_path: Path) -> None:
         path,
         arrays,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_4",
             "source_stage_3_extended_cps": extended_cps_path.name,
             "time_period": STAGE_4_PERIOD,
@@ -123,7 +123,7 @@ def write_tiny_stratified_extended_cps(
         path,
         stratified,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_4",
             "source_stage_3_extended_cps": extended_cps_path.name,
             "time_period": STAGE_4_PERIOD,

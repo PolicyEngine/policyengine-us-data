@@ -180,7 +180,7 @@ def write_tiny_cps(
         path,
         arrays,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_2",
             "source_stage_1_acs": acs_path.name,
             "time_period": STAGE_2_PERIOD,
@@ -259,7 +259,7 @@ def write_tiny_puf(
         path,
         arrays,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_2",
             "source_stage_1_irs_puf": irs_puf_path.name,
             "time_period": STAGE_2_PERIOD,

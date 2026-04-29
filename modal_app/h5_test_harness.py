@@ -306,6 +306,7 @@ def inspect_h5_outputs(run_id: str, relative_paths: list[str]) -> dict:
         }
         if output_path.exists():
             with h5py.File(output_path, mode="r") as h5:
+                output["top_level_keys"] = sorted(h5.keys())
                 for variable in (
                     "household_id",
                     "person_id",
@@ -313,14 +314,7 @@ def inspect_h5_outputs(run_id: str, relative_paths: list[str]) -> dict:
                     "state_fips",
                     "congressional_district_geoid",
                 ):
-                    output["variables"][variable] = {
-                        "exists": variable in h5 and "2024" in h5[variable],
-                        "rows": (
-                            int(len(h5[variable]["2024"]))
-                            if variable in h5 and "2024" in h5[variable]
-                            else 0
-                        ),
-                    }
+                    output["variables"][variable] = _inspect_h5_variable(h5, variable)
         outputs[relative_path] = output
 
     manifest = None
@@ -332,6 +326,46 @@ def inspect_h5_outputs(run_id: str, relative_paths: list[str]) -> dict:
         "manifest": manifest,
         "outputs": outputs,
     }
+
+
+def _inspect_h5_variable(h5, variable: str) -> dict:
+    """Return row-count metadata for either grouped or direct H5 datasets."""
+
+    import h5py
+
+    if variable not in h5:
+        return {
+            "exists": False,
+            "rows": 0,
+            "periods": [],
+        }
+
+    node = h5[variable]
+    if isinstance(node, h5py.Dataset):
+        rows = _h5_dataset_rows(node)
+        return {
+            "exists": rows > 0,
+            "rows": rows,
+            "periods": [],
+        }
+
+    period_rows = {
+        str(period): _h5_dataset_rows(dataset)
+        for period, dataset in node.items()
+        if isinstance(dataset, h5py.Dataset)
+    }
+    rows = max(period_rows.values(), default=0)
+    return {
+        "exists": rows > 0,
+        "rows": rows,
+        "periods": sorted(period_rows),
+    }
+
+
+def _h5_dataset_rows(dataset) -> int:
+    if dataset.shape == ():
+        return int(dataset.size)
+    return int(dataset.shape[0])
 
 
 @app.function(

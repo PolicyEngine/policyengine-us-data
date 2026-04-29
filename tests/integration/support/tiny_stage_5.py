@@ -126,7 +126,7 @@ def write_tiny_source_imputed_stratified_cps(
         path,
         arrays,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_5",
             "source_stage_4_stratified": stratified_extended_cps_path.name,
             "time_period": STAGE_5_PERIOD,
@@ -149,7 +149,7 @@ def write_tiny_small_enhanced_cps(path: Path, *, enhanced_cps_path: Path) -> Non
         path,
         subset,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_5",
             "source_stage_4_enhanced": enhanced_cps_path.name,
             "time_period": STAGE_5_PERIOD,
@@ -183,7 +183,7 @@ def write_tiny_sparse_enhanced_cps(path: Path, *, enhanced_cps_path: Path) -> No
         path,
         subset,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_5",
             "source_stage_4_enhanced": enhanced_cps_path.name,
             "time_period": STAGE_5_PERIOD,

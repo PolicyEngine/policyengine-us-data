@@ -137,7 +137,7 @@ def write_tiny_extended_cps(
         path,
         arrays,
         attrs={
-            "fixture_scale": True,
+            "fixture_scale": 1,
             "source": "tests.integration.support.tiny_stage_3",
             "source_stage_2_cps": cps_path.name,
             "source_stage_2_puf": puf_path.name,

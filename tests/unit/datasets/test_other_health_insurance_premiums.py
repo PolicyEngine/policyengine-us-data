@@ -62,7 +62,7 @@ def test_person_premiums_pass_through_to_person_rows() -> None:
     np.testing.assert_allclose(result, values)
 
 
-def test_derive_other_health_insurance_premiums_emits_future_output(
+def test_derive_other_health_insurance_premiums_emits_output(
     monkeypatch,
 ) -> None:
     class FakeDataset:
@@ -87,6 +87,12 @@ def test_derive_other_health_insurance_premiums_emits_future_output(
         tax_benefit_system = SimpleNamespace(
             variables={
                 "chip_premium": SimpleNamespace(entity=SimpleNamespace(key="person")),
+                "marketplace_net_premium": SimpleNamespace(
+                    entity=SimpleNamespace(key="person")
+                ),
+                "medicaid_premium": SimpleNamespace(
+                    entity=SimpleNamespace(key="person")
+                ),
             }
         )
 
@@ -94,8 +100,12 @@ def test_derive_other_health_insurance_premiums_emits_future_output(
             pass
 
         def calculate(self, variable, period):
-            assert variable == "chip_premium"
-            return SimpleNamespace(values=np.array([50.0, 75.0]))
+            values = {
+                "chip_premium": np.array([50.0, 75.0]),
+                "marketplace_net_premium": np.array([25.0, 0.0]),
+                "medicaid_premium": np.array([0.0, 10.0]),
+            }
+            return SimpleNamespace(values=values[variable])
 
     monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
 
@@ -105,5 +115,5 @@ def test_derive_other_health_insurance_premiums_emits_future_output(
     assert dataset.saved_data is not None
     np.testing.assert_allclose(
         dataset.saved_data["other_health_insurance_premiums"],
-        [450.0, 125.0],
+        [425.0, 115.0],
     )

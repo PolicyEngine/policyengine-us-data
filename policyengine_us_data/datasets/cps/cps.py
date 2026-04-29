@@ -50,11 +50,6 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
-from policyengine_us_data.utils.policyengine import (
-    medicare_part_b_premium_variable_name,
-    supports_medicare_enrollment_input,
-)
-
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -540,10 +535,9 @@ def derive_other_health_insurance_premiums(self):
     other-premium input for the parts of CPS-reported non-Medicare premiums
     not explained by baseline computed Marketplace, CHIP, or Medicaid
     premiums. The original CPS-reported premium inputs remain unchanged as raw
-    source fields. Computed premium variables are version-gated because the
-    data package may be built against a policyengine-us release before a
-    modeled premium variable exists. The derived output is still emitted so
-    datasets built on current releases are ready for the decomposed MOOP model.
+    source fields. The data package requires a policyengine-us release with
+    these modeled premium variables, so missing variables fail fast instead of
+    silently producing an incomplete decomposition.
     """
     from policyengine_us import Microsimulation
 
@@ -561,10 +555,7 @@ def derive_other_health_insurance_premiums(self):
             continue
 
         computed_premium = np.zeros(len(data[reported_variable]), dtype=float)
-        available_variables = [
-            variable for variable in premium_variables if variable in tbs.variables
-        ]
-        for variable in available_variables:
+        for variable in premium_variables:
             values = np.asarray(
                 baseline.calculate(variable, period=period).values,
                 dtype=float,
@@ -583,7 +574,7 @@ def derive_other_health_insurance_premiums(self):
             "Created %s from %s by subtracting baseline computed premiums: %s",
             output_variable,
             reported_variable,
-            ", ".join(available_variables) if available_variables else "none",
+            ", ".join(premium_variables),
         )
         changed = True
 
@@ -1133,10 +1124,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
-    if supports_medicare_enrollment_input():
-        cps["medicare_enrolled"] = person.MCARE == 1
-    if medicare_part_b_premium_variable_name() == "medicare_part_b_premiums":
-        cps["medicare_part_b_premiums"] = person.PEMCPREM
+    cps["medicare_enrolled"] = person.MCARE == 1
 
     # Get QBI simulation parameters ---
     yamlfilename = (

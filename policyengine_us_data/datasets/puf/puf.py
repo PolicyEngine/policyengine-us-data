@@ -19,7 +19,6 @@ from policyengine_us_data.utils.mortgage_interest import (
 )
 from policyengine_us_data.utils.policyengine import (
     has_policyengine_us_variables,
-    medicare_part_b_premium_variable_name,
 )
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
@@ -987,7 +986,7 @@ MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS = {
     "health_insurance_premiums_without_medicare_part_b": 0.453,
     "other_medical_expenses": 0.325,
     "over_the_counter_health_expenses": 0.085,
-    medicare_part_b_premium_variable_name(): 0.137,
+    "medicare_part_b_premium": 0.137,
 }
 
 if __name__ == "__main__":

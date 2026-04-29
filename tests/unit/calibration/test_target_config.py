@@ -14,9 +14,6 @@ from policyengine_us_data.calibration.unified_calibration import (
     save_calibration_package,
     load_calibration_package,
 )
-from policyengine_us_data.utils.policyengine import (
-    medicare_part_b_premium_variable_name,
-)
 
 
 @pytest.fixture
@@ -209,7 +206,7 @@ class TestLoadTargetConfig:
             "domain_variable": "adjusted_gross_income,non_refundable_ctc",
         } in include_rules
 
-    def test_training_config_includes_current_medicare_part_b_target(self):
+    def test_training_config_includes_medicare_part_b_target(self):
         config = load_target_config(
             str(
                 Path(__file__).resolve().parents[3]
@@ -220,7 +217,7 @@ class TestLoadTargetConfig:
         )
 
         assert {
-            "variable": medicare_part_b_premium_variable_name(),
+            "variable": "medicare_part_b_premium",
             "geo_level": "national",
         } in config["include"]
 

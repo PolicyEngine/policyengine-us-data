@@ -16,14 +16,11 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
 )
 from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
-from policyengine_us_data.utils.policyengine import (
-    medicare_part_b_premium_variable_name,
-)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
 
-MEDICARE_PART_B_PREMIUM_VARIABLE = medicare_part_b_premium_variable_name()
+MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to

@@ -138,3 +138,9 @@ def has_policyengine_us_variables(*variables: str) -> bool:
 
 def supports_medicare_enrollment_input() -> bool:
     return has_policyengine_us_variables("medicare_enrolled")
+
+
+def medicare_part_b_premium_variable_name() -> str:
+    if has_policyengine_us_variables("medicare_part_b_premium"):
+        return "medicare_part_b_premium"
+    return "medicare_part_b_premiums"

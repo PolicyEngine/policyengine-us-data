@@ -16,8 +16,14 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
 )
 from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
+from policyengine_us_data.utils.policyengine import (
+    medicare_part_b_premium_variable_name,
+)
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
+
+
+MEDICARE_PART_B_PREMIUM_VARIABLE = medicare_part_b_premium_variable_name()
 
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to
@@ -29,8 +35,8 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 HARD_CODED_TOTALS = {
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premium": get_beneficiary_paid_medicare_part_b_premiums_target(
-        2024
+    MEDICARE_PART_B_PREMIUM_VARIABLE: (
+        get_beneficiary_paid_medicare_part_b_premiums_target(2024)
     ),
     "over_the_counter_health_expenses": 72e9,
     "spm_unit_spm_threshold": 3_945e9,
@@ -851,18 +857,21 @@ def build_loss_matrix(dataset: type, time_period):
         else:
             in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
             label_suffix = f"age_{age_lower_bound}_to_{age_lower_bound + 9}"
-        for expense_type in [
-            "health_insurance_premiums_without_medicare_part_b",
-            "over_the_counter_health_expenses",
-            "other_medical_expenses",
-            "medicare_part_b_premium",
+        for expense_type, target_column in [
+            (
+                "health_insurance_premiums_without_medicare_part_b",
+                "health_insurance_premiums_without_medicare_part_b",
+            ),
+            ("over_the_counter_health_expenses", "over_the_counter_health_expenses"),
+            ("other_medical_expenses", "other_medical_expenses"),
+            (MEDICARE_PART_B_PREMIUM_VARIABLE, "medicare_part_b_premiums"),
         ]:
             label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
             )
-            targets_array.append(row[expense_type])
+            targets_array.append(row[target_column])
 
     # AGI by SPM threshold totals
 

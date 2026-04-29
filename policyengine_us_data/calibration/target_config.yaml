@@ -116,6 +116,8 @@ include:
     geo_level: national
   - variable: medicare_part_b_premium
     geo_level: national
+  - variable: medicare_part_b_premiums
+    geo_level: national
   - variable: other_medical_expenses
     geo_level: national
   - variable: over_the_counter_health_expenses

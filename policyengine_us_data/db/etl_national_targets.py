@@ -21,6 +21,9 @@ from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
 )
+from policyengine_us_data.utils.policyengine import (
+    medicare_part_b_premium_variable_name,
+)
 
 
 def extract_national_targets(year: int = DEFAULT_YEAR):
@@ -155,7 +158,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "medicare_part_b_premium",
+            "variable": medicare_part_b_premium_variable_name(),
             "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
             "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
             "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(2024),

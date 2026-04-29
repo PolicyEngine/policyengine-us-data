@@ -10,7 +10,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
 
 __test__ = False
 
@@ -181,7 +181,7 @@ def write_tiny_cps(
         arrays,
         attrs={
             "fixture_scale": True,
-            "source": "tests.support.tiny_stage_2",
+            "source": "tests.integration.support.tiny_stage_2",
             "source_stage_1_acs": acs_path.name,
             "time_period": STAGE_2_PERIOD,
         },
@@ -260,7 +260,7 @@ def write_tiny_puf(
         arrays,
         attrs={
             "fixture_scale": True,
-            "source": "tests.support.tiny_stage_2",
+            "source": "tests.integration.support.tiny_stage_2",
             "source_stage_1_irs_puf": irs_puf_path.name,
             "time_period": STAGE_2_PERIOD,
         },

@@ -10,8 +10,8 @@ from typing import Iterable
 import h5py
 import numpy as np
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
-from tests.support.tiny_stage_2 import (
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.tiny_stage_2 import (
     GROUP_LEVEL_VARIABLES,
     PERIOD_KEY,
     PERSON_LEVEL_VARIABLES,
@@ -138,7 +138,7 @@ def write_tiny_extended_cps(
         arrays,
         attrs={
             "fixture_scale": True,
-            "source": "tests.support.tiny_stage_3",
+            "source": "tests.integration.support.tiny_stage_3",
             "source_stage_2_cps": cps_path.name,
             "source_stage_2_puf": puf_path.name,
             "time_period": STAGE_3_PERIOD,

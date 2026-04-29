@@ -9,7 +9,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
 
 __test__ = False
 
@@ -237,7 +237,7 @@ def write_tiny_acs(path: Path) -> None:
 
     with h5py.File(path, mode="w") as h5:
         h5.attrs["fixture_scale"] = True
-        h5.attrs["source"] = "tests.support.tiny_stage_1"
+        h5.attrs["source"] = "tests.integration.support.tiny_stage_1"
         for name, values in arrays.items():
             h5.create_dataset(name, data=values)
 

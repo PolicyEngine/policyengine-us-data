@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.support.pipeline_workspace import (
+from tests.integration.support.pipeline_workspace import (
     STAGE_ARTIFACTS,
     TinyPipelineWorkspace,
 )

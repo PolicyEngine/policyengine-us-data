@@ -3,9 +3,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
-from tests.support.tiny_stage_1 import create_stage_1_artifacts
-from tests.support.tiny_stage_2 import (
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.tiny_stage_1 import create_stage_1_artifacts
+from tests.integration.support.tiny_stage_2 import (
     CPS_REQUIRED_VARIABLES,
     PERIOD_KEY,
     PUF_REQUIRED_VARIABLES,

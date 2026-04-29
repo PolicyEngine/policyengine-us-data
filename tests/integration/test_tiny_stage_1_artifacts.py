@@ -1,8 +1,8 @@
 import h5py
 import pandas as pd
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
-from tests.support.tiny_stage_1 import (
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.tiny_stage_1 import (
     ACS_HOUSEHOLD_ARRAYS,
     ACS_PERSON_ARRAYS,
     PUF_CORE_COLUMNS,

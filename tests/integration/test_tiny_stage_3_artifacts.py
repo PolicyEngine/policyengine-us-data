@@ -2,10 +2,10 @@ import h5py
 import numpy as np
 import pytest
 
-from tests.support.pipeline_workspace import TinyPipelineWorkspace
-from tests.support.tiny_stage_1 import create_stage_1_artifacts
-from tests.support.tiny_stage_2 import PERIOD_KEY, create_stage_2_artifacts
-from tests.support.tiny_stage_3 import (
+from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
+from tests.integration.support.tiny_stage_1 import create_stage_1_artifacts
+from tests.integration.support.tiny_stage_2 import PERIOD_KEY, create_stage_2_artifacts
+from tests.integration.support.tiny_stage_3 import (
     EXTENDED_CPS_REQUIRED_VARIABLES,
     STAGE_3_PERIOD,
     STAGE_4_INPUT_VARIABLES,

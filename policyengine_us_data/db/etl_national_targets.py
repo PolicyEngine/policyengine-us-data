@@ -203,9 +203,9 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         },
         {
             "variable": "wic",
-            "value": 7_332_200_000,
+            "value": 4_911_500_000,
             "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
-            "notes": "FY 2024 WIC total costs; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row; food costs are $4.9115B",
+            "notes": "FY 2024 WIC food costs, excluding nutrition services and administration; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {

@@ -220,9 +220,9 @@ def test_load_national_targets_supports_wic_targets(tmp_path, monkeypatch):
         [
             {
                 "variable": "wic",
-                "value": 7_332_200_000,
+                "value": 4_911_500_000,
                 "source": "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx",
-                "notes": "FY 2024 WIC total costs from FNS annual summary",
+                "notes": "FY 2024 WIC food costs from FNS annual summary",
                 "year": 2024,
             }
         ]
@@ -253,7 +253,7 @@ def test_load_national_targets_supports_wic_targets(tmp_path, monkeypatch):
             )
         ).first()
         assert wic_total_target is not None
-        assert wic_total_target.value == 7_332_200_000
+        assert wic_total_target.value == 4_911_500_000
 
         wic_stratum = session.exec(
             select(Stratum).where(Stratum.notes == "National WIC Recipients")

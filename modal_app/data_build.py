@@ -479,12 +479,10 @@ def build_datasets(
         log_file=log_file,
     )
     # Build policy_data.db from source
-    subprocess.run(
-        ["make", "database"],
-        check=True,
-        cwd="/root/policyengine-us-data",
-        env=env,
-    )
+    env["PYTHONUNBUFFERED"] = "1"
+    log_file.write(f"\n{'=' * 60}\nStarting make database...\n{'=' * 60}\n")
+    log_file.flush()
+    run_script_logged(["make", "database"], log_file, env)
     # Checkpoint policy_data.db immediately after build so it survives
     # test failures and can be restored on retries.
     save_checkpoint(

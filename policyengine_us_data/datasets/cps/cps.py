@@ -101,6 +101,7 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
 ESI_POLICYHOLDER_VARIABLE = (
     "reported_owns_employer_sponsored_health_insurance_at_interview"
 )
+ESI_SOURCE_COLUMNS = {"NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"}
 
 
 _ESI_PLAN_PRIORS_2024 = {
@@ -783,6 +784,7 @@ def _validate_raw_cps_schema(
 ) -> None:
     required_person_columns = {
         "CENSUS_TAX_ID",
+        *ESI_SOURCE_COLUMNS,
     }
     required_tax_unit_columns = set()
 

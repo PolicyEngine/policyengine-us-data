@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -249,8 +250,25 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
         opened_modes.append(mode)
         return real_hdfstore(path, mode=mode, *args, **kwargs)
 
-    def fail_h5py_file(*args, **kwargs):
-        raise AssertionError("add_rent should not reopen the existing H5 with h5py")
+    # ACS fixture H5 backing the policyengine-core#482 workaround in add_rent
+    # (it reads is_household_head straight from the source H5 since
+    # calculate_dataframe drops user-set ETERNITY inputs under
+    # policyengine-core 3.24.0+). 10_000 True values match the size of the
+    # FakeMicrosimulation train frame below.
+    acs_fixture_path = tmp_path / "acs_fixture.h5"
+    with h5py.File(acs_fixture_path, "w") as acs_fixture:
+        acs_fixture["is_household_head"] = np.ones(10_000, dtype=bool)
+
+    real_h5py_file = cps_module.h5py.File
+    opened_h5_paths = []
+
+    def recording_h5py_file(path, mode="r", *args, **kwargs):
+        opened_h5_paths.append((str(path), mode))
+        if str(path) == str(existing_path):
+            raise AssertionError(
+                "add_rent should not reopen the existing CPS H5 with h5py"
+            )
+        return real_h5py_file(path, mode=mode, *args, **kwargs)
 
     class FakeQRF:
         def fit(self, X_train, predictors, imputed_variables):
@@ -314,19 +332,25 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
             self.saved.append(data)
 
     monkeypatch.setattr(cps_module.pd, "HDFStore", recording_hdfstore)
-    monkeypatch.setattr(cps_module.h5py, "File", fail_h5py_file)
+    monkeypatch.setattr(cps_module.h5py, "File", recording_h5py_file)
     monkeypatch.setattr(cps_module, "QRF", FakeQRF)
 
     import policyengine_us
     import policyengine_us_data.datasets.acs.acs as acs_module
 
+    class FakeACS_2022:
+        file_path = acs_fixture_path
+
     monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
-    monkeypatch.setattr(acs_module, "ACS_2022", object())
+    monkeypatch.setattr(acs_module, "ACS_2022", FakeACS_2022)
 
     dataset = FakeDataset()
     cps = {
         "age": np.array([40], dtype=np.int32),
         "spm_unit_capped_housing_subsidy_reported": np.array([0.0]),
+        # add_id_variables populates this upstream of add_rent in the real
+        # pipeline; see the policyengine-core#482 workaround override below.
+        "is_household_head": np.array([True]),
     }
     person = pd.DataFrame({"dummy": [1]})
     household = pd.DataFrame({"H_TENURE": [2]})
@@ -334,6 +358,7 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
     add_rent(dataset, cps, person, household)
 
     assert opened_modes == ["r"]
+    assert opened_h5_paths == [(str(acs_fixture_path), "r")]
     assert not existing_path.exists()
     np.testing.assert_array_equal(cps["rent"], np.array([1_000.0]))
     np.testing.assert_array_equal(cps["real_estate_taxes"], np.array([250.0]))

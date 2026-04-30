@@ -267,9 +267,10 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # _user_input_keys records the user-supplied period instead of the
     # canonicalized ETERNITY key. is_household_head therefore comes back as
     # all False from calculate_dataframe and the household-head filter below
-    # produces an empty frame. Read it straight from the source H5 until the
-    # upstream fix lands; remove this block (and the matching one for
-    # cps_sim) once pyproject.toml's policyengine-core upper bound is lifted.
+    # produces an empty frame. For ACS we read it directly from the source
+    # H5; for CPS we use the in-memory dict (already populated upstream in
+    # add_id_variables). Remove both overrides once pyproject.toml's
+    # policyengine-core upper bound is lifted.
     with h5py.File(ACS_2022.file_path, "r") as acs_h5:
         train_df["is_household_head"] = np.asarray(
             acs_h5["is_household_head"], dtype=bool
@@ -282,11 +283,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
     inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
-    # TODO(PolicyEngine/policyengine-core#482): same workaround as above.
-    with h5py.File(self.file_path, "r") as cps_h5:
-        inference_df["is_household_head"] = np.asarray(
-            cps_h5["is_household_head"], dtype=bool
-        )
+    inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 

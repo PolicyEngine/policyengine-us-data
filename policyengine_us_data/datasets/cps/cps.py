@@ -98,6 +98,10 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
     ),
 }
 
+ESI_POLICYHOLDER_VARIABLE = (
+    "reported_owns_employer_sponsored_health_insurance_at_interview"
+)
+
 
 _ESI_PLAN_PRIORS_2024 = {
     # AHRQ MEPS-IC Table IV.A.1 (private sector, 2024). These plan-type
@@ -119,12 +123,18 @@ _ESI_FAMILY_PLAN = 1
 _ESI_SELF_ONLY_PLAN = 2
 
 
+def _person_column(person: DataFrame, column: str, default=0) -> np.ndarray:
+    if column in person:
+        return person[column].to_numpy()
+    return np.full(len(person), default)
+
+
 def impute_employer_sponsored_insurance_premiums(person: DataFrame) -> np.ndarray:
     """Impute annual employer-paid ESI premiums for CPS policyholders."""
 
-    own_esi = person.NOW_OWNGRP.to_numpy(dtype=int) == _HAS_CURRENT_OWN_ESI
-    premium_status = person.NOW_HIPAID.to_numpy(dtype=int)
-    plan_type = person.NOW_GRPFTYP.to_numpy(dtype=int)
+    own_esi = _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    premium_status = _person_column(person, "NOW_HIPAID").astype(int)
+    plan_type = _person_column(person, "NOW_GRPFTYP").astype(int)
     employee_paid = np.clip(person.PHIP_VAL.to_numpy(dtype=float), 0, None)
 
     total_premium = np.where(
@@ -1201,6 +1211,9 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # "What is the annual amount of child support paid?"
     cps["child_support_expense"] = person.CHSP_VAL
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
+    cps[ESI_POLICYHOLDER_VARIABLE] = (
+        _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    )
     cps["employer_sponsored_insurance_premiums"] = (
         impute_employer_sponsored_insurance_premiums(person)
     )

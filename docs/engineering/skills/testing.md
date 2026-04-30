@@ -10,6 +10,29 @@ Use this skill whenever adding, moving, or reviewing tests.
 - Do not add pytest files under `policyengine_us_data/tests/`; CI does not
   collect that tree.
 
+## Integration Test Roles
+
+- Treat the old full dataset-build PR path as legacy linear integration testing.
+  It proves the production build can run, but it is not the model for new
+  fixture-scale integration tests.
+- Use intra-stage integration tests for Stage 1-5 runtime contracts. These
+  should run locally on tiny fixtures and verify each stage's input/output
+  artifact shape, schema, cache behavior, and failure surface without invoking
+  the full build.
+- Use the tiny H5 pipeline tests for H5-builder integration only. They may use
+  Modal, run-specific IDs, and seeded artifacts, but their job is to test seams
+  inside the H5 builder and local-area staging path, not the full Stage 1-5
+  dataset pipeline.
+- Use the tiny Modal pipeline E2E tests for the full handoff from Stage 1-5
+  shaped artifacts into the Modal H5/publish path. These tests should prove the
+  stage-output contract is accepted by the deployed pipeline path.
+- Use Modal runtime seam tests for deployment-specific contracts: imports,
+  baked files, subprocess entrypoints, function lookup, volume paths, and clean
+  credential/token skip behavior.
+- Avoid adding a second test that proves the same seam. If two tests both seed
+  static H5 fixtures and call the same builder path, either split the asserted
+  contract explicitly or remove the duplicate.
+
 ## Fixtures And Helpers
 
 - Keep root `tests/conftest.py` empty or very lightweight. It must not import

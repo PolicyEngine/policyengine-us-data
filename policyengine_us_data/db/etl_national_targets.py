@@ -145,7 +145,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "value": 1_002.9e9,
             "source": "https://apps.bea.gov/scb/issues/2025/09-september/0925-nipa-methodologies.htm",
             "notes": "BEA group health insurance total in employer contributions for employee pension and insurance funds",
-            "year": HARDCODED_YEAR,
+            "year": 2024,
         },
         {
             "variable": "health_insurance_premiums_without_medicare_part_b",

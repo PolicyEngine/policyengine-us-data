@@ -1,15 +1,24 @@
 {
-  "description": "Example GREG benchmark manifest for a reduced package and a coherent geography subset.",
+  "description": "Tier 2 scaling rung at ~1000 targets. Four-state, eight-district slice with national targets included.",
   "external_inputs": {},
   "method_options": {
     "greg": {
       "epsilon": 1e-07,
       "maxit": 200
     },
+    "ipf": {
+      "bound": 10.0,
+      "epsH": 0.01,
+      "epsP": 0.0001,
+      "household_id_col": "household_id",
+      "max_iter": 5000,
+      "return_na": true,
+      "weight_col": "base_weight"
+    },
     "l0": {
       "beta": 0.65,
       "device": "cpu",
-      "epochs": 1000,
+      "epochs": 5000,
       "lambda_l0": 1e-08,
       "lambda_l2": 1e-12,
       "learning_rate": 0.15,
@@ -18,9 +27,10 @@
   },
   "methods": [
     "l0",
-    "greg"
+    "greg",
+    "ipf"
   ],
-  "name": "greg_demo_small",
+  "name": "tier2_scaling_1000",
   "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
   "target_filters": {
     "count_like_only": false,
@@ -32,9 +42,7 @@
       "3601",
       "3602",
       "4801",
-      "4802",
-      "5301",
-      "5302"
+      "4802"
     ],
     "include_geo_levels": [
       "national",
@@ -47,9 +55,8 @@
       "6",
       "12",
       "36",
-      "48",
-      "53"
+      "48"
     ]
   },
-  "tier": "tier_a"
+  "tier": "tier_2"
 }

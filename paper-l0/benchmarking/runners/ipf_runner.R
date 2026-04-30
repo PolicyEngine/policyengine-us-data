@@ -7,7 +7,7 @@ source(file.path(script_dir, "read_npy.R"))
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 10L) {
-  stop("Usage: ipf_runner.R unit_metadata.csv ipf_target_metadata.csv initial_weights.npy output_weights.csv max_iter bound epsP epsH household_id_col weight_col")
+  stop("Usage: ipf_runner.R unit_metadata.csv ipf_target_metadata.csv initial_weights.npy output_weights.csv max_iter bound epsP epsH household_id_col weight_col [return_na]")
 }
 
 unit_csv <- args[[1]]
@@ -20,6 +20,16 @@ epsP <- as.numeric(args[[7]])
 epsH <- as.numeric(args[[8]])
 household_id_col <- args[[9]]
 weight_col <- args[[10]]
+
+return_na <- if (length(args) >= 11L) {
+  arg_str <- tolower(trimws(as.character(args[[11]])))
+  if (!arg_str %in% c("true", "false", "0", "1", "t", "f")) {
+    stop(sprintf("return_na must be a boolean string (got %s)", args[[11]]))
+  }
+  arg_str %in% c("true", "1", "t")
+} else {
+  TRUE
+}
 
 if (!requireNamespace("surveysd", quietly = TRUE)) {
   stop("The surveysd package is required for IPF benchmarks")
@@ -102,12 +112,16 @@ ipf_result <- surveysd::ipf(
   bound = bound,
   maxIter = max_iter,
   meanHH = TRUE,
-  returnNA = TRUE,
+  returnNA = return_na,
   nameCalibWeight = "calibWeight"
 )
 
 if (!("calibWeight" %in% names(ipf_result))) {
   stop("surveysd::ipf did not return a calibWeight column")
+}
+
+if (return_na && any(is.na(ipf_result$calibWeight))) {
+  stop("surveysd::ipf did not converge (NaN weights returned with returnNA=TRUE)")
 }
 
 write.csv(

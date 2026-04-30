@@ -7,6 +7,15 @@ import sys
 import time
 from pathlib import Path
 
+# This script can be invoked directly (`python paper-l0/benchmarking/benchmark_cli.py
+# ...`), in which case Python sets sys.path[0] to the script's directory and a sibling
+# editable-installed `policyengine_us_data` package can shadow the in-tree copy. Pin
+# the in-tree repo root ahead of site-packages so `fit_l0_weights` resolves to the
+# version in this repo, not whichever editable install pip found first.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import numpy as np
 import pandas as pd
 
@@ -216,6 +225,7 @@ def _run_ipf(run_dir: Path):
     temp_unit_csv = outputs / "_ipf_unit_metadata.csv"
     unit_with_weights.to_csv(temp_unit_csv, index=False)
 
+    return_na_flag = "true" if bool(options.get("return_na", False)) else "false"
     cmd = [
         "Rscript",
         str(RUNNERS_DIR / "ipf_runner.R"),
@@ -229,6 +239,7 @@ def _run_ipf(run_dir: Path):
         str(float(options.get("epsH", 1e-2))),
         household_id_col,
         weight_col,
+        return_na_flag,
     ]
     proc, elapsed = _run_subprocess(cmd)
     if proc.returncode != 0:

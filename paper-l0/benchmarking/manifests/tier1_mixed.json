@@ -1,5 +1,5 @@
 {
-  "description": "Example GREG benchmark manifest for a reduced package and a coherent geography subset.",
+  "description": "Tier 1 mixed-target tractable comparison. L0 and GREG fit the full filtered slice (count-like and dollar targets combined) for a coherent five-state, ten-district geography subset plus national targets. Same filtered slice is the input to the matched run reported in tier1_ipf.json.",
   "external_inputs": {},
   "method_options": {
     "greg": {
@@ -9,7 +9,7 @@
     "l0": {
       "beta": 0.65,
       "device": "cpu",
-      "epochs": 1000,
+      "epochs": 5000,
       "lambda_l0": 1e-08,
       "lambda_l2": 1e-12,
       "learning_rate": 0.15,
@@ -20,7 +20,7 @@
     "l0",
     "greg"
   ],
-  "name": "greg_demo_small",
+  "name": "tier1_mixed",
   "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
   "target_filters": {
     "count_like_only": false,
@@ -42,7 +42,6 @@
       "district"
     ],
     "include_national": true,
-    "max_targets": 1000,
     "state_ids": [
       "6",
       "12",
@@ -51,5 +50,5 @@
       "53"
     ]
   },
-  "tier": "tier_a"
+  "tier": "tier_1"
 }

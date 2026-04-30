@@ -347,3 +347,65 @@ make benchmarking-export MANIFEST=paper-l0/benchmarking/manifests/greg_demo_smal
 make benchmarking-run-greg RUN_DIR=paper-l0/benchmarking/runs/greg_demo_small
 make benchmarking-run-l0 RUN_DIR=paper-l0/benchmarking/runs/greg_demo_small
 ```
+
+## Paper-reported tiers
+
+The manifests under `manifests/tier*.json` are the paper-reported benchmark
+configurations from `paper-l0/BENCHMARK_PLAN.md`. They all read from the same
+saved calibration package and differ only in `target_filters` — the unit
+universe, clone count, source dataset, and initial calibration package are
+fixed.
+
+| File | Tier | Methods | Scope |
+| --- | --- | --- | --- |
+| `tier1_mixed.json` | 1 | L0, GREG | Full filtered slice (count + dollar) over a 5-state, 10-district subset plus national targets |
+| `tier1_ipf.json` | 1 | L0, IPF | Same slice; IPF retains the authored closed subset |
+| `tier2_scaling_250.json` … `tier2_scaling_10000.json` | 2 | L0, GREG, IPF | Scaling ladder by `max_targets`, expanding geography coverage to grow the target set |
+| `tier2_scaling_largest.json` | 2 | L0, GREG, IPF | Largest coherent pre-production subset (no `max_targets` cap) |
+| `tier3_production.json` | 3 | L0, GREG, IPF | Least-filtered view; failures are reportable results |
+
+All Tier 2 / Tier 3 manifests set `method_options.ipf.return_na = true` so
+non-convergence surfaces NaN weights, which `ipf_runner.R` converts into a
+visible runtime error rather than a silent fitted-weight column. A bounded
+GREG variant is intentionally out of scope for the current benchmark.
+
+### One-shot orchestration
+
+`run_benchmark_suite.py` exports each manifest, runs every method declared in
+it, schedules matched IPF / L0 / GREG comparisons (`--train-on
+ipf_retained_authored --score-on ipf_retained_authored`) when IPF is in play,
+and aggregates per-tier summary tables.
+
+```bash
+# All three tiers end-to-end (requires built calibration_package.pkl).
+python paper-l0/benchmarking/run_benchmark_suite.py \
+  --runs-dir paper-l0/benchmarking/runs
+
+# A single tier.
+python paper-l0/benchmarking/run_benchmark_suite.py \
+  --tier tier_1 \
+  --runs-dir paper-l0/benchmarking/runs
+
+# A single rung (re-run after a CI failure).
+python paper-l0/benchmarking/run_benchmark_suite.py \
+  --manifest paper-l0/benchmarking/manifests/tier2_scaling_2500.json \
+  --runs-dir paper-l0/benchmarking/runs
+```
+
+Outputs in `--runs-dir`:
+
+- `tier_1_summary.csv`, `tier_2_summary.csv`, `tier_3_summary.csv` — one row
+  per method per manifest, with status (`completed` / `failed`), runtime,
+  target / unit counts, and the standard error metrics from
+  `compute_common_metrics`. Matched IPF / L0 / GREG rows are tagged with
+  `training_target_set = ipf_retained_authored`.
+- `suite_summary.csv` — concatenated view across all tiers.
+- `<manifest>/inputs/`, `<manifest>/outputs/` — the per-manifest bundle that
+  `benchmark_cli.py export` and `run` produce, including
+  `ipf_conversion_diagnostics.json` whenever IPF was in scope.
+
+Failures (export-time `IPFConversionError`, runner non-zero exit, missing
+output files) appear as `status = failed` rows with the captured reason in
+`notes`. The orchestrator never aborts the suite — Tier 3 explicitly relies
+on this so a GREG out-of-memory or IPF non-convergence is a reportable result
+rather than a missing row.

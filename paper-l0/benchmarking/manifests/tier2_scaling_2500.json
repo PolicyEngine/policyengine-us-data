@@ -1,15 +1,24 @@
 {
-  "description": "Example GREG benchmark manifest for a reduced package and a coherent geography subset.",
+  "description": "Tier 2 scaling rung at ~2500 targets. Eight-state, twenty-district slice with national targets included.",
   "external_inputs": {},
   "method_options": {
     "greg": {
       "epsilon": 1e-07,
       "maxit": 200
     },
+    "ipf": {
+      "bound": 10.0,
+      "epsH": 0.01,
+      "epsP": 0.0001,
+      "household_id_col": "household_id",
+      "max_iter": 5000,
+      "return_na": true,
+      "weight_col": "base_weight"
+    },
     "l0": {
       "beta": 0.65,
       "device": "cpu",
-      "epochs": 1000,
+      "epochs": 5000,
       "lambda_l0": 1e-08,
       "lambda_l2": 1e-12,
       "learning_rate": 0.15,
@@ -18,21 +27,32 @@
   },
   "methods": [
     "l0",
-    "greg"
+    "greg",
+    "ipf"
   ],
-  "name": "greg_demo_small",
+  "name": "tier2_scaling_2500",
   "package_path": "policyengine_us_data/storage/calibration/calibration_package.pkl",
   "target_filters": {
     "count_like_only": false,
     "district_ids": [
       "601",
       "602",
+      "603",
       "1201",
       "1202",
+      "1203",
+      "1701",
+      "1702",
       "3601",
       "3602",
+      "3603",
+      "3901",
+      "3902",
+      "4201",
+      "4202",
       "4801",
       "4802",
+      "4803",
       "5301",
       "5302"
     ],
@@ -42,14 +62,17 @@
       "district"
     ],
     "include_national": true,
-    "max_targets": 1000,
+    "max_targets": 2500,
     "state_ids": [
       "6",
       "12",
+      "17",
       "36",
+      "39",
+      "42",
       "48",
       "53"
     ]
   },
-  "tier": "tier_a"
+  "tier": "tier_2"
 }

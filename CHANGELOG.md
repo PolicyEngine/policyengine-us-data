@@ -1,3 +1,10 @@
+## [1.89.0] - 2026-04-30
+
+### Added
+
+- Added hourly wage and annual employment income consistency diagnostics.
+
+
 ## [1.88.3] - 2026-04-29
 
 ### Fixed

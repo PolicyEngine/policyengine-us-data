@@ -9,6 +9,10 @@ import pytest
 
 modal = pytest.importorskip("modal")
 
+PIPELINE_APP_NAME = os.environ.get(
+    "MODAL_APP_NAME",
+    "policyengine-us-data-pipeline",
+)
 LOCAL_AREA_APP_NAME = os.environ.get(
     "MODAL_LOCAL_AREA_APP_NAME",
     "policyengine-us-data-local-area",
@@ -47,7 +51,7 @@ def test_deployed_modal_pipeline_accepts_tiny_stage_1_to_5_artifact_shape():
     preflight = _function(HARNESS_APP_NAME, "preflight_h5_case")
     inspect = _function(HARNESS_APP_NAME, "inspect_h5_outputs")
     cleanup = _function(HARNESS_APP_NAME, "cleanup_h5_case")
-    build = _function(LOCAL_AREA_APP_NAME, "build_areas_worker")
+    publish = _function(PIPELINE_APP_NAME, "run_seeded_h5_publish_seam")
     validate = _function(LOCAL_AREA_APP_NAME, "validate_staging")
 
     try:
@@ -60,35 +64,35 @@ def test_deployed_modal_pipeline_accepts_tiny_stage_1_to_5_artifact_shape():
         assert preflight_result["geography_source"] == "saved_geography"
         assert len(preflight_result["fingerprint"]) == 16
 
-        build_result = build.remote(
+        publish_result = publish.remote(
             branch="main",
+            n_clones=seeded["n_clones"],
             run_id=run_id,
-            work_items=[
+            regional_work_items=[
                 {
                     "type": "district",
                     "id": seeded["expected_district_name"],
                     "weight": 1,
                 },
                 {"type": "state", "id": "NC", "weight": 1},
-                {"type": "national", "id": "US", "weight": 1},
             ],
-            calibration_inputs=preflight_result["calibration_inputs"],
-            validate=False,
         )
+        regional_result = publish_result["regional"]
+        national_result = publish_result["national"]
 
-        assert build_result["failed"] == []
-        assert build_result["errors"] == []
-        assert build_result["completed"] == [
-            "district:NC-01",
-            "state:NC",
-            "national:US",
-        ]
+        assert regional_result["message"].endswith("Upload skipped.")
+        assert len(regional_result["fingerprint"]) == 16
+        assert national_result["message"].endswith("Upload skipped.")
+        assert len(national_result["fingerprint"]) == 16
+        assert national_result["fingerprint"] != regional_result["fingerprint"]
 
         manifest = validate.remote(branch="main", run_id=run_id, version="0.0.0")
         assert manifest["totals"]["districts"] == 1
         assert manifest["totals"]["states"] == 1
+        assert manifest["totals"]["national"] == 1
         assert "districts/NC-01.h5" in manifest["files"]
         assert "states/NC.h5" in manifest["files"]
+        assert "national/US.h5" in manifest["files"]
 
         inspection = inspect.remote(
             run_id,

@@ -119,16 +119,106 @@ def seed_local_h5_artifacts(
             CREATE TABLE stratum_constraints (
                 stratum_id INTEGER,
                 constraint_variable TEXT,
+                operation TEXT,
                 value TEXT
             )
             """
         )
         conn.execute(
             """
-            INSERT INTO stratum_constraints (stratum_id, constraint_variable, value)
-            VALUES (?, ?, ?)
+            CREATE TABLE target_overview (
+                target_id INTEGER,
+                stratum_id INTEGER,
+                variable TEXT,
+                reform_id INTEGER,
+                value REAL,
+                period INTEGER,
+                geo_level TEXT,
+                geographic_id TEXT,
+                domain_variable TEXT,
+                active INTEGER
+            )
+            """
+        )
+        validation_targets = (
+            (
+                1,
+                1,
+                "household_count",
+                0,
+                float(n_records),
+                2024,
+                "district",
+                DISTRICT_GEOID,
+                "",
+                1,
+            ),
+            (
+                2,
+                2,
+                "household_count",
+                0,
+                float(n_records),
+                2024,
+                "state",
+                str(STATE_FIPS),
+                "",
+                1,
+            ),
+            (
+                3,
+                3,
+                "household_count",
+                0,
+                float(n_records),
+                2024,
+                "national",
+                "US",
+                "",
+                1,
+            ),
+        )
+        conn.executemany(
+            """
+            INSERT INTO target_overview (
+                target_id,
+                stratum_id,
+                variable,
+                reform_id,
+                value,
+                period,
+                geo_level,
+                geographic_id,
+                domain_variable,
+                active
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (1, "congressional_district_geoid", DISTRICT_GEOID),
+            validation_targets,
+        )
+        conn.execute(
+            """
+            INSERT INTO stratum_constraints (
+                stratum_id,
+                constraint_variable,
+                operation,
+                value
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (1, "congressional_district_geoid", "==", DISTRICT_GEOID),
+        )
+        conn.execute(
+            """
+            INSERT INTO stratum_constraints (
+                stratum_id,
+                constraint_variable,
+                operation,
+                value
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (2, "state_fips", "==", str(STATE_FIPS)),
         )
         conn.commit()
     finally:

@@ -598,6 +598,41 @@ def verify_runtime_seams() -> dict:
     return result
 
 
+@app.function(
+    image=image,
+    timeout=28800,
+)
+def run_seeded_h5_publish_seam(
+    *,
+    branch: str,
+    run_id: str,
+    n_clones: int,
+    regional_work_items: list[dict],
+) -> dict:
+    """Run the pipeline-owned H5 publish seam against pre-seeded tiny artifacts."""
+
+    regional_handle = coordinate_publish.spawn(
+        branch=branch,
+        num_workers=1,
+        skip_upload=True,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        work_items_override=regional_work_items,
+    )
+    national_handle = coordinate_national_publish.spawn(
+        branch=branch,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        skip_upload=True,
+    )
+    return {
+        "regional": regional_handle.get(),
+        "national": national_handle.get(),
+    }
+
+
 def _write_validation_diagnostics(
     run_id: str,
     regional_result,

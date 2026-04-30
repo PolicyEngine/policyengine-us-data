@@ -822,6 +822,7 @@ def coordinate_publish(
     validate: bool = True,
     run_id: str = "",
     expected_fingerprint: str = "",
+    work_items_override: List[Dict] | None = None,
 ) -> Dict:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -923,52 +924,61 @@ def coordinate_publish(
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
-    result = subprocess.run(
-        _python_cmd(
-            "-c",
-            f"""
-import json
-from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
-    STATE_CODES,
-)
-from policyengine_us_data.calibration.publish_local_area import (
-    get_district_friendly_name,
-)
+    if work_items_override is None:
+        result = subprocess.run(
+            _python_cmd(
+                "-c",
+                (
+                    "import json\n"
+                    "from policyengine_us_data.calibration.calibration_utils "
+                    "import get_all_cds_from_database, STATE_CODES\n"
+                    "from policyengine_us_data.calibration.publish_local_area "
+                    "import get_district_friendly_name\n"
+                    f'db_uri = "sqlite:///{db_path}"\n'
+                    "cds = get_all_cds_from_database(db_uri)\n"
+                    "states = list(STATE_CODES.values())\n"
+                    "districts = [get_district_friendly_name(cd) for cd in cds]\n"
+                    'print(json.dumps({"states": states, "districts": districts, '
+                    '"cities": ["NYC"], "cds": cds}))\n'
+                ),
+            ),
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
 
-db_uri = "sqlite:///{db_path}"
-cds = get_all_cds_from_database(db_uri)
-states = list(STATE_CODES.values())
-districts = [get_district_friendly_name(cd) for cd in cds]
-print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
-""",
-        ),
-        capture_output=True,
-        text=True,
-        env=os.environ.copy(),
-    )
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to get work items: {result.stderr}")
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get work items: {result.stderr}")
+        work_info = json.loads(result.stdout)
+        states = work_info["states"]
+        districts = work_info["districts"]
+        cities = work_info["cities"]
 
-    work_info = json.loads(result.stdout)
-    states = work_info["states"]
-    districts = work_info["districts"]
-    cities = work_info["cities"]
+        from collections import Counter
 
-    from collections import Counter
+        cds_per_state = Counter(d.split("-")[0] for d in districts)
 
-    cds_per_state = Counter(d.split("-")[0] for d in districts)
+        CITY_WEIGHTS = {"NYC": 11}
 
-    CITY_WEIGHTS = {"NYC": 11}
-
-    work_items = []
-    for s in states:
-        work_items.append({"type": "state", "id": s, "weight": cds_per_state.get(s, 1)})
-    for d in districts:
-        work_items.append({"type": "district", "id": d, "weight": 1})
-    for c in cities:
-        work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
+        work_items = []
+        for s in states:
+            work_items.append(
+                {"type": "state", "id": s, "weight": cds_per_state.get(s, 1)}
+            )
+        for d in districts:
+            work_items.append({"type": "district", "id": d, "weight": 1})
+        for c in cities:
+            work_items.append(
+                {"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)}
+            )
+    else:
+        work_items = work_items_override
+        states = [item["id"] for item in work_items if item.get("type") == "state"]
+        districts = [
+            item["id"] for item in work_items if item.get("type") == "district"
+        ]
+        cities = [item["id"] for item in work_items if item.get("type") == "city"]
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
@@ -1106,6 +1116,7 @@ def coordinate_national_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    skip_upload: bool = False,
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -1243,6 +1254,15 @@ def coordinate_national_publish(
                 "WARNING: National validation returned "
                 f"non-zero exit code: {val_result.returncode}"
             )
+
+    if skip_upload:
+        print("\nSkipping national upload (--skip-upload flag set)")
+        return {
+            "message": (f"National US.h5 built for version {version}. Upload skipped."),
+            "run_id": run_id,
+            "fingerprint": fingerprint,
+            "national_validation": national_validation_output,
+        }
 
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(

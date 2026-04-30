@@ -41,6 +41,7 @@ def _write_flat_run_config(
     artifact_dir: Path,
     *,
     artifact_paths: dict[str, Path],
+    filename: str = "unified_run_config.json",
 ) -> Path:
     payload = {
         "git_commit": "deadbeefcafebabe",
@@ -51,7 +52,7 @@ def _write_flat_run_config(
             name: _sha256(path) for name, path in sorted(artifact_paths.items())
         },
     }
-    config_path = artifact_dir / "unified_run_config.json"
+    config_path = artifact_dir / filename
     config_path.write_text(json.dumps(payload, indent=2))
     return config_path
 
@@ -158,6 +159,11 @@ def seed_tiny_pipeline_case(
         artifact_dir,
         "calibration_weights.npy",
     )
+    national_weights_path = _copy_to_artifact_root(
+        h5_artifacts.weights_path,
+        artifact_dir,
+        "national_calibration_weights.npy",
+    )
     db_path = _copy_to_artifact_root(
         h5_artifacts.db_path,
         artifact_dir,
@@ -176,8 +182,18 @@ def seed_tiny_pipeline_case(
             artifact_dir,
             "geography_assignment.npz",
         )
+        national_geography_path = _copy_to_artifact_root(
+            h5_artifacts.geography_path,
+            artifact_dir,
+            "national_geography_assignment.npz",
+        )
         artifact_paths["geography_assignment.npz"] = geography_path
     elif case_name == "package_fallback_success":
+        national_geography_path = _copy_to_artifact_root(
+            h5_artifacts.geography_path,
+            artifact_dir,
+            "national_geography_assignment.npz",
+        )
         calibration_package_path = _copy_to_artifact_root(
             h5_artifacts.calibration_package_path,
             artifact_dir,
@@ -190,6 +206,14 @@ def seed_tiny_pipeline_case(
     run_config_path = _write_flat_run_config(
         artifact_dir,
         artifact_paths=artifact_paths,
+    )
+    national_run_config_path = _write_flat_run_config(
+        artifact_dir,
+        artifact_paths={
+            "calibration_weights.npy": national_weights_path,
+            "geography_assignment.npz": national_geography_path,
+        },
+        filename="national_unified_run_config.json",
     )
 
     pipeline_volume.commit()
@@ -208,6 +232,7 @@ def seed_tiny_pipeline_case(
             seed=42,
         ),
         "run_config": str(run_config_path),
+        "national_run_config": str(national_run_config_path),
         "expected_district_name": "NC-01",
         "n_clones": h5_artifacts.n_clones,
         "seed": 42,

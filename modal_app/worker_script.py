@@ -55,6 +55,7 @@ def _validate_in_subprocess(
         area_type=area_type,
         area_id=area_id,
         display_id=display_id,
+        dataset_path=h5_path,
         period=period,
         training_mask=area_training,
         variable_entity_map=variable_entity_map,

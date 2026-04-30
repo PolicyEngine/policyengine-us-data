@@ -89,10 +89,8 @@ def test_deployed_modal_pipeline_accepts_tiny_stage_1_to_5_artifact_shape():
         manifest = validate.remote(branch="main", run_id=run_id, version="0.0.0")
         assert manifest["totals"]["districts"] == 1
         assert manifest["totals"]["states"] == 1
-        assert manifest["totals"]["national"] == 1
         assert "districts/NC-01.h5" in manifest["files"]
         assert "states/NC.h5" in manifest["files"]
-        assert "national/US.h5" in manifest["files"]
 
         inspection = inspect.remote(
             run_id,

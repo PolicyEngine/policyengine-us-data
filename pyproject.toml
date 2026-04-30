@@ -91,7 +91,7 @@ markers = [
     "integration: tests that exercise integration-level behavior or external runtime seams",
 ]
 filterwarnings = [
-    "ignore:'return' in a 'finally' block:SyntaxWarning:IPython.core.interactiveshell",
+    "ignore::SyntaxWarning:IPython.core.interactiveshell",
 ]
 
 [tool.towncrier]

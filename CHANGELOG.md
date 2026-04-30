@@ -1,3 +1,12 @@
+## [1.89.1] - 2026-04-30
+
+### Fixed
+
+- Read `is_household_head` directly from the ACS and CPS H5 datasets in `add_rent` and require `policyengine-core>=3.25.4` for PolicyEngine/policyengine-core#482, where user-supplied ETERNITY inputs were dropped after `_invalidate_all_caches`. Removes the empty-train-frame `ValueError` from `sample(10_000)` that was failing the Modal CPS build.
+- Improve Modal data-build diagnostics so database-step failures preserve their stdout and stderr in the build log.
+- Skip the flaky ACF HTML landing page in `etl_tanf` and fetch the FY-stamped workbooks directly via a per-year `TANF_WORKBOOK_URLS` constant; keep the tenacity retry / extended timeout around the workbook GET so transient `acf.gov` slowness does not fail `make database` on Modal builds.
+
+
 ## [1.89.0] - 2026-04-30
 
 ### Added

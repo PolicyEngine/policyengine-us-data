@@ -22,12 +22,13 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "policyengine-us>=1.674.1",
+    # policyengine-us 1.674.1+ requires policyengine-core>=3.25.1, which
+    # reintroduces PolicyEngine/policyengine-core#482.
+    "policyengine-us>=1.637.0,<1.674.1",
     # Upper bound is a temporary pin tied to PolicyEngine/policyengine-core#482
-    # (user-set ETERNITY inputs lost after _invalidate_all_caches). Lift the
-    # cap once that issue is fixed and the local workaround in
-    # policyengine_us_data/datasets/cps/cps.py:add_rent is removed.
-    "policyengine-core>=3.25.1,<3.26",
+    # (user-set ETERNITY inputs lost after _invalidate_all_caches in
+    # policyengine-core 3.24.0+). Lift the cap once that issue is fixed.
+    "policyengine-core>=3.23.6,<3.24",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",

@@ -5,6 +5,13 @@ import re
 import pandas as pd
 import requests
 from sqlmodel import Session, create_engine
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
@@ -27,6 +34,26 @@ CASELOAD_URL_PATTERN = re.compile(
 FINANCIAL_URL_PATTERN = re.compile(
     r"https://acf\.gov/sites/default/files/documents/ofa/fy-\d{4}-tanf-moe-financial-data\.xlsx"
 )
+ACF_REQUEST_TIMEOUT = 60
+
+
+@retry(
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=5, max=60),
+    retry=retry_if_exception_type(
+        (
+            requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+        )
+    ),
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+    reraise=True,
+)
+def _acf_get(session: requests.Session, url: str) -> requests.Response:
+    response = session.get(url, timeout=ACF_REQUEST_TIMEOUT)
+    response.raise_for_status()
+    return response
 
 
 def _validate_supported_year(year: int) -> None:
@@ -54,15 +81,13 @@ def _download_acf_excel(
         }
     )
 
-    page_response = session.get(page_url, timeout=30)
-    page_response.raise_for_status()
+    page_response = _acf_get(session, page_url)
     match = url_pattern.search(page_response.text)
     if match is None:
         raise ValueError(f"Could not find TANF workbook URL on {page_url}")
 
     workbook_url = match.group(0)
-    workbook_response = session.get(workbook_url, timeout=60)
-    workbook_response.raise_for_status()
+    workbook_response = _acf_get(session, workbook_url)
     save_bytes(cache_file, workbook_response.content)
     return workbook_response.content
 

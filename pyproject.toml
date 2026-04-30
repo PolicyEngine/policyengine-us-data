@@ -23,7 +23,11 @@ classifiers = [
 ]
 dependencies = [
     "policyengine-us>=1.674.1",
-    "policyengine-core>=3.23.6",
+    # Upper bound is a temporary pin tied to PolicyEngine/policyengine-core#482
+    # (user-set ETERNITY inputs lost after _invalidate_all_caches). Lift the
+    # cap once that issue is fixed and the local workaround in
+    # policyengine_us_data/datasets/cps/cps.py:add_rent is removed.
+    "policyengine-core>=3.25.1,<3.26",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",

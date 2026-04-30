@@ -1,0 +1,1 @@
+Read `is_household_head` directly from the ACS and CPS H5 datasets in `add_rent` and pin `policyengine-core<3.26` to work around PolicyEngine/policyengine-core#482, where user-supplied ETERNITY inputs are dropped after `_invalidate_all_caches`. Removes the empty-train-frame `ValueError` from `sample(10_000)` that was failing the Modal CPS build.

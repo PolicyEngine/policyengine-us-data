@@ -9,6 +9,7 @@ from policyengine_us_data.datasets.cps.census_cps import (
     _resolve_person_usecols,
 )
 from policyengine_us_data.datasets.cps.cps import (
+    ESI_POLICYHOLDER_VARIABLE,
     _EMPLOYER_PAYS_ALL,
     _EMPLOYER_PAYS_SOME,
     _ESI_PLAN_PRIORS_2024,
@@ -23,11 +24,15 @@ from policyengine_us_data.storage.calibration_targets.pull_hardcoded_targets imp
 
 
 def test_resolve_person_usecols_requests_optional_esi_columns_when_available():
-    available = PERSON_COLUMNS + TAX_UNIT_COLUMNS + [
-        "NOW_OWNGRP",
-        "NOW_HIPAID",
-        "NOW_GRPFTYP",
-    ]
+    available = (
+        PERSON_COLUMNS
+        + TAX_UNIT_COLUMNS
+        + [
+            "NOW_OWNGRP",
+            "NOW_HIPAID",
+            "NOW_GRPFTYP",
+        ]
+    )
     usecols = _resolve_person_usecols(available, spm_unit_columns=[])
 
     for column in ["NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"]:
@@ -63,6 +68,14 @@ def test_impute_employer_sponsored_insurance_premiums():
     assert result[4] == 0
 
 
+def test_impute_employer_sponsored_insurance_premiums_tolerates_missing_esi_columns():
+    person = pd.DataFrame({"PHIP_VAL": [1_000, 2_000]})
+
+    result = impute_employer_sponsored_insurance_premiums(person)
+
+    np.testing.assert_array_equal(result, np.zeros(2))
+
+
 def test_imputation_status_codes_remain_stable():
     assert _EMPLOYER_PAYS_ALL == 1
     assert _EMPLOYER_PAYS_SOME == 2
@@ -77,9 +90,16 @@ def test_hardcoded_targets_include_total_esi_premiums():
 
 
 def test_target_config_includes_total_esi_premiums():
-    target_config_path = Path(__file__).parent.parent / (
+    target_config_path = Path(__file__).parents[2] / (
         "policyengine_us_data/calibration/target_config.yaml"
     )
     content = target_config_path.read_text()
 
     assert "employer_sponsored_insurance_premiums" in content
+
+
+def test_policyholder_variable_name_remains_stable():
+    assert (
+        ESI_POLICYHOLDER_VARIABLE
+        == "reported_owns_employer_sponsored_health_insurance_at_interview"
+    )

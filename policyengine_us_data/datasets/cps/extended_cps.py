@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.cps.cps import (
+    CPS,
+    CPS_2024,
+    CPS_2024_Full,
+    ESI_POLICYHOLDER_VARIABLE,
+)
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
@@ -741,16 +746,14 @@ def _apply_post_processing(predictions, X_test, time_period, data):
             predictions[col] = constrained[col]
 
     if "employer_sponsored_insurance_premiums" in predictions.columns:
-        for coverage_var in (
-            "has_esi",
-            "reported_has_employer_sponsored_health_coverage_at_interview",
-        ):
-            if coverage_var in X_test.columns:
-                covered = np.asarray(X_test[coverage_var], dtype=bool)
-                predictions.loc[
-                    ~covered, "employer_sponsored_insurance_premiums"
-                ] = 0
-                break
+        policyholder = _clone_half_person_values(
+            data, ESI_POLICYHOLDER_VARIABLE, time_period
+        )
+        if policyholder is not None:
+            predictions.loc[
+                ~np.asarray(policyholder, dtype=bool),
+                "employer_sponsored_insurance_premiums",
+            ] = 0
 
     return predictions
 

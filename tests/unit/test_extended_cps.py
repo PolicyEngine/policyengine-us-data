@@ -15,6 +15,7 @@ from policyengine_us_data.calibration.puf_impute import (
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
 )
+from policyengine_us_data.datasets.cps.cps import ESI_POLICYHOLDER_VARIABLE
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_CLONE_FEATURE_VARIABLES,
     CPS_ONLY_IMPUTED_VARIABLES,
@@ -237,17 +238,20 @@ class TestCloneChildcareDerivation:
 
 
 class TestStage2PostProcessing:
-    def test_zeroes_esi_premiums_for_uncovered_clone_records(self):
+    def test_zeroes_esi_premiums_for_non_policyholder_clone_records(self):
         predictions = pd.DataFrame(
             {"employer_sponsored_insurance_premiums": [6_000.0, 4_000.0]}
         )
-        x_test = pd.DataFrame({"has_esi": [True, False]})
+        x_test = pd.DataFrame({"has_esi": [True, True]})
 
         result = _apply_post_processing(
             predictions=predictions,
             X_test=x_test,
             time_period=2024,
-            data={"person_id": {2024: np.array([1, 2, 3, 4])}},
+            data={
+                "person_id": {2024: np.array([1, 2, 3, 4])},
+                ESI_POLICYHOLDER_VARIABLE: {2024: np.array([True, False, True, False])},
+            },
         )
 
         np.testing.assert_allclose(

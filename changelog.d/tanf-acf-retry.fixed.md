@@ -1,1 +1,1 @@
-Retry ACF page and workbook downloads in `etl_tanf` with exponential backoff so transient `acf.gov` read timeouts do not fail `make database` on Modal builds.
+Skip the flaky ACF HTML landing page in `etl_tanf` and fetch the FY-stamped workbooks directly via a per-year `TANF_WORKBOOK_URLS` constant; keep the tenacity retry / extended timeout around the workbook GET so transient `acf.gov` slowness does not fail `make database` on Modal builds.

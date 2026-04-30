@@ -26,15 +26,34 @@ from policyengine_us_data.utils.raw_cache import is_cached, load_bytes, save_byt
 logger = logging.getLogger(__name__)
 
 ACF_DATA_YEAR = 2024
-CASELOAD_PAGE_URL = "https://www.acf.hhs.gov/ofa/data/tanf-caseload-data-2024"
-FINANCIAL_PAGE_URL = "https://www.acf.hhs.gov/ofa/data/tanf-financial-data-fy-2024"
-CASELOAD_URL_PATTERN = re.compile(
-    r"https://acf\.gov/sites/default/files/documents/ofa/fy\d{4}_tanf_caseload\.xlsx"
-)
-FINANCIAL_URL_PATTERN = re.compile(
-    r"https://acf\.gov/sites/default/files/documents/ofa/fy-\d{4}-tanf-moe-financial-data\.xlsx"
-)
 ACF_REQUEST_TIMEOUT = 60
+
+# Direct URLs for the FY-stamped ACF workbooks. The previous implementation
+# scraped the HTML landing page (`acf.gov/ofa/data/tanf-...`) to discover
+# these links, but that page is intermittently unreachable on `acf.gov` and
+# was the dominant source of `make database` build failures (see #852). The
+# workbook URLs themselves on `acf.gov/sites/default/files/documents/ofa/`
+# return 200 reliably, so we hit them directly and skip the page entirely.
+#
+# Update this dict when:
+#   - ACF publishes a new fiscal year's workbooks (add a new top-level key
+#     and bump `ACF_DATA_YEAR` / `_validate_supported_year`),
+#   - or ACF renames an existing FY's workbook on disk. A 404 from
+#     `_acf_get` is the early signal — that's an authoritative file
+#     rename, not a transient outage, and the new path needs to be
+#     copied in by hand from the corresponding ACF page.
+TANF_WORKBOOK_URLS: dict[int, dict[str, str]] = {
+    2024: {
+        "caseload": (
+            "https://acf.gov/sites/default/files/documents/ofa/"
+            "fy2024_tanf_caseload.xlsx"
+        ),
+        "financial": (
+            "https://acf.gov/sites/default/files/documents/ofa/"
+            "fy-2024-tanf-moe-financial-data.xlsx"
+        ),
+    },
+}
 
 
 @retry(
@@ -64,9 +83,7 @@ def _validate_supported_year(year: int) -> None:
         )
 
 
-def _download_acf_excel(
-    page_url: str, cache_file: str, url_pattern: re.Pattern
-) -> bytes:
+def _download_acf_excel(workbook_url: str, cache_file: str) -> bytes:
     if is_cached(cache_file):
         logger.info("Using cached %s", cache_file)
         return load_bytes(cache_file)
@@ -81,12 +98,6 @@ def _download_acf_excel(
         }
     )
 
-    page_response = _acf_get(session, page_url)
-    match = url_pattern.search(page_response.text)
-    if match is None:
-        raise ValueError(f"Could not find TANF workbook URL on {page_url}")
-
-    workbook_url = match.group(0)
     workbook_response = _acf_get(session, workbook_url)
     save_bytes(cache_file, workbook_response.content)
     return workbook_response.content
@@ -95,9 +106,8 @@ def _download_acf_excel(
 def extract_tanf_caseload_data(year: int) -> pd.DataFrame:
     _validate_supported_year(year)
     workbook = _download_acf_excel(
-        CASELOAD_PAGE_URL,
+        TANF_WORKBOOK_URLS[ACF_DATA_YEAR]["caseload"],
         f"tanf_caseload_{ACF_DATA_YEAR}.xlsx",
-        CASELOAD_URL_PATTERN,
     )
     return pd.read_excel(io.BytesIO(workbook), sheet_name="TFam", header=3)
 
@@ -140,9 +150,8 @@ def extract_tanf_financial_data(
 ) -> tuple[pd.DataFrame, dict[str, pd.DataFrame]]:
     _validate_supported_year(year)
     workbook = _download_acf_excel(
-        FINANCIAL_PAGE_URL,
+        TANF_WORKBOOK_URLS[ACF_DATA_YEAR]["financial"],
         f"tanf_financial_{ACF_DATA_YEAR}.xlsx",
-        FINANCIAL_URL_PATTERN,
     )
     xls = pd.ExcelFile(io.BytesIO(workbook))
     national_df = pd.read_excel(

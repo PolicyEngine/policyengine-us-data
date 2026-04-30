@@ -10,9 +10,11 @@ from policyengine_us_data.datasets.cps.census_cps import (
 )
 from policyengine_us_data.datasets.cps.cps import (
     ESI_POLICYHOLDER_VARIABLE,
+    ESI_SOURCE_COLUMNS,
     _EMPLOYER_PAYS_ALL,
     _EMPLOYER_PAYS_SOME,
     _ESI_PLAN_PRIORS_2024,
+    _validate_raw_cps_schema,
     impute_employer_sponsored_insurance_premiums,
 )
 from policyengine_us_data.datasets.cps.extended_cps import (
@@ -103,3 +105,23 @@ def test_policyholder_variable_name_remains_stable():
         ESI_POLICYHOLDER_VARIABLE
         == "reported_owns_employer_sponsored_health_insurance_at_interview"
     )
+
+
+def test_raw_cps_schema_requires_esi_source_columns():
+    person = pd.DataFrame(
+        {
+            "CENSUS_TAX_ID": [1],
+            **{column: [1] for column in ESI_SOURCE_COLUMNS},
+        }
+    )
+    tax_unit = pd.DataFrame()
+
+    _validate_raw_cps_schema(person, tax_unit, "raw")
+
+    stale_person = person.drop(columns=["NOW_OWNGRP"])
+    try:
+        _validate_raw_cps_schema(stale_person, tax_unit, "raw")
+    except ValueError as error:
+        assert "NOW_OWNGRP" in str(error)
+    else:
+        raise AssertionError("Expected missing ESI source column to fail validation")

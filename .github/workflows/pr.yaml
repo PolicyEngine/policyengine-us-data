@@ -27,7 +27,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - name: Check lock file is up-to-date
         run: |
           uv lock --locked || {
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Check for changelog fragment
         run: uv run towncrier check --compare-with origin/main
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Run unit tests with coverage
         env:
@@ -117,7 +117,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Install integration test deps
         run: uv pip install modal pytest numpy pandas
@@ -174,7 +174,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Test documentation builds
         run: uv run make documentation

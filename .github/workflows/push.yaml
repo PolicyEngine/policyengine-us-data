@@ -148,20 +148,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLICATION_ID: ${{ needs.publication-context.outputs.publication_id }}
           SOURCE_SHA: ${{ needs.versioning.outputs.version_sha }}
-        run: |
-          gh workflow run pipeline.yaml \
-            --ref main \
-            -f publication_id="${PUBLICATION_ID}" \
-            -f source_sha="${SOURCE_SHA}"
-          {
-            echo "## Publication Pipeline Dispatched"
-            echo
-            echo "| Field | Value |"
-            echo "|-------|-------|"
-            echo "| Publication ID | \`${PUBLICATION_ID}\` |"
-            echo "| Source SHA | \`${SOURCE_SHA}\` |"
-            echo "| Workflow | \`pipeline.yaml\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: bash .github/scripts/dispatch_publication_pipeline.sh
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:

@@ -242,7 +242,7 @@ class TestStepCompleted:
 
 
 class TestRecordStep:
-    def test_records_timing(self):
+    def test_records_timing(self, tmp_path):
         meta = RunMetadata(
             run_id="test",
             branch="main",
@@ -254,7 +254,10 @@ class TestRecordStep:
         mock_vol = MagicMock()
         start = time.time() - 5.0
 
-        with patch("modal_app.pipeline.write_run_meta"):
+        with (
+            patch("modal_app.pipeline.RUNS_DIR", str(tmp_path / "runs")),
+            patch("modal_app.pipeline.write_run_meta"),
+        ):
             _record_step(meta, "build_datasets", start, mock_vol)
 
         timing = meta.step_timings["build_datasets"]
@@ -262,8 +265,9 @@ class TestRecordStep:
         assert timing["duration_s"] >= 5.0
         assert "start" in timing
         assert "end" in timing
+        assert (tmp_path / "runs" / "test" / "steps" / "build_datasets.json").exists()
 
-    def test_records_custom_status(self):
+    def test_records_custom_status(self, tmp_path):
         meta = RunMetadata(
             run_id="test",
             branch="main",
@@ -274,7 +278,10 @@ class TestRecordStep:
         )
         mock_vol = MagicMock()
 
-        with patch("modal_app.pipeline.write_run_meta"):
+        with (
+            patch("modal_app.pipeline.RUNS_DIR", str(tmp_path / "runs")),
+            patch("modal_app.pipeline.write_run_meta"),
+        ):
             _record_step(
                 meta,
                 "build_datasets",

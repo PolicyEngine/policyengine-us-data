@@ -52,8 +52,24 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
-from modal_app.resilience import ensure_resume_sha_compatible
+from modal_app.images import cpu_image as image  # noqa: E402
+from modal_app.resilience import ensure_resume_sha_compatible  # noqa: E402
+from policyengine_us_data.utils.step_manifest import (  # noqa: E402
+    ArtifactReference,
+    ReuseMeasurement,
+    RunManifest,
+    StepManifest,
+    collect_artifacts,
+    collect_directory_artifacts,
+    completed_validated_outputs,
+    evaluate_step_reuse,
+    read_step_manifest,
+    run_manifest_path,
+    step_manifest_path,
+    utc_now,
+    write_run_manifest,
+    write_step_manifest,
+)
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -70,6 +86,18 @@ PIPELINE_MOUNT = "/pipeline"
 STAGING_MOUNT = "/staging"
 ARTIFACTS_BASE = f"{PIPELINE_MOUNT}/artifacts"
 RUNS_DIR = f"{PIPELINE_MOUNT}/runs"
+
+RUN_STEP_IDS = [
+    "01_build_datasets",
+    "02_build_package",
+    "03_fit_weights_regional",
+    "03_fit_weights_national",
+    "04_build_h5_regional",
+    "04_build_h5_national",
+    "04_stage_base_datasets",
+    "04_upload_diagnostics",
+    "05_promote_release",
+]
 
 
 def _python_cmd(*args: str) -> list[str]:
@@ -142,16 +170,45 @@ def generate_run_id(version: str, sha: str) -> str:
     return f"{version}_{sha[:8]}_{ts}"
 
 
+def _run_dir(run_id: str) -> Path:
+    return Path(RUNS_DIR) / run_id
+
+
+def _artifacts_dir(run_id: str) -> Path:
+    return Path(artifacts_dir_for_run(run_id))
+
+
+def _write_run_manifest(meta: RunMetadata) -> None:
+    """Write the run-scoped execution ledger."""
+    manifest = RunManifest(
+        run_id=meta.run_id,
+        branch=meta.branch,
+        sha=meta.sha,
+        version=meta.version,
+        status=meta.status,
+        started_at=meta.start_time,
+        updated_at=utc_now(),
+        completed_at=utc_now()
+        if meta.status in {"completed", "failed", "promoted"}
+        else None,
+        known_step_ids=RUN_STEP_IDS,
+        resume_history=meta.resume_history,
+        error=meta.error,
+    )
+    write_run_manifest(run_manifest_path(_run_dir(meta.run_id)), manifest)
+
+
 def write_run_meta(
     meta: RunMetadata,
     vol: modal.Volume,
 ) -> None:
-    """Write run metadata to the pipeline volume."""
-    run_dir = Path(RUNS_DIR) / meta.run_id
+    """Write compatibility metadata and the canonical run manifest."""
+    run_dir = _run_dir(meta.run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     meta_path = run_dir / "meta.json"
     with open(meta_path, "w") as f:
         json.dump(meta.to_dict(), f, indent=2)
+    _write_run_manifest(meta)
     vol.commit()
 
 
@@ -161,7 +218,7 @@ def read_run_meta(
 ) -> RunMetadata:
     """Read run metadata from the pipeline volume."""
     vol.reload()
-    meta_path = Path(RUNS_DIR) / run_id / "meta.json"
+    meta_path = _run_dir(run_id) / "meta.json"
     if not meta_path.exists():
         raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
     with open(meta_path) as f:
@@ -230,9 +287,201 @@ def archive_diagnostics(
 
 
 def _step_completed(meta: RunMetadata, step: str) -> bool:
-    """Check if a step is marked completed in metadata."""
+    """Check if a legacy step is marked completed in compatibility metadata."""
     timing = meta.step_timings.get(step, {})
     return timing.get("status") == "completed"
+
+
+def _next_step_attempt(run_id: str, step_id: str) -> int:
+    path = step_manifest_path(_run_dir(run_id), step_id)
+    if not path.exists():
+        return 1
+    try:
+        return read_step_manifest(path).attempt + 1
+    except Exception:
+        return 1
+
+
+def _start_step_manifest(
+    meta: RunMetadata,
+    step_id: str,
+    *,
+    parameters: dict | None = None,
+    input_identities: dict | None = None,
+    scope: str | None = None,
+    modal_call_id: str | None = None,
+    vol: modal.Volume | None = None,
+) -> StepManifest:
+    manifest = StepManifest(
+        run_id=meta.run_id,
+        step_id=step_id,
+        scope=scope,
+        status="running",
+        attempt=_next_step_attempt(meta.run_id, step_id),
+        started_at=utc_now(),
+        branch=meta.branch,
+        sha=meta.sha,
+        version=meta.version,
+        modal_call_id=modal_call_id,
+        parameters=parameters or {},
+        input_identities=input_identities or {},
+    )
+    write_step_manifest(step_manifest_path(_run_dir(meta.run_id), step_id), manifest)
+    if vol is not None:
+        vol.commit()
+    return manifest
+
+
+def _complete_step_manifest(
+    manifest: StepManifest,
+    *,
+    outputs: list[ArtifactReference] | None = None,
+    diagnostics: list[ArtifactReference] | None = None,
+    reuse_decision: str = "computed",
+    reuse_reason: str | None = None,
+    reuse_measurement: ReuseMeasurement | None = None,
+    status: str = "completed",
+    vol: modal.Volume | None = None,
+) -> StepManifest:
+    completed = manifest.complete(
+        status=status,
+        outputs=outputs,
+        diagnostics=diagnostics,
+        reuse_decision=reuse_decision,
+        reuse_reason=reuse_reason,
+        reuse_measurement=reuse_measurement,
+    )
+    write_step_manifest(
+        step_manifest_path(_run_dir(completed.run_id), completed.step_id),
+        completed,
+    )
+    if vol is not None:
+        vol.commit()
+    return completed
+
+
+def _fail_step_manifest(
+    manifest: StepManifest | None,
+    exc: BaseException,
+    vol: modal.Volume,
+) -> None:
+    if manifest is None:
+        return
+    failed = manifest.fail(exc)
+    write_step_manifest(
+        step_manifest_path(_run_dir(failed.run_id), failed.step_id), failed
+    )
+    vol.commit()
+
+
+def _mark_step_reused(
+    meta: RunMetadata,
+    step_id: str,
+    decision,
+    *,
+    vol: modal.Volume,
+    legacy_step: str | None = None,
+) -> StepManifest:
+    previous = decision.manifest
+    if previous is None:
+        raise RuntimeError(f"Cannot reuse {step_id}: missing prior manifest")
+    reused = StepManifest(
+        run_id=previous.run_id,
+        step_id=previous.step_id,
+        scope=previous.scope,
+        status="reused",
+        attempt=previous.attempt + 1,
+        started_at=utc_now(),
+        completed_at=utc_now(),
+        duration_s=0.0,
+        branch=meta.branch,
+        sha=meta.sha,
+        version=meta.version,
+        modal_app_id=previous.modal_app_id,
+        modal_call_id=previous.modal_call_id,
+        parameters=previous.parameters,
+        input_identities=previous.input_identities,
+        outputs=previous.outputs,
+        diagnostics=previous.diagnostics,
+        reuse_decision="reused",
+        reuse_reason=decision.reason,
+        reuse_measurement=ReuseMeasurement(
+            expected_outputs=len(previous.outputs),
+            valid_reused_outputs=len(previous.outputs),
+            recomputed_outputs=0,
+            invalid_outputs=0,
+        ),
+    )
+    write_step_manifest(step_manifest_path(_run_dir(meta.run_id), step_id), reused)
+    meta.step_timings[legacy_step or step_id] = {
+        "start": reused.started_at,
+        "end": reused.completed_at,
+        "duration_s": 0.0,
+        "status": "completed",
+        "reuse_decision": "reused",
+        "reuse_reason": decision.reason,
+    }
+    write_run_meta(meta, vol)
+    return reused
+
+
+def _step_reusable(
+    meta: RunMetadata,
+    step_id: str,
+    *,
+    expected_input_identities: dict | None = None,
+    expected_parameters: dict | None = None,
+) -> object:
+    return evaluate_step_reuse(
+        step_manifest_path(_run_dir(meta.run_id), step_id),
+        expected_input_identities=expected_input_identities,
+        expected_parameters=expected_parameters,
+    )
+
+
+def _artifact_identity(path: str | Path) -> dict:
+    artifact = ArtifactReference.from_path(path)
+    return {
+        "path": artifact.path,
+        "size_bytes": artifact.size_bytes,
+        "sha256": artifact.sha256,
+    }
+
+
+def _artifact_identities(paths: dict[str, str | Path]) -> dict:
+    identities = {}
+    for label, path in paths.items():
+        artifact_path = Path(path)
+        identities[label] = (
+            _artifact_identity(artifact_path)
+            if artifact_path.exists()
+            else {"path": str(artifact_path), "missing": True}
+        )
+    return identities
+
+
+def _collect_diagnostics(run_id: str) -> list[ArtifactReference]:
+    return collect_directory_artifacts(
+        _run_dir(run_id) / "diagnostics",
+        patterns=("*.csv", "*.json", "*.txt"),
+        role="diagnostic",
+    )
+
+
+def _collect_staging_outputs(run_id: str, *, scope: str) -> list[ArtifactReference]:
+    run_dir = Path(STAGING_MOUNT) / run_id
+    paths: list[Path] = []
+    if scope == "regional":
+        for subdir in ("states", "districts", "cities"):
+            paths.extend(sorted((run_dir / subdir).glob("*.h5")))
+        manifest_path = run_dir / "manifest.json"
+        if manifest_path.exists():
+            paths.append(manifest_path)
+    elif scope == "national":
+        paths.extend(sorted((run_dir / "national").glob("*.h5")))
+    else:
+        raise ValueError(f"Unknown H5 output scope: {scope}")
+    return collect_artifacts(paths, missing_ok=True)
 
 
 def find_resumable_run(branch: str, sha: str, vol: modal.Volume) -> Optional[str]:
@@ -275,14 +524,46 @@ def _record_step(
     start: float,
     vol: modal.Volume,
     status: str = "completed",
+    *,
+    step_id: str | None = None,
+    step_manifest: StepManifest | None = None,
+    parameters: dict | None = None,
+    input_identities: dict | None = None,
+    outputs: list[ArtifactReference] | None = None,
+    diagnostics: list[ArtifactReference] | None = None,
+    reuse_decision: str = "computed",
+    reuse_reason: str | None = None,
+    reuse_measurement: ReuseMeasurement | None = None,
 ) -> None:
-    """Record step timing and status in metadata."""
+    """Record step timing/status and complete the step manifest."""
     meta.step_timings[step] = {
         "start": datetime.fromtimestamp(start, tz=timezone.utc).isoformat(),
         "end": datetime.now(timezone.utc).isoformat(),
         "duration_s": round(time.time() - start, 1),
         "status": status,
     }
+    canonical_step_id = step_id or step
+    manifest = step_manifest or StepManifest(
+        run_id=meta.run_id,
+        step_id=canonical_step_id,
+        status="running",
+        attempt=_next_step_attempt(meta.run_id, canonical_step_id),
+        started_at=datetime.fromtimestamp(start, tz=timezone.utc).isoformat(),
+        branch=meta.branch,
+        sha=meta.sha,
+        version=meta.version,
+        parameters=parameters or {},
+        input_identities=input_identities or {},
+    )
+    _complete_step_manifest(
+        manifest,
+        outputs=outputs or [],
+        diagnostics=diagnostics or [],
+        reuse_decision=reuse_decision,
+        reuse_reason=reuse_reason,
+        reuse_measurement=reuse_measurement,
+        status=status,
+    )
     write_run_meta(meta, vol)
 
 
@@ -292,21 +573,21 @@ def _record_step(
 # (with their GPU/memory/volume configs) in the ephemeral run.
 # sys.path setup is handled at the top of this file.
 
-from modal_app.data_build import app as _data_build_app
-from modal_app.data_build import build_datasets
+from modal_app.data_build import app as _data_build_app  # noqa: E402
+from modal_app.data_build import build_datasets  # noqa: E402
 
 app.include(_data_build_app)
 
-from modal_app.remote_calibration_runner import app as _calibration_app
-from modal_app.remote_calibration_runner import (
+from modal_app.remote_calibration_runner import app as _calibration_app  # noqa: E402
+from modal_app.remote_calibration_runner import (  # noqa: E402
     build_package_remote,
     PACKAGE_GPU_FUNCTIONS,
 )
 
 app.include(_calibration_app)
 
-from modal_app.local_area import app as _local_area_app
-from modal_app.local_area import (
+from modal_app.local_area import app as _local_area_app  # noqa: E402
+from modal_app.local_area import (  # noqa: E402
     coordinate_publish,
     coordinate_national_publish,
     promote_publish,
@@ -909,11 +1190,44 @@ def run_pipeline(
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
 
+    active_step_manifest: StepManifest | None = None
+
     try:
         # ── Step 1: Build datasets ──
-        if not _step_completed(meta, "build_datasets"):
+        build_dataset_inputs = {"source": {"branch": branch, "sha": sha}}
+        build_dataset_parameters = {
+            "upload": True,
+            "sequential": False,
+            "clear_checkpoints": clear_checkpoints,
+            "skip_tests": True,
+            "skip_enhanced_cps": False,
+            "run_id": run_id,
+        }
+        build_dataset_reuse = _step_reusable(
+            meta,
+            "01_build_datasets",
+            expected_input_identities=build_dataset_inputs,
+            expected_parameters=build_dataset_parameters,
+        )
+        if build_dataset_reuse.reusable:
+            _mark_step_reused(
+                meta,
+                "01_build_datasets",
+                build_dataset_reuse,
+                vol=pipeline_volume,
+                legacy_step="build_datasets",
+            )
+            print("\n[Step 1/5] Build datasets (skipped - manifest valid)")
+        else:
             print("\n[Step 1/5] Building datasets...")
             step_start = time.time()
+            active_step_manifest = _start_step_manifest(
+                meta,
+                "01_build_datasets",
+                parameters=build_dataset_parameters,
+                input_identities=build_dataset_inputs,
+                vol=pipeline_volume,
+            )
 
             build_datasets.remote(
                 upload=True,
@@ -930,22 +1244,83 @@ def run_pipeline(
             # policy_data.db) are staged to HF in step 4.
             # TODO(#617): When pipeline_artifacts.py lands,
             # call mirror_to_pipeline() here for audit trail.
+            dataset_outputs = collect_directory_artifacts(
+                _artifacts_dir(run_id),
+                role="output",
+            )
+            checkpoint_stats_path = (
+                _artifacts_dir(run_id) / "data_build_checkpoint_stats.json"
+            )
+            checkpoint_stats = (
+                json.loads(checkpoint_stats_path.read_text())
+                if checkpoint_stats_path.exists()
+                else {}
+            )
             _record_step(
                 meta,
                 "build_datasets",
                 step_start,
                 pipeline_volume,
+                step_id="01_build_datasets",
+                step_manifest=active_step_manifest,
+                outputs=dataset_outputs,
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=checkpoint_stats.get(
+                        "expected_outputs", len(dataset_outputs)
+                    ),
+                    valid_reused_outputs=checkpoint_stats.get(
+                        "valid_reused_outputs", 0
+                    ),
+                    recomputed_outputs=checkpoint_stats.get(
+                        "recomputed_outputs", len(dataset_outputs)
+                    ),
+                    invalid_outputs=checkpoint_stats.get("invalid_outputs", 0),
+                ),
             )
+            active_step_manifest = None
             print(
                 f"  Completed in {meta.step_timings['build_datasets']['duration_s']}s"
             )
-        else:
-            print("\n[Step 1/5] Build datasets (skipped - completed)")
 
         # ── Step 2: Build calibration package ──
-        if not _step_completed(meta, "build_package"):
+        package_inputs = _artifact_identities(
+            {
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+            }
+        )
+        package_parameters = {
+            "workers": num_workers,
+            "n_clones": n_clones,
+            "target_config": None,
+            "skip_county": True,
+        }
+        package_reuse = _step_reusable(
+            meta,
+            "02_build_package",
+            expected_input_identities=package_inputs,
+            expected_parameters=package_parameters,
+        )
+        if package_reuse.reusable:
+            _mark_step_reused(
+                meta,
+                "02_build_package",
+                package_reuse,
+                vol=pipeline_volume,
+                legacy_step="build_package",
+            )
+            print("\n[Step 2/5] Build package (skipped - manifest valid)")
+        else:
             print("\n[Step 2/5] Building calibration package...")
             step_start = time.time()
+            active_step_manifest = _start_step_manifest(
+                meta,
+                "02_build_package",
+                parameters=package_parameters,
+                input_identities=package_inputs,
+                vol=pipeline_volume,
+            )
 
             pkg_path = build_package_remote.remote(
                 branch=branch,
@@ -960,13 +1335,78 @@ def run_pipeline(
                 "build_package",
                 step_start,
                 pipeline_volume,
+                step_id="02_build_package",
+                step_manifest=active_step_manifest,
+                outputs=collect_artifacts(
+                    [_artifacts_dir(run_id) / "calibration_package.pkl"],
+                    missing_ok=True,
+                ),
             )
+            active_step_manifest = None
             print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
-        else:
-            print("\n[Step 2/5] Build package (skipped - completed)")
 
         # ── Step 3: Fit weights (parallel) ──
-        if not _step_completed(meta, "fit_weights"):
+        fit_inputs = _artifact_identities(
+            {
+                "calibration_package": _artifacts_dir(run_id)
+                / "calibration_package.pkl",
+            }
+        )
+        regional_fit_parameters = {
+            "gpu": gpu,
+            "epochs": epochs,
+            "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "beta": 0.65,
+            "lambda_l0": 1e-7,
+            "lambda_l2": 1e-8,
+            "log_freq": 100,
+        }
+        national_fit_parameters = {
+            "gpu": national_gpu,
+            "epochs": national_epochs,
+            "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "beta": 0.65,
+            "lambda_l0": 2e-2,
+            "lambda_l2": 1e-12,
+            "log_freq": 100,
+            "skip_national": skip_national,
+        }
+        regional_fit_reuse = _step_reusable(
+            meta,
+            "03_fit_weights_regional",
+            expected_input_identities=fit_inputs,
+            expected_parameters=regional_fit_parameters,
+        )
+        national_fit_reuse = (
+            _step_reusable(
+                meta,
+                "03_fit_weights_national",
+                expected_input_identities=fit_inputs,
+                expected_parameters=national_fit_parameters,
+            )
+            if not skip_national
+            else None
+        )
+        fit_reusable = regional_fit_reuse.reusable and (
+            skip_national or national_fit_reuse.reusable
+        )
+        if fit_reusable:
+            _mark_step_reused(
+                meta,
+                "03_fit_weights_regional",
+                regional_fit_reuse,
+                vol=pipeline_volume,
+                legacy_step="fit_weights",
+            )
+            if national_fit_reuse is not None:
+                _mark_step_reused(
+                    meta,
+                    "03_fit_weights_national",
+                    national_fit_reuse,
+                    vol=pipeline_volume,
+                )
+            print("\n[Step 3/5] Fit weights (skipped - manifests valid)")
+        else:
             print("\n[Step 3/5] Fitting calibration weights...")
             step_start = time.time()
 
@@ -987,9 +1427,20 @@ def run_pipeline(
                 log_freq=100,
             )
             print(f"    → regional fit fc: {regional_handle.object_id}")
+            regional_fit_manifest = _start_step_manifest(
+                meta,
+                "03_fit_weights_regional",
+                scope="regional",
+                parameters=regional_fit_parameters,
+                input_identities=fit_inputs,
+                modal_call_id=regional_handle.object_id,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_fit_manifest
 
             # Spawn national fit (if enabled)
             national_handle = None
+            national_fit_manifest = None
             if not skip_national:
                 national_func = PACKAGE_GPU_FUNCTIONS[national_gpu]
                 print(
@@ -1008,6 +1459,15 @@ def run_pipeline(
                     log_freq=100,
                 )
                 print(f"    → national fit fc: {national_handle.object_id}")
+                national_fit_manifest = _start_step_manifest(
+                    meta,
+                    "03_fit_weights_national",
+                    scope="national",
+                    parameters=national_fit_parameters,
+                    input_identities=fit_inputs,
+                    modal_call_id=national_handle.object_id,
+                    vol=pipeline_volume,
+                )
 
             # Collect regional results
             print("  Waiting for regional fit...")
@@ -1038,6 +1498,27 @@ def run_pipeline(
                 pipeline_volume,
                 prefix="",
             )
+            regional_outputs = collect_artifacts(
+                [
+                    _artifacts_dir(run_id) / "calibration_weights.npy",
+                    _artifacts_dir(run_id) / "geography_assignment.npz",
+                    _artifacts_dir(run_id) / "unified_run_config.json",
+                ],
+                missing_ok=True,
+            )
+            regional_fit_reuse_measurement = ReuseMeasurement(
+                expected_outputs=len(regional_outputs),
+                recomputed_outputs=len(regional_outputs),
+            )
+            _complete_step_manifest(
+                regional_fit_manifest,
+                outputs=regional_outputs,
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_decision="computed",
+                reuse_measurement=regional_fit_reuse_measurement,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = national_fit_manifest
 
             # Collect national results
             if national_handle is not None:
@@ -1067,16 +1548,40 @@ def run_pipeline(
                     pipeline_volume,
                     prefix="national_",
                 )
+                national_outputs = collect_artifacts(
+                    [
+                        _artifacts_dir(run_id) / "national_calibration_weights.npy",
+                        _artifacts_dir(run_id) / "national_geography_assignment.npz",
+                        _artifacts_dir(run_id) / "national_unified_run_config.json",
+                    ],
+                    missing_ok=True,
+                )
+                _complete_step_manifest(
+                    national_fit_manifest,
+                    outputs=national_outputs,
+                    diagnostics=_collect_diagnostics(run_id),
+                    reuse_decision="computed",
+                    reuse_measurement=ReuseMeasurement(
+                        expected_outputs=len(national_outputs),
+                        recomputed_outputs=len(national_outputs),
+                    ),
+                    vol=pipeline_volume,
+                )
+                active_step_manifest = None
 
             _record_step(
                 meta,
                 "fit_weights",
                 step_start,
                 pipeline_volume,
+                step_id="03_fit_weights_regional",
+                step_manifest=regional_fit_manifest,
+                outputs=regional_outputs,
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_measurement=regional_fit_reuse_measurement,
             )
+            active_step_manifest = None
             print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
-        else:
-            print("\n[Step 3/5] Fit weights (skipped - completed)")
 
         # ── Step 4: Build H5s + stage + diagnostics (parallel) ──
         #   4a. coordinate_publish (regional H5s)
@@ -1085,7 +1590,104 @@ def run_pipeline(
         #   4d. upload_run_diagnostics (calibration diagnostics → HF)
         #   4e. _write_validation_diagnostics (after H5 builds)
         #   4f. upload_run_diagnostics (validation diagnostics → HF)
-        if not _step_completed(meta, "publish_and_stage"):
+        regional_h5_inputs = _artifact_identities(
+            {
+                "weights": _artifacts_dir(run_id) / "calibration_weights.npy",
+                "geography": _artifacts_dir(run_id) / "geography_assignment.npz",
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+                "run_config": _artifacts_dir(run_id) / "unified_run_config.json",
+                "calibration_package": _artifacts_dir(run_id)
+                / "calibration_package.pkl",
+            }
+        )
+        regional_h5_parameters = {
+            "num_workers": num_workers,
+            "n_clones": n_clones,
+            "validate": True,
+            "skip_upload": False,
+        }
+        national_h5_inputs = _artifact_identities(
+            {
+                "weights": _artifacts_dir(run_id) / "national_calibration_weights.npy",
+                "geography": _artifacts_dir(run_id)
+                / "national_geography_assignment.npz",
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+                "run_config": _artifacts_dir(run_id)
+                / "national_unified_run_config.json",
+            }
+        )
+        national_h5_parameters = {
+            "n_clones": n_clones,
+            "validate": True,
+            "skip_upload": False,
+            "skip_national": skip_national,
+        }
+        stage_base_inputs = _artifact_identities(
+            {
+                "policy_data_db": _artifacts_dir(run_id) / "policy_data.db",
+                "source_imputed": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+            }
+        )
+        stage_base_parameters = {
+            "version": version,
+            "branch": branch,
+            "run_id": run_id,
+        }
+        regional_h5_reuse = _step_reusable(
+            meta,
+            "04_build_h5_regional",
+            expected_input_identities=regional_h5_inputs,
+            expected_parameters=regional_h5_parameters,
+        )
+        national_h5_reuse = (
+            _step_reusable(
+                meta,
+                "04_build_h5_national",
+                expected_input_identities=national_h5_inputs,
+                expected_parameters=national_h5_parameters,
+            )
+            if not skip_national
+            else None
+        )
+        stage_base_reuse = _step_reusable(
+            meta,
+            "04_stage_base_datasets",
+            expected_input_identities=stage_base_inputs,
+            expected_parameters=stage_base_parameters,
+        )
+        publish_reusable = (
+            regional_h5_reuse.reusable
+            and (skip_national or national_h5_reuse.reusable)
+            and stage_base_reuse.reusable
+        )
+        if publish_reusable:
+            _mark_step_reused(
+                meta,
+                "04_build_h5_regional",
+                regional_h5_reuse,
+                vol=pipeline_volume,
+                legacy_step="publish_and_stage",
+            )
+            if national_h5_reuse is not None:
+                _mark_step_reused(
+                    meta,
+                    "04_build_h5_national",
+                    national_h5_reuse,
+                    vol=pipeline_volume,
+                )
+            _mark_step_reused(
+                meta,
+                "04_stage_base_datasets",
+                stage_base_reuse,
+                vol=pipeline_volume,
+            )
+            print("\n[Step 4/5] Publish + stage (skipped - manifests valid)")
+        else:
             print(
                 "\n[Step 4/5] Building H5s, staging datasets, "
                 "uploading diagnostics (parallel)..."
@@ -1106,8 +1708,19 @@ def run_pipeline(
                 ),
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
+            regional_h5_manifest = _start_step_manifest(
+                meta,
+                "04_build_h5_regional",
+                scope="regional",
+                parameters=regional_h5_parameters,
+                input_identities=regional_h5_inputs,
+                modal_call_id=regional_h5_handle.object_id,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_h5_manifest
 
             national_h5_handle = None
+            national_h5_manifest = None
             if not skip_national:
                 print("  Spawning national H5 build...")
                 national_h5_handle = coordinate_national_publish.spawn(
@@ -1119,12 +1732,45 @@ def run_pipeline(
                 print(
                     f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"
                 )
+                national_h5_manifest = _start_step_manifest(
+                    meta,
+                    "04_build_h5_national",
+                    scope="national",
+                    parameters=national_h5_parameters,
+                    input_identities=national_h5_inputs,
+                    modal_call_id=national_h5_handle.object_id,
+                    vol=pipeline_volume,
+                )
 
             # While H5 builds run, stage base datasets in this container
             pipeline_volume.reload()
 
             print("  Staging base datasets to HF...")
+            stage_base_manifest = _start_step_manifest(
+                meta,
+                "04_stage_base_datasets",
+                parameters=stage_base_parameters,
+                input_identities=stage_base_inputs,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = stage_base_manifest
             stage_base_datasets(run_id, version, branch)
+            base_stage_outputs = collect_directory_artifacts(
+                _artifacts_dir(run_id),
+                patterns=("*.h5", "*.db"),
+                role="output",
+            )
+            _complete_step_manifest(
+                stage_base_manifest,
+                outputs=base_stage_outputs,
+                reuse_decision="computed",
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=len(base_stage_outputs),
+                    recomputed_outputs=len(base_stage_outputs),
+                ),
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_h5_manifest
 
             # Now wait for H5 builds to finish
             print("  Waiting for regional H5 build...")
@@ -1141,7 +1787,28 @@ def run_pipeline(
             ):
                 meta.regional_fingerprint = regional_h5_result["fingerprint"]
                 meta.fingerprint = regional_h5_result["fingerprint"]
+                regional_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                    regional_h5_result["fingerprint"]
+                )
                 write_run_meta(meta, pipeline_volume)
+            regional_reuse_measurement = ReuseMeasurement.from_dict(
+                regional_h5_result.get("reuse_measurement", {})
+                if isinstance(regional_h5_result, dict)
+                else {}
+            )
+            _complete_step_manifest(
+                regional_h5_manifest,
+                outputs=_collect_staging_outputs(run_id, scope="regional"),
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_decision=(
+                    "partially_reused"
+                    if regional_reuse_measurement.valid_reused_outputs
+                    else "computed"
+                ),
+                reuse_measurement=regional_reuse_measurement,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = national_h5_manifest
 
             national_h5_result = None
             if national_h5_handle is not None:
@@ -1153,6 +1820,30 @@ def run_pipeline(
                     else national_h5_result
                 )
                 print(f"  National H5: {national_msg}")
+                if isinstance(national_h5_result, dict) and national_h5_result.get(
+                    "fingerprint"
+                ):
+                    national_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                        national_h5_result["fingerprint"]
+                    )
+                national_reuse_measurement = ReuseMeasurement.from_dict(
+                    national_h5_result.get("reuse_measurement", {})
+                    if isinstance(national_h5_result, dict)
+                    else {}
+                )
+                _complete_step_manifest(
+                    national_h5_manifest,
+                    outputs=_collect_staging_outputs(run_id, scope="national"),
+                    diagnostics=_collect_diagnostics(run_id),
+                    reuse_decision=(
+                        "partially_reused"
+                        if national_reuse_measurement.valid_reused_outputs
+                        else "computed"
+                    ),
+                    reuse_measurement=national_reuse_measurement,
+                    vol=pipeline_volume,
+                )
+                active_step_manifest = None
 
             # ── Aggregate validation results ──
             _write_validation_diagnostics(
@@ -1165,20 +1856,54 @@ def run_pipeline(
 
             # Upload validation diagnostics (written after H5 builds)
             print("  Uploading validation diagnostics...")
+            diagnostics_manifest = _start_step_manifest(
+                meta,
+                "04_upload_diagnostics",
+                parameters={"branch": branch, "run_id": run_id},
+                input_identities={
+                    "diagnostics": [
+                        artifact.to_dict() for artifact in _collect_diagnostics(run_id)
+                    ]
+                },
+                vol=pipeline_volume,
+            )
+            active_step_manifest = diagnostics_manifest
             upload_run_diagnostics(run_id, branch)
+            diagnostic_outputs = _collect_diagnostics(run_id)
+            _complete_step_manifest(
+                diagnostics_manifest,
+                outputs=diagnostic_outputs,
+                diagnostics=diagnostic_outputs,
+                reuse_decision="computed",
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=len(diagnostic_outputs),
+                    recomputed_outputs=len(diagnostic_outputs),
+                ),
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_h5_manifest
 
             _record_step(
                 meta,
                 "publish_and_stage",
                 step_start,
                 pipeline_volume,
+                step_id="04_build_h5_regional",
+                step_manifest=regional_h5_manifest,
+                outputs=_collect_staging_outputs(run_id, scope="regional"),
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_decision=(
+                    "partially_reused"
+                    if regional_reuse_measurement.valid_reused_outputs
+                    else "computed"
+                ),
+                reuse_measurement=regional_reuse_measurement,
             )
+            active_step_manifest = None
             print(
                 f"  Completed in "
                 f"{meta.step_timings['publish_and_stage']['duration_s']}s"
             )
-        else:
-            print("\n[Step 4/5] Publish + stage (skipped - completed)")
 
         # ── Step 5: Finalize ──
         print("\n[Step 5/5] Finalizing run...")
@@ -1202,6 +1927,7 @@ def run_pipeline(
         return run_id
 
     except Exception as e:
+        _fail_step_manifest(active_step_manifest, e, pipeline_volume)
         meta.status = "failed"
         meta.error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
         write_run_meta(meta, pipeline_volume)
@@ -1278,6 +2004,34 @@ def promote_run(
         print(f"WARNING: Run {run_id} was already promoted. Re-promoting...")
 
     version = version or meta.version
+    promote_inputs = {
+        "validated_step_outputs": [
+            artifact.to_dict()
+            for artifact in completed_validated_outputs(
+                _run_dir(run_id),
+                step_ids=[
+                    "04_build_h5_regional",
+                    "04_build_h5_national",
+                    "04_stage_base_datasets",
+                ],
+            )
+        ]
+    }
+    if (
+        run_manifest_path(_run_dir(run_id)).exists()
+        and not promote_inputs["validated_step_outputs"]
+    ):
+        raise RuntimeError(
+            "No validated completed step outputs found for release promotion. "
+            "Run Phase 3c pipeline steps before promoting this run."
+        )
+    promote_manifest = _start_step_manifest(
+        meta,
+        "05_promote_release",
+        parameters={"version": version, "run_id": run_id},
+        input_identities=promote_inputs,
+        vol=pipeline_volume,
+    )
 
     print("=" * 60)
     print("PROMOTING PIPELINE RUN")
@@ -1384,6 +2138,15 @@ print("Registered version {version} in version_manifest.json")
 
     # Update run status
     meta.status = "promoted"
+    _complete_step_manifest(
+        promote_manifest,
+        outputs=[
+            ArtifactReference.from_dict(artifact)
+            for artifact in promote_inputs["validated_step_outputs"]
+        ],
+        reuse_decision="computed",
+        vol=pipeline_volume,
+    )
     write_run_meta(meta, pipeline_volume)
 
     print("\n" + "=" * 60)
@@ -1419,6 +2182,7 @@ def pipeline_status(
 
     if run_id:
         meta = read_run_meta(run_id, pipeline_volume)
+        steps_dir = _run_dir(run_id) / "steps"
         lines = [
             f"Run: {meta.run_id}",
             f"  Branch:  {meta.branch}",
@@ -1429,8 +2193,19 @@ def pipeline_status(
         ]
         if meta.error:
             lines.append(f"  Error:   {meta.error[:200]}")
+        if steps_dir.exists():
+            lines.append("  Step manifests:")
+            for manifest_path in sorted(steps_dir.glob("*.json")):
+                manifest = read_step_manifest(manifest_path)
+                duration = (
+                    manifest.duration_s if manifest.duration_s is not None else "?"
+                )
+                reuse = manifest.reuse_decision
+                lines.append(
+                    f"    {manifest.step_id}: {duration}s ({manifest.status}, {reuse})"
+                )
         if meta.step_timings:
-            lines.append("  Steps:")
+            lines.append("  Legacy step timings:")
             for step, timing in meta.step_timings.items():
                 dur = timing.get("duration_s", "?")
                 status = timing.get("status", "unknown")
@@ -1440,8 +2215,18 @@ def pipeline_status(
     # List all runs
     runs = []
     for entry in sorted(runs_dir.iterdir()):
+        manifest_path = entry / "run_manifest.json"
         meta_path = entry / "meta.json"
-        if meta_path.exists():
+        if manifest_path.exists():
+            with open(manifest_path) as f:
+                data = json.load(f)
+            runs.append(
+                f"  {data['run_id']}: "
+                f"{data['status']} "
+                f"(branch={data['branch']}, "
+                f"v={data['version']})"
+            )
+        elif meta_path.exists():
             with open(meta_path) as f:
                 data = json.load(f)
             runs.append(

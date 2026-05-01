@@ -982,6 +982,7 @@ def coordinate_publish(
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
+    initially_completed = set(completed)
     print(f"Found {len(completed)} already-completed items on volume")
 
     phase_args = dict(
@@ -1033,12 +1034,22 @@ def coordinate_publish(
             f"Volume preserved for retry."
         )
 
+    reused_outputs = initially_completed & completed
+    recomputed_outputs = completed - initially_completed
+    reuse_measurement = {
+        "expected_outputs": expected_total,
+        "valid_reused_outputs": len(reused_outputs),
+        "recomputed_outputs": len(recomputed_outputs),
+        "invalid_outputs": max(expected_total - len(completed), 0),
+    }
+
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
         return {
             "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
             "fingerprint": fingerprint,
+            "reuse_measurement": reuse_measurement,
         }
 
     print("\nValidating staging...")
@@ -1075,6 +1086,7 @@ def coordinate_publish(
         "run_id": run_id,
         "validation_rows": accumulated_validation_rows,
         "fingerprint": fingerprint,
+        "reuse_measurement": reuse_measurement,
     }
 
 
@@ -1194,6 +1206,7 @@ def coordinate_national_publish(
     )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    national_h5 = run_dir / "national" / "US.h5"
 
     work_items = [{"type": "national", "id": "US"}]
     print("Spawning worker for national H5 build...")
@@ -1262,6 +1275,12 @@ def coordinate_national_publish(
             "run_id": run_id,
             "fingerprint": fingerprint,
             "national_validation": national_validation_output,
+            "reuse_measurement": {
+                "expected_outputs": 1,
+                "valid_reused_outputs": 0,
+                "recomputed_outputs": 1,
+                "invalid_outputs": 0,
+            },
         }
 
     print(f"Uploading {national_h5} to HF staging...")
@@ -1304,6 +1323,12 @@ print("Done")
         "run_id": run_id,
         "fingerprint": fingerprint,
         "national_validation": national_validation_output,
+        "reuse_measurement": {
+            "expected_outputs": 1,
+            "valid_reused_outputs": 0,
+            "recomputed_outputs": 1,
+            "invalid_outputs": 0,
+        },
     }
 
 

@@ -1,4 +1,5 @@
 import functools
+import json
 import os
 import shutil
 import subprocess
@@ -39,6 +40,45 @@ PIPELINE_MOUNT = "/pipeline"
 
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()
+_checkpoint_stats_lock = threading.Lock()
+_checkpoint_stats = {
+    "expected_outputs": 0,
+    "valid_reused_outputs": 0,
+    "recomputed_outputs": 0,
+    "invalid_outputs": 0,
+}
+
+
+def _reset_checkpoint_stats() -> None:
+    with _checkpoint_stats_lock:
+        _checkpoint_stats.update(
+            {
+                "expected_outputs": 0,
+                "valid_reused_outputs": 0,
+                "recomputed_outputs": 0,
+                "invalid_outputs": 0,
+            }
+        )
+
+
+def _record_checkpoint_stats(
+    *,
+    expected_outputs: int,
+    valid_reused_outputs: int = 0,
+    recomputed_outputs: int = 0,
+    invalid_outputs: int = 0,
+) -> None:
+    with _checkpoint_stats_lock:
+        _checkpoint_stats["expected_outputs"] += expected_outputs
+        _checkpoint_stats["valid_reused_outputs"] += valid_reused_outputs
+        _checkpoint_stats["recomputed_outputs"] += recomputed_outputs
+        _checkpoint_stats["invalid_outputs"] += invalid_outputs
+
+
+def _checkpoint_stats_snapshot() -> dict:
+    with _checkpoint_stats_lock:
+        return dict(_checkpoint_stats)
+
 
 # Script to output file mapping for checkpointing
 # Values can be a single file path (str) or a list of file paths
@@ -309,6 +349,7 @@ def run_script_with_checkpoint(
     # Normalize to list
     if isinstance(output_files, str):
         output_files = [output_files]
+    expected_count = len(output_files)
 
     # Check if ALL outputs are checkpointed
     all_checkpointed = all(is_checkpointed(branch, f) for f in output_files)
@@ -318,7 +359,15 @@ def run_script_with_checkpoint(
         for output_file in output_files:
             restore_from_checkpoint(branch, output_file)
         print(f"Skipping {script_path} (restored from checkpoint)")
+        _record_checkpoint_stats(
+            expected_outputs=expected_count,
+            valid_reused_outputs=expected_count,
+        )
         return script_path
+
+    missing_or_invalid = sum(
+        1 for output_file in output_files if not is_checkpointed(branch, output_file)
+    )
 
     # Run the script
     run_script(script_path, args=args, env=env, log_file=log_file)
@@ -326,6 +375,11 @@ def run_script_with_checkpoint(
     # Checkpoint all outputs
     for output_file in output_files:
         save_checkpoint(branch, output_file, volume)
+    _record_checkpoint_stats(
+        expected_outputs=expected_count,
+        recomputed_outputs=expected_count,
+        invalid_outputs=missing_or_invalid,
+    )
 
     return script_path
 
@@ -432,6 +486,7 @@ def build_datasets(
         stage_only: Upload to HF staging only, without promoting a release.
     """
     setup_gcp_credentials()
+    _reset_checkpoint_stats()
 
     # Reload volume to see latest checkpoints
     checkpoint_volume.reload()
@@ -681,6 +736,8 @@ def build_datasets(
         )
         print("  Copied calibration_weights.npy")
     shutil.copy2(log_path, artifacts_dir / "build_log.txt")
+    with open(artifacts_dir / "data_build_checkpoint_stats.json", "w") as f:
+        json.dump(_checkpoint_stats_snapshot(), f, indent=2, sort_keys=True)
     log_file.close()
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")

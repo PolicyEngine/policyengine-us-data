@@ -6,9 +6,10 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO, Any, Optional
 
 import modal
 
@@ -47,44 +48,38 @@ PIPELINE_MOUNT = "/pipeline"
 
 VOLUME_MOUNT = "/checkpoints"
 _volume_lock = threading.Lock()
-_checkpoint_stats_lock = threading.Lock()
-_checkpoint_stats = {
-    "expected_outputs": 0,
-    "valid_reused_outputs": 0,
-    "recomputed_outputs": 0,
-    "invalid_outputs": 0,
-}
 
 
-def _reset_checkpoint_stats() -> None:
-    with _checkpoint_stats_lock:
-        _checkpoint_stats.update(
-            {
-                "expected_outputs": 0,
-                "valid_reused_outputs": 0,
-                "recomputed_outputs": 0,
-                "invalid_outputs": 0,
+@dataclass
+class CheckpointStats:
+    expected_outputs: int = 0
+    valid_reused_outputs: int = 0
+    recomputed_outputs: int = 0
+    invalid_outputs: int = 0
+    _lock: Any = field(default_factory=threading.Lock, init=False, repr=False)
+
+    def record(
+        self,
+        *,
+        expected_outputs: int,
+        valid_reused_outputs: int = 0,
+        recomputed_outputs: int = 0,
+        invalid_outputs: int = 0,
+    ) -> None:
+        with self._lock:
+            self.expected_outputs += expected_outputs
+            self.valid_reused_outputs += valid_reused_outputs
+            self.recomputed_outputs += recomputed_outputs
+            self.invalid_outputs += invalid_outputs
+
+    def snapshot(self) -> dict[str, int]:
+        with self._lock:
+            return {
+                "expected_outputs": self.expected_outputs,
+                "valid_reused_outputs": self.valid_reused_outputs,
+                "recomputed_outputs": self.recomputed_outputs,
+                "invalid_outputs": self.invalid_outputs,
             }
-        )
-
-
-def _record_checkpoint_stats(
-    *,
-    expected_outputs: int,
-    valid_reused_outputs: int = 0,
-    recomputed_outputs: int = 0,
-    invalid_outputs: int = 0,
-) -> None:
-    with _checkpoint_stats_lock:
-        _checkpoint_stats["expected_outputs"] += expected_outputs
-        _checkpoint_stats["valid_reused_outputs"] += valid_reused_outputs
-        _checkpoint_stats["recomputed_outputs"] += recomputed_outputs
-        _checkpoint_stats["invalid_outputs"] += invalid_outputs
-
-
-def _checkpoint_stats_snapshot() -> dict:
-    with _checkpoint_stats_lock:
-        return dict(_checkpoint_stats)
 
 
 # Script to output file mapping for checkpointing
@@ -338,6 +333,7 @@ def run_script_with_checkpoint(
     args: Optional[list] = None,
     env: Optional[dict] = None,
     log_file: IO = None,
+    checkpoint_stats: CheckpointStats | None = None,
 ) -> str:
     """Run script if output not checkpointed, then checkpoint result.
 
@@ -366,10 +362,11 @@ def run_script_with_checkpoint(
         for output_file in output_files:
             restore_from_checkpoint(branch, output_file)
         print(f"Skipping {script_path} (restored from checkpoint)")
-        _record_checkpoint_stats(
-            expected_outputs=expected_count,
-            valid_reused_outputs=expected_count,
-        )
+        if checkpoint_stats is not None:
+            checkpoint_stats.record(
+                expected_outputs=expected_count,
+                valid_reused_outputs=expected_count,
+            )
         return script_path
 
     missing_or_invalid = sum(
@@ -382,11 +379,12 @@ def run_script_with_checkpoint(
     # Checkpoint all outputs
     for output_file in output_files:
         save_checkpoint(branch, output_file, volume)
-    _record_checkpoint_stats(
-        expected_outputs=expected_count,
-        recomputed_outputs=expected_count,
-        invalid_outputs=missing_or_invalid,
-    )
+    if checkpoint_stats is not None:
+        checkpoint_stats.record(
+            expected_outputs=expected_count,
+            recomputed_outputs=expected_count,
+            invalid_outputs=missing_or_invalid,
+        )
 
     return script_path
 
@@ -397,6 +395,7 @@ def run_cps_then_puf_phase(
     *,
     env: dict,
     log_file: IO = None,
+    checkpoint_stats: CheckpointStats | None = None,
 ) -> None:
     """Build CPS before PUF because PUF pension imputation loads CPS_2024."""
     for script in (CPS_BUILD_SCRIPT, PUF_BUILD_SCRIPT):
@@ -407,6 +406,7 @@ def run_cps_then_puf_phase(
             volume,
             env=env,
             log_file=log_file,
+            checkpoint_stats=checkpoint_stats,
         )
 
 
@@ -493,7 +493,7 @@ def build_datasets(
         stage_only: Upload to HF staging only, without promoting a release.
     """
     setup_gcp_credentials()
-    _reset_checkpoint_stats()
+    checkpoint_stats = CheckpointStats()
     run_id = run_id or resolve_publication_id()
     if run_id:
         os.environ["US_DATA_PUBLICATION_ID"] = run_id
@@ -572,6 +572,7 @@ def build_datasets(
                 checkpoint_volume,
                 env=env,
                 log_file=log_file,
+                checkpoint_stats=checkpoint_stats,
             )
     else:
         # Parallel execution based on dependency groups with checkpointing
@@ -601,6 +602,7 @@ def build_datasets(
                     checkpoint_volume,
                     env=env,
                     log_file=log_file,
+                    checkpoint_stats=checkpoint_stats,
                 ): script
                 for script, output in group1
             }
@@ -616,6 +618,7 @@ def build_datasets(
             checkpoint_volume,
             env=env,
             log_file=log_file,
+            checkpoint_stats=checkpoint_stats,
         )
 
         # SEQUENTIAL: Extended CPS (needs both cps and puf)
@@ -627,6 +630,7 @@ def build_datasets(
             checkpoint_volume,
             env=env,
             log_file=log_file,
+            checkpoint_stats=checkpoint_stats,
         )
 
         # GROUP 3: After extended_cps - run in parallel
@@ -646,6 +650,7 @@ def build_datasets(
                         checkpoint_volume,
                         env=env,
                         log_file=log_file,
+                        checkpoint_stats=checkpoint_stats,
                     )
                 )
             else:
@@ -661,6 +666,7 @@ def build_datasets(
                     checkpoint_volume,
                     env=env,
                     log_file=log_file,
+                    checkpoint_stats=checkpoint_stats,
                 )
             )
             for future in as_completed(phase4_futures):
@@ -686,6 +692,7 @@ def build_datasets(
                     checkpoint_volume,
                     env=env,
                     log_file=log_file,
+                    checkpoint_stats=checkpoint_stats,
                 )
             )
             if not skip_enhanced_cps:
@@ -700,6 +707,7 @@ def build_datasets(
                         checkpoint_volume,
                         env=env,
                         log_file=log_file,
+                        checkpoint_stats=checkpoint_stats,
                     )
                 )
             else:
@@ -748,7 +756,7 @@ def build_datasets(
         print("  Copied calibration_weights.npy")
     shutil.copy2(log_path, artifacts_dir / "build_log.txt")
     with open(artifacts_dir / "data_build_checkpoint_stats.json", "w") as f:
-        json.dump(_checkpoint_stats_snapshot(), f, indent=2, sort_keys=True)
+        json.dump(checkpoint_stats.snapshot(), f, indent=2, sort_keys=True)
     log_file.close()
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")

@@ -429,12 +429,74 @@ def adjust_aca_takeup_to_match_target(
     return result
 
 
+def adjust_aca_takeup_to_match_enrollment_and_spending_targets(
+    base_takeup: np.ndarray,
+    entity_draws: np.ndarray,
+    enrolled_person_weights: np.ndarray,
+    assigned_spending_weights: np.ndarray,
+    target_people: float,
+    target_spending: float,
+) -> np.ndarray:
+    """Set ACA takers to match enrollment and target average PTC."""
+    enrolled_person_weights = np.asarray(enrolled_person_weights, dtype=np.float64)
+    assigned_spending_weights = np.asarray(assigned_spending_weights, dtype=np.float64)
+    if len(assigned_spending_weights) != len(enrolled_person_weights):
+        raise ValueError("spending weights and person weights must align")
+
+    result = np.zeros(len(base_takeup), dtype=bool)
+    candidate_mask = enrolled_person_weights > 0
+    if not candidate_mask.any() or target_people <= 0:
+        return result
+
+    potential_people = float(enrolled_person_weights[candidate_mask].sum())
+    if potential_people <= target_people:
+        result[candidate_mask] = True
+        return result
+
+    target_average_spending = target_spending / target_people
+    candidate_idx = np.flatnonzero(candidate_mask)
+    average_spending = (
+        assigned_spending_weights[candidate_idx]
+        / enrolled_person_weights[candidate_idx]
+    )
+    ordering_keys = [
+        np.abs(average_spending - target_average_spending),
+        -average_spending,
+        average_spending,
+    ]
+    best_score = np.inf
+    best_result = result
+
+    for key in ordering_keys:
+        ordered_idx = candidate_idx[np.lexsort((entity_draws[candidate_idx], key))]
+        cumulative_people = np.cumsum(enrolled_person_weights[ordered_idx])
+        n_to_add = _closest_prefix_length(
+            0,
+            cumulative_people,
+            target_people,
+        )
+        candidate_result = np.zeros(len(base_takeup), dtype=bool)
+        candidate_result[ordered_idx[:n_to_add]] = True
+        candidate_people = enrolled_person_weights[candidate_result].sum()
+        candidate_spending = assigned_spending_weights[candidate_result].sum()
+        score = abs(candidate_people - target_people) / (target_people + 1) + abs(
+            candidate_spending - target_spending
+        ) / (target_spending + 1)
+        if score < best_score:
+            best_score = score
+            best_result = candidate_result
+
+    return best_result
+
+
 def adjust_aca_takeup_to_state_targets(
     base_takeup: np.ndarray,
     entity_draws: np.ndarray,
     enrolled_person_weights: np.ndarray,
     entity_state_codes: np.ndarray,
     target_people_by_state: Dict[str, float],
+    assigned_spending_weights: np.ndarray | None = None,
+    target_spending_by_state: Dict[str, float] | None = None,
 ) -> np.ndarray:
     """Match ACA take-up to state-level APTC enrollment targets."""
     result = base_takeup.copy()
@@ -443,6 +505,22 @@ def adjust_aca_takeup_to_state_targets(
     for state, target_people in sorted(target_people_by_state.items()):
         state_mask = entity_state_codes == str(state)
         if not state_mask.any():
+            continue
+        if (
+            assigned_spending_weights is not None
+            and target_spending_by_state is not None
+            and state in target_spending_by_state
+        ):
+            result[state_mask] = (
+                adjust_aca_takeup_to_match_enrollment_and_spending_targets(
+                    base_takeup=result[state_mask],
+                    entity_draws=entity_draws[state_mask],
+                    enrolled_person_weights=enrolled_person_weights[state_mask],
+                    assigned_spending_weights=assigned_spending_weights[state_mask],
+                    target_people=float(target_people),
+                    target_spending=float(target_spending_by_state[state]),
+                )
+            )
             continue
         result[state_mask] = adjust_aca_takeup_to_match_target(
             base_takeup=result[state_mask],

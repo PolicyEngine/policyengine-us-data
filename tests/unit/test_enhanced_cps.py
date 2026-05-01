@@ -55,3 +55,23 @@ def test_create_aca_2025_takeup_override_matches_state_targets():
         ],
         [5.0, 10.0],
     )
+
+
+def test_create_aca_2025_takeup_override_uses_state_spending_targets():
+    result = create_aca_2025_takeup_override(
+        base_takeup=np.array([True, True, False], dtype=bool),
+        person_enrolled_if_takeup=np.ones(3, dtype=bool),
+        person_weights=np.array([5.0, 5.0, 5.0], dtype=np.float64),
+        person_tax_unit_ids=np.array([10, 11, 12], dtype=np.int64),
+        tax_unit_ids=np.array([10, 11, 12], dtype=np.int64),
+        person_state_codes=np.array(["NY", "NY", "NY"]),
+        target_people_by_state={"NY": 5.0},
+        tax_unit_aca_ptc=np.array([20.0, 100.0, 60.0], dtype=np.float64),
+        tax_unit_weights=np.array([5.0, 5.0, 5.0], dtype=np.float64),
+        target_spending_by_state={"NY": 500.0},
+    )
+
+    np.testing.assert_array_equal(
+        result,
+        np.array([False, True, False], dtype=bool),
+    )

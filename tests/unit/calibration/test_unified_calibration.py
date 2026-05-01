@@ -27,6 +27,7 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
+    adjust_aca_takeup_to_match_enrollment_and_spending_targets,
     adjust_aca_takeup_to_match_target,
     adjust_aca_takeup_to_state_targets,
     apply_block_takeup_to_arrays,
@@ -315,6 +316,51 @@ class TestAcaTakeupTargeting:
         np.testing.assert_array_equal(
             result,
             np.array([False, True, True, True], dtype=bool),
+        )
+
+    def test_adjust_targets_spending_per_person_when_provided(self):
+        base_takeup = np.array([True, True, True], dtype=bool)
+        entity_draws = np.array([0.30, 0.10, 0.20], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0], dtype=np.float64)
+        assigned_spending_weights = np.array(
+            [100.0, 500.0, 1_000.0],
+            dtype=np.float64,
+        )
+
+        result = adjust_aca_takeup_to_match_enrollment_and_spending_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            assigned_spending_weights,
+            target_people=100.0,
+            target_spending=1_000.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, False, True], dtype=bool),
+        )
+
+    def test_state_targets_use_spending_when_available(self):
+        base_takeup = np.array([False, False, False, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.20, 0.30, 0.40], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0, 100.0])
+        assigned_spending_weights = np.array([100.0, 1_000.0, 500.0, 100.0])
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 100.0, "FL": 100.0},
+            assigned_spending_weights=assigned_spending_weights,
+            target_spending_by_state={"NY": 1_000.0, "FL": 100.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, False, True], dtype=bool),
         )
 
 

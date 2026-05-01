@@ -83,6 +83,21 @@ def _load_aca_enrollment_targets(period: int) -> dict[str, float] | None:
     }
 
 
+def _load_aca_spending_targets(period: int) -> dict[str, float] | None:
+    path = (
+        STORAGE_FOLDER
+        / "calibration_targets"
+        / f"aca_spending_and_enrollment_{period}.csv"
+    )
+    if not path.exists():
+        return None
+    targets = pd.read_csv(path)
+    return {
+        str(row.state): float(row.spending) * 12
+        for row in targets.itertuples(index=False)
+    }
+
+
 def _normalise_state_code(value) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8")
@@ -110,6 +125,9 @@ def create_aca_2025_takeup_override(
     target_people: float = ACA_POST_CALIBRATION_PERSON_TARGETS[2025],
     person_state_codes: np.ndarray | None = None,
     target_people_by_state: dict[str, float] | None = None,
+    tax_unit_aca_ptc: np.ndarray | None = None,
+    tax_unit_weights: np.ndarray | None = None,
+    target_spending_by_state: dict[str, float] | None = None,
 ) -> np.ndarray:
     """Set 2025 ACA take-up to match APTC enrollment targets."""
     tax_unit_id_to_idx = {
@@ -132,6 +150,16 @@ def create_aca_2025_takeup_override(
             raise ValueError(
                 "person_state_codes are required for state-level ACA targets"
             )
+        assigned_spending_weights = None
+        if target_spending_by_state is not None:
+            if tax_unit_aca_ptc is None or tax_unit_weights is None:
+                raise ValueError(
+                    "tax_unit_aca_ptc and tax_unit_weights are required for "
+                    "state-level ACA spending targets"
+                )
+            assigned_spending_weights = np.asarray(
+                tax_unit_aca_ptc, dtype=np.float64
+            ) * np.asarray(tax_unit_weights, dtype=np.float64)
         return adjust_aca_takeup_to_state_targets(
             base_takeup=np.asarray(base_takeup, dtype=bool),
             entity_draws=draws,
@@ -142,6 +170,8 @@ def create_aca_2025_takeup_override(
                 tax_unit_count=len(tax_unit_ids),
             ),
             target_people_by_state=target_people_by_state,
+            assigned_spending_weights=assigned_spending_weights,
+            target_spending_by_state=target_spending_by_state,
         )
 
     return extend_aca_takeup_to_match_target(
@@ -403,6 +433,21 @@ class EnhancedCPS(Dataset):
                         )
                     ),
                     target_people_by_state=_load_aca_enrollment_targets(2025),
+                    tax_unit_aca_ptc=np.asarray(
+                        sim.calculate(
+                            "aca_ptc",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    tax_unit_weights=np.asarray(
+                        sim.calculate(
+                            "tax_unit_weight",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    target_spending_by_state=_load_aca_spending_targets(2025),
                 ),
             )
 

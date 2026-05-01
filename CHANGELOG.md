@@ -1,3 +1,14 @@
+## [1.90.0] - 2026-05-01
+
+### Added
+
+- Added local H5 traceability metadata and scope fingerprinting for calibration artifacts.
+
+### Changed
+
+- Add quality guards for test layout and document the testing skill for AI tooling.
+
+
 ## [1.89.1] - 2026-04-30
 
 ### Fixed

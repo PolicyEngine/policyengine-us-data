@@ -16,6 +16,8 @@ from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.mortgage_interest import (
@@ -356,6 +358,24 @@ def _impute_clone_cps_features(
     return predictions
 
 
+@pipeline_node(
+    PipelineNode(
+        id="clone_features",
+        label="Splice Clone Features",
+        node_type="process",
+        description=(
+            "Replaces clone-half CPS feature variables with donor-matched "
+            "predictions so doubled records retain plausible demographics and "
+            "occupation labels."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["qrf_pass2", "record_double"],
+        artifacts_out=["clone_feature_splice"],
+        pydoc=True,
+    )
+)
 def _splice_clone_feature_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -378,6 +398,23 @@ def _splice_clone_feature_predictions(
     return data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="cps_only",
+        label="Impute CPS-Only Variables",
+        node_type="process",
+        description=(
+            "Runs the second-stage CPS-only QRF imputation for PUF clone "
+            "records inside the extended CPS build."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["record_double", "preprocess_cps"],
+        artifacts_out=["cps_only_predictions"],
+        pydoc=True,
+    )
+)
 def _impute_cps_only_variables(
     data: dict,
     time_period: int,
@@ -758,6 +795,23 @@ def _apply_post_processing(predictions, X_test, time_period, data):
     return predictions
 
 
+@pipeline_node(
+    PipelineNode(
+        id="qrf_pass2",
+        label="Splice CPS-Only Predictions",
+        node_type="process",
+        description=(
+            "Writes second-stage CPS-only QRF predictions back into the PUF "
+            "clone half of the extended CPS record set."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["cps_only_predictions"],
+        artifacts_out=["extended_cps_stage2"],
+        pydoc=True,
+    )
+)
 def _splice_cps_only_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -1004,6 +1058,24 @@ class ExtendedCPS(Dataset):
     }
 
     @classmethod
+    @pipeline_node(
+        PipelineNode(
+            id="formula_drop",
+            label="Drop Formula Variables",
+            node_type="process",
+            description=(
+                "Removes variables computed by policyengine-us formulas, "
+                "while preserving selected imputed inputs under canonical "
+                "leaf variable names."
+            ),
+            status="transitional",
+            stability="moving",
+            pathways=["data_build"],
+            artifacts_in=["extended_cps_stage2"],
+            artifacts_out=["formula_pruned_extended_cps"],
+            pydoc=True,
+        )
+    )
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.
 

@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +95,22 @@ def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
     return agi_probs / agi_probs.sum()
 
 
+@pipeline_node(
+    PipelineNode(
+        id="geo_assign",
+        label="Assign Random Geography",
+        node_type="library",
+        description="Assign cloned CPS records to population-weighted blocks, counties, states, and congressional districts.",
+        source_file="policyengine_us_data/calibration/clone_and_assign.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build", "calibration_package"],
+        artifacts_out=["GeographyAssignment"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_clone_and_assign.py"
+        ],
+    )
+)
 def assign_random_geography(
     n_records: int,
     n_clones: int = 10,

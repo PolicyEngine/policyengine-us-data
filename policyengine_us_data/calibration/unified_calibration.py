@@ -40,6 +40,8 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logging.basicConfig(
     level=logging.INFO,
@@ -626,6 +628,22 @@ def resolve_resume_artifact(resume_from: str) -> tuple:
     return "checkpoint", resume_path
 
 
+@pipeline_node(
+    PipelineNode(
+        id="init_weights",
+        label="Compute Initial Weights",
+        node_type="library",
+        description="Build population-proportional initial weights from geography and targets.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_in=["calibration_package.pkl"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def compute_initial_weights(
     X_sparse,
     targets_df: "pd.DataFrame",
@@ -688,6 +706,23 @@ def compute_initial_weights(
     return initial_weights
 
 
+@pipeline_node(
+    PipelineNode(
+        id="fit_model",
+        label="Fit L0 Calibration Weights",
+        node_type="library",
+        description="Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_in=["calibration_package.pkl"],
+        artifacts_out=["calibration_weights.npy", "unified_diagnostics.csv"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def fit_l0_weights(
     X_sparse,
     targets: np.ndarray,
@@ -1025,6 +1060,22 @@ def fit_l0_weights(
     return weights
 
 
+@pipeline_node(
+    PipelineNode(
+        id="calibration_diagnostics",
+        label="Compute Calibration Diagnostics",
+        node_type="library",
+        description="Compare fitted weighted sums to calibration targets and summarize error.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_out=["unified_diagnostics.csv"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -1054,6 +1105,29 @@ def compute_diagnostics(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="run_calibration",
+        label="Run Unified Calibration",
+        node_type="entrypoint",
+        description="Build or load the calibration package, fit sparse weights, and write diagnostics.",
+        details="This remains a bundled orchestration function; decorators document the semantic pathway until the implementation is further decomposed.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="transitional",
+        stability="moving",
+        pathways=["calibration_package", "weight_fit"],
+        artifacts_in=["source_imputed_stratified_extended_cps*.h5", "policy_data.db"],
+        artifacts_out=[
+            "calibration_package.pkl",
+            "calibration_weights.npy",
+            "unified_diagnostics.csv",
+            "unified_run_config.json",
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def run_calibration(
     dataset_path: str,
     db_path: str,

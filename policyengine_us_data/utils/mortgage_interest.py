@@ -5,6 +5,9 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
+
 
 STRUCTURAL_MORTGAGE_VARIABLES = (
     "first_home_mortgage_balance",
@@ -39,6 +42,21 @@ MORTGAGE_IMPUTATION_PREDICTORS = [
 MAX_DEDUCTIBLE_MORTGAGE_INTEREST_RATE = 0.15
 
 
+@pipeline_node(
+    PipelineNode(
+        id="mortgage_hints",
+        label="Mortgage Balance Hint Imputation",
+        node_type="library",
+        description="Impute SCF-backed tax-unit mortgage balance hints for structural mortgage conversion.",
+        source_file="policyengine_us_data/utils/mortgage_interest.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_mortgage_interest.py"
+        ],
+    )
+)
 def impute_tax_unit_mortgage_balance_hints(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,
@@ -105,6 +123,21 @@ def impute_tax_unit_mortgage_balance_hints(
     return data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="mortgage_convert",
+        label="Structural Mortgage Conversion",
+        node_type="library",
+        description="Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs.",
+        source_file="policyengine_us_data/utils/mortgage_interest.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_mortgage_interest.py"
+        ],
+    )
+)
 def convert_mortgage_interest_to_structural_inputs(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,

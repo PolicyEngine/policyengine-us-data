@@ -73,6 +73,7 @@ dev = [
     "pytest-cov",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [tool.setuptools]

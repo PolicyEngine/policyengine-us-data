@@ -39,6 +39,8 @@ from policyengine_us_data.utils.version_manifest import (
     build_manifest,
     upload_manifest,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +93,40 @@ def download_staged_files(rel_paths: list, run_id: str = "") -> list:
     return files
 
 
+@pipeline_node(
+    PipelineNode(
+        id="local_stage_upload",
+        label="Stage Local H5 Files",
+        node_type="entrypoint",
+        description="Upload locally built H5 files into Hugging Face staging paths.",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_in=["local_area_build/**/*.h5"],
+        validation_commands=["uv run pytest tests/unit/test_promote_local_h5s.py"],
+    )
+)
 def stage(files: list, version: str, run_id: str = ""):
     logger.info("Uploading %d files to HF staging/...", len(files))
     n = upload_to_staging_hf(files, version=version, run_id=run_id)
     logger.info("Staged %d files", n)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="atomic_promote",
+        label="Atomic Promote Local H5 Files",
+        node_type="entrypoint",
+        description="Promote staged H5 files to production storage and publish release manifests.",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["production H5 release", "release manifest"],
+        validation_commands=["uv run pytest tests/unit/test_promote_local_h5s.py"],
+    )
+)
 def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
     manifest_files = (
         [(local_path, rel_path) for local_path, rel_path in files]

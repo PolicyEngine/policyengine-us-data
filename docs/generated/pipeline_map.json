@@ -1,0 +1,1901 @@
+{
+  "api_nodes": [
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override"
+      ],
+      "artifacts_in": [
+        "extended_cps_2024"
+      ],
+      "artifacts_out": [
+        "aca_2025_takeup"
+      ],
+      "description": "Adds synthetic 2025 ACA take-up assignments until calibrated person-level APTC enrollment reaches the target.",
+      "id": "aca_2025_override",
+      "label": "ACA 2025 Take-Up Override",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.source_impute._impute_acs"
+      ],
+      "description": "Impute rent and real estate tax variables from ACS donor data.",
+      "id": "acs_qrf",
+      "label": "ACS QRF Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/source_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_source_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
+      ],
+      "description": "Impute auto loan balance, auto loan interest, and net worth from SCF donor data.",
+      "id": "add_auto_loan",
+      "label": "Auto Loan And Net Worth Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_household_variables"
+      ],
+      "description": "Populate household geography variables including state, county, and NYC flag.",
+      "id": "add_household_variables",
+      "label": "Add Household Variables",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_id_variables"
+      ],
+      "description": "Create person, household, tax-unit, SPM-unit, family, and marital-unit IDs.",
+      "id": "add_id_variables",
+      "label": "Add ID Variables",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_cps_identification.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
+      ],
+      "description": "Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+      "id": "add_org_inputs",
+      "label": "ORG Labor-Market Inputs",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_org.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_personal_income_variables"
+      ],
+      "description": "Populate CPS income, transfer, retirement, and QBI-related personal inputs.",
+      "id": "add_personal_income_variables",
+      "label": "Add Income Variables",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_personal_variables"
+      ],
+      "description": "Populate CPS personal demographics and occupation-derived inputs.",
+      "id": "add_personal_variables",
+      "label": "Add Personal Variables",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_previous_year_income"
+      ],
+      "description": "Link CPS records across adjacent years and populate prior-year income inputs.",
+      "id": "add_previous_year_income",
+      "label": "Previous-Year Income",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_rent"
+      ],
+      "description": "Impute rent and real estate taxes using ACS donor data.",
+      "id": "add_rent",
+      "label": "Rent Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_spm_variables"
+      ],
+      "description": "Populate CPS supplemental poverty measure variables and thresholds.",
+      "id": "add_spm_variables",
+      "label": "Add SPM Variables",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_ssn_card_type"
+      ],
+      "description": "Classify SSN card type and immigration-related CPS inputs from ASEC conditions.",
+      "id": "add_ssn_card_type",
+      "label": "Add SSN Card Type",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_takeup"
+      ],
+      "description": "Apply stochastic takeup and reported-anchor alignment for benefit programs.",
+      "id": "add_takeup",
+      "label": "Benefit Takeup",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.add_tips"
+      ],
+      "description": "Impute tip income and household asset inputs from SIPP donor data.",
+      "id": "add_tips",
+      "label": "Tips And Asset Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "modal_app.local_area.build_areas_worker"
+      ],
+      "artifacts_out": [
+        "one or more H5 files"
+      ],
+      "description": "Modal worker entrypoint for state, district, city, or typed local H5 requests.",
+      "id": "build_areas_worker",
+      "label": "Build Areas Worker",
+      "node_type": "entrypoint",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py",
+        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.publish_local_area.build_cities"
+      ],
+      "artifacts_out": [
+        "cities/*.h5"
+      ],
+      "description": "Build supported city H5 files with county probability filtering.",
+      "id": "build_cities",
+      "label": "Build City H5 Files",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+      "stability": "moving",
+      "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.publish_local_area.build_districts"
+      ],
+      "artifacts_out": [
+        "districts/*.h5"
+      ],
+      "description": "Build congressional-district H5 files from calibrated weights and exact geography.",
+      "id": "build_districts",
+      "label": "Build District H5 Files",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+      "stability": "moving",
+      "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
+      ],
+      "artifacts_out": [
+        "X_sparse",
+        "targets_df",
+        "target_names"
+      ],
+      "description": "Build the in-memory sparse matrix for calibration targets and clone households.",
+      "id": "build_matrix",
+      "label": "Build Calibration Matrix",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
+      ],
+      "artifacts_out": [
+        "chunked COO shards",
+        "X_sparse"
+      ],
+      "description": "Stream matrix construction through clone-household chunks with resumable shard caches.",
+      "id": "build_matrix_chunked",
+      "label": "Build Calibration Matrix In Chunks",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+      "stability": "experimental",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_chunked_matrix_builder.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle",
+        "modal_app.local_area._build_publishing_input_bundle"
+      ],
+      "description": "Assemble artifact paths and run metadata for scope fingerprinting.",
+      "id": "build_publishing_input_bundle",
+      "label": "Build Publishing Input Bundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.publish_local_area.build_states"
+      ],
+      "artifacts_out": [
+        "states/*.h5"
+      ],
+      "description": "Build state-level H5 files from calibrated weights and exact geography.",
+      "id": "build_states",
+      "label": "Build State H5 Files",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+      "stability": "moving",
+      "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
+      ],
+      "artifacts_out": [
+        "unified_diagnostics.csv"
+      ],
+      "description": "Compare fitted weighted sums to calibration targets and summarize error.",
+      "id": "calibration_diagnostics",
+      "label": "Compute Calibration Diagnostics",
+      "node_type": "library",
+      "pathways": [
+        "weight_fit"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
+      ],
+      "description": "Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
+      "id": "calibration_geography_loader",
+      "label": "CalibrationGeographyLoader",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions"
+      ],
+      "artifacts_in": [
+        "qrf_pass2",
+        "record_double"
+      ],
+      "artifacts_out": [
+        "clone_feature_splice"
+      ],
+      "description": "Replaces clone-half CPS feature variables with donor-matched predictions so doubled records retain plausible demographics and occupation labels.",
+      "id": "clone_features",
+      "label": "Splice Clone Features",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
+        "modal_app.local_area.partition_work"
+      ],
+      "description": "Compatibility wrapper for local H5 weighted work partitioning.",
+      "id": "coordinate_work_partition",
+      "label": "Coordinate Work Partition",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables"
+      ],
+      "artifacts_in": [
+        "record_double",
+        "preprocess_cps"
+      ],
+      "artifacts_out": [
+        "cps_only_predictions"
+      ],
+      "description": "Runs the second-stage CPS-only QRF imputation for PUF clone records inside the extended CPS build.",
+      "id": "cps_only",
+      "label": "Impute CPS-Only Variables",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "modal_app.data_build.run_cps_then_puf_phase"
+      ],
+      "description": "Build CPS before PUF to avoid shared raw-cache and fixture races.",
+      "id": "cps_puf_build_phase",
+      "label": "CPS Then PUF Build Phase",
+      "node_type": "entrypoint",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "modal_app/data_build.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_data_build.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.cps.CPS.downsample"
+      ],
+      "description": "Subsample CPS arrays for released CPS vintages while full variants skip this step.",
+      "id": "downsample",
+      "label": "Downsample CPS",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/cps/cps.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/test_cps.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
+      ],
+      "artifacts_in": [
+        "extended_cps_stage2"
+      ],
+      "artifacts_out": [
+        "formula_pruned_extended_cps"
+      ],
+      "description": "Removes variables computed by policyengine-us formulas, while preserving selected imputed inputs under canonical leaf variable names.",
+      "id": "formula_drop",
+      "label": "Drop Formula Variables",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.clone_and_assign.assign_random_geography"
+      ],
+      "artifacts_out": [
+        "GeographyAssignment"
+      ],
+      "description": "Assign cloned CPS records to population-weighted blocks, counties, states, and congressional districts.",
+      "id": "geo_assign",
+      "label": "Assign Random Geography",
+      "node_type": "library",
+      "pathways": [
+        "data_build",
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/clone_and_assign.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_clone_and_assign.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks"
+      ],
+      "description": "Derive state, county, tract, PUMA, place, district, and other geography from block GEOIDs.",
+      "id": "geo_derive",
+      "label": "Derive Geography From Blocks",
+      "node_type": "library",
+      "pathways": [
+        "local_h5",
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/block_assignment.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_clone_and_assign.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.puf.puf.impute_missing_demographics"
+      ],
+      "description": "Impute missing PUF demographics from demographic donor records.",
+      "id": "impute_puf_demographics",
+      "label": "Impute PUF Demographics",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/puf/puf.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_irs_puf.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf"
+      ],
+      "description": "Impute pre-tax retirement contributions onto PUF tax units from CPS donors.",
+      "id": "impute_puf_pension",
+      "label": "Impute PUF Pension Contributions",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/puf/puf.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_irs_puf.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.area_catalog.USAreaCatalog"
+      ],
+      "description": "Build typed local H5 requests from US states, districts, and supported city rules.",
+      "id": "local_h5_area_catalog",
+      "label": "USAreaCatalog",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/area_catalog.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_area_catalog.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.requests.AreaFilter"
+      ],
+      "description": "Typed geography predicate for local H5 output selection.",
+      "id": "local_h5_area_filter",
+      "label": "AreaFilter",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/requests.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest"
+      ],
+      "description": "Typed request contract for one national, state, district, city, or custom H5 output.",
+      "id": "local_h5_area_request",
+      "label": "AreaBuildRequest",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/requests.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
+        "policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint"
+      ],
+      "description": "Compute a scope fingerprint for local H5 checkpoint and resume decisions.",
+      "id": "local_h5_input_fingerprint",
+      "label": "Compute Local H5 Input Fingerprint",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle"
+      ],
+      "description": "Input artifact and run metadata bundle for one local H5 publish scope.",
+      "id": "local_h5_publishing_input_bundle",
+      "label": "PublishingInputBundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "stability": "moving",
+      "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle"
+      ],
+      "description": "Provenance and resumability material for one local H5 publish scope.",
+      "id": "local_h5_traceability_bundle",
+      "label": "TraceabilityBundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.promote_local_h5s.stage"
+      ],
+      "artifacts_in": [
+        "local_area_build/**/*.h5"
+      ],
+      "description": "Upload locally built H5 files into Hugging Face staging paths.",
+      "id": "local_stage_upload",
+      "label": "Stage Local H5 Files",
+      "node_type": "entrypoint",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/promote_local_h5s.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_promote_local_h5s.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs"
+      ],
+      "description": "Convert deductible mortgage interest into structural mortgage balances, interest, and origination-year inputs.",
+      "id": "mortgage_convert",
+      "label": "Structural Mortgage Conversion",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/utils/mortgage_interest.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_mortgage_interest.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.utils.mortgage_interest.impute_tax_unit_mortgage_balance_hints"
+      ],
+      "description": "Impute SCF-backed tax-unit mortgage balance hints for structural mortgage conversion.",
+      "id": "mortgage_hints",
+      "label": "Mortgage Balance Hint Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/utils/mortgage_interest.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_mortgage_interest.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.puf.puf.preprocess_puf"
+      ],
+      "description": "Rename IRS variables and derive PolicyEngine-ready PUF tax inputs.",
+      "id": "preprocess_puf",
+      "label": "Preprocess PUF",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/puf/puf.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_irs_puf.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "modal_app.pipeline.promote_run"
+      ],
+      "artifacts_in": [
+        "staged H5 files",
+        "run metadata"
+      ],
+      "artifacts_out": [
+        "production H5 release"
+      ],
+      "description": "Promote a completed staged pipeline run without re-running computation.",
+      "id": "promote_pipeline_run",
+      "label": "Promote Pipeline Run",
+      "node_type": "entrypoint",
+      "pathways": [
+        "orchestration",
+        "local_h5"
+      ],
+      "source_file": "modal_app/pipeline.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_pipeline.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.puf_impute._run_qrf_imputation"
+      ],
+      "description": "Run Quantile Random Forest imputation from PUF tax variables onto CPS clone records.",
+      "id": "puf_qrf_pass",
+      "label": "PUF QRF Imputation Pass",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/puf_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"
+      ],
+      "artifacts_in": [
+        "cps_only_predictions"
+      ],
+      "artifacts_out": [
+        "extended_cps_stage2"
+      ],
+      "description": "Writes second-stage CPS-only QRF predictions back into the PUF clone half of the extended CPS record set.",
+      "id": "qrf_pass2",
+      "label": "Splice CPS-Only Predictions",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.puf_impute.puf_clone_dataset"
+      ],
+      "artifacts_out": [
+        "extended_cps_2024.h5"
+      ],
+      "description": "Double CPS records and populate the clone half with PUF-imputed tax variables.",
+      "id": "record_double",
+      "label": "PUF Clone Dataset",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/puf_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
+        "modal_app.local_area._resolve_scope_fingerprint"
+      ],
+      "description": "Compute the regional or national local H5 fingerprint from publishing inputs.",
+      "id": "resolve_scope_fingerprint",
+      "label": "Resolve Scope Fingerprint",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.puf_impute._impute_retirement_contributions"
+      ],
+      "description": "Impute and constrain retirement contribution inputs on the PUF clone half.",
+      "id": "retire_impute",
+      "label": "Retirement Contribution Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/puf_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.enhanced_cps.reweight"
+      ],
+      "artifacts_in": [
+        "loss_matrix",
+        "calibration_targets"
+      ],
+      "artifacts_out": [
+        "enhanced_cps_weights"
+      ],
+      "description": "Fits enhanced CPS weights against calibration targets with the hard-concrete loss machinery.",
+      "id": "reweight",
+      "label": "Enhanced CPS Reweighting",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
+        "modal_app.local_area.run_phase"
+      ],
+      "artifacts_out": [
+        "staged phase outputs"
+      ],
+      "description": "Spawn local H5 workers for one partitioned build phase and record completed outputs.",
+      "id": "run_local_h5_phase",
+      "label": "Run Local H5 Worker Phase",
+      "node_type": "entrypoint",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.sanity_checks.run_sanity_checks"
+      ],
+      "description": "Check calibrated H5 structure, weights, IDs, mappings, takeup, and aggregate sanity.",
+      "id": "sanity_checks",
+      "label": "Run H5 Sanity Checks",
+      "node_type": "validation",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/sanity_checks.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_validate_staging.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.source_impute._impute_scf"
+      ],
+      "description": "Impute net worth and auto-loan variables from SCF donor data.",
+      "id": "scf_qrf",
+      "label": "SCF QRF Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/source_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_source_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.datasets.puf.puf.simulate_w2_and_ubia_from_puf"
+      ],
+      "description": "Simulate Section 199A W-2 wage and UBIA guardrail quantities from PUF income.",
+      "id": "simulate_qbi",
+      "label": "QBI Simulation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/datasets/puf/puf.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/datasets/test_irs_puf.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.source_impute._impute_sipp"
+      ],
+      "description": "Impute tips, liquid assets, and vehicle assets from SIPP donor data.",
+      "id": "sipp_qrf",
+      "label": "SIPP QRF Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/source_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_source_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents"
+      ],
+      "description": "Scale imputed Social Security subcomponents so they reconcile to total Social Security.",
+      "id": "ss_reconcile",
+      "label": "Social Security Subcomponent Reconciliation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/puf_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "modal_app.pipeline.stage_base_datasets"
+      ],
+      "artifacts_out": [
+        "source_imputed_*.h5",
+        "policy_data.db"
+      ],
+      "description": "Run Modal data build, collect source-imputed H5s, and stage base artifacts for the pipeline run.",
+      "id": "stage_base_datasets",
+      "label": "Stage Base Datasets",
+      "node_type": "entrypoint",
+      "pathways": [
+        "orchestration",
+        "data_build"
+      ],
+      "source_file": "modal_app/pipeline.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_pipeline.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.validate_staging.validate_area"
+      ],
+      "description": "Run microsimulation target comparisons for one staged area.",
+      "id": "target_validation",
+      "label": "Validate Area Against Targets",
+      "node_type": "validation",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/validate_staging.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_validate_staging.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder"
+      ],
+      "description": "Database-backed sparse matrix builder for national and local-area calibration.",
+      "id": "unified_matrix_builder",
+      "label": "UnifiedMatrixBuilder",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "modal_app.pipeline.verify_runtime_seams"
+      ],
+      "description": "Check import, subprocess, baked-file, and Modal function seams before heavy pipeline execution.",
+      "id": "verify_runtime_seams",
+      "label": "Verify Modal Runtime Seams",
+      "node_type": "validation",
+      "pathways": [
+        "orchestration"
+      ],
+      "source_file": "modal_app/pipeline.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_pipeline.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed"
+      ],
+      "description": "Impute weeks unemployed for the clone half using CPS donor relationships.",
+      "id": "weeks_impute",
+      "label": "Weeks Unemployed Imputation",
+      "node_type": "library",
+      "pathways": [
+        "data_build"
+      ],
+      "source_file": "policyengine_us_data/calibration/puf_impute.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+      ]
+    }
+  ],
+  "metadata": {
+    "api_node_count": 61,
+    "decorated_object_count": 78,
+    "mapped_decorated_node_count": 17,
+    "stage_count": 5
+  },
+  "stages": [
+    {
+      "description": "Build base CPS/PUF artifacts and the source-imputed stratified CPS input.",
+      "edges": [
+        {
+          "edge_type": "external_source",
+          "source": "raw_sources",
+          "target": "build_datasets"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "build_datasets",
+          "target": "create_stratified"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "create_stratified",
+          "target": "source_impute"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "source_impute",
+          "target": "source_imputed_h5"
+        }
+      ],
+      "groups": [],
+      "id": "data_build",
+      "label": "Data Build",
+      "nodes": [
+        {
+          "description": "CPS, PUF, ACS, SIPP, SCF, ORG, calibration targets, and cached HF inputs.",
+          "id": "raw_sources",
+          "label": "Raw survey and administrative sources",
+          "node_type": "external",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Source-imputed calibration input consumed by matrix build and local H5 publishing.",
+          "id": "source_imputed_h5",
+          "label": "source_imputed_stratified_extended_cps*.h5",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "api_refs": [
+            "modal_app.data_build.build_datasets"
+          ],
+          "artifacts_out": [
+            "source_imputed_*.h5",
+            "policy_data.db"
+          ],
+          "description": "Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
+          "id": "build_datasets",
+          "label": "Build Datasets On Modal",
+          "node_type": "entrypoint",
+          "pathways": [
+            "data_build",
+            "orchestration"
+          ],
+          "source_file": "modal_app/data_build.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_modal_data_build.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.create_stratified_cps.create_stratified_cps_dataset"
+          ],
+          "artifacts_in": [
+            "extended_cps_2024.h5"
+          ],
+          "artifacts_out": [
+            "stratified_extended_cps_2024.h5"
+          ],
+          "description": "Create a calibration-sized stratified CPS sample while preserving high-AGI tail records.",
+          "id": "create_stratified",
+          "label": "Create Stratified CPS Dataset",
+          "node_type": "entrypoint",
+          "pathways": [
+            "data_build"
+          ],
+          "source_file": "policyengine_us_data/calibration/create_stratified_cps.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_create_stratified_cps.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.source_impute.impute_source_variables"
+          ],
+          "artifacts_in": [
+            "stratified_extended_cps_2024.h5"
+          ],
+          "artifacts_out": [
+            "source_imputed_stratified_extended_cps_2024.h5"
+          ],
+          "description": "Apply ACS, SIPP, ORG, and SCF donor imputations to the stratified CPS calibration input.",
+          "id": "source_impute",
+          "label": "Source-Impute Stratified CPS",
+          "node_type": "entrypoint",
+          "pathways": [
+            "data_build"
+          ],
+          "source_file": "policyengine_us_data/calibration/source_impute.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_source_impute.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "transitional",
+      "title": "Data Build And Source-Imputed Dataset"
+    },
+    {
+      "description": "Resolve targets, assign geography, compute simulated values, and assemble the sparse matrix package.",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "source_imputed_h5",
+          "target": "run_calibration"
+        },
+        {
+          "edge_type": "external_source",
+          "source": "policy_data_db",
+          "target": "run_calibration"
+        },
+        {
+          "edge_type": "uses_library",
+          "source": "run_calibration",
+          "target": "state_precomp"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "state_precomp",
+          "target": "clone_assembly"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "clone_assembly",
+          "target": "calibration_package"
+        }
+      ],
+      "groups": [],
+      "id": "calibration_package",
+      "label": "Calibration Package",
+      "nodes": [
+        {
+          "description": "SQLite target and constraint database.",
+          "id": "policy_data_db",
+          "label": "policy_data.db",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Sparse calibration matrix, targets, initial weights, geography, and metadata.",
+          "id": "calibration_package",
+          "label": "calibration_package.pkl",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Source-imputed calibration input consumed by matrix build and local H5 publishing.",
+          "id": "source_imputed_h5",
+          "label": "source_imputed_stratified_extended_cps*.h5",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.run_calibration"
+          ],
+          "artifacts_in": [
+            "source_imputed_stratified_extended_cps*.h5",
+            "policy_data.db"
+          ],
+          "artifacts_out": [
+            "calibration_package.pkl",
+            "calibration_weights.npy",
+            "unified_diagnostics.csv",
+            "unified_run_config.json"
+          ],
+          "description": "Build or load the calibration package, fit sparse weights, and write diagnostics.",
+          "details": "This remains a bundled orchestration function; decorators document the semantic pathway until the implementation is further decomposed.",
+          "id": "run_calibration",
+          "label": "Run Unified Calibration",
+          "node_type": "entrypoint",
+          "pathways": [
+            "calibration_package",
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "transitional",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_matrix_builder._compute_single_state"
+          ],
+          "description": "Run state-specific Microsimulations used to assemble calibration matrix columns.",
+          "id": "state_precomp",
+          "label": "Per-State Simulation Precomputation",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone"
+          ],
+          "artifacts_out": [
+            "sparse calibration COO/CSR shards"
+          ],
+          "description": "Assemble target values for clone-household columns across assigned geographies.",
+          "id": "clone_assembly",
+          "label": "Clone Value Assembly",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py",
+            "uv run pytest tests/integration/test_chunked_matrix_builder.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "transitional",
+      "title": "Calibration Matrix And Package Build"
+    },
+    {
+      "description": "Fit L0-sparse calibration weights and write diagnostics.",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "calibration_package",
+          "target": "init_weights"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "init_weights",
+          "target": "fit_model"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_model",
+          "target": "calibration_weights"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_model",
+          "target": "diagnostics"
+        }
+      ],
+      "groups": [],
+      "id": "weight_fit",
+      "label": "Weight Fit",
+      "nodes": [
+        {
+          "description": "Regional or national sparse weights.",
+          "id": "calibration_weights",
+          "label": "calibration_weights.npy",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Calibration logs, diagnostics CSVs, and run config.",
+          "id": "diagnostics",
+          "label": "diagnostics",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Sparse calibration matrix, targets, initial weights, geography, and metadata.",
+          "id": "calibration_package",
+          "label": "calibration_package.pkl",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
+          ],
+          "artifacts_in": [
+            "calibration_package.pkl"
+          ],
+          "description": "Build population-proportional initial weights from geography and targets.",
+          "id": "init_weights",
+          "label": "Compute Initial Weights",
+          "node_type": "library",
+          "pathways": [
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
+          ],
+          "artifacts_in": [
+            "calibration_package.pkl"
+          ],
+          "artifacts_out": [
+            "calibration_weights.npy",
+            "unified_diagnostics.csv"
+          ],
+          "description": "Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+          "id": "fit_model",
+          "label": "Fit L0 Calibration Weights",
+          "node_type": "library",
+          "pathways": [
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Sparse Weight Fitting"
+    },
+    {
+      "description": "Partition area work, resolve traceability, build H5s, validate, stage, and promote.",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "calibration_weights",
+          "target": "load_calibration_geography"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "load_calibration_geography",
+          "target": "local_h5_traceability"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "local_h5_traceability",
+          "target": "local_h5_partition"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "local_h5_partition",
+          "target": "build_h5"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "build_h5",
+          "target": "staged_h5s"
+        },
+        {
+          "edge_type": "validates",
+          "source": "staged_h5s",
+          "target": "validate_staging"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "validate_staging",
+          "target": "staging_upload"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "staging_upload",
+          "target": "atomic_promote"
+        }
+      ],
+      "groups": [],
+      "id": "local_h5",
+      "label": "Local H5",
+      "nodes": [
+        {
+          "description": "State, district, city, and national H5 outputs staged for release.",
+          "id": "staged_h5s",
+          "label": "staged local-area H5 files",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "description": "Regional or national sparse weights.",
+          "id": "calibration_weights",
+          "label": "calibration_weights.npy",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader",
+            "policyengine_us_data.calibration.publish_local_area.load_calibration_geography"
+          ],
+          "artifacts_in": [
+            "calibration_weights.npy",
+            "geography_assignment.npz",
+            "stacked_blocks.npy"
+          ],
+          "description": "Resolve exact geography from saved bundles, package metadata, or legacy block artifacts.",
+          "id": "load_calibration_geography",
+          "label": "Load Calibration Geography",
+          "node_type": "library",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+          "stability": "moving",
+          "status": "legacy",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+          ],
+          "description": "Build traceability bundles and deterministic scope fingerprints for local H5 publication.",
+          "id": "local_h5_traceability",
+          "label": "FingerprintingService",
+          "node_type": "library",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items"
+          ],
+          "description": "Assign weighted area work items to worker batches using longest-processing-time scheduling.",
+          "id": "local_h5_partition",
+          "label": "Partition Local H5 Work",
+          "node_type": "library",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/local_h5/partitioning.py",
+          "stability": "stable",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_local_h5_partitioning.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.publish_local_area.build_h5"
+          ],
+          "artifacts_in": [
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5"
+          ],
+          "artifacts_out": [
+            "states/*.h5",
+            "districts/*.h5",
+            "cities/*.h5",
+            "US.h5"
+          ],
+          "description": "Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+          "details": "This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
+          "id": "build_h5",
+          "label": "Build Local Area H5",
+          "node_type": "library",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+          "stability": "moving",
+          "status": "transitional",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_publish_local_area.py",
+            "uv run pytest tests/integration/test_tiny_h5_pipeline.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "modal_app.local_area.validate_staging"
+          ],
+          "description": "Run staged H5 validation before upload and promotion.",
+          "id": "validate_staging",
+          "label": "Validate Staged H5 Files",
+          "node_type": "validation",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "modal_app/local_area.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_modal_local_area.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "modal_app.local_area.upload_to_staging"
+          ],
+          "artifacts_in": [
+            "staged local-area H5 files"
+          ],
+          "description": "Upload completed local H5 outputs to staging storage before promotion.",
+          "id": "staging_upload",
+          "label": "Upload Local H5s To Staging",
+          "node_type": "entrypoint",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "modal_app/local_area.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_modal_local_area.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.promote_local_h5s.promote"
+          ],
+          "artifacts_out": [
+            "production H5 release",
+            "release manifest"
+          ],
+          "description": "Promote staged H5 files to production storage and publish release manifests.",
+          "id": "atomic_promote",
+          "label": "Atomic Promote Local H5 Files",
+          "node_type": "entrypoint",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/promote_local_h5s.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_promote_local_h5s.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "transitional",
+      "title": "Local Area H5 Build And Staging"
+    },
+    {
+      "description": "The Modal run controller that ties Stage 1-5 artifacts together with resume and promotion state.",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "run_modal_pipeline",
+          "target": "build_datasets"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "run_modal_pipeline",
+          "target": "run_calibration"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "run_modal_pipeline",
+          "target": "coordinate_publish"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "run_modal_pipeline",
+          "target": "pipeline_run"
+        }
+      ],
+      "groups": [],
+      "id": "orchestration",
+      "label": "Orchestration",
+      "nodes": [
+        {
+          "description": "Run ID, step timings, diagnostics, status, and promotion metadata.",
+          "id": "pipeline_run",
+          "label": "pipeline run metadata",
+          "node_type": "artifact",
+          "stability": "moving",
+          "status": "current"
+        },
+        {
+          "api_refs": [
+            "modal_app.pipeline.run_pipeline"
+          ],
+          "artifacts_out": [
+            "run metadata",
+            "diagnostics",
+            "published H5 artifacts"
+          ],
+          "description": "Coordinate data build, calibration package, weight fit, local H5 publishing, validation, and promotion.",
+          "details": "This is the current production orchestration surface. It remains documented as a bundled pathway while lower-level seams are migrated.",
+          "id": "run_modal_pipeline",
+          "label": "Run Modal Pipeline",
+          "node_type": "entrypoint",
+          "pathways": [
+            "orchestration"
+          ],
+          "source_file": "modal_app/pipeline.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_pipeline.py",
+            "uv run pytest tests/integration/test_modal_pipeline_seams.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "modal_app.data_build.build_datasets"
+          ],
+          "artifacts_out": [
+            "source_imputed_*.h5",
+            "policy_data.db"
+          ],
+          "description": "Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
+          "id": "build_datasets",
+          "label": "Build Datasets On Modal",
+          "node_type": "entrypoint",
+          "pathways": [
+            "data_build",
+            "orchestration"
+          ],
+          "source_file": "modal_app/data_build.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_modal_data_build.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.run_calibration"
+          ],
+          "artifacts_in": [
+            "source_imputed_stratified_extended_cps*.h5",
+            "policy_data.db"
+          ],
+          "artifacts_out": [
+            "calibration_package.pkl",
+            "calibration_weights.npy",
+            "unified_diagnostics.csv",
+            "unified_run_config.json"
+          ],
+          "description": "Build or load the calibration package, fit sparse weights, and write diagnostics.",
+          "details": "This remains a bundled orchestration function; decorators document the semantic pathway until the implementation is further decomposed.",
+          "id": "run_calibration",
+          "label": "Run Unified Calibration",
+          "node_type": "entrypoint",
+          "pathways": [
+            "calibration_package",
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "transitional",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "modal_app.local_area.coordinate_publish"
+          ],
+          "artifacts_in": [
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5"
+          ],
+          "artifacts_out": [
+            "staged local-area H5 files"
+          ],
+          "description": "Coordinate local H5 partitioning, worker phases, validation, staging, and promotion.",
+          "id": "coordinate_publish",
+          "label": "Coordinate Local H5 Publish",
+          "node_type": "entrypoint",
+          "pathways": [
+            "local_h5",
+            "orchestration"
+          ],
+          "source_file": "modal_app/local_area.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_modal_local_area.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Modal Pipeline Orchestration"
+    }
+  ]
+}

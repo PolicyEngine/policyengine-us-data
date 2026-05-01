@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Mapping
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+
 AreaType = Literal["national", "state", "district", "city", "custom"]
 FilterOp = Literal["eq", "in"]
 
@@ -43,6 +45,19 @@ def _validate_output_relative_path(output_relative_path: str) -> None:
         )
 
 
+@pipeline_node(
+    id="local_h5_area_filter",
+    label="AreaFilter",
+    node_type="library",
+    description="Typed geography predicate for local H5 output selection.",
+    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+    ],
+)
 @dataclass(frozen=True)
 class AreaFilter:
     """A single geography predicate used to select rows for one output area."""
@@ -78,6 +93,19 @@ class AreaFilter:
         )
 
 
+@pipeline_node(
+    id="local_h5_area_request",
+    label="AreaBuildRequest",
+    node_type="library",
+    description="Typed request contract for one national, state, district, city, or custom H5 output.",
+    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+    ],
+)
 @dataclass(frozen=True)
 class AreaBuildRequest:
     """A complete request describing one local or national H5 to build."""

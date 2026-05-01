@@ -6,6 +6,8 @@ import heapq
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+
 
 def work_item_key(item: Mapping[str, Any]) -> str:
     """Return the stable completion key used by the current H5 workers."""
@@ -13,6 +15,19 @@ def work_item_key(item: Mapping[str, Any]) -> str:
     return f"{item['type']}:{item['id']}"
 
 
+@pipeline_node(
+    id="local_h5_partition",
+    label="Partition Local H5 Work",
+    node_type="library",
+    description="Assign weighted area work items to worker batches using longest-processing-time scheduling.",
+    source_file="policyengine_us_data/calibration/local_h5/partitioning.py",
+    status="current",
+    stability="stable",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_partitioning.py"
+    ],
+)
 def partition_weighted_work_items(
     work_items: Sequence[Mapping[str, Any]],
     num_workers: int,

@@ -9,5 +9,7 @@ first, then keep adapters thin.
 
 Current skills:
 
+- `pipeline_docs.md`: decorator-backed pipeline map maintenance and generated
+  pydoc-style artifacts.
 - `testing.md`: test layout, fixture scope, helper placement, and quality guard
   expectations.

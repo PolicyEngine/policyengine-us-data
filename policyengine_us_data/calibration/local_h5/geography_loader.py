@@ -14,6 +14,7 @@ from typing import Literal
 
 import numpy as np
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     load_geography,
@@ -46,6 +47,19 @@ def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
     return weights_path.with_name(f"{prefix}{artifact_name}")
 
 
+@pipeline_node(
+    id="calibration_geography_loader",
+    label="CalibrationGeographyLoader",
+    node_type="library",
+    description="Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
+    source_file="policyengine_us_data/calibration/local_h5/geography_loader.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+    ],
+)
 class CalibrationGeographyLoader:
     """Resolve and load exact geography artifacts for publication flows."""
 

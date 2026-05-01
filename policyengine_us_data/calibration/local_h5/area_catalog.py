@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+
 from .requests import AreaBuildRequest, AreaFilter
 
 
@@ -21,6 +23,19 @@ def _load_default_state_codes() -> Mapping[int, str]:
     return STATE_CODES
 
 
+@pipeline_node(
+    id="local_h5_area_catalog",
+    label="USAreaCatalog",
+    node_type="library",
+    description="Build typed local H5 requests from US states, districts, and supported city rules.",
+    source_file="policyengine_us_data/calibration/local_h5/area_catalog.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_area_catalog.py"
+    ],
+)
 class USAreaCatalog:
     """Construct typed local H5 requests for the current US publication flow."""
 

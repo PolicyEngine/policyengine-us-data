@@ -1,0 +1,169 @@
+version: 1
+stages:
+  - id: data_build
+    label: Data Build
+    title: Data Build And Source-Imputed Dataset
+    description: Build base CPS/PUF artifacts and the source-imputed stratified CPS input.
+    status: transitional
+    stability: moving
+    extra_nodes:
+      - id: raw_sources
+        label: Raw survey and administrative sources
+        node_type: external
+        description: CPS, PUF, ACS, SIPP, SCF, ORG, calibration targets, and cached HF inputs.
+        status: current
+        stability: moving
+      - id: source_imputed_h5
+        label: source_imputed_stratified_extended_cps*.h5
+        node_type: artifact
+        description: Source-imputed calibration input consumed by matrix build and local H5 publishing.
+        status: current
+        stability: moving
+    edges:
+      - source: raw_sources
+        target: build_datasets
+        edge_type: external_source
+      - source: build_datasets
+        target: create_stratified
+        edge_type: data_flow
+      - source: create_stratified
+        target: source_impute
+        edge_type: data_flow
+      - source: source_impute
+        target: source_imputed_h5
+        edge_type: produces_artifact
+
+  - id: calibration_package
+    label: Calibration Package
+    title: Calibration Matrix And Package Build
+    description: Resolve targets, assign geography, compute simulated values, and assemble the sparse matrix package.
+    status: transitional
+    stability: moving
+    extra_nodes:
+      - id: policy_data_db
+        label: policy_data.db
+        node_type: artifact
+        description: SQLite target and constraint database.
+        status: current
+        stability: moving
+      - id: calibration_package
+        label: calibration_package.pkl
+        node_type: artifact
+        description: Sparse calibration matrix, targets, initial weights, geography, and metadata.
+        status: current
+        stability: moving
+    edges:
+      - source: source_imputed_h5
+        target: run_calibration
+        edge_type: data_flow
+      - source: policy_data_db
+        target: run_calibration
+        edge_type: external_source
+      - source: run_calibration
+        target: state_precomp
+        edge_type: uses_library
+      - source: state_precomp
+        target: clone_assembly
+        edge_type: data_flow
+      - source: clone_assembly
+        target: calibration_package
+        edge_type: produces_artifact
+
+  - id: weight_fit
+    label: Weight Fit
+    title: Sparse Weight Fitting
+    description: Fit L0-sparse calibration weights and write diagnostics.
+    status: current
+    stability: moving
+    extra_nodes:
+      - id: calibration_weights
+        label: calibration_weights.npy
+        node_type: artifact
+        description: Regional or national sparse weights.
+        status: current
+        stability: moving
+      - id: diagnostics
+        label: diagnostics
+        node_type: artifact
+        description: Calibration logs, diagnostics CSVs, and run config.
+        status: current
+        stability: moving
+    edges:
+      - source: calibration_package
+        target: init_weights
+        edge_type: data_flow
+      - source: init_weights
+        target: fit_model
+        edge_type: data_flow
+      - source: fit_model
+        target: calibration_weights
+        edge_type: produces_artifact
+      - source: fit_model
+        target: diagnostics
+        edge_type: produces_artifact
+
+  - id: local_h5
+    label: Local H5
+    title: Local Area H5 Build And Staging
+    description: Partition area work, resolve traceability, build H5s, validate, stage, and promote.
+    status: transitional
+    stability: moving
+    extra_nodes:
+      - id: staged_h5s
+        label: staged local-area H5 files
+        node_type: artifact
+        description: State, district, city, and national H5 outputs staged for release.
+        status: current
+        stability: moving
+    edges:
+      - source: calibration_weights
+        target: load_calibration_geography
+        edge_type: data_flow
+      - source: load_calibration_geography
+        target: local_h5_traceability
+        edge_type: data_flow
+      - source: local_h5_traceability
+        target: local_h5_partition
+        edge_type: data_flow
+      - source: local_h5_partition
+        target: build_h5
+        edge_type: data_flow
+      - source: build_h5
+        target: staged_h5s
+        edge_type: produces_artifact
+      - source: staged_h5s
+        target: validate_staging
+        edge_type: validates
+      - source: validate_staging
+        target: staging_upload
+        edge_type: data_flow
+      - source: staging_upload
+        target: atomic_promote
+        edge_type: data_flow
+
+  - id: orchestration
+    label: Orchestration
+    title: Modal Pipeline Orchestration
+    description: The Modal run controller that ties Stage 1-5 artifacts together with resume and promotion state.
+    status: current
+    stability: moving
+    extra_nodes:
+      - id: pipeline_run
+        label: pipeline run metadata
+        node_type: artifact
+        description: Run ID, step timings, diagnostics, status, and promotion metadata.
+        status: current
+        stability: moving
+    edges:
+      - source: run_modal_pipeline
+        target: build_datasets
+        edge_type: data_flow
+      - source: run_modal_pipeline
+        target: run_calibration
+        edge_type: data_flow
+      - source: run_modal_pipeline
+        target: coordinate_publish
+        edge_type: data_flow
+      - source: run_modal_pipeline
+        target: pipeline_run
+        edge_type: produces_artifact

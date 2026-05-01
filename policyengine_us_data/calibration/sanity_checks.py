@@ -12,6 +12,9 @@ from typing import List
 import h5py
 import numpy as np
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
+
 logger = logging.getLogger(__name__)
 
 WEEKS_IN_YEAR = 52
@@ -199,6 +202,21 @@ def build_hourly_wage_income_consistency_diagnostics(
     return results
 
 
+@pipeline_node(
+    PipelineNode(
+        id="sanity_checks",
+        label="Run H5 Sanity Checks",
+        node_type="validation",
+        description="Check calibrated H5 structure, weights, IDs, mappings, takeup, and aggregate sanity.",
+        source_file="policyengine_us_data/calibration/sanity_checks.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_validate_staging.py"
+        ],
+    )
+)
 def run_sanity_checks(
     h5_path: str,
     period: int = 2024,

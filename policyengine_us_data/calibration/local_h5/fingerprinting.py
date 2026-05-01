@@ -8,11 +8,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+
 from .geography_loader import CalibrationGeographyLoader
 
 FingerprintScope = Literal["regional", "national"]
 
 
+@pipeline_node(
+    id="local_h5_publishing_input_bundle",
+    label="PublishingInputBundle",
+    node_type="library",
+    description="Input artifact and run metadata bundle for one local H5 publish scope.",
+    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+)
 @dataclass(frozen=True)
 class PublishingInputBundle:
     """File-system and run metadata needed to publish one H5 scope."""
@@ -41,6 +53,19 @@ class ArtifactIdentity:
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
+@pipeline_node(
+    id="local_h5_traceability_bundle",
+    label="TraceabilityBundle",
+    node_type="library",
+    description="Provenance and resumability material for one local H5 publish scope.",
+    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+    ],
+)
 @dataclass(frozen=True)
 class TraceabilityBundle:
     """Full provenance record for one publish scope."""
@@ -80,6 +105,19 @@ class TraceabilityBundle:
         }
 
 
+@pipeline_node(
+    id="local_h5_traceability",
+    label="FingerprintingService",
+    node_type="library",
+    description="Build traceability bundles and deterministic scope fingerprints for local H5 publication.",
+    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+    ],
+)
 class FingerprintingService:
     """Build traceability bundles and derive scope fingerprints from them."""
 

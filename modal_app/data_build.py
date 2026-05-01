@@ -20,6 +20,8 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
+from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
+from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     resolve_run_id,
 )
@@ -389,6 +391,19 @@ def run_script_with_checkpoint(
     return script_path
 
 
+@pipeline_node(
+    PipelineNode(
+        id="cps_puf_build_phase",
+        label="CPS Then PUF Build Phase",
+        node_type="entrypoint",
+        description="Build CPS before PUF to avoid shared raw-cache and fixture races.",
+        source_file="modal_app/data_build.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/test_modal_data_build.py"],
+    )
+)
 def run_cps_then_puf_phase(
     branch: str,
     volume: modal.Volume,
@@ -469,6 +484,20 @@ def run_tests_with_checkpoints(
     cpu=8.0,
     timeout=28800,  # 8 hours
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="build_datasets",
+        label="Build Datasets On Modal",
+        node_type="entrypoint",
+        description="Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
+        source_file="modal_app/data_build.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build", "orchestration"],
+        artifacts_out=["source_imputed_*.h5", "policy_data.db"],
+        validation_commands=["uv run pytest tests/unit/test_modal_data_build.py"],
+    )
 )
 def build_datasets(
     upload: bool = False,

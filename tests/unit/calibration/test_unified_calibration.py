@@ -27,6 +27,8 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
+    adjust_aca_takeup_to_match_target,
+    adjust_aca_takeup_to_state_targets,
     apply_block_takeup_to_arrays,
     compute_block_takeup_draws_for_entities,
     compute_block_takeup_for_entities,
@@ -277,6 +279,42 @@ class TestAcaTakeupTargeting:
         np.testing.assert_array_equal(
             result,
             np.array([True, False, True, True], dtype=bool),
+        )
+
+    def test_adjust_removes_high_draw_takers_when_above_target(self):
+        base_takeup = np.array([True, True, True, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.90, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([2.0, 5.0, 3.0, 4.0], dtype=np.float64)
+
+        result = adjust_aca_takeup_to_match_target(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            target_people=5.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, False], dtype=bool),
+        )
+
+    def test_adjust_state_targets_adds_and_removes_independently(self):
+        base_takeup = np.array([True, True, False, False], dtype=bool)
+        entity_draws = np.array([0.90, 0.10, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([5.0, 4.0, 7.0, 3.0], dtype=np.float64)
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 4.0, "FL": 10.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, True, True], dtype=bool),
         )
 
 

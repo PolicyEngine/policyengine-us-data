@@ -18,6 +18,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     ACA_POST_CALIBRATION_PERSON_TARGETS,
+    adjust_aca_takeup_to_state_targets,
     extend_aca_takeup_to_match_target,
 )
 import logging
@@ -68,6 +69,38 @@ def _set_period_array(
     period_values[period] = values
 
 
+def _load_aca_enrollment_targets(period: int) -> dict[str, float] | None:
+    path = (
+        STORAGE_FOLDER
+        / "calibration_targets"
+        / f"aca_spending_and_enrollment_{period}.csv"
+    )
+    if not path.exists():
+        return None
+    targets = pd.read_csv(path)
+    return {
+        str(row.state): float(row.enrollment) for row in targets.itertuples(index=False)
+    }
+
+
+def _normalise_state_code(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
+def _tax_unit_state_codes(
+    person_state_codes: np.ndarray,
+    person_tax_unit_idx: np.ndarray,
+    tax_unit_count: int,
+) -> np.ndarray:
+    state_codes = np.full(tax_unit_count, "", dtype=object)
+    for state_code, tax_unit_idx in zip(person_state_codes, person_tax_unit_idx):
+        if state_codes[tax_unit_idx] == "":
+            state_codes[tax_unit_idx] = _normalise_state_code(state_code)
+    return state_codes
+
+
 def create_aca_2025_takeup_override(
     base_takeup: np.ndarray,
     person_enrolled_if_takeup: np.ndarray,
@@ -75,8 +108,10 @@ def create_aca_2025_takeup_override(
     person_tax_unit_ids: np.ndarray,
     tax_unit_ids: np.ndarray,
     target_people: float = ACA_POST_CALIBRATION_PERSON_TARGETS[2025],
+    person_state_codes: np.ndarray | None = None,
+    target_people_by_state: dict[str, float] | None = None,
 ) -> np.ndarray:
-    """Add 2025 ACA takers until weighted APTC enrollment hits target."""
+    """Set 2025 ACA take-up to match APTC enrollment targets."""
     tax_unit_id_to_idx = {
         int(tax_unit_id): idx for idx, tax_unit_id in enumerate(tax_unit_ids)
     }
@@ -91,6 +126,23 @@ def create_aca_2025_takeup_override(
         person_enrolled_if_takeup.astype(np.float64) * person_weights,
     )
     draws = seeded_rng("takes_up_aca_if_eligible").random(len(tax_unit_ids))
+
+    if target_people_by_state is not None:
+        if person_state_codes is None:
+            raise ValueError(
+                "person_state_codes are required for state-level ACA targets"
+            )
+        return adjust_aca_takeup_to_state_targets(
+            base_takeup=np.asarray(base_takeup, dtype=bool),
+            entity_draws=draws,
+            enrolled_person_weights=enrolled_person_weights,
+            entity_state_codes=_tax_unit_state_codes(
+                person_state_codes=person_state_codes,
+                person_tax_unit_idx=person_tax_unit_idx,
+                tax_unit_count=len(tax_unit_ids),
+            ),
+            target_people_by_state=target_people_by_state,
+        )
 
     return extend_aca_takeup_to_match_target(
         base_takeup=np.asarray(base_takeup, dtype=bool),
@@ -342,6 +394,15 @@ class EnhancedCPS(Dataset):
                         base_year,
                     ),
                     tax_unit_ids=_get_period_array(data["tax_unit_id"], base_year),
+                    person_state_codes=np.asarray(
+                        sim.calculate(
+                            "state_code",
+                            map_to="person",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    target_people_by_state=_load_aca_enrollment_targets(2025),
                 ),
             )
 

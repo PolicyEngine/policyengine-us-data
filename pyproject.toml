@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "policyengine-us>=1.674.1",
+    "policyengine-us>=1.680.0",
     # policyengine-core 3.25.4 fixes PolicyEngine/policyengine-core#482
     # (user-set ETERNITY inputs lost after _invalidate_all_caches).
     "policyengine-core>=3.25.4,<3.26",

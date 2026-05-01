@@ -34,6 +34,8 @@ def _append_summary(function_call_id: str, context: PublicationContext) -> None:
         handle.write(f"| Modal app | `{context.modal_app_name}` |\n")
         handle.write(f"| Modal environment | `{context.modal_environment}` |\n")
         handle.write(f"| HF staging | `{context.hf_staging_prefix}` |\n")
+        if os.environ.get("SOURCE_SHA"):
+            handle.write(f"| Source SHA | `{os.environ['SOURCE_SHA']}` |\n")
         handle.write(f"| Function call ID | `{function_call_id}` |\n\n")
         handle.write("**[Monitor on Modal Dashboard](https://modal.com/apps)**\n")
 
@@ -51,6 +53,7 @@ def main() -> None:
         "skip_national": _as_bool(os.environ["SKIP_NATIONAL"]),
         "resume_run_id": os.environ.get("RESUME_RUN_ID") or None,
         "version_override": os.environ.get("VERSION_OVERRIDE", ""),
+        "sha_override": os.environ.get("SOURCE_SHA", ""),
         "publication_id": context.publication_id,
         "publication_context": context.to_dict(),
         "modal_app_name": context.modal_app_name,
@@ -70,6 +73,8 @@ def main() -> None:
     print(f"Modal app: {app_name}")
     print(f"Modal environment: {environment_name}")
     print(f"HF staging prefix: {context.hf_staging_prefix}")
+    if os.environ.get("SOURCE_SHA"):
+        print(f"Source SHA: {os.environ['SOURCE_SHA']}")
     print(f"Function call ID: {function_call.object_id}")
     _append_summary(function_call.object_id, context)
 

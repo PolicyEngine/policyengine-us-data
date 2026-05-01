@@ -1137,6 +1137,7 @@ def run_pipeline(
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
     version_override: str = "",
+    sha_override: str = "",
     publication_id: str = "",
     publication_context: dict | None = None,
     modal_app_name: str = "",
@@ -1159,6 +1160,9 @@ def run_pipeline(
             scoped by commit SHA, so stale ones from other commits
             are cleaned automatically. Use True only to force a
             full rebuild of the current commit.
+        sha_override: Exact source SHA deployed by GitHub Actions. When
+            provided, this is recorded instead of reading the current
+            branch tip.
         publication_id: Cross-system publication ID created by GitHub.
         publication_context: Serialized publication context from the
             launcher workflow.
@@ -1177,7 +1181,7 @@ def run_pipeline(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     # ── Initialize or resume run ──
-    sha = get_pinned_sha(branch)
+    sha = sha_override or get_pinned_sha(branch)
     version = version_override or get_version_from_branch(branch)
     resolved_publication_id = resolve_publication_id(publication_id)
     pub_context = PublicationContext.from_mapping(
@@ -2381,6 +2385,7 @@ def main(
     clear_checkpoints: bool = False,
     version: str = None,
     publication_id: str = "",
+    sha_override: str = "",
 ):
     """Pipeline entrypoint.
 
@@ -2402,6 +2407,7 @@ def main(
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
             version_override=version or "",
+            sha_override=sha_override,
             publication_id=publication_id,
         )
         print(f"\nPipeline run complete: {result}")

@@ -12,17 +12,39 @@ jobs:
       - run: pip install ruff>=0.9.0
       - run: ruff format --check .
 
+  publication-context:
+    name: Publication context
+    runs-on: ubuntu-latest
+    if: github.event.head_commit.message != 'Update package version'
+    outputs:
+      publication_id: ${{ steps.publication-context.outputs.publication_id }}
+      github_run_url: ${{ steps.publication-context.outputs.github_run_url }}
+    env:
+      MODAL_ENVIRONMENT: main
+      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Resolve publication context
+        id: publication-context
+        run: python .github/scripts/resolve_publication_context.py
+
   # ── Dataset build ───────────────────────────────────────────
   build-datasets:
     name: Build datasets
     runs-on: ubuntu-latest
-    needs: lint
+    needs:
+      - lint
+      - publication-context
     if: github.event.head_commit.message != 'Update package version'
     env:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      US_DATA_PUBLICATION_ID: ${{ needs.publication-context.outputs.publication_id }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -73,7 +95,10 @@ jobs:
   versioning:
     name: Versioning
     runs-on: ubuntu-latest
+    needs: publication-context
     if: github.event.head_commit.message != 'Update package version'
+    outputs:
+      version_sha: ${{ steps.version-commit.outputs.sha }}
     steps:
       - name: Generate GitHub App token
         id: app-token
@@ -101,6 +126,42 @@ jobs:
         with:
           add: "."
           message: Update package version
+      - name: Capture version commit
+        id: version-commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ── Full publication pipeline ───────────────────────────────
+  launch-pipeline:
+    name: Launch publication pipeline
+    runs-on: ubuntu-latest
+    needs:
+      - publication-context
+      - build-datasets
+      - versioning
+    if: github.event.head_commit.message != 'Update package version'
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch pipeline workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLICATION_ID: ${{ needs.publication-context.outputs.publication_id }}
+          SOURCE_SHA: ${{ needs.versioning.outputs.version_sha }}
+        run: |
+          gh workflow run pipeline.yaml \
+            --ref main \
+            -f publication_id="${PUBLICATION_ID}" \
+            -f source_sha="${SOURCE_SHA}"
+          {
+            echo "## Publication Pipeline Dispatched"
+            echo
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Publication ID | \`${PUBLICATION_ID}\` |"
+            echo "| Source SHA | \`${SOURCE_SHA}\` |"
+            echo "| Workflow | \`pipeline.yaml\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:

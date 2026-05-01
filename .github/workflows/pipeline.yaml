@@ -1,8 +1,6 @@
 name: Run Pipeline
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
       gpu:
@@ -37,6 +35,10 @@ on:
         description: "Publication ID to use across GitHub, Modal, and HF staging"
         default: ""
         type: string
+      source_sha:
+        description: "Exact policyengine-us-data commit SHA to deploy"
+        default: ""
+        type: string
 
 concurrency:
   group: pipeline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -45,15 +47,14 @@ concurrency:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.head_commit.message == 'Update package version'
     env:
       MODAL_ENVIRONMENT: main
       US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
       US_DATA_PUBLICATION_ID: ${{ inputs.publication_id || '' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
 
       - uses: actions/setup-python@v6
         with:
@@ -78,6 +79,7 @@ jobs:
           SKIP_NATIONAL: ${{ inputs.skip_national || 'false' }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
           VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
+          SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
         run: |
           modal deploy --env="${MODAL_ENVIRONMENT}" --name="${MODAL_APP_NAME}" --tag="${PUBLICATION_ID}" modal_app/pipeline.py
           python .github/scripts/spawn_modal_pipeline.py

@@ -717,10 +717,10 @@
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
   "calibration_geography_loader": {
-    "docstring": "Resolve and load exact geography artifacts for publication flows.",
+    "docstring": "Resolve, load, and checksum exact geography artifacts.\n\nThe loader hides compatibility ordering across current saved geography\nbundles, calibration packages, and legacy block arrays. Public callers can\nuse `resolve_source` to inspect what would be loaded or `load` to return the\nnormalized `GeographyAssignment`.",
     "id": "calibration_geography_loader",
     "kind": "class",
-    "line": 63,
+    "line": 89,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
@@ -1230,10 +1230,10 @@
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
   },
   "local_h5_area_catalog": {
-    "docstring": "Construct typed local H5 requests for the current US publication flow.",
+    "docstring": "Construct typed H5 build requests for supported US geographies.\n\n`USAreaCatalog` translates calibration geography arrays and legacy worker\nitem dictionaries into `AreaBuildRequest` values. It owns US-specific\nnaming rules, including state abbreviations, congressional district friendly\nnames, at-large district normalization, and the current NYC city rule.",
     "id": "local_h5_area_catalog",
     "kind": "class",
-    "line": 39,
+    "line": 50,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.area_catalog.USAreaCatalog"
@@ -1257,10 +1257,10 @@
     "source_file": "policyengine_us_data/calibration/local_h5/area_catalog.py"
   },
   "local_h5_area_filter": {
-    "docstring": "A single geography predicate used to select rows for one output area.",
+    "docstring": "Predicate used to select calibrated clones for one H5 output.\n\n`AreaFilter` is intentionally small so it can move across process\nboundaries as JSON. It describes one boolean condition over a geography\nvector, such as selecting all clones in a set of congressional districts or\ncounties.\n\nAttributes:\n    geography_field: Name of the geography vector to inspect. Current\n        callers use fields from `GeographyAssignment`, such as `cd_geoid` or\n        `county_fips`.\n    op: Predicate operator. Use `\"eq\"` for one scalar value and `\"in\"` for\n        membership in a tuple of values.\n    value: Scalar comparison value for `\"eq\"` or tuple of allowed values for\n        `\"in\"`.",
     "id": "local_h5_area_filter",
     "kind": "class",
-    "line": 62,
+    "line": 75,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.requests.AreaFilter"
@@ -1284,10 +1284,10 @@
     "source_file": "policyengine_us_data/calibration/local_h5/requests.py"
   },
   "local_h5_area_request": {
-    "docstring": "A complete request describing one local or national H5 to build.",
+    "docstring": "Complete request for one local-area or national H5 file.\n\nThe request is the stable library-level contract between orchestration code\nand H5 worker code. It names the output, carries the geography filters used\nto zero irrelevant clone weights, and records the target geography IDs used\nby validation.\n\nAttributes:\n    area_type: Output family, such as `\"state\"`, `\"district\"`, `\"city\"`, or\n        `\"national\"`.\n    area_id: Stable identifier for the requested area, for example `\"CA\"`,\n        `\"NY-12\"`, `\"NYC\"`, or `\"US\"`.\n    display_name: Human-readable label used in logs and validation output.\n    output_relative_path: Path below the worker output directory where the\n        H5 should be written.\n    filters: Geography predicates that select clones for this area.\n    validation_geo_level: Target table geography level used to validate the\n        output, when validation is available.\n    validation_geographic_ids: Target geography IDs expected during\n        validation.\n    metadata: Additional non-control metadata for downstream tooling.",
     "id": "local_h5_area_request",
     "kind": "class",
-    "line": 110,
+    "line": 153,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest"
@@ -1309,6 +1309,33 @@
     "object_path": "policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest",
     "signature": "class AreaBuildRequest",
     "source_file": "policyengine_us_data/calibration/local_h5/requests.py"
+  },
+  "local_h5_artifact_identity": {
+    "docstring": "Stable identity for an input artifact used by traceability.\n\nAttributes:\n    logical_name: Semantic artifact name, such as `\"weights\"` or\n        `\"source_dataset\"`.\n    path: Physical artifact path when the artifact exists in the local\n        runtime.\n    sha256: Content digest prefixed with `\"sha256:\"`.\n    size_bytes: Artifact size in bytes, when available.\n    metadata: Additional normalized metadata, for example canonical\n        geography checksum or source kind.",
+    "id": "local_h5_artifact_identity",
+    "kind": "class",
+    "line": 91,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity"
+      ],
+      "description": "Stable content identity for one local H5 publication input artifact.",
+      "id": "local_h5_artifact_identity",
+      "label": "ArtifactIdentity",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity",
+    "signature": "class ArtifactIdentity",
+    "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py"
   },
   "local_h5_input_fingerprint": {
     "docstring": "",
@@ -1339,10 +1366,10 @@
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
   },
   "local_h5_partition": {
-    "docstring": "Partition work items across workers using longest-processing-time first.",
+    "docstring": "Partition remaining H5 work across worker chunks.\n\nThe function uses longest-processing-time scheduling: uncompleted work items\nare sorted by descending `weight`, then assigned to the currently lightest\nworker chunk. This keeps expensive state or district builds from clustering\non one worker.\n\nArgs:\n    work_items: Candidate work items. Each item must contain `type`, `id`,\n        and numeric `weight` keys.\n    num_workers: Maximum number of worker chunks to produce.\n    completed: Stable completion keys, formatted as `\"{type}:{id}\"`, that\n        should be skipped.\n\nReturns:\n    Non-empty worker chunks. Returns an empty list when `num_workers <= 0` or\n    every item is already completed.",
     "id": "local_h5_partition",
     "kind": "function",
-    "line": 31,
+    "line": 42,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items"
@@ -1362,14 +1389,14 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
-    "signature": "def partition_weighted_work_items(work_items: Sequence[Mapping[str, Any]], num_workers: int, completed: set[str] | None = None) -> list[list[Mapping[str, Any]]]",
+    "signature": "def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks",
     "source_file": "policyengine_us_data/calibration/local_h5/partitioning.py"
   },
   "local_h5_publishing_input_bundle": {
-    "docstring": "File-system and run metadata needed to publish one H5 scope.",
+    "docstring": "Input artifact bundle for one local H5 publication scope.\n\nThe bundle is the library-level contract used by coordinators before\nfingerprinting. Paths point to local files already materialized in the\nworker or orchestration environment.\n\nAttributes:\n    weights_path: Path to `calibration_weights.npy`.\n    source_dataset_path: Path to the source-imputed dataset H5.\n    target_db_path: Optional `policy_data.db` path used for validation.\n    exact_geography_path: Optional saved `geography_assignment.npz` path.\n    calibration_package_path: Optional `calibration_package.pkl` path used\n        as a geography fallback.\n    run_config_path: Optional run configuration JSON with code and model\n        build metadata.\n    run_id: Pipeline run identifier.\n    version: Package or release version associated with the publish.\n    n_clones: Expected clone count, when known.\n    seed: Geography assignment seed used by the build.\n    legacy_blocks_path: Optional legacy `stacked_blocks.npy` fallback.",
     "id": "local_h5_publishing_input_bundle",
     "kind": "class",
-    "line": 29,
+    "line": 41,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle"
@@ -1389,11 +1416,38 @@
     "signature": "class PublishingInputBundle",
     "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py"
   },
+  "local_h5_resolved_geography_source": {
+    "docstring": "Resolved physical source used to recover calibration geography.\n\nAttributes:\n    kind: Source format selected by `CalibrationGeographyLoader`.\n    path: Path to the selected source artifact.",
+    "id": "local_h5_resolved_geography_source",
+    "kind": "class",
+    "line": 53,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource"
+      ],
+      "description": "Resolved physical source used to recover exact calibration geography.",
+      "id": "local_h5_resolved_geography_source",
+      "label": "ResolvedGeographySource",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource",
+    "signature": "class ResolvedGeographySource",
+    "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py"
+  },
   "local_h5_traceability": {
-    "docstring": "Build traceability bundles and derive scope fingerprints from them.",
+    "docstring": "Build traceability bundles and derive deterministic scope fingerprints.\n\nThe service centralizes provenance rules for local H5 publishing. It avoids\nimporting heavy simulation machinery until a fallback record-count inference\nis needed.",
     "id": "local_h5_traceability",
     "kind": "class",
-    "line": 121,
+    "line": 200,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
@@ -1417,10 +1471,10 @@
     "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py"
   },
   "local_h5_traceability_bundle": {
-    "docstring": "Full provenance record for one publish scope.",
+    "docstring": "Full provenance record for one local H5 publish scope.\n\nAttributes:\n    scope: Publish scope being fingerprinted, currently `\"regional\"` or\n        `\"national\"`.\n    weights: Identity of the calibration weights artifact.\n    source_dataset: Identity of the source-imputed H5 artifact.\n    exact_geography: Identity of the geography source used for clone\n        selection, if available.\n    target_db: Optional target database identity.\n    calibration_package: Optional calibration package identity.\n    run_config: Optional run configuration identity.\n    code_version: Normalized code version metadata extracted from run\n        config.\n    model_build: Normalized model build metadata extracted from run config.\n    metadata: Scope-level metadata such as run ID, version, clone count, and\n        seed.",
     "id": "local_h5_traceability_bundle",
     "kind": "class",
-    "line": 70,
+    "line": 126,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle"

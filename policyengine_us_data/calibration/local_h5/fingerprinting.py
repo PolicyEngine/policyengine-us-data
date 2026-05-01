@@ -13,6 +13,18 @@ from policyengine_us_data.pipeline_metadata import pipeline_node
 from .geography_loader import CalibrationGeographyLoader
 
 FingerprintScope = Literal["regional", "national"]
+ScopeFingerprint = str
+ArtifactMetadata = Mapping[str, Any]
+
+__all__ = [
+    "ArtifactIdentity",
+    "ArtifactMetadata",
+    "FingerprintScope",
+    "FingerprintingService",
+    "PublishingInputBundle",
+    "ScopeFingerprint",
+    "TraceabilityBundle",
+]
 
 
 @pipeline_node(
@@ -27,7 +39,27 @@ FingerprintScope = Literal["regional", "national"]
 )
 @dataclass(frozen=True)
 class PublishingInputBundle:
-    """File-system and run metadata needed to publish one H5 scope."""
+    """Input artifact bundle for one local H5 publication scope.
+
+    The bundle is the library-level contract used by coordinators before
+    fingerprinting. Paths point to local files already materialized in the
+    worker or orchestration environment.
+
+    Attributes:
+        weights_path: Path to `calibration_weights.npy`.
+        source_dataset_path: Path to the source-imputed dataset H5.
+        target_db_path: Optional `policy_data.db` path used for validation.
+        exact_geography_path: Optional saved `geography_assignment.npz` path.
+        calibration_package_path: Optional `calibration_package.pkl` path used
+            as a geography fallback.
+        run_config_path: Optional run configuration JSON with code and model
+            build metadata.
+        run_id: Pipeline run identifier.
+        version: Package or release version associated with the publish.
+        n_clones: Expected clone count, when known.
+        seed: Geography assignment seed used by the build.
+        legacy_blocks_path: Optional legacy `stacked_blocks.npy` fallback.
+    """
 
     weights_path: Path
     source_dataset_path: Path
@@ -42,15 +74,39 @@ class PublishingInputBundle:
     legacy_blocks_path: Path | None = None
 
 
+@pipeline_node(
+    id="local_h5_artifact_identity",
+    label="ArtifactIdentity",
+    node_type="library",
+    description="Stable content identity for one local H5 publication input artifact.",
+    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    status="current",
+    stability="stable",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+    ],
+)
 @dataclass(frozen=True)
 class ArtifactIdentity:
-    """Stable identity for one input artifact used by traceability and resume."""
+    """Stable identity for an input artifact used by traceability.
+
+    Attributes:
+        logical_name: Semantic artifact name, such as `"weights"` or
+            `"source_dataset"`.
+        path: Physical artifact path when the artifact exists in the local
+            runtime.
+        sha256: Content digest prefixed with `"sha256:"`.
+        size_bytes: Artifact size in bytes, when available.
+        metadata: Additional normalized metadata, for example canonical
+            geography checksum or source kind.
+    """
 
     logical_name: str
     path: Path | None
     sha256: str | None
     size_bytes: int | None = None
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    metadata: ArtifactMetadata = field(default_factory=dict)
 
 
 @pipeline_node(
@@ -68,7 +124,24 @@ class ArtifactIdentity:
 )
 @dataclass(frozen=True)
 class TraceabilityBundle:
-    """Full provenance record for one publish scope."""
+    """Full provenance record for one local H5 publish scope.
+
+    Attributes:
+        scope: Publish scope being fingerprinted, currently `"regional"` or
+            `"national"`.
+        weights: Identity of the calibration weights artifact.
+        source_dataset: Identity of the source-imputed H5 artifact.
+        exact_geography: Identity of the geography source used for clone
+            selection, if available.
+        target_db: Optional target database identity.
+        calibration_package: Optional calibration package identity.
+        run_config: Optional run configuration identity.
+        code_version: Normalized code version metadata extracted from run
+            config.
+        model_build: Normalized model build metadata extracted from run config.
+        metadata: Scope-level metadata such as run ID, version, clone count, and
+            seed.
+    """
 
     scope: FingerprintScope
     weights: ArtifactIdentity
@@ -77,12 +150,18 @@ class TraceabilityBundle:
     target_db: ArtifactIdentity | None = None
     calibration_package: ArtifactIdentity | None = None
     run_config: ArtifactIdentity | None = None
-    code_version: Mapping[str, Any] = field(default_factory=dict)
-    model_build: Mapping[str, Any] = field(default_factory=dict)
-    metadata: Mapping[str, Any] = field(default_factory=dict)
+    code_version: ArtifactMetadata = field(default_factory=dict)
+    model_build: ArtifactMetadata = field(default_factory=dict)
+    metadata: ArtifactMetadata = field(default_factory=dict)
 
-    def resumability_material(self) -> Mapping[str, Any]:
-        """Return the normalized subset that controls staged-output validity."""
+    def resumability_material(self) -> ArtifactMetadata:
+        """Return the normalized fields that control staged-output validity.
+
+        Returns:
+            Stable mapping suitable for deterministic JSON hashing. The payload
+            intentionally excludes non-control fields such as display version and
+            run ID.
+        """
 
         geography_sha = None
         if self.exact_geography is not None:
@@ -119,13 +198,26 @@ class TraceabilityBundle:
     ],
 )
 class FingerprintingService:
-    """Build traceability bundles and derive scope fingerprints from them."""
+    """Build traceability bundles and derive deterministic scope fingerprints.
+
+    The service centralizes provenance rules for local H5 publishing. It avoids
+    importing heavy simulation machinery until a fallback record-count inference
+    is needed.
+    """
 
     def __init__(
         self,
         *,
         geography_loader: CalibrationGeographyLoader | None = None,
     ) -> None:
+        """Create a fingerprinting service.
+
+        Args:
+            geography_loader: Optional loader used to resolve exact geography
+                artifacts. Supplying this is useful in tests or alternate
+                storage adapters.
+        """
+
         self._geography_loader = geography_loader or CalibrationGeographyLoader()
 
     def build_traceability(
@@ -134,7 +226,20 @@ class FingerprintingService:
         inputs: PublishingInputBundle,
         scope: FingerprintScope,
     ) -> TraceabilityBundle:
-        """Build a traceability bundle from current publish inputs."""
+        """Build a traceability bundle from current publish inputs.
+
+        Args:
+            inputs: File paths and run metadata for the publish scope.
+            scope: Scope being published.
+
+        Returns:
+            A complete traceability bundle with content identities for required
+            and available optional artifacts.
+
+        Raises:
+            FileNotFoundError: If a required artifact path does not exist.
+            ValueError: If geography fallback metadata is inconsistent.
+        """
 
         run_config_payload = self._load_json(inputs.run_config_path)
         return TraceabilityBundle(
@@ -167,8 +272,19 @@ class FingerprintingService:
             },
         )
 
-    def compute_scope_fingerprint(self, traceability: TraceabilityBundle) -> str:
-        """Hash normalized resumability material into a short scope fingerprint."""
+    def compute_scope_fingerprint(
+        self, traceability: TraceabilityBundle
+    ) -> ScopeFingerprint:
+        """Hash normalized resumability material into a short fingerprint.
+
+        Args:
+            traceability: Traceability bundle whose resumability material should
+                be hashed.
+
+        Returns:
+            First 16 hexadecimal characters of the SHA-256 digest over
+            normalized resumability material.
+        """
 
         payload = json.dumps(
             traceability.resumability_material(),

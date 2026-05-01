@@ -691,6 +691,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity"
+      ],
+      "description": "Stable content identity for one local H5 publication input artifact.",
+      "id": "local_h5_artifact_identity",
+      "label": "ArtifactIdentity",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
         "policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint"
       ],
@@ -722,6 +740,24 @@
       "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
       "stability": "moving",
       "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource"
+      ],
+      "description": "Resolved physical source used to recover exact calibration geography.",
+      "id": "local_h5_resolved_geography_source",
+      "label": "ResolvedGeographySource",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+      ]
     },
     {
       "api_refs": [
@@ -1171,8 +1207,8 @@
     }
   ],
   "metadata": {
-    "api_node_count": 61,
-    "decorated_object_count": 78,
+    "api_node_count": 63,
+    "decorated_object_count": 80,
     "mapped_decorated_node_count": 17,
     "stage_count": 5
   },

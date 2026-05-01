@@ -27,6 +27,10 @@ class docstring and type signature so the pydoc-style API artifact can consume
 them. Use decorator fields for graph identity, artifacts, pathways, status,
 stability, and focused validation commands.
 
+For modules intended as standard pydoc/autodoc targets, declare `__all__` with
+the supported public classes, functions, and type aliases. Keep private helpers
+undocumented unless they are deliberately promoted into that public surface.
+
 Use stable snake_case `id` values. If a function moves during refactors, keep the
 ID unless the semantic waypoint changes. If a waypoint is being migrated, set
 `status="transitional"` and use `migration_target` or `notes` instead of

@@ -14,6 +14,17 @@ from policyengine_us_data.pipeline_metadata import pipeline_node
 
 from .requests import AreaBuildRequest, AreaFilter
 
+WorkItem = Mapping[str, Any]
+WorkItems = Sequence[WorkItem]
+AreaRequests = tuple[AreaBuildRequest, ...]
+
+__all__ = [
+    "AreaRequests",
+    "USAreaCatalog",
+    "WorkItem",
+    "WorkItems",
+]
+
 
 def _load_default_state_codes() -> Mapping[int, str]:
     """Load the shared US state-code mapping used by the default catalog."""
@@ -37,7 +48,13 @@ def _load_default_state_codes() -> Mapping[int, str]:
     ],
 )
 class USAreaCatalog:
-    """Construct typed local H5 requests for the current US publication flow."""
+    """Construct typed H5 build requests for supported US geographies.
+
+    `USAreaCatalog` translates calibration geography arrays and legacy worker
+    item dictionaries into `AreaBuildRequest` values. It owns US-specific
+    naming rules, including state abbreviations, congressional district friendly
+    names, at-large district normalization, and the current NYC city rule.
+    """
 
     _DEFAULT_NYC_COUNTY_FIPS = ("36005", "36047", "36061", "36081", "36085")
     _DEFAULT_AT_LARGE_DISTRICT_CODES = frozenset({0, 98})
@@ -49,6 +66,16 @@ class USAreaCatalog:
         nyc_county_fips: Collection[str],
         at_large_districts: Collection[int],
     ) -> None:
+        """Create a catalog with explicit geography naming rules.
+
+        Args:
+            state_codes: Mapping from numeric state FIPS codes to state
+                abbreviations.
+            nyc_county_fips: County FIPS codes that define the NYC city output.
+            at_large_districts: Congressional district numbers that should be
+                rendered as district `01` in friendly filenames.
+        """
+
         self._state_codes = dict(state_codes)
         self._state_fips_by_code = {code: fips for fips, code in state_codes.items()}
         self._nyc_county_fips = tuple(sorted(str(item) for item in nyc_county_fips))
@@ -57,7 +84,12 @@ class USAreaCatalog:
 
     @classmethod
     def default(cls) -> "USAreaCatalog":
-        """Build the default US request catalog used by worker adapters."""
+        """Build the default catalog used by the production US H5 flow.
+
+        Returns:
+            A catalog configured from the shared PolicyEngine US state code map,
+            current NYC county set, and at-large district conventions.
+        """
 
         return cls(
             state_codes=_load_default_state_codes(),
@@ -65,8 +97,16 @@ class USAreaCatalog:
             at_large_districts=cls._DEFAULT_AT_LARGE_DISTRICT_CODES,
         )
 
-    def build_state_requests(self, geography: Any) -> tuple[AreaBuildRequest, ...]:
-        """Enumerate state requests from the current calibration geography."""
+    def build_state_requests(self, geography: Any) -> AreaRequests:
+        """Enumerate state requests present in calibration geography.
+
+        Args:
+            geography: Geography assignment object with a `cd_geoid` sequence.
+
+        Returns:
+            One request per state with at least one congressional district in
+            the provided geography.
+        """
 
         cd_geoids = self._unique_cd_geoids(geography.cd_geoid)
         requests = []
@@ -85,14 +125,30 @@ class USAreaCatalog:
             )
         return tuple(requests)
 
-    def build_district_requests(self, geography: Any) -> tuple[AreaBuildRequest, ...]:
-        """Enumerate district requests from the current calibration geography."""
+    def build_district_requests(self, geography: Any) -> AreaRequests:
+        """Enumerate congressional district requests from calibration geography.
+
+        Args:
+            geography: Geography assignment object with a `cd_geoid` sequence.
+
+        Returns:
+            One request per unique congressional district GEOID.
+        """
 
         cd_geoids = self._unique_cd_geoids(geography.cd_geoid)
         return tuple(self._build_district_request(cd_geoid) for cd_geoid in cd_geoids)
 
-    def build_city_requests(self, geography: Any) -> tuple[AreaBuildRequest, ...]:
-        """Enumerate city requests supported by the current US flow."""
+    def build_city_requests(self, geography: Any) -> AreaRequests:
+        """Enumerate city requests supported by the current US flow.
+
+        Args:
+            geography: Geography assignment object with `cd_geoid` and
+                `county_fips` sequences.
+
+        Returns:
+            A one-item tuple for NYC when matching geography exists; otherwise
+            an empty tuple.
+        """
 
         request = self.build_city_request("NYC", geography=geography)
         if request is None:
@@ -105,7 +161,22 @@ class USAreaCatalog:
         *,
         geography: Any,
     ) -> AreaBuildRequest | None:
-        """Build a single city request from geography-aware rules."""
+        """Build a single city request from geography-aware rules.
+
+        Args:
+            city_id: Supported city identifier. The current production catalog
+                supports `"NYC"`.
+            geography: Geography assignment object with `cd_geoid` and
+                `county_fips` sequences.
+
+        Returns:
+            A city request when the city is supported and present in the
+            geography; otherwise `None` when the supported city has no matching
+            geography.
+
+        Raises:
+            ValueError: If `city_id` is not supported.
+        """
 
         if city_id != "NYC":
             raise ValueError(f"Unknown city: {city_id}")
@@ -131,7 +202,11 @@ class USAreaCatalog:
         )
 
     def build_national_request(self) -> AreaBuildRequest:
-        """Build the single national request used by the current flow."""
+        """Build the single national request used by the current flow.
+
+        Returns:
+            Request for the national `US.h5` output.
+        """
 
         return AreaBuildRequest(
             area_type="national",
@@ -144,11 +219,25 @@ class USAreaCatalog:
 
     def build_request_from_work_item(
         self,
-        work_item: Mapping[str, Any],
+        work_item: WorkItem,
         *,
         geography: Any,
     ) -> AreaBuildRequest | None:
-        """Convert one legacy worker item into a typed build request."""
+        """Convert one legacy worker item into a typed build request.
+
+        Args:
+            work_item: Legacy item with `type` and `id` keys.
+            geography: Geography assignment used to resolve state, district, and
+                city filters.
+
+        Returns:
+            Matching build request, or `None` for a state work item that has no
+            districts in a partial geography.
+
+        Raises:
+            ValueError: If the item type, area ID, or district resolution is
+            invalid.
+        """
 
         item_type = str(work_item["type"])
         item_id = str(work_item["id"])
@@ -190,11 +279,21 @@ class USAreaCatalog:
 
     def build_requests_from_work_items(
         self,
-        work_items: Sequence[Mapping[str, Any]],
+        work_items: WorkItems,
         *,
         geography: Any,
-    ) -> tuple[AreaBuildRequest, ...]:
-        """Convert a legacy worker batch into typed build requests."""
+    ) -> AreaRequests:
+        """Convert a legacy worker batch into typed build requests.
+
+        Args:
+            work_items: Legacy worker items, each with `type` and `id` keys.
+            geography: Geography assignment used to resolve each item.
+
+        Returns:
+            Tuple of resolved requests. State items with no matching districts
+            are omitted for compatibility with legacy partial-geography worker
+            behavior.
+        """
 
         return tuple(
             request
@@ -247,7 +346,15 @@ class USAreaCatalog:
         )
 
     def get_district_friendly_name(self, cd_geoid: str) -> str:
-        """Convert a congressional district GEOID into its friendly name."""
+        """Convert a congressional district GEOID into its output name.
+
+        Args:
+            cd_geoid: Congressional district GEOID encoded as state FIPS followed
+                by district number.
+
+        Returns:
+            Friendly filename stem such as `"CA-12"` or `"AK-01"`.
+        """
 
         cd_int = int(cd_geoid)
         state_fips = cd_int // 100

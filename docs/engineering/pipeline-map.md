@@ -306,7 +306,7 @@ Compare fitted weighted sums to calibration targets and summarize error.
 class CalibrationGeographyLoader
 ```
 
-Resolve and load exact geography artifacts for publication flows.
+Resolve, load, and checksum exact geography artifacts.
 
 ### `policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions`
 
@@ -394,7 +394,7 @@ Impute pre-tax retirement contributions onto PUF tax units from CPS donors.
 class USAreaCatalog
 ```
 
-Construct typed local H5 requests for the current US publication flow.
+Construct typed H5 build requests for supported US geographies.
 
 ### `policyengine_us_data.calibration.local_h5.requests.AreaFilter`
 
@@ -402,7 +402,7 @@ Construct typed local H5 requests for the current US publication flow.
 class AreaFilter
 ```
 
-A single geography predicate used to select rows for one output area.
+Predicate used to select calibrated clones for one H5 output.
 
 ### `policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest`
 
@@ -410,7 +410,15 @@ A single geography predicate used to select rows for one output area.
 class AreaBuildRequest
 ```
 
-A complete request describing one local or national H5 to build.
+Complete request for one local-area or national H5 file.
+
+### `policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity`
+
+```python
+class ArtifactIdentity
+```
+
+Stable identity for an input artifact used by traceability.
 
 ### `policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint`
 
@@ -426,7 +434,15 @@ Compute a scope fingerprint for local H5 checkpoint and resume decisions.
 class PublishingInputBundle
 ```
 
-File-system and run metadata needed to publish one H5 scope.
+Input artifact bundle for one local H5 publication scope.
+
+### `policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource`
+
+```python
+class ResolvedGeographySource
+```
+
+Resolved physical source used to recover calibration geography.
 
 ### `policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle`
 
@@ -434,7 +450,7 @@ File-system and run metadata needed to publish one H5 scope.
 class TraceabilityBundle
 ```
 
-Full provenance record for one publish scope.
+Full provenance record for one local H5 publish scope.
 
 ### `policyengine_us_data.calibration.promote_local_h5s.stage`
 

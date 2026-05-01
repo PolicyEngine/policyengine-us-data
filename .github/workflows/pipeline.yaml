@@ -33,9 +33,13 @@ on:
         description: "Override version (default: read from pyproject.toml)"
         default: ""
         type: string
+      publication_id:
+        description: "Publication ID to use across GitHub, Modal, and HF staging"
+        default: ""
+        type: string
 
 concurrency:
-  group: pipeline-main
+  group: pipeline-${{ github.run_id }}-${{ github.run_attempt }}
   cancel-in-progress: false
 
 jobs:
@@ -44,6 +48,10 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       github.event.head_commit.message == 'Update package version'
+    env:
+      MODAL_ENVIRONMENT: main
+      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+      US_DATA_PUBLICATION_ID: ${{ inputs.publication_id || '' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -53,6 +61,10 @@ jobs:
 
       - name: Install Modal Runner Deps
         run: pip install modal pandas
+
+      - name: Resolve publication context
+        id: publication-context
+        run: python .github/scripts/resolve_publication_context.py
 
       - name: Deploy and launch pipeline on Modal
         env:
@@ -67,5 +79,5 @@ jobs:
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
           VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
         run: |
-          modal deploy modal_app/pipeline.py
+          modal deploy --env="${MODAL_ENVIRONMENT}" --name="${MODAL_APP_NAME}" --tag="${PUBLICATION_ID}" modal_app/pipeline.py
           python .github/scripts/spawn_modal_pipeline.py

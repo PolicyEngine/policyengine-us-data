@@ -38,7 +38,7 @@ import subprocess
 import sys
 import time
 import traceback
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -54,6 +54,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import ensure_resume_sha_compatible  # noqa: E402
+from policyengine_us_data.utils.publication_context import (  # noqa: E402
+    PublicationContext,
+    resolve_publication_id,
+)
 from policyengine_us_data.utils.step_manifest import (  # noqa: E402
     ArtifactReference,
     ReuseMeasurement,
@@ -73,13 +77,23 @@ from policyengine_us_data.utils.step_manifest import (  # noqa: E402
 
 # ── Modal resources ──────────────────────────────────────────────
 
-app = modal.App("policyengine-us-data-pipeline")
+app = modal.App(
+    os.environ.get("US_DATA_PIPELINE_APP_NAME")
+    or os.environ.get("US_DATA_MODAL_APP_NAME")
+    or "policyengine-us-data-pipeline"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
-staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
+pipeline_volume = modal.Volume.from_name(
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
+    create_if_missing=True,
+)
+staging_volume = modal.Volume.from_name(
+    os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
+    create_if_missing=True,
+)
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 PIPELINE_MOUNT = "/pipeline"
@@ -138,6 +152,11 @@ class RunMetadata:
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
     regional_fingerprint: Optional[str] = None
+    publication_id: str = ""
+    publication_context: dict = field(default_factory=dict)
+    modal_app_name: Optional[str] = None
+    modal_environment: Optional[str] = None
+    hf_staging_prefix: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.regional_fingerprint is None and self.fingerprint is not None:
@@ -162,12 +181,29 @@ class RunMetadata:
             and data.get("fingerprint") is not None
         ):
             data["regional_fingerprint"] = data["fingerprint"]
-        return cls(**data)
+        allowed_fields = {field.name for field in fields(cls)}
+        return cls(**{key: value for key, value in data.items() if key in allowed_fields})
 
 
 def generate_run_id(version: str, sha: str) -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     return f"{version}_{sha[:8]}_{ts}"
+
+
+def _apply_publication_context_env(context: PublicationContext) -> None:
+    """Expose publication context to subprocess upload helpers."""
+    for key, value in context.export_env().items():
+        os.environ[key] = value
+
+
+def _metadata_publication_fields(context: PublicationContext) -> dict:
+    return {
+        "publication_id": context.publication_id,
+        "publication_context": context.to_dict(),
+        "modal_app_name": context.modal_app_name,
+        "modal_environment": context.modal_environment,
+        "hf_staging_prefix": context.hf_staging_prefix,
+    }
 
 
 def _run_dir(run_id: str) -> Path:
@@ -187,6 +223,11 @@ def _write_run_manifest(meta: RunMetadata) -> None:
         version=meta.version,
         status=meta.status,
         started_at=meta.start_time,
+        publication_id=meta.publication_id or meta.run_id,
+        publication_context=meta.publication_context,
+        modal_app_name=meta.modal_app_name,
+        modal_environment=meta.modal_environment,
+        hf_staging_prefix=meta.hf_staging_prefix,
         updated_at=utc_now(),
         completed_at=utc_now()
         if meta.status in {"completed", "failed", "promoted"}
@@ -322,6 +363,10 @@ def _start_step_manifest(
         branch=meta.branch,
         sha=meta.sha,
         version=meta.version,
+        publication_id=meta.publication_id or meta.run_id,
+        modal_app_name=meta.modal_app_name,
+        modal_environment=meta.modal_environment,
+        hf_staging_prefix=meta.hf_staging_prefix,
         modal_call_id=modal_call_id,
         parameters=parameters or {},
         input_identities=input_identities or {},
@@ -397,6 +442,10 @@ def _mark_step_reused(
         branch=meta.branch,
         sha=meta.sha,
         version=meta.version,
+        publication_id=meta.publication_id or previous.publication_id,
+        modal_app_name=meta.modal_app_name or previous.modal_app_name,
+        modal_environment=meta.modal_environment or previous.modal_environment,
+        hf_staging_prefix=meta.hf_staging_prefix or previous.hf_staging_prefix,
         modal_app_id=previous.modal_app_id,
         modal_call_id=previous.modal_call_id,
         parameters=previous.parameters,
@@ -552,6 +601,10 @@ def _record_step(
         branch=meta.branch,
         sha=meta.sha,
         version=meta.version,
+        publication_id=meta.publication_id or meta.run_id,
+        modal_app_name=meta.modal_app_name,
+        modal_environment=meta.modal_environment,
+        hf_staging_prefix=meta.hf_staging_prefix,
         parameters=parameters or {},
         input_identities=input_identities or {},
     )
@@ -1082,6 +1135,10 @@ def run_pipeline(
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
     version_override: str = "",
+    publication_id: str = "",
+    publication_context: dict | None = None,
+    modal_app_name: str = "",
+    modal_environment: str = "",
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -1100,6 +1157,11 @@ def run_pipeline(
             scoped by commit SHA, so stale ones from other commits
             are cleaned automatically. Use True only to force a
             full rebuild of the current commit.
+        publication_id: Cross-system publication ID created by GitHub.
+        publication_context: Serialized publication context from the
+            launcher workflow.
+        modal_app_name: Deployed Modal app name for this publication.
+        modal_environment: Modal environment used for this publication.
 
     Returns:
         The run ID for use with promote.
@@ -1115,6 +1177,14 @@ def run_pipeline(
     # ── Initialize or resume run ──
     sha = get_pinned_sha(branch)
     version = version_override or get_version_from_branch(branch)
+    resolved_publication_id = resolve_publication_id(publication_id)
+    pub_context = PublicationContext.from_mapping(
+        publication_context,
+        publication_id=resolved_publication_id,
+        modal_app_name=modal_app_name,
+        modal_environment=modal_environment,
+    )
+    _apply_publication_context_env(pub_context)
 
     explicit_resume = bool(resume_run_id)
 
@@ -1127,6 +1197,31 @@ def run_pipeline(
     if resume_run_id:
         print(f"Resuming run {resume_run_id}...")
         meta = read_run_meta(resume_run_id, pipeline_volume)
+        if (
+            pub_context.publication_id
+            and meta.publication_id
+            and pub_context.publication_id != meta.publication_id
+        ):
+            print(
+                "WARNING: ignoring provided publication_id "
+                f"{pub_context.publication_id!r}; resumed run uses "
+                f"{meta.publication_id!r}."
+            )
+            pub_context = PublicationContext.from_mapping(
+                meta.publication_context,
+                publication_id=meta.publication_id,
+                modal_app_name=meta.modal_app_name or "",
+                modal_environment=meta.modal_environment or "",
+            )
+            _apply_publication_context_env(pub_context)
+        if not pub_context.publication_id:
+            pub_context = PublicationContext.from_mapping(
+                meta.publication_context,
+                publication_id=meta.publication_id or resume_run_id,
+                modal_app_name=meta.modal_app_name or "",
+                modal_environment=meta.modal_environment or "",
+            )
+            _apply_publication_context_env(pub_context)
         current_sha = sha
         sha_match = ensure_resume_sha_compatible(
             branch=branch,
@@ -1148,9 +1243,28 @@ def run_pipeline(
             }
         )
         meta.status = "running"
+        if not meta.publication_id:
+            meta.publication_id = pub_context.publication_id or resume_run_id
+        if not meta.publication_context:
+            meta.publication_context = pub_context.to_dict()
+        meta.modal_app_name = meta.modal_app_name or pub_context.modal_app_name
+        meta.modal_environment = (
+            meta.modal_environment or pub_context.modal_environment
+        )
+        meta.hf_staging_prefix = (
+            meta.hf_staging_prefix or pub_context.hf_staging_prefix
+        )
         run_id = resume_run_id
     else:
-        run_id = generate_run_id(version, sha)
+        run_id = pub_context.publication_id or generate_run_id(version, sha)
+        if not pub_context.publication_id:
+            pub_context = PublicationContext.from_mapping(
+                pub_context.to_dict(),
+                publication_id=run_id,
+                modal_app_name=pub_context.modal_app_name,
+                modal_environment=pub_context.modal_environment,
+            )
+            _apply_publication_context_env(pub_context)
         meta = RunMetadata(
             run_id=run_id,
             branch=branch,
@@ -1158,6 +1272,7 @@ def run_pipeline(
             version=version,
             start_time=datetime.now(timezone.utc).isoformat(),
             status="running",
+            **_metadata_publication_fields(pub_context),
         )
 
     # Create run directory
@@ -1174,6 +1289,11 @@ def run_pipeline(
     print("PIPELINE RUN")
     print("=" * 60)
     print(f"  Run ID:  {run_id}")
+    print(f"  Publication ID: {meta.publication_id or run_id}")
+    if meta.modal_app_name:
+        print(f"  Modal app: {meta.modal_app_name}")
+    if meta.hf_staging_prefix:
+        print(f"  HF staging: {meta.hf_staging_prefix}")
     print(f"  Branch:  {branch}")
     print(f"  SHA:     {sha[:12]}")
     print(f"  Version: {version}")
@@ -2037,6 +2157,7 @@ def promote_run(
     print("PROMOTING PIPELINE RUN")
     print("=" * 60)
     print(f"  Run ID:  {run_id}")
+    print(f"  Publication ID: {meta.publication_id or run_id}")
     print(f"  Version: {version}")
     print(f"  Branch:  {meta.branch}")
     print(f"  SHA:     {meta.sha[:12]}")
@@ -2185,6 +2306,7 @@ def pipeline_status(
         steps_dir = _run_dir(run_id) / "steps"
         lines = [
             f"Run: {meta.run_id}",
+            f"  Publication ID: {meta.publication_id or meta.run_id}",
             f"  Branch:  {meta.branch}",
             f"  SHA:     {meta.sha[:12]}",
             f"  Version: {meta.version}",
@@ -2260,6 +2382,7 @@ def main(
     skip_national: bool = False,
     clear_checkpoints: bool = False,
     version: str = None,
+    publication_id: str = "",
 ):
     """Pipeline entrypoint.
 
@@ -2281,6 +2404,7 @@ def main(
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
             version_override=version or "",
+            publication_id=publication_id,
         )
         print(f"\nPipeline run complete: {result}")
 

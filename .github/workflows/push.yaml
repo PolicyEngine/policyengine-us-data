@@ -29,11 +29,17 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install modal
+      - name: Resolve publication context
+        id: publication-context
+        env:
+          US_DATA_MODAL_APP_PREFIX: policyengine-us-data-build
+        run: python .github/scripts/resolve_publication_context.py
       - name: Build datasets on Modal
         run: |
           modal run --env="${MODAL_ENVIRONMENT}" modal_app/data_build.py \
             --upload \
-            --branch=${{ github.ref_name }}
+            --branch=${{ github.ref_name }} \
+            --run-id="${PUBLICATION_ID}"
 
   # ── Documentation ──────────────────────────────────────────
   docs:

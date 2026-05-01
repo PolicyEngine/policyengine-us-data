@@ -19,21 +19,28 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
+from policyengine_us_data.utils.publication_context import (  # noqa: E402
+    resolve_publication_id,
+)
 
-app = modal.App("policyengine-us-data")
+app = modal.App(
+    os.environ.get("US_DATA_DATA_BUILD_APP_NAME")
+    or os.environ.get("US_DATA_MODAL_APP_NAME")
+    or "policyengine-us-data"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
 # Create persistent volume for checkpoints
 checkpoint_volume = modal.Volume.from_name(
-    "data-build-checkpoints",
+    os.environ.get("US_DATA_CHECKPOINT_VOLUME_NAME", "data-build-checkpoints"),
     create_if_missing=True,
 )
 
 # Shared pipeline volume for inter-step artifact transport
 pipeline_volume = modal.Volume.from_name(
-    "pipeline-artifacts",
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
 )
 PIPELINE_MOUNT = "/pipeline"
@@ -487,6 +494,10 @@ def build_datasets(
     """
     setup_gcp_credentials()
     _reset_checkpoint_stats()
+    run_id = run_id or resolve_publication_id()
+    if run_id:
+        os.environ["US_DATA_PUBLICATION_ID"] = run_id
+        os.environ["PUBLICATION_ID"] = run_id
 
     # Reload volume to see latest checkpoints
     checkpoint_volume.reload()
@@ -774,6 +785,7 @@ def main(
     stage_only: bool = False,
     run_id: str = "",
 ):
+    run_id = run_id or resolve_publication_id()
     result = build_datasets.remote(
         upload=upload,
         branch=branch,

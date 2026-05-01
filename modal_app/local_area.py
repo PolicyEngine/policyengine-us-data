@@ -37,18 +37,21 @@ from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E4
     partition_weighted_work_items,
 )
 
-app = modal.App("policyengine-us-data-local-area")
+app = modal.App(
+    os.environ.get("US_DATA_LOCAL_AREA_APP_NAME")
+    or "policyengine-us-data-local-area"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
 staging_volume = modal.Volume.from_name(
-    "local-area-staging",
+    os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
     create_if_missing=True,
 )
 
 pipeline_volume = modal.Volume.from_name(
-    "pipeline-artifacts",
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
 )
 

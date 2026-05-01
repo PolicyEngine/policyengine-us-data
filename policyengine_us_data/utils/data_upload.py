@@ -30,6 +30,10 @@ from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
 )
+from policyengine_us_data.utils.publication_context import (
+    PublicationContext,
+    resolve_publication_id,
+)
 from policyengine_us_data.utils.trace_tro import (
     TRACE_TRO_FILENAME,
     build_trace_tro_from_release_manifest,
@@ -52,6 +56,17 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
     "districts/": 435,
     "cities/": 1,
 }
+
+
+def _resolve_staging_run_id(run_id: str = "") -> str:
+    return run_id or resolve_publication_id()
+
+
+def _publication_context_for_release() -> dict | None:
+    publication_id = resolve_publication_id()
+    if not publication_id:
+        return None
+    return PublicationContext.from_env(publication_id=publication_id).to_dict()
 
 
 def _get_model_package_version(
@@ -275,6 +290,7 @@ def create_release_manifest_commit_operations(
     model_package_version: Optional[str] = None,
     model_package_git_sha: Optional[str] = None,
     model_package_data_build_fingerprint: Optional[str] = None,
+    publication_context: Optional[Dict] = None,
     existing_manifest: Optional[Dict] = None,
 ) -> Tuple[Dict, List[CommitOperationAdd]]:
     manifest = build_release_manifest(
@@ -285,6 +301,7 @@ def create_release_manifest_commit_operations(
         model_package_version=model_package_version,
         model_package_git_sha=model_package_git_sha,
         model_package_data_build_fingerprint=model_package_data_build_fingerprint,
+        publication_context=publication_context,
         existing_manifest=existing_manifest,
     )
     manifest_payload = serialize_release_manifest(manifest)
@@ -489,6 +506,7 @@ def upload_files_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        publication_context=_publication_context_for_release(),
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -691,6 +709,7 @@ def publish_release_manifest_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        publication_context=_publication_context_for_release(),
         existing_manifest=existing_manifest,
     )
     parent_commit = get_repo_head_revision(
@@ -789,12 +808,30 @@ def upload_to_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
-    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    context_payload = None
+    if run_id:
+        context_payload = PublicationContext.from_env().to_dict()
+        context_payload["publication_id"] = run_id
+        context_payload["hf_staging_prefix"] = staging_prefix
 
     total_uploaded = 0
     for i in range(0, len(files_with_paths), batch_size):
         batch = files_with_paths[i : i + batch_size]
         operations = []
+        if i == 0 and context_payload is not None:
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"{staging_prefix}/_publication_context.json",
+                    path_or_fileobj=BytesIO(
+                        (
+                            json.dumps(context_payload, indent=2, sort_keys=True)
+                            + "\n"
+                        ).encode("utf-8")
+                    ),
+                )
+            )
         for local_path, rel_path in batch:
             local_path = Path(local_path)
             if not local_path.exists():
@@ -816,11 +853,19 @@ def upload_to_staging_hf(
             repo_id=hf_repo_name,
             repo_type=hf_repo_type,
             token=token,
-            commit_message=f"Upload batch {i // batch_size + 1} to staging for version {version}",
+            commit_message=(
+                f"Upload batch {i // batch_size + 1} to staging "
+                f"for version {version}"
+                + (f" ({run_id})" if run_id else "")
+            ),
         )
-        total_uploaded += len(operations)
+        uploaded_files = len(operations) - (
+            1 if i == 0 and context_payload is not None else 0
+        )
+        total_uploaded += uploaded_files
         logging.info(
-            f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
+            f"Uploaded batch {i // batch_size + 1}: "
+            f"{uploaded_files} files to {staging_prefix}/"
         )
 
     logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
@@ -828,6 +873,7 @@ def upload_to_staging_hf(
 
 
 def _staging_prefix(run_id: str = "") -> str:
+    run_id = _resolve_staging_run_id(run_id)
     return f"staging/{run_id}" if run_id else "staging"
 
 
@@ -859,6 +905,7 @@ def promote_staging_to_production_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     operations = []
@@ -887,7 +934,11 @@ def promote_staging_to_production_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Promote {len(files)} files from staging to production for version {version}",
+        commit_message=(
+            f"Promote {len(files)} files from staging to production "
+            f"for version {version}"
+            + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
@@ -927,6 +978,7 @@ def cleanup_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     operations = []
@@ -949,7 +1001,10 @@ def cleanup_staging_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Clean up staging after version {version} promotion",
+        commit_message=(
+            f"Clean up staging after version {version} promotion"
+            + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
@@ -984,6 +1039,7 @@ def upload_from_hf_staging_to_gcs(
         Number of files uploaded
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     credentials, project_id = google.auth.default()

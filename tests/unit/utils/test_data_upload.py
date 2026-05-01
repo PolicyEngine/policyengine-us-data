@@ -123,7 +123,10 @@ def test_upload_to_staging_hf_accepts_run_id_kwarg(monkeypatch, tmp_path):
     )
 
     assert n == 1
-    assert len(captured_ops) == 1
+    assert len(captured_ops) == 2
+    assert captured_ops[0].path_in_repo == (
+        "staging/abc123/_publication_context.json"
+    )
 
 
 def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path):
@@ -133,6 +136,7 @@ def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path
     data_upload.upload_to_staging_hf(files, version="1.73.0", run_id="abc123")
 
     assert [op.path_in_repo for op in captured_ops] == [
+        "staging/abc123/_publication_context.json",
         "staging/abc123/states/AL.h5",
         "staging/abc123/states/CA.h5",
     ]
@@ -147,6 +151,19 @@ def test_upload_to_staging_hf_without_run_id_uses_bare_staging_prefix(
     data_upload.upload_to_staging_hf(files, version="1.73.0")
 
     assert [op.path_in_repo for op in captured_ops] == ["staging/states/AL.h5"]
+
+
+def test_upload_to_staging_hf_uses_publication_id_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("US_DATA_PUBLICATION_ID", "publication-123")
+    data_upload, captured_ops = _install_fake_hf(monkeypatch, tmp_path)
+    files = _make_files(tmp_path, ["states/AL.h5"])
+
+    data_upload.upload_to_staging_hf(files, version="1.73.0")
+
+    assert [op.path_in_repo for op in captured_ops] == [
+        "staging/publication-123/_publication_context.json",
+        "staging/publication-123/states/AL.h5",
+    ]
 
 
 def test_promote_staging_to_production_hf_uses_run_scoped_source_only(monkeypatch):

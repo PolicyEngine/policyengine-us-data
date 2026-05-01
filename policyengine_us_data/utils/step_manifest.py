@@ -183,6 +183,10 @@ class StepManifest:
     branch: str | None = None
     sha: str | None = None
     version: str | None = None
+    publication_id: str | None = None
+    modal_app_name: str | None = None
+    modal_environment: str | None = None
+    hf_staging_prefix: str | None = None
     scope: str | None = None
     modal_app_id: str | None = None
     modal_call_id: str | None = None
@@ -229,6 +233,10 @@ class StepManifest:
             branch=self.branch,
             sha=self.sha,
             version=self.version,
+            publication_id=self.publication_id,
+            modal_app_name=self.modal_app_name,
+            modal_environment=self.modal_environment,
+            hf_staging_prefix=self.hf_staging_prefix,
             scope=self.scope,
             modal_app_id=self.modal_app_id,
             modal_call_id=self.modal_call_id,
@@ -264,6 +272,10 @@ class StepManifest:
             branch=self.branch,
             sha=self.sha,
             version=self.version,
+            publication_id=self.publication_id,
+            modal_app_name=self.modal_app_name,
+            modal_environment=self.modal_environment,
+            hf_staging_prefix=self.hf_staging_prefix,
             scope=self.scope,
             modal_app_id=self.modal_app_id,
             modal_call_id=self.modal_call_id,
@@ -295,6 +307,10 @@ class StepManifest:
             "branch": self.branch,
             "sha": self.sha,
             "version": self.version,
+            "publication_id": self.publication_id,
+            "modal_app_name": self.modal_app_name,
+            "modal_environment": self.modal_environment,
+            "hf_staging_prefix": self.hf_staging_prefix,
             "modal_app_id": self.modal_app_id,
             "modal_call_id": self.modal_call_id,
             "parameters": self.parameters,
@@ -325,6 +341,10 @@ class StepManifest:
             branch=data.get("branch"),
             sha=data.get("sha"),
             version=data.get("version"),
+            publication_id=data.get("publication_id"),
+            modal_app_name=data.get("modal_app_name"),
+            modal_environment=data.get("modal_environment"),
+            hf_staging_prefix=data.get("hf_staging_prefix"),
             modal_app_id=data.get("modal_app_id"),
             modal_call_id=data.get("modal_call_id"),
             parameters=dict(data.get("parameters", {})),
@@ -357,6 +377,11 @@ class RunManifest:
     status: str
     started_at: str
     known_step_ids: list[str]
+    publication_id: str | None = None
+    publication_context: dict[str, Any] = field(default_factory=dict)
+    modal_app_name: str | None = None
+    modal_environment: str | None = None
+    hf_staging_prefix: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None
     resume_history: list[dict[str, Any]] = field(default_factory=list)
@@ -378,6 +403,11 @@ class RunManifest:
             version=str(data["version"]),
             status=str(data["status"]),
             started_at=str(data["started_at"]),
+            publication_id=data.get("publication_id"),
+            publication_context=dict(data.get("publication_context", {})),
+            modal_app_name=data.get("modal_app_name"),
+            modal_environment=data.get("modal_environment"),
+            hf_staging_prefix=data.get("hf_staging_prefix"),
             updated_at=data.get("updated_at"),
             completed_at=data.get("completed_at"),
             known_step_ids=list(data.get("known_step_ids", [])),

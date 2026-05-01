@@ -16,6 +16,7 @@ from policyengine_us_data.utils.data_upload import (
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
+from policyengine_us_data.utils.publication_context import resolve_publication_id
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
     load_dataset_for_validation,
@@ -59,6 +60,10 @@ INCOME_GROUPS = [
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
+
+
+def _resolve_run_id(run_id: str = "") -> str:
+    return run_id or resolve_publication_id()
 
 
 class DatasetValidationError(Exception):
@@ -114,6 +119,7 @@ def _collect_staged_dataset_repo_paths(
     run_id: str = "",
 ) -> list[str]:
     api = HfApi()
+    run_id = _resolve_run_id(run_id)
     prefix = f"staging/{run_id}" if run_id else "staging"
     repo_files = set(
         api.list_repo_files(
@@ -145,6 +151,7 @@ def _download_staged_dataset_artifacts(
     rel_paths: list[str],
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
+    run_id = _resolve_run_id(run_id)
     staging_prefix = f"staging/{run_id}" if run_id else "staging"
     downloaded_files = []
     for rel_path in rel_paths:
@@ -301,6 +308,7 @@ def stage_datasets(
     version: str | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
+    run_id = _resolve_run_id(run_id)
     version = version or DATA_PACKAGE_VERSION
     files_with_repo_paths = _collect_existing_dataset_artifacts(
         require_enhanced_cps=require_enhanced_cps
@@ -324,6 +332,7 @@ def promote_datasets(
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
 ) -> list[str]:
+    run_id = _resolve_run_id(run_id)
     version = version or DATA_PACKAGE_VERSION
     rel_paths = (
         [repo_path for _, repo_path in files_with_repo_paths]
@@ -407,6 +416,7 @@ def upload_datasets(
     run_id: str = "",
     version: str | None = None,
 ):
+    run_id = _resolve_run_id(run_id)
     if stage_only and promote_only:
         raise ValueError("Choose either stage_only or promote_only, not both.")
 
@@ -480,7 +490,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-id",
-        default="",
+        default=resolve_publication_id(),
         help="Optional staging run ID, for example a CI commit SHA.",
     )
     parser.add_argument(

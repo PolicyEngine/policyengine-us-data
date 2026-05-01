@@ -20,8 +20,8 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
-from policyengine_us_data.utils.publication_context import (  # noqa: E402
-    resolve_publication_id,
+from policyengine_us_data.utils.run_context import (  # noqa: E402
+    resolve_run_id,
 )
 
 app = modal.App(
@@ -494,10 +494,13 @@ def build_datasets(
     """
     setup_gcp_credentials()
     checkpoint_stats = CheckpointStats()
-    run_id = run_id or resolve_publication_id()
-    if run_id:
-        os.environ["US_DATA_PUBLICATION_ID"] = run_id
-        os.environ["PUBLICATION_ID"] = run_id
+    run_id = run_id or resolve_run_id()
+    if not run_id:
+        raise RuntimeError(
+            "run_id is required. Production data builds must receive the "
+            "GitHub-created run ID via --run-id or US_DATA_RUN_ID."
+        )
+    os.environ["US_DATA_RUN_ID"] = run_id
 
     # Reload volume to see latest checkpoints
     checkpoint_volume.reload()
@@ -793,7 +796,11 @@ def main(
     stage_only: bool = False,
     run_id: str = "",
 ):
-    run_id = run_id or resolve_publication_id()
+    run_id = run_id or resolve_run_id()
+    if not run_id:
+        raise RuntimeError(
+            "run_id is required. Pass --run-id or run inside GitHub Actions."
+        )
     result = build_datasets.remote(
         upload=upload,
         branch=branch,

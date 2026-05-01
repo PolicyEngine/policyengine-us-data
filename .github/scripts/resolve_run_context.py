@@ -1,4 +1,4 @@
-"""Resolve publication context for GitHub Actions workflows."""
+"""Resolve run context for GitHub Actions workflows."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from policyengine_us_data.utils.publication_context import (  # noqa: E402
+from policyengine_us_data.utils.run_context import (  # noqa: E402
     DEFAULT_MODAL_APP_PREFIX,
-    PublicationContext,
+    RunContext,
     build_modal_resource_name,
 )
 
@@ -28,35 +28,35 @@ def _append_key_values(path_env: str, values: dict[str, str]) -> None:
 
 def main() -> None:
     app_prefix = os.environ.get("US_DATA_MODAL_APP_PREFIX", DEFAULT_MODAL_APP_PREFIX)
-    context = PublicationContext.from_env(modal_app_prefix=app_prefix)
-    if not context.publication_id:
+    context = RunContext.from_env(modal_app_prefix=app_prefix)
+    if not context.run_id:
         raise RuntimeError(
-            "Could not resolve publication ID. Set US_DATA_PUBLICATION_ID or run "
+            "Could not resolve run ID. Set US_DATA_RUN_ID or run "
             "inside GitHub Actions with GITHUB_RUN_ID."
         )
 
     pipeline_volume_name = os.environ.get(
         "US_DATA_PIPELINE_VOLUME_NAME",
         build_modal_resource_name(
-            context.publication_id,
+            context.run_id,
             prefix="pipeline-artifacts",
         ),
     )
     staging_volume_name = os.environ.get(
         "US_DATA_STAGING_VOLUME_NAME",
         build_modal_resource_name(
-            context.publication_id,
+            context.run_id,
             prefix="local-area-staging",
         ),
     )
     checkpoint_volume_name = os.environ.get(
         "US_DATA_CHECKPOINT_VOLUME_NAME",
         build_modal_resource_name(
-            context.publication_id,
+            context.run_id,
             prefix="data-build-checkpoints",
         ),
     )
-    context = PublicationContext.from_mapping(
+    context = RunContext.from_mapping(
         {
             **context.to_dict(),
             "pipeline_volume_name": pipeline_volume_name,
@@ -68,7 +68,7 @@ def main() -> None:
     )
 
     outputs = {
-        "publication_id": context.publication_id,
+        "run_id": context.run_id,
         "modal_app_name": context.modal_app_name,
         "modal_environment": context.modal_environment,
         "hf_staging_prefix": context.hf_staging_prefix,

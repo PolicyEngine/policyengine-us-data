@@ -40,7 +40,7 @@ def _base_manifest(
     model_package_version: str | None,
     model_package_git_sha: str | None,
     model_package_data_build_fingerprint: str | None,
-    publication_context: Mapping[str, str] | None,
+    run_context: Mapping[str, str] | None,
     build_id: str,
     created_at: str,
 ) -> Dict:
@@ -70,8 +70,8 @@ def _base_manifest(
             "git_sha": model_package_git_sha,
             "data_build_fingerprint": model_package_data_build_fingerprint,
         }
-    if publication_context:
-        manifest["build"]["publication"] = dict(publication_context)
+    if run_context:
+        manifest["build"]["run"] = dict(run_context)
     if model_package_version:
         manifest["compatible_model_packages"].append(
             {
@@ -106,7 +106,7 @@ def build_release_manifest(
     model_package_version: str | None = None,
     model_package_git_sha: str | None = None,
     model_package_data_build_fingerprint: str | None = None,
-    publication_context: Mapping[str, str] | None = None,
+    run_context: Mapping[str, str] | None = None,
     build_id: str | None = None,
     existing_manifest: Mapping | None = None,
     default_datasets: Optional[Mapping[str, str]] = None,
@@ -128,7 +128,7 @@ def build_release_manifest(
             model_package_version=model_package_version,
             model_package_git_sha=model_package_git_sha,
             model_package_data_build_fingerprint=model_package_data_build_fingerprint,
-            publication_context=publication_context,
+            run_context=run_context,
             build_id=resolved_build_id,
             created_at=manifest_timestamp,
         )
@@ -149,8 +149,8 @@ def build_release_manifest(
                 "git_sha": model_package_git_sha,
                 "data_build_fingerprint": model_package_data_build_fingerprint,
             }
-        if publication_context:
-            manifest["build"]["publication"] = dict(publication_context)
+        if run_context:
+            manifest["build"]["run"] = dict(run_context)
         if model_package_version:
             manifest["compatible_model_packages"] = [
                 {

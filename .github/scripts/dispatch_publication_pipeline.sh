@@ -4,8 +4,8 @@ set -euo pipefail
 workflow_file="${PIPELINE_WORKFLOW_FILE:-pipeline.yaml}"
 workflow_ref="${PIPELINE_WORKFLOW_REF:-main}"
 
-if [[ -z "${PUBLICATION_ID:-}" ]]; then
-  echo "PUBLICATION_ID is required" >&2
+if [[ -z "${RUN_ID:-}" ]]; then
+  echo "RUN_ID is required" >&2
   exit 1
 fi
 
@@ -16,16 +16,16 @@ fi
 
 gh workflow run "${workflow_file}" \
   --ref "${workflow_ref}" \
-  -f publication_id="${PUBLICATION_ID}" \
+  -f run_id="${RUN_ID}" \
   -f source_sha="${SOURCE_SHA}"
 
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
-    echo "## Publication Pipeline Dispatched"
+    echo "## Pipeline Dispatched"
     echo
     echo "| Field | Value |"
     echo "|-------|-------|"
-    echo "| Publication ID | \`${PUBLICATION_ID}\` |"
+    echo "| Run ID | \`${RUN_ID}\` |"
     echo "| Source SHA | \`${SOURCE_SHA}\` |"
     echo "| Workflow | \`${workflow_file}\` |"
     echo "| Workflow ref | \`${workflow_ref}\` |"

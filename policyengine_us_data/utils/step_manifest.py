@@ -183,7 +183,6 @@ class StepManifest:
     branch: str | None = None
     sha: str | None = None
     version: str | None = None
-    publication_id: str | None = None
     modal_app_name: str | None = None
     modal_environment: str | None = None
     hf_staging_prefix: str | None = None
@@ -233,7 +232,6 @@ class StepManifest:
             branch=self.branch,
             sha=self.sha,
             version=self.version,
-            publication_id=self.publication_id,
             modal_app_name=self.modal_app_name,
             modal_environment=self.modal_environment,
             hf_staging_prefix=self.hf_staging_prefix,
@@ -272,7 +270,6 @@ class StepManifest:
             branch=self.branch,
             sha=self.sha,
             version=self.version,
-            publication_id=self.publication_id,
             modal_app_name=self.modal_app_name,
             modal_environment=self.modal_environment,
             hf_staging_prefix=self.hf_staging_prefix,
@@ -307,7 +304,6 @@ class StepManifest:
             "branch": self.branch,
             "sha": self.sha,
             "version": self.version,
-            "publication_id": self.publication_id,
             "modal_app_name": self.modal_app_name,
             "modal_environment": self.modal_environment,
             "hf_staging_prefix": self.hf_staging_prefix,
@@ -341,7 +337,6 @@ class StepManifest:
             branch=data.get("branch"),
             sha=data.get("sha"),
             version=data.get("version"),
-            publication_id=data.get("publication_id"),
             modal_app_name=data.get("modal_app_name"),
             modal_environment=data.get("modal_environment"),
             hf_staging_prefix=data.get("hf_staging_prefix"),
@@ -377,8 +372,7 @@ class RunManifest:
     status: str
     started_at: str
     known_step_ids: list[str]
-    publication_id: str | None = None
-    publication_context: dict[str, Any] = field(default_factory=dict)
+    run_context: dict[str, Any] = field(default_factory=dict)
     modal_app_name: str | None = None
     modal_environment: str | None = None
     hf_staging_prefix: str | None = None
@@ -403,8 +397,9 @@ class RunManifest:
             version=str(data["version"]),
             status=str(data["status"]),
             started_at=str(data["started_at"]),
-            publication_id=data.get("publication_id"),
-            publication_context=dict(data.get("publication_context", {})),
+            run_context=dict(
+                data.get("run_context") or data.get("publication_context", {})
+            ),
             modal_app_name=data.get("modal_app_name"),
             modal_environment=data.get("modal_environment"),
             hf_staging_prefix=data.get("hf_staging_prefix"),

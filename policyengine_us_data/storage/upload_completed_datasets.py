@@ -16,7 +16,7 @@ from policyengine_us_data.utils.data_upload import (
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
-from policyengine_us_data.utils.publication_context import resolve_publication_id
+from policyengine_us_data.utils.run_context import resolve_run_id
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
     load_dataset_for_validation,
@@ -63,7 +63,7 @@ MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
 
 
 def _resolve_run_id(run_id: str = "") -> str:
-    return run_id or resolve_publication_id()
+    return run_id or resolve_run_id()
 
 
 class DatasetValidationError(Exception):
@@ -490,8 +490,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-id",
-        default=resolve_publication_id(),
-        help="Optional staging run ID, for example a CI commit SHA.",
+        default=resolve_run_id(),
+        help="GitHub-created staging run ID.",
     )
     parser.add_argument(
         "--version",

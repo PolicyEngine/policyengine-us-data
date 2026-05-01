@@ -1,8 +1,8 @@
-"""Publication identity helpers for US data runs.
+"""Run identity helpers for US data publication runs.
 
-The publication ID is the cross-system correlation key for one candidate
-publication attempt. GitHub creates it first, Modal records it while running,
-and Hugging Face staging uses it as the staging namespace.
+The run ID is the cross-system correlation key for one candidate publication
+attempt. GitHub creates it first, Modal records it while running, and Hugging
+Face staging uses it as the staging namespace.
 """
 
 from __future__ import annotations
@@ -15,8 +15,7 @@ from dataclasses import asdict, dataclass
 from typing import Mapping
 
 
-PUBLICATION_ID_ENV = "US_DATA_PUBLICATION_ID"
-LEGACY_PUBLICATION_ID_ENV = "PUBLICATION_ID"
+RUN_ID_ENV = "US_DATA_RUN_ID"
 MODAL_APP_NAME_ENV = "US_DATA_MODAL_APP_NAME"
 MODAL_ENVIRONMENT_ENV = "US_DATA_MODAL_ENVIRONMENT"
 DEFAULT_MODAL_APP_PREFIX = "policyengine-us-data-pub"
@@ -38,43 +37,43 @@ def _truncate_with_digest(value: str, max_length: int) -> str:
     return f"{value[:head_length].rstrip('-')}-{digest}"
 
 
-def sanitize_publication_id(value: str) -> str:
-    """Return a Modal/HF-path-safe publication ID."""
+def sanitize_run_id(value: str) -> str:
+    """Return a Modal/HF-path-safe run ID."""
     slug = _slugify(value)
     if not slug:
-        raise ValueError("Publication ID cannot be empty")
+        raise ValueError("Run ID cannot be empty")
     return _truncate_with_digest(slug, DEFAULT_MAX_RESOURCE_NAME_LENGTH)
 
 
-def build_publication_id(
+def build_run_id(
     *,
     github_run_id: str,
     github_run_attempt: str,
     github_sha: str,
 ) -> str:
-    """Build a deterministic publication ID from GitHub Actions identity."""
+    """Build a deterministic run ID from GitHub Actions identity."""
     if not github_run_id:
         raise ValueError("github_run_id is required")
     attempt = github_run_attempt or "1"
     sha = (github_sha or "unknown")[:8]
-    return sanitize_publication_id(f"usdata-gha{github_run_id}-a{attempt}-{sha}")
+    return sanitize_run_id(f"usdata-gha{github_run_id}-a{attempt}-{sha}")
 
 
 def build_modal_resource_name(
-    publication_id: str,
+    run_id: str,
     *,
     prefix: str = DEFAULT_MODAL_APP_PREFIX,
     max_length: int = DEFAULT_MAX_RESOURCE_NAME_LENGTH,
 ) -> str:
-    """Build a safe Modal app or volume name from a publication ID."""
+    """Build a safe Modal app or volume name from a run ID."""
     return _truncate_with_digest(
-        _slugify(f"{prefix}-{sanitize_publication_id(publication_id)}"),
+        _slugify(f"{prefix}-{sanitize_run_id(run_id)}"),
         max_length,
     )
 
 
-def staging_prefix(publication_id: str = "") -> str:
-    return f"staging/{publication_id}" if publication_id else "staging"
+def staging_prefix(run_id: str = "") -> str:
+    return f"staging/{run_id}" if run_id else "staging"
 
 
 def github_run_url(env: Mapping[str, str]) -> str:
@@ -86,22 +85,18 @@ def github_run_url(env: Mapping[str, str]) -> str:
     return f"{server_url}/{repository}/actions/runs/{run_id}"
 
 
-def resolve_publication_id(
+def resolve_run_id(
     explicit: str = "",
     *,
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Resolve a publication ID from an explicit value or environment."""
+    """Resolve the canonical run ID from an explicit value or GitHub context."""
     env = env or os.environ
-    candidate = (
-        explicit
-        or env.get(PUBLICATION_ID_ENV, "")
-        or env.get(LEGACY_PUBLICATION_ID_ENV, "")
-    )
+    candidate = explicit or env.get(RUN_ID_ENV, "") or env.get("RUN_ID", "")
     if candidate:
-        return sanitize_publication_id(candidate)
+        return sanitize_run_id(candidate)
     if env.get("GITHUB_RUN_ID"):
-        return build_publication_id(
+        return build_run_id(
             github_run_id=env.get("GITHUB_RUN_ID", ""),
             github_run_attempt=env.get("GITHUB_RUN_ATTEMPT", "1"),
             github_sha=env.get("GITHUB_SHA", ""),
@@ -110,10 +105,10 @@ def resolve_publication_id(
 
 
 @dataclass(frozen=True)
-class PublicationContext:
-    """Cross-system context for one publication attempt."""
+class RunContext:
+    """Cross-system context for one publication run."""
 
-    publication_id: str
+    run_id: str
     modal_app_name: str
     modal_environment: str
     hf_staging_prefix: str
@@ -133,14 +128,14 @@ class PublicationContext:
     def from_env(
         cls,
         *,
-        publication_id: str = "",
+        run_id: str = "",
         modal_app_name: str = "",
         modal_environment: str = "",
         env: Mapping[str, str] | None = None,
         modal_app_prefix: str = DEFAULT_MODAL_APP_PREFIX,
-    ) -> "PublicationContext":
+    ) -> "RunContext":
         env = env or os.environ
-        resolved_publication_id = resolve_publication_id(publication_id, env=env)
+        resolved_run_id = resolve_run_id(run_id, env=env)
         resolved_modal_environment = (
             modal_environment
             or env.get(MODAL_ENVIRONMENT_ENV, "")
@@ -153,18 +148,18 @@ class PublicationContext:
             or env.get("MODAL_APP_NAME", "")
             or (
                 build_modal_resource_name(
-                    resolved_publication_id,
+                    resolved_run_id,
                     prefix=modal_app_prefix,
                 )
-                if resolved_publication_id
+                if resolved_run_id
                 else ""
             )
         )
         return cls(
-            publication_id=resolved_publication_id,
+            run_id=resolved_run_id,
             modal_app_name=resolved_modal_app_name,
             modal_environment=resolved_modal_environment,
-            hf_staging_prefix=staging_prefix(resolved_publication_id),
+            hf_staging_prefix=staging_prefix(resolved_run_id),
             github_run_url=env.get("US_DATA_GITHUB_RUN_URL", "") or github_run_url(env),
             github_repository=env.get("GITHUB_REPOSITORY", ""),
             github_workflow=env.get("GITHUB_WORKFLOW", ""),
@@ -184,12 +179,12 @@ class PublicationContext:
         data: Mapping[str, object] | None,
         *,
         env: Mapping[str, str] | None = None,
-        publication_id: str = "",
+        run_id: str = "",
         modal_app_name: str = "",
         modal_environment: str = "",
-    ) -> "PublicationContext":
+    ) -> "RunContext":
         base = cls.from_env(
-            publication_id=publication_id,
+            run_id=run_id,
             modal_app_name=modal_app_name,
             modal_environment=modal_environment,
             env=env,
@@ -198,13 +193,13 @@ class PublicationContext:
             return base
         merged = asdict(base)
         for key, value in data.items():
+            if key == "publication_id":
+                key = "run_id"
             if key in merged and value:
                 merged[key] = str(value)
-        if merged.get("publication_id"):
-            merged["publication_id"] = sanitize_publication_id(
-                str(merged["publication_id"])
-            )
-            merged["hf_staging_prefix"] = staging_prefix(merged["publication_id"])
+        if merged.get("run_id"):
+            merged["run_id"] = sanitize_run_id(str(merged["run_id"]))
+            merged["hf_staging_prefix"] = staging_prefix(merged["run_id"])
         return cls(**merged)
 
     def to_dict(self) -> dict[str, str]:
@@ -218,8 +213,8 @@ class PublicationContext:
     def export_env(self) -> dict[str, str]:
         """Return environment variables representing this context."""
         values = {
-            PUBLICATION_ID_ENV: self.publication_id,
-            LEGACY_PUBLICATION_ID_ENV: self.publication_id,
+            RUN_ID_ENV: self.run_id,
+            "RUN_ID": self.run_id,
             MODAL_APP_NAME_ENV: self.modal_app_name,
             "MODAL_APP_NAME": self.modal_app_name,
             MODAL_ENVIRONMENT_ENV: self.modal_environment,

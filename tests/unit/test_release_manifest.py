@@ -158,7 +158,7 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
     assert manifest["artifacts"]["districts/NC-01"]["sha256"] == _sha256(district_bytes)
 
 
-def test_build_release_manifest_records_publication_context(tmp_path):
+def test_build_release_manifest_records_run_context(tmp_path):
     dataset_path = _write_file(
         tmp_path / "enhanced_cps_2024.h5",
         b"national-dataset",
@@ -168,16 +168,16 @@ def test_build_release_manifest_records_publication_context(tmp_path):
         files_with_repo_paths=[(dataset_path, "enhanced_cps_2024.h5")],
         version="1.73.0",
         repo_id="policyengine/policyengine-us-data",
-        publication_context={
-            "publication_id": "usdata-gha123-a1-abcdef12",
+        run_context={
+            "run_id": "usdata-gha123-a1-abcdef12",
             "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
             "hf_staging_prefix": "staging/usdata-gha123-a1-abcdef12",
         },
         created_at="2026-04-10T12:00:00Z",
     )
 
-    assert manifest["build"]["publication"] == {
-        "publication_id": "usdata-gha123-a1-abcdef12",
+    assert manifest["build"]["run"] == {
+        "run_id": "usdata-gha123-a1-abcdef12",
         "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
         "hf_staging_prefix": "staging/usdata-gha123-a1-abcdef12",
     }

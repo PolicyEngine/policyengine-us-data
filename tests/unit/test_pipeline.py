@@ -15,7 +15,6 @@ from modal_app.pipeline import (  # noqa: E402
     _build_diagnostics_upload_script,
     _step_completed,
     _record_step,
-    generate_run_id,
     write_run_meta,
     read_run_meta,
 )
@@ -158,34 +157,6 @@ class TestRunMetadata:
             status="running",
         )
         assert meta.step_timings == {}
-
-
-# -- generate_run_id tests -------------------------------------
-
-
-class TestGenerateRunId:
-    def test_format(self):
-        run_id = generate_run_id("1.72.3", "abc12345deadbeef")
-
-        parts = run_id.split("_")
-        assert parts[0] == "1.72.3"
-        assert parts[1] == "abc12345"
-        assert len(parts) == 4  # version_sha_date_time
-
-    def test_sha_truncated_to_8(self):
-        run_id = generate_run_id("1.0.0", "abcdef1234567890")
-        sha_part = run_id.split("_")[1]
-        assert sha_part == "abcdef12"
-        assert len(sha_part) == 8
-
-    def test_unique_ids(self):
-        id1 = generate_run_id("1.0.0", "abc123")
-        time.sleep(0.01)
-        id2 = generate_run_id("1.0.0", "abc123")
-        # Timestamps should differ (or at least
-        # the function doesn't reuse)
-        assert isinstance(id1, str)
-        assert isinstance(id2, str)
 
 
 # -- _step_completed tests ------------------------------------

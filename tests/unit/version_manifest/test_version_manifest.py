@@ -153,14 +153,12 @@ class TestVersionManifestSerialization:
         assert result.special_operation is None
         assert result.roll_back_version is None
 
-    def test_pipeline_run_id_omitted_by_default(self, sample_manifest):
+    def test_run_id_omitted_by_default(self, sample_manifest):
         data = sample_manifest.to_dict()
-        assert "pipeline_run_id" not in data
+        assert "run_id" not in data
         assert "diagnostics_path" not in data
 
-    def test_pipeline_run_id_included_when_set(
-        self, sample_generations, sample_hf_info
-    ):
+    def test_run_id_included_when_set(self, sample_generations, sample_hf_info):
         manifest = VersionManifest(
             version="1.73.0",
             created_at="2026-03-10T15:00:00Z",
@@ -169,14 +167,14 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            pipeline_run_id="1.73.0_abc12345_20260310",
+            run_id="usdata-gha123-a1-abc12345",
             diagnostics_path=("calibration/runs/1.73.0_abc12345_20260310/diagnostics/"),
         )
         data = manifest.to_dict()
-        assert data["pipeline_run_id"] == ("1.73.0_abc12345_20260310")
+        assert data["run_id"] == "usdata-gha123-a1-abc12345"
         assert "diagnostics/" in data["diagnostics_path"]
 
-    def test_pipeline_run_id_roundtrip(self, sample_generations, sample_hf_info):
+    def test_run_id_roundtrip(self, sample_generations, sample_hf_info):
         manifest = VersionManifest(
             version="1.73.0",
             created_at="2026-03-10T15:00:00Z",
@@ -185,11 +183,11 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            pipeline_run_id="1.73.0_abc12345_20260310",
+            run_id="usdata-gha123-a1-abc12345",
             diagnostics_path="calibration/runs/x/diag/",
         )
         roundtripped = VersionManifest.from_dict(manifest.to_dict())
-        assert roundtripped.pipeline_run_id == ("1.73.0_abc12345_20260310")
+        assert roundtripped.run_id == "usdata-gha123-a1-abc12345"
         assert roundtripped.diagnostics_path == ("calibration/runs/x/diag/")
 
 

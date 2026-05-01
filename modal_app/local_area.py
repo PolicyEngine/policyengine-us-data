@@ -36,6 +36,7 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: 
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
+from policyengine_us_data.utils.run_context import resolve_run_id  # noqa: E402
 
 app = modal.App(
     os.environ.get("US_DATA_LOCAL_AREA_APP_NAME") or "policyengine-us-data-local-area"
@@ -832,11 +833,12 @@ def coordinate_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. Local-area publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")
@@ -1138,11 +1140,12 @@ def coordinate_national_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. National publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")

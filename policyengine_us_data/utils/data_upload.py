@@ -30,9 +30,9 @@ from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
 )
-from policyengine_us_data.utils.publication_context import (
-    PublicationContext,
-    resolve_publication_id,
+from policyengine_us_data.utils.run_context import (
+    RunContext,
+    resolve_run_id,
 )
 from policyengine_us_data.utils.trace_tro import (
     TRACE_TRO_FILENAME,
@@ -59,14 +59,14 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
 
 
 def _resolve_staging_run_id(run_id: str = "") -> str:
-    return run_id or resolve_publication_id()
+    return run_id or resolve_run_id()
 
 
-def _publication_context_for_release() -> dict | None:
-    publication_id = resolve_publication_id()
-    if not publication_id:
+def _run_context_for_release() -> dict | None:
+    run_id = resolve_run_id()
+    if not run_id:
         return None
-    return PublicationContext.from_env(publication_id=publication_id).to_dict()
+    return RunContext.from_env(run_id=run_id).to_dict()
 
 
 def _get_model_package_version(
@@ -290,7 +290,7 @@ def create_release_manifest_commit_operations(
     model_package_version: Optional[str] = None,
     model_package_git_sha: Optional[str] = None,
     model_package_data_build_fingerprint: Optional[str] = None,
-    publication_context: Optional[Dict] = None,
+    run_context: Optional[Dict] = None,
     existing_manifest: Optional[Dict] = None,
 ) -> Tuple[Dict, List[CommitOperationAdd]]:
     manifest = build_release_manifest(
@@ -301,7 +301,7 @@ def create_release_manifest_commit_operations(
         model_package_version=model_package_version,
         model_package_git_sha=model_package_git_sha,
         model_package_data_build_fingerprint=model_package_data_build_fingerprint,
-        publication_context=publication_context,
+        run_context=run_context,
         existing_manifest=existing_manifest,
     )
     manifest_payload = serialize_release_manifest(manifest)
@@ -506,7 +506,7 @@ def upload_files_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
-        publication_context=_publication_context_for_release(),
+        run_context=_run_context_for_release(),
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -709,7 +709,7 @@ def publish_release_manifest_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
-        publication_context=_publication_context_for_release(),
+        run_context=_run_context_for_release(),
         existing_manifest=existing_manifest,
     )
     parent_commit = get_repo_head_revision(
@@ -812,8 +812,7 @@ def upload_to_staging_hf(
     staging_prefix = _staging_prefix(run_id)
     context_payload = None
     if run_id:
-        context_payload = PublicationContext.from_env().to_dict()
-        context_payload["publication_id"] = run_id
+        context_payload = RunContext.from_env(run_id=run_id).to_dict()
         context_payload["hf_staging_prefix"] = staging_prefix
 
     total_uploaded = 0
@@ -823,7 +822,7 @@ def upload_to_staging_hf(
         if i == 0 and context_payload is not None:
             operations.append(
                 CommitOperationAdd(
-                    path_in_repo=f"{staging_prefix}/_publication_context.json",
+                    path_in_repo=f"{staging_prefix}/_run_context.json",
                     path_or_fileobj=BytesIO(
                         (
                             json.dumps(context_payload, indent=2, sort_keys=True) + "\n"

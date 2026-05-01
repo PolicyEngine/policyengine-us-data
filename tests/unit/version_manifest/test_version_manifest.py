@@ -20,7 +20,7 @@ from policyengine_us_data.utils.version_manifest import (
     get_data_manifest,
     get_data_version,
 )
-from tests.conftest import (
+from .support import (
     make_mock_blob,
     setup_bucket_with_registry,
 )

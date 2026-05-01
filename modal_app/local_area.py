@@ -29,6 +29,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
+from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: E402
+    FingerprintingService,
+    PublishingInputBundle,
+)
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
@@ -309,6 +313,63 @@ def get_version() -> str:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
+
+
+def _build_publishing_input_bundle(
+    *,
+    weights_path: Path,
+    dataset_path: Path,
+    db_path: Path | None,
+    geography_path: Path | None,
+    calibration_package_path: Path | None,
+    run_config_path: Path | None,
+    run_id: str,
+    version: str,
+    n_clones: int | None,
+    seed: int,
+    legacy_blocks_path: Path | None = None,
+) -> PublishingInputBundle:
+    """Build the normalized coordinator input bundle for one publish scope."""
+
+    return PublishingInputBundle(
+        weights_path=weights_path,
+        source_dataset_path=dataset_path,
+        target_db_path=db_path,
+        exact_geography_path=geography_path,
+        calibration_package_path=calibration_package_path,
+        run_config_path=run_config_path,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=legacy_blocks_path,
+    )
+
+
+def _resolve_scope_fingerprint(
+    *,
+    inputs: PublishingInputBundle,
+    scope: str,
+    expected_fingerprint: str = "",
+) -> str:
+    """Compute the scope fingerprint while preserving pinned resume values."""
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    computed_fingerprint = service.compute_scope_fingerprint(traceability)
+    if expected_fingerprint:
+        if expected_fingerprint != computed_fingerprint:
+            print(
+                "WARNING: Pinned fingerprint differs from current "
+                f"{scope} scope fingerprint. "
+                "Preserving pinned value for backward-compatible resume.\n"
+                f"  Pinned:   {expected_fingerprint}\n"
+                f"  Current:  {computed_fingerprint}"
+            )
+        else:
+            print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
+        return expected_fingerprint
+    return computed_fingerprint
 
 
 def partition_work(
@@ -761,6 +822,7 @@ def coordinate_publish(
     validate: bool = True,
     run_id: str = "",
     expected_fingerprint: str = "",
+    work_items_override: List[Dict] | None = None,
 ) -> Dict:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -836,97 +898,87 @@ def coordinate_publish(
             validate = False
 
     # Fingerprint-based cache invalidation
-    if expected_fingerprint:
-        fingerprint = expected_fingerprint
-        print(f"Using pinned fingerprint from pipeline: {fingerprint}")
-    else:
-        geography_path_expr = (
-            f'Path("{geography_path}")' if geography_path.exists() else "None"
-        )
-        package_path_expr = (
-            f'Path("{calibration_package_path}")'
-            if calibration_package_path.exists()
-            else "None"
-        )
-        fp_result = subprocess.run(
-            _python_cmd(
-                "-c",
-                f"""
-from pathlib import Path
-from policyengine_us_data.calibration.publish_local_area import (
-    compute_input_fingerprint,
-)
-print(
-    compute_input_fingerprint(
-        Path("{weights_path}"),
-        Path("{dataset_path}"),
-        {n_clones},
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=(
+            calibration_package_path if calibration_package_path.exists() else None
+        ),
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
         seed=42,
-        geography_path={geography_path_expr},
-        calibration_package_path={package_path_expr},
+        legacy_blocks_path=artifacts / "stacked_blocks.npy",
     )
-)
-""",
-            ),
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
-        )
-        if fp_result.returncode != 0:
-            raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
-        fingerprint = fp_result.stdout.strip()
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        expected_fingerprint=expected_fingerprint,
+    )
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
-    result = subprocess.run(
-        _python_cmd(
-            "-c",
-            f"""
-import json
-from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
-    STATE_CODES,
-)
-from policyengine_us_data.calibration.publish_local_area import (
-    get_district_friendly_name,
-)
+    if work_items_override is None:
+        result = subprocess.run(
+            _python_cmd(
+                "-c",
+                (
+                    "import json\n"
+                    "from policyengine_us_data.calibration.calibration_utils "
+                    "import get_all_cds_from_database, STATE_CODES\n"
+                    "from policyengine_us_data.calibration.publish_local_area "
+                    "import get_district_friendly_name\n"
+                    f'db_uri = "sqlite:///{db_path}"\n'
+                    "cds = get_all_cds_from_database(db_uri)\n"
+                    "states = list(STATE_CODES.values())\n"
+                    "districts = [get_district_friendly_name(cd) for cd in cds]\n"
+                    'print(json.dumps({"states": states, "districts": districts, '
+                    '"cities": ["NYC"], "cds": cds}))\n'
+                ),
+            ),
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
 
-db_uri = "sqlite:///{db_path}"
-cds = get_all_cds_from_database(db_uri)
-states = list(STATE_CODES.values())
-districts = [get_district_friendly_name(cd) for cd in cds]
-print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
-""",
-        ),
-        capture_output=True,
-        text=True,
-        env=os.environ.copy(),
-    )
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to get work items: {result.stderr}")
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get work items: {result.stderr}")
+        work_info = json.loads(result.stdout)
+        states = work_info["states"]
+        districts = work_info["districts"]
+        cities = work_info["cities"]
 
-    work_info = json.loads(result.stdout)
-    states = work_info["states"]
-    districts = work_info["districts"]
-    cities = work_info["cities"]
+        from collections import Counter
 
-    from collections import Counter
+        cds_per_state = Counter(d.split("-")[0] for d in districts)
 
-    cds_per_state = Counter(d.split("-")[0] for d in districts)
+        CITY_WEIGHTS = {"NYC": 11}
 
-    CITY_WEIGHTS = {"NYC": 11}
-
-    work_items = []
-    for s in states:
-        work_items.append({"type": "state", "id": s, "weight": cds_per_state.get(s, 1)})
-    for d in districts:
-        work_items.append({"type": "district", "id": d, "weight": 1})
-    for c in cities:
-        work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
+        work_items = []
+        for s in states:
+            work_items.append(
+                {"type": "state", "id": s, "weight": cds_per_state.get(s, 1)}
+            )
+        for d in districts:
+            work_items.append({"type": "district", "id": d, "weight": 1})
+        for c in cities:
+            work_items.append(
+                {"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)}
+            )
+    else:
+        work_items = work_items_override
+        states = [item["id"] for item in work_items if item.get("type") == "state"]
+        districts = [
+            item["id"] for item in work_items if item.get("type") == "district"
+        ]
+        cities = [item["id"] for item in work_items if item.get("type") == "city"]
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
@@ -1064,6 +1116,7 @@ def coordinate_national_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    skip_upload: bool = False,
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -1122,6 +1175,22 @@ def coordinate_national_publish(
             "calibration_weights.npy": "national_calibration_weights.npy",
             "geography_assignment.npz": "national_geography_assignment.npz",
         },
+    )
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=None,
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=42,
+    )
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="national",
     )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -1186,6 +1255,15 @@ def coordinate_national_publish(
                 f"non-zero exit code: {val_result.returncode}"
             )
 
+    if skip_upload:
+        print("\nSkipping national upload (--skip-upload flag set)")
+        return {
+            "message": (f"National US.h5 built for version {version}. Upload skipped."),
+            "run_id": run_id,
+            "fingerprint": fingerprint,
+            "national_validation": national_validation_output,
+        }
+
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
         _python_cmd(
@@ -1224,6 +1302,7 @@ print("Done")
             f"{version}. Run main_national_promote to publish."
         ),
         "run_id": run_id,
+        "fingerprint": fingerprint,
         "national_validation": national_validation_output,
     }
 

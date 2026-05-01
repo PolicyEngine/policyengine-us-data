@@ -1,11 +1,16 @@
-"""Shared fixtures and helpers for version manifest tests."""
+"""Shared fixtures for version manifest tests."""
 
-from __future__ import annotations
-
-import json
 from unittest.mock import MagicMock
 
 import pytest
+
+from policyengine_us_data.utils.version_manifest import (
+    HFVersionInfo,
+    GCSVersionInfo,
+    VersionManifest,
+    VersionRegistry,
+)
+from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 
 # -- Fixtures ------------------------------------------------------
 
@@ -21,8 +26,6 @@ def sample_generations() -> dict[str, int]:
 
 @pytest.fixture
 def sample_hf_info() -> HFVersionInfo:
-    from policyengine_us_data.utils.version_manifest import HFVersionInfo
-
     return HFVersionInfo(
         repo="policyengine/policyengine-us-data",
         commit="abc123def456",
@@ -31,8 +34,6 @@ def sample_hf_info() -> HFVersionInfo:
 
 @pytest.fixture
 def sample_policyengine_us_info() -> PolicyEngineUSBuildInfo:
-    from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
-
     return PolicyEngineUSBuildInfo(
         version="1.587.0",
         locked_version="1.587.0",
@@ -47,11 +48,6 @@ def sample_manifest(
     sample_hf_info: HFVersionInfo,
     sample_policyengine_us_info: PolicyEngineUSBuildInfo,
 ) -> VersionManifest:
-    from policyengine_us_data.utils.version_manifest import (
-        GCSVersionInfo,
-        VersionManifest,
-    )
-
     return VersionManifest(
         version="1.72.3",
         created_at="2026-03-10T14:30:00Z",
@@ -69,8 +65,6 @@ def sample_registry(
     sample_manifest: VersionManifest,
 ) -> VersionRegistry:
     """A registry with one version entry."""
-    from policyengine_us_data.utils.version_manifest import VersionRegistry
-
     return VersionRegistry(
         current="1.72.3",
         versions=[sample_manifest],
@@ -82,23 +76,3 @@ def mock_bucket() -> MagicMock:
     bucket = MagicMock()
     bucket.name = "policyengine-us-data"
     return bucket
-
-
-# -- Helpers -------------------------------------------------------
-
-
-def make_mock_blob(generation: int) -> MagicMock:
-    blob = MagicMock()
-    blob.generation = generation
-    return blob
-
-
-def setup_bucket_with_registry(
-    bucket: MagicMock,
-    registry: VersionRegistry,
-) -> None:
-    """Configure a mock bucket to serve a registry."""
-    registry_json = json.dumps(registry.to_dict())
-    blob = MagicMock()
-    blob.download_as_text.return_value = registry_json
-    bucket.blob.return_value = blob

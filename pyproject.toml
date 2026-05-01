@@ -90,6 +90,9 @@ testpaths = [
 markers = [
     "integration: tests that exercise integration-level behavior or external runtime seams",
 ]
+filterwarnings = [
+    "ignore::SyntaxWarning:IPython.core.interactiveshell",
+]
 
 [tool.towncrier]
 package = "policyengine_us_data"

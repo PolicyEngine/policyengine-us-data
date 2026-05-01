@@ -7,7 +7,7 @@ for ensuring data integrity during uploads.
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -68,7 +68,7 @@ def generate_manifest(
 
     manifest = {
         "version": version or subdir,
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "created_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "files": {},
         "totals": {cat: 0 for cat in categories},
     }

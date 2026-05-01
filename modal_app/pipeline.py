@@ -109,12 +109,31 @@ class RunMetadata:
     error: Optional[str] = None
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
+    regional_fingerprint: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.regional_fingerprint is None and self.fingerprint is not None:
+            self.regional_fingerprint = self.fingerprint
+        if self.fingerprint is None and self.regional_fingerprint is not None:
+            self.fingerprint = self.regional_fingerprint
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        if (
+            data.get("fingerprint") is None
+            and data.get("regional_fingerprint") is not None
+        ):
+            data["fingerprint"] = data["regional_fingerprint"]
+        return data
 
     @classmethod
     def from_dict(cls, data: dict) -> "RunMetadata":
+        data = dict(data)
+        if (
+            data.get("regional_fingerprint") is None
+            and data.get("fingerprint") is not None
+        ):
+            data["regional_fingerprint"] = data["fingerprint"]
         return cls(**data)
 
 
@@ -463,6 +482,17 @@ def verify_runtime_seams() -> dict:
     import importlib
 
     repo_root = "/root/policyengine-us-data"
+    expected_files = (
+        "pyproject.toml",
+        "uv.lock",
+        "modal_app/worker_script.py",
+        "modal_app/local_area.py",
+        "modal_app/h5_test_harness.py",
+        "modal_app/fixtures/h5_cases.py",
+        "tests/integration/test_fixture_50hh.h5",
+        "policyengine_us_data/calibration/target_config.yaml",
+        "policyengine_us_data/calibration/target_config_full.yaml",
+    )
     result = {
         "interpreter": {
             "parent": sys.executable,
@@ -470,38 +500,74 @@ def verify_runtime_seams() -> dict:
         "imports": {},
         "subprocess": {},
         "paths": {
+            "cwd": os.getcwd(),
             "repo_root_exists": os.path.isdir(repo_root),
+            "working_directory_is_repo_root": os.getcwd() == repo_root,
             "target_config_exists": os.path.exists(
                 f"{repo_root}/policyengine_us_data/calibration/target_config.yaml"
             ),
+            "expected_files": {
+                rel_path: os.path.exists(f"{repo_root}/{rel_path}")
+                for rel_path in expected_files
+            },
         },
     }
+    result["paths"]["all_expected_files_exist"] = all(
+        result["paths"]["expected_files"].values()
+    )
 
     for module_name in (
-        "pandas",
+        "google.cloud.storage",
         "h5py",
-        "policyengine_us_data",
+        "huggingface_hub",
+        "modal_app.fixtures.h5_cases",
+        "modal_app.h5_test_harness",
+        "modal_app.local_area",
+        "modal_app.remote_calibration_runner",
         "modal_app.worker_script",
+        "numpy",
+        "pandas",
+        "policyengine_us",
+        "policyengine_us_data",
+        "spm_calculator",
+        "sqlalchemy",
     ):
-        imported = importlib.import_module(module_name)
-        result["imports"][module_name] = {
-            "ok": True,
-            "version": getattr(imported, "__version__", None),
-        }
+        try:
+            imported = importlib.import_module(module_name)
+            result["imports"][module_name] = {
+                "ok": True,
+                "version": getattr(imported, "__version__", None),
+            }
+        except Exception as exc:
+            result["imports"][module_name] = {
+                "ok": False,
+                "error": repr(exc),
+            }
 
     child_python = subprocess.run(
-        _python_cmd("-c", "import sys; print(sys.executable)"),
+        _python_cmd(
+            "-c",
+            (
+                "import json, os, sys; "
+                "print(json.dumps({'executable': sys.executable, 'cwd': os.getcwd()}))"
+            ),
+        ),
         capture_output=True,
         text=True,
         check=True,
         cwd=repo_root,
     )
-    child_exec = child_python.stdout.strip()
+    child_runtime = json.loads(child_python.stdout)
+    child_exec = child_runtime["executable"]
     result["interpreter"]["child"] = child_exec
+    result["interpreter"]["child_cwd"] = child_runtime["cwd"]
     result["interpreter"]["child_matches_parent"] = child_exec == sys.executable
+    result["interpreter"]["child_cwd_is_repo_root"] = child_runtime["cwd"] == repo_root
 
     for name, cmd in {
+        "worker_import": _python_cmd("-c", "import modal_app.worker_script"),
         "worker_help": _python_cmd("-m", "modal_app.worker_script", "--help"),
+        "local_area_import": _python_cmd("-c", "import modal_app.local_area"),
         "calibration_help": _python_cmd(
             "-m",
             "policyengine_us_data.calibration.unified_calibration",
@@ -530,6 +596,41 @@ def verify_runtime_seams() -> dict:
     }
 
     return result
+
+
+@app.function(
+    image=image,
+    timeout=28800,
+)
+def run_seeded_h5_publish_seam(
+    *,
+    branch: str,
+    run_id: str,
+    n_clones: int,
+    regional_work_items: list[dict],
+) -> dict:
+    """Run the pipeline-owned H5 publish seam against pre-seeded tiny artifacts."""
+
+    regional_handle = coordinate_publish.spawn(
+        branch=branch,
+        num_workers=1,
+        skip_upload=True,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        work_items_override=regional_work_items,
+    )
+    national_handle = coordinate_national_publish.spawn(
+        branch=branch,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        skip_upload=True,
+    )
+    return {
+        "regional": regional_handle.get(),
+        "national": national_handle.get(),
+    }
 
 
 def _write_validation_diagnostics(
@@ -1000,7 +1101,9 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
                 run_id=run_id,
-                expected_fingerprint=meta.fingerprint or "",
+                expected_fingerprint=(
+                    meta.regional_fingerprint or meta.fingerprint or ""
+                ),
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
 
@@ -1036,6 +1139,7 @@ def run_pipeline(
             if isinstance(regional_h5_result, dict) and regional_h5_result.get(
                 "fingerprint"
             ):
+                meta.regional_fingerprint = regional_h5_result["fingerprint"]
                 meta.fingerprint = regional_h5_result["fingerprint"]
                 write_run_meta(meta, pipeline_volume)
 

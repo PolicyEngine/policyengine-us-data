@@ -33,7 +33,6 @@ from policyengine_us_data.calibration.unified_matrix_builder import (
     UnifiedMatrixBuilder,
     _calculate_target_values_standalone,
     _GEO_VARS,
-    _build_entity_index_maps,
     _make_neutralize_variable_reform,
 )
 from policyengine_us_data.calibration.calibration_utils import (
@@ -273,45 +272,6 @@ def _build_entity_rel(sim) -> pd.DataFrame:
     )
 
 
-def _prepare_target_entity_context(
-    sim,
-    entity_rel: pd.DataFrame,
-    household_ids: np.ndarray,
-    variable_entity_map: dict,
-    variables,
-    period: int,
-) -> tuple[dict, dict, dict]:
-    target_entity_vars = {}
-    entity_hh_idx_map = {}
-    person_to_entity_idx_map = {}
-    variables = tuple(str(variable) for variable in variables)
-    target_entities = {
-        variable_entity_map.get(variable, "household") for variable in variables
-    }
-    if any(entity not in {"household", "person"} for entity in target_entities):
-        entity_hh_idx_map, person_to_entity_idx_map = _build_entity_index_maps(
-            entity_rel,
-            household_ids,
-            sim,
-        )
-
-    for variable in variables:
-        if variable.endswith("_count"):
-            continue
-        target_entity = variable_entity_map.get(variable, "household")
-        if target_entity in {"household", "person"}:
-            continue
-        try:
-            target_entity_vars[variable] = sim.calculate(
-                variable,
-                map_to=target_entity,
-                period=period,
-            ).values
-        except Exception:
-            pass
-    return target_entity_vars, entity_hh_idx_map, person_to_entity_idx_map
-
-
 def _get_reform_income_tax_delta(
     dataset_path: str,
     period: int,
@@ -363,16 +323,6 @@ def validate_area(
     hh_vars_cache = {}
     reform_hh_cache = {}
     person_vars_cache = {}
-    target_entity_vars, entity_hh_idx_map, person_to_entity_idx_map = (
-        _prepare_target_entity_context(
-            sim=sim,
-            entity_rel=entity_rel,
-            household_ids=household_ids,
-            variable_entity_map=variable_entity_map,
-            variables=targets_df["variable"].unique(),
-            period=period,
-        )
-    )
 
     training_arr = np.asarray(training_mask, dtype=bool)
 
@@ -439,13 +389,13 @@ def validate_area(
             n_households=n_households,
             hh_vars=hh_vars_cache,
             reform_hh_vars=reform_hh_cache,
-            target_entity_vars=target_entity_vars,
+            target_entity_vars={},
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
-            entity_hh_idx_map=entity_hh_idx_map,
-            person_to_entity_idx_map=person_to_entity_idx_map,
+            entity_hh_idx_map={},
+            person_to_entity_idx_map={},
             reform_id=reform_id,
         )
 
@@ -688,16 +638,6 @@ def _compute_district_contributions(
     hh_vars_cache = {}
     reform_hh_cache = {}
     person_vars_cache = {}
-    target_entity_vars, entity_hh_idx_map, person_to_entity_idx_map = (
-        _prepare_target_entity_context(
-            sim=sim,
-            entity_rel=entity_rel,
-            household_ids=household_ids,
-            variable_entity_map=variable_entity_map,
-            variables=state_targets_df["variable"].unique(),
-            period=period,
-        )
-    )
 
     results = []
     for i, (idx, row) in enumerate(state_targets_df.iterrows()):
@@ -754,13 +694,13 @@ def _compute_district_contributions(
             n_households=n_households,
             hh_vars=hh_vars_cache,
             reform_hh_vars=reform_hh_cache,
-            target_entity_vars=target_entity_vars,
+            target_entity_vars={},
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
-            entity_hh_idx_map=entity_hh_idx_map,
-            person_to_entity_idx_map=person_to_entity_idx_map,
+            entity_hh_idx_map={},
+            person_to_entity_idx_map={},
             reform_id=reform_id,
         )
 

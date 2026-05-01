@@ -1,4 +1,4 @@
-# Codex Instructions
+# Agent Instructions
 
 These instructions apply repository-wide.
 

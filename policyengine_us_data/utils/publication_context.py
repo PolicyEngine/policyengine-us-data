@@ -165,8 +165,7 @@ class PublicationContext:
             modal_app_name=resolved_modal_app_name,
             modal_environment=resolved_modal_environment,
             hf_staging_prefix=staging_prefix(resolved_publication_id),
-            github_run_url=env.get("US_DATA_GITHUB_RUN_URL", "")
-            or github_run_url(env),
+            github_run_url=env.get("US_DATA_GITHUB_RUN_URL", "") or github_run_url(env),
             github_repository=env.get("GITHUB_REPOSITORY", ""),
             github_workflow=env.get("GITHUB_WORKFLOW", ""),
             github_ref=env.get("GITHUB_REF", ""),
@@ -210,9 +209,7 @@ class PublicationContext:
 
     def to_dict(self) -> dict[str, str]:
         return {
-            key: value
-            for key, value in asdict(self).items()
-            if value not in ("", None)
+            key: value for key, value in asdict(self).items() if value not in ("", None)
         }
 
     def to_json(self) -> str:

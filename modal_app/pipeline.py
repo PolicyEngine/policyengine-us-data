@@ -182,7 +182,9 @@ class RunMetadata:
         ):
             data["regional_fingerprint"] = data["fingerprint"]
         allowed_fields = {field.name for field in fields(cls)}
-        return cls(**{key: value for key, value in data.items() if key in allowed_fields})
+        return cls(
+            **{key: value for key, value in data.items() if key in allowed_fields}
+        )
 
 
 def generate_run_id(version: str, sha: str) -> str:
@@ -1248,12 +1250,8 @@ def run_pipeline(
         if not meta.publication_context:
             meta.publication_context = pub_context.to_dict()
         meta.modal_app_name = meta.modal_app_name or pub_context.modal_app_name
-        meta.modal_environment = (
-            meta.modal_environment or pub_context.modal_environment
-        )
-        meta.hf_staging_prefix = (
-            meta.hf_staging_prefix or pub_context.hf_staging_prefix
-        )
+        meta.modal_environment = meta.modal_environment or pub_context.modal_environment
+        meta.hf_staging_prefix = meta.hf_staging_prefix or pub_context.hf_staging_prefix
         run_id = resume_run_id
     else:
         run_id = pub_context.publication_id or generate_run_id(version, sha)

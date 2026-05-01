@@ -38,8 +38,7 @@ from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E4
 )
 
 app = modal.App(
-    os.environ.get("US_DATA_LOCAL_AREA_APP_NAME")
-    or "policyengine-us-data-local-area"
+    os.environ.get("US_DATA_LOCAL_AREA_APP_NAME") or "policyengine-us-data-local-area"
 )
 
 hf_secret = modal.Secret.from_name("huggingface-token")

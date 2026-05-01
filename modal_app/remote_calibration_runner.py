@@ -14,8 +14,7 @@ for _p in (_baked, _local):
 from modal_app.images import gpu_image as image  # noqa: E402
 
 app = modal.App(
-    os.environ.get("US_DATA_FIT_WEIGHTS_APP_NAME")
-    or "policyengine-us-data-fit-weights"
+    os.environ.get("US_DATA_FIT_WEIGHTS_APP_NAME") or "policyengine-us-data-fit-weights"
 )
 
 hf_secret = modal.Secret.from_name("huggingface-token")

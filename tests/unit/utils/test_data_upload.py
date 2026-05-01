@@ -124,9 +124,7 @@ def test_upload_to_staging_hf_accepts_run_id_kwarg(monkeypatch, tmp_path):
 
     assert n == 1
     assert len(captured_ops) == 2
-    assert captured_ops[0].path_in_repo == (
-        "staging/abc123/_publication_context.json"
-    )
+    assert captured_ops[0].path_in_repo == ("staging/abc123/_publication_context.json")
 
 
 def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path):

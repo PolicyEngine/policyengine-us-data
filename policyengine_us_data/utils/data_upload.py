@@ -826,8 +826,7 @@ def upload_to_staging_hf(
                     path_in_repo=f"{staging_prefix}/_publication_context.json",
                     path_or_fileobj=BytesIO(
                         (
-                            json.dumps(context_payload, indent=2, sort_keys=True)
-                            + "\n"
+                            json.dumps(context_payload, indent=2, sort_keys=True) + "\n"
                         ).encode("utf-8")
                     ),
                 )
@@ -855,8 +854,7 @@ def upload_to_staging_hf(
             token=token,
             commit_message=(
                 f"Upload batch {i // batch_size + 1} to staging "
-                f"for version {version}"
-                + (f" ({run_id})" if run_id else "")
+                f"for version {version}" + (f" ({run_id})" if run_id else "")
             ),
         )
         uploaded_files = len(operations) - (
@@ -936,8 +934,7 @@ def promote_staging_to_production_hf(
         token=token,
         commit_message=(
             f"Promote {len(files)} files from staging to production "
-            f"for version {version}"
-            + (f" ({run_id})" if run_id else "")
+            f"for version {version}" + (f" ({run_id})" if run_id else "")
         ),
     )
 

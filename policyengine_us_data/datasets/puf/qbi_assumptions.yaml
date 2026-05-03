@@ -24,8 +24,8 @@ sstb_prob_map_by_source_name:
   estate_income: 0.10
 
 # Below, we assume that 7% of filers have nonzero REIT/PTP income,
-# and of those 7%, their REIT/PTP income is lognormal distributed with
-# mean of exp(8.04) = $3,103, and standard deviation 1.20 of the lognormal.
+# and of those 7%, their REIT/PTP income is drawn from a lognormal
+# with median exp(8.04) = $3,103 and log-scale sigma 1.20.
 reit_ptp_income_distribution:
   probability_of_receiving: 0.07
   log_normal_mu: 8.04
@@ -43,7 +43,7 @@ profit_margin_distribution:
   shift: 0.05
 
 # Logistic model:  p = 1 / (1 + exp(-(b0 + b1 * receipts)))
-# * b1 = 1.2e-6: odds roughly triple for each +$1 M; pr 50% near $1M
+# * b1 = 1.2e-6: odds roughly triple for each +$1 M of receipts
 # * b0 = -3.1: tuned so mean pr is roughly 14% in this PUF (matches SOI share)
 has_employees_logit:
   intercept: -3.1

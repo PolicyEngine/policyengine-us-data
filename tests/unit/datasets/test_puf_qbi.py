@@ -67,6 +67,60 @@ def test_qualified_qbi_components_use_persisted_flags():
     assert components.loc[0, "rental_income"] == 200.0
 
 
+def test_draw_source_weighted_beta_uses_positive_qbi_weights():
+    qbi_components = pd.DataFrame(
+        {
+            "self_employment_income": [100.0],
+            "rental_income": [300.0],
+        }
+    )
+    params = {
+        "self_employment_income": {
+            "beta_a": 1.0,
+            "beta_b": 1.0,
+            "scale": 0.0,
+            "shift": 0.10,
+        },
+        "rental_income": {
+            "beta_a": 1.0,
+            "beta_b": 1.0,
+            "scale": 0.0,
+            "shift": 0.50,
+        },
+    }
+
+    draw = puf_module.draw_source_weighted_beta(
+        qbi_components, params, np.random.default_rng(0)
+    )
+
+    np.testing.assert_allclose(draw, np.array([0.40]))
+
+
+def test_calibrate_logit_intercept_matches_positive_receipt_target():
+    revenues = np.array([0.0, 10_000.0, 100_000.0, 1_000_000.0])
+    target_share = 0.25
+
+    intercept = puf_module.calibrate_logit_intercept(
+        revenues, slope=1e-6, target_share=target_share
+    )
+
+    probabilities = puf_module.logistic(intercept + 1e-6 * revenues[revenues > 0])
+    np.testing.assert_allclose(probabilities.mean(), target_share, atol=1e-12)
+
+
+def test_calibrate_logit_intercept_handles_large_receipts():
+    revenues = np.array([100_000_000.0, 200_000_000.0])
+    slope = 1.2e-6
+    target_share = 0.18
+
+    intercept = puf_module.calibrate_logit_intercept(
+        revenues, slope=slope, target_share=target_share
+    )
+
+    probabilities = puf_module.logistic(intercept + slope * revenues)
+    np.testing.assert_allclose(probabilities.mean(), target_share, atol=1e-12)
+
+
 def test_simulate_business_is_sstb_ignores_zero_and_unmapped_sources(monkeypatch):
     def mutate(params):
         for source in params["sstb_prob_map_by_name"]:
@@ -82,6 +136,28 @@ def test_simulate_business_is_sstb_ignores_zero_and_unmapped_sources(monkeypatch
     is_sstb = puf_module.simulate_business_is_sstb(puf, rng=np.random.default_rng(0))
 
     np.testing.assert_array_equal(is_sstb, np.array([False, True, False, True]))
+
+
+def test_simulate_business_is_sstb_source_map_ignores_estate_loss_column(
+    monkeypatch,
+):
+    def mutate(params):
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 1.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    puf = _qbi_frame(n=2)
+    puf.loc[0, "rental_income"] = 10_000.0
+    puf.loc[0, "E26400"] = 10_000.0
+    puf.loc[1, "estate_income"] = 10_000.0
+
+    is_sstb = puf_module.simulate_business_is_sstb(
+        puf,
+        rng=np.random.default_rng(0),
+        probability_map=puf_module.QBI_PARAMS["sstb_prob_map_by_source_name"],
+    )
+
+    np.testing.assert_array_equal(is_sstb, np.array([False, True]))
 
 
 def test_non_rental_capital_intensive_qbi_can_receive_ubia(monkeypatch):
@@ -102,6 +178,57 @@ def test_non_rental_capital_intensive_qbi_can_receive_ubia(monkeypatch):
     _, ubia = puf_module.simulate_w2_and_ubia_from_puf(puf, seed=0, diagnostics=False)
 
     assert ubia[0] > 0
+
+
+def test_investment_qbi_is_scaled_to_observed_exposures(monkeypatch):
+    def mutate(params):
+        params["reit_ptp_income_distribution"] = {
+            "non_qualified_dividend_income": {
+                "probability_of_receiving": 1.0,
+                "beta_a": 1.0,
+                "beta_b": 1.0,
+                "scale": 0.0,
+                "shift": 0.20,
+            },
+            "partnership_s_corp_income": {
+                "probability_of_receiving": 1.0,
+                "beta_a": 1.0,
+                "beta_b": 1.0,
+                "scale": 0.0,
+                "shift": 0.30,
+            },
+        }
+        params["bdc_income_distribution"] = {
+            "non_qualified_dividend_income": {
+                "probability_of_receiving": 1.0,
+                "beta_a": 1.0,
+                "beta_b": 1.0,
+                "scale": 0.0,
+                "shift": 0.05,
+            }
+        }
+
+    _set_qbi_params(monkeypatch, mutate)
+    puf = pd.DataFrame(
+        {
+            "qualified_dividend_income": [900.0, 0.0, 0.0],
+            "non_qualified_dividend_income": [100.0, 0.0, 0.0],
+            "partnership_s_corp_income": [0.0, 200.0, 0.0],
+        }
+    )
+
+    investment_qbi = puf_module.simulate_investment_qbi_income_from_puf(
+        puf, rng=np.random.default_rng(0)
+    )
+
+    np.testing.assert_allclose(
+        investment_qbi["qualified_reit_and_ptp_income"],
+        np.array([20.0, 60.0, 0.0]),
+    )
+    np.testing.assert_allclose(
+        investment_qbi["qualified_bdc_income"],
+        np.array([5.0, 0.0, 0.0]),
+    )
 
 
 def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch):
@@ -140,5 +267,48 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
         assert flag in arrays
     assert "w2_wages_from_qualified_business" in arrays
     assert "unadjusted_basis_qualified_property" in arrays
+    assert "qualified_reit_and_ptp_income" in arrays
+    assert "qualified_bdc_income" in arrays
     np.testing.assert_array_equal(arrays["business_is_sstb"], np.array([False, False]))
     assert np.all(arrays["unadjusted_basis_qualified_property"] > 0)
+
+
+def test_puf_load_dataset_repairs_partially_migrated_qbi_outputs(tmp_path, monkeypatch):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    def mutate(params):
+        for source in params["qbi_qualification_probabilities"]:
+            params["qbi_qualification_probabilities"][source] = 1.0
+        for source in params["ubia_simulation"]["capital_intensity_probabilities"]:
+            params["ubia_simulation"]["capital_intensity_probabilities"][source] = 1.0
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 0.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset("household_id", data=np.array([1]))
+        file_handle.create_dataset("self_employment_income", data=np.array([10_000.0]))
+        for source in set(puf_module.QBI_SOURCE_NAMES) - {"self_employment_income"}:
+            file_handle.create_dataset(source, data=np.zeros(1))
+        for flag in puf_module.QBI_QUALIFICATION_FLAG_BY_SOURCE.values():
+            file_handle.create_dataset(flag, data=np.array([True]))
+        file_handle.create_dataset(
+            puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+            data=np.array([False]),
+        )
+        file_handle.create_dataset(
+            "qualified_reit_and_ptp_income", data=np.array([0.0])
+        )
+        file_handle.create_dataset("qualified_bdc_income", data=np.array([0.0]))
+
+    arrays = DummyPUF().load_dataset()
+
+    assert "w2_wages_from_qualified_business" in arrays
+    assert "unadjusted_basis_qualified_property" in arrays
+    assert "business_is_sstb" in arrays
+    assert "sstb_w2_wages_from_qualified_business" in arrays
+    assert "sstb_unadjusted_basis_qualified_property" in arrays

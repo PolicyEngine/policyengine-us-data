@@ -43,27 +43,25 @@ SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG = (
 )
 QBI_QUALIFICATION_SEED = 41
 QBI_W2_UBIA_SEED = 42
+QBI_INVESTMENT_SEED = 43
 QBI_SSTB_SEED = 64
 QBI_SIMULATION_REQUIRED_VARIABLES = frozenset(
     (
         *QBI_QUALIFICATION_FLAG_BY_SOURCE.values(),
         SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+        "business_is_sstb",
+        "sstb_self_employment_income",
+        "w2_wages_from_qualified_business",
+        "unadjusted_basis_qualified_property",
+        "sstb_w2_wages_from_qualified_business",
+        "sstb_unadjusted_basis_qualified_property",
+        "qualified_reit_and_ptp_income",
+        "qualified_bdc_income",
     )
 )
 
 
 # Helper functions ---
-def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
-    """Generate a Bernoulli-lognormal mixture."""
-    positive = rng.binomial(1, prob, size=n)
-    amounts = np.where(
-        positive,
-        rng.lognormal(mean=log_mean, sigma=log_sigma, size=n),
-        0.0,
-    )
-    return amounts
-
-
 def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
     """Generate a lognormal conditional on a binary flag."""
     flag = np.asarray(flag, dtype=bool)
@@ -112,21 +110,149 @@ def qualified_qbi_components(puf):
     return pd.DataFrame(components, index=puf.index)
 
 
-def capital_intensity_probability(qbi_components):
-    """Estimate UBIA eligibility probability from positive qualified QBI sources."""
-    positive_components = qbi_components.clip(lower=0)
-    positive_total = positive_components.sum(axis=1).to_numpy()
-    source_probs = QBI_PARAMS["ubia_simulation"]["capital_intensity_probabilities"]
-    weighted_prob = np.zeros(len(qbi_components), dtype=float)
-    for source, prob in source_probs.items():
+def positive_qbi_source_amounts(qbi_components, params_by_source=None):
+    """Return positive QBI components limited to modeled sources."""
+    sources = (
+        [source for source in params_by_source if source in qbi_components]
+        if params_by_source is not None
+        else list(qbi_components.columns)
+    )
+    positive_components = qbi_components[sources].fillna(0).clip(lower=0)
+    positive_total = positive_components.sum(axis=1).to_numpy(dtype=float)
+    return positive_components, positive_total
+
+
+def source_weighted_parameter(qbi_components, params_by_source):
+    """Weight source-level scalar parameters by positive qualified QBI."""
+    positive_components, positive_total = positive_qbi_source_amounts(
+        qbi_components, params_by_source
+    )
+    weighted_value = np.zeros(len(qbi_components), dtype=float)
+    for source, value in params_by_source.items():
         if source in positive_components:
-            weighted_prob += positive_components[source].to_numpy() * prob
+            weighted_value += positive_components[source].to_numpy(dtype=float) * float(
+                value
+            )
     return np.divide(
-        weighted_prob,
+        weighted_value,
         positive_total,
         out=np.zeros_like(positive_total, dtype=float),
         where=positive_total > 0,
-    ).clip(0, 1)
+    )
+
+
+def draw_source_weighted_beta(qbi_components, params_by_source, rng):
+    """Draw source-level beta values and QBI-weight them within each record."""
+    positive_components, positive_total = positive_qbi_source_amounts(
+        qbi_components, params_by_source
+    )
+    weighted_draw = np.zeros(len(qbi_components), dtype=float)
+    for source, params in params_by_source.items():
+        if source not in positive_components:
+            continue
+        draw = rng.beta(
+            params["beta_a"], params["beta_b"], len(qbi_components)
+        ) * params.get("scale", 1.0) + params.get("shift", 0.0)
+        weighted_draw += positive_components[source].to_numpy(dtype=float) * draw
+    return np.divide(
+        weighted_draw,
+        positive_total,
+        out=np.zeros_like(positive_total, dtype=float),
+        where=positive_total > 0,
+    )
+
+
+def capital_intensity_probability(qbi_components):
+    """Estimate UBIA eligibility probability from positive qualified QBI sources."""
+    source_probs = QBI_PARAMS["ubia_simulation"]["capital_intensity_probabilities"]
+    return source_weighted_parameter(qbi_components, source_probs).clip(0, 1)
+
+
+def logistic(values):
+    """Numerically stable logistic transform."""
+    return 1.0 / (1.0 + np.exp(-np.clip(values, -700, 700)))
+
+
+def calibrate_logit_intercept(revenues, slope, target_share):
+    """Solve the employee-presence logit intercept for positive-receipt records."""
+    revenues = np.asarray(revenues, dtype=float)
+    positive = revenues > 0
+    if not np.any(positive):
+        return 0.0
+
+    target_share = np.clip(float(target_share), 1e-9, 1 - 1e-9)
+    slope_term = float(slope) * revenues[positive]
+    target_logit = np.log(target_share / (1 - target_share))
+    lower = target_logit - np.max(slope_term) - 80.0
+    upper = target_logit - np.min(slope_term) + 80.0
+    for _ in range(100):
+        midpoint = (lower + upper) / 2
+        mean_probability = logistic(midpoint + slope_term).mean()
+        if mean_probability < target_share:
+            lower = midpoint
+        else:
+            upper = midpoint
+    return (lower + upper) / 2
+
+
+def puf_column_values(puf, column):
+    """Return a PUF column as float values, or zeros when absent."""
+    if column not in puf:
+        return np.zeros(len(puf), dtype=float)
+    return puf[column].fillna(0).to_numpy(dtype=float)
+
+
+def non_qualified_dividend_income_from_puf(puf):
+    """Recover ordinary dividends that are not qualified dividends."""
+    if "non_qualified_dividend_income" in puf:
+        return puf_column_values(puf, "non_qualified_dividend_income")
+    if "E00600" in puf and "E00650" in puf:
+        return puf_column_values(puf, "E00600") - puf_column_values(puf, "E00650")
+    if "ordinary_dividend_income" in puf:
+        return puf_column_values(puf, "ordinary_dividend_income")
+    return np.zeros(len(puf), dtype=float)
+
+
+def sample_exposure_scaled_beta(base, params, rng):
+    """Sample a positive share of an observed exposure base."""
+    base = np.maximum(np.asarray(base, dtype=float), 0)
+    receives = (base > 0) & (
+        rng.random(len(base)) < float(params["probability_of_receiving"])
+    )
+    share = rng.beta(params["beta_a"], params["beta_b"], len(base)) * params.get(
+        "scale", 1.0
+    ) + params.get("shift", 0.0)
+    share = np.clip(share, 0, 1)
+    return np.where(receives, base * share, 0.0)
+
+
+def simulate_investment_qbi_income_from_puf(puf, *, rng):
+    """Simulate qualified REIT/PTP and BDC income from observed exposures."""
+    exposure_bases = {
+        "non_qualified_dividend_income": non_qualified_dividend_income_from_puf(puf),
+        "partnership_s_corp_income": puf_column_values(
+            puf, "partnership_s_corp_income"
+        ),
+    }
+
+    qualified_reit_and_ptp_income = np.zeros(len(puf), dtype=float)
+    for exposure_source, params in QBI_PARAMS["reit_ptp_income_distribution"].items():
+        base = exposure_bases.get(exposure_source)
+        if base is None:
+            continue
+        qualified_reit_and_ptp_income += sample_exposure_scaled_beta(base, params, rng)
+
+    qualified_bdc_income = np.zeros(len(puf), dtype=float)
+    for exposure_source, params in QBI_PARAMS["bdc_income_distribution"].items():
+        base = exposure_bases.get(exposure_source)
+        if base is None:
+            continue
+        qualified_bdc_income += sample_exposure_scaled_beta(base, params, rng)
+
+    return {
+        "qualified_reit_and_ptp_income": qualified_reit_and_ptp_income,
+        "qualified_bdc_income": qualified_bdc_income,
+    }
 
 
 def simulate_business_is_sstb(puf, *, rng, probability_map=None):
@@ -168,55 +294,45 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     # Extract Qualified Business Income simulation parameters
     margin_params = QBI_PARAMS["profit_margin_distribution"]
     logit_params = QBI_PARAMS["has_employees_logit"]
-
     labor_params = QBI_PARAMS["labor_ratio_distribution"]
-    rental_labor = labor_params["rental"]
-    non_rental_labor = labor_params["non_rental"]
-
-    rental_beta_a = rental_labor["beta_a"]
-    rental_beta_b = rental_labor["beta_b"]
-    rental_scale = rental_labor["scale"]
-
-    non_rental_beta_a = non_rental_labor["beta_a"]
-    non_rental_beta_b = non_rental_labor["beta_b"]
-    non_rental_scale = non_rental_labor["scale"]
 
     ubia_params = QBI_PARAMS["ubia_simulation"]
-    ubia_multiple_of_qbi = ubia_params["multiple_of_qbi"]
     ubia_sigma = ubia_params["sigma"]
 
     # Estimate qualified business income
     qbi_components = qualified_qbi_components(puf)
     qbi = qbi_components.sum(axis=1).to_numpy()
 
-    # Simulate gross receipts by drawing a profit margin
-    margins = (
-        rng.beta(margin_params["beta_a"], margin_params["beta_b"], qbi.size)
-        * margin_params["scale"]
-        + margin_params["shift"]
+    # Simulate gross receipts by drawing source-weighted profit margins.
+    margins = draw_source_weighted_beta(qbi_components, margin_params, rng)
+    revenues = np.divide(
+        np.maximum(qbi, 0),
+        margins,
+        out=np.zeros_like(qbi, dtype=float),
+        where=margins > 0,
     )
-    revenues = np.maximum(qbi, 0) / margins
 
-    logit = logit_params["intercept"] + logit_params["slope_per_dollar"] * revenues
+    intercept = calibrate_logit_intercept(
+        revenues,
+        logit_params["slope_per_dollar"],
+        logit_params["target_share_among_positive_receipts"],
+    )
+    logit = intercept + logit_params["slope_per_dollar"] * revenues
 
     # Set p = 0 when simulated receipts == 0 (no revenue means no payroll)
-    pr_has_employees = np.where(revenues == 0.0, 0.0, 1.0 / (1.0 + np.exp(-logit)))
+    pr_has_employees = np.where(revenues == 0.0, 0.0, logistic(logit))
     has_employees = rng.binomial(1, pr_has_employees)
 
-    # Labor share simulation
-    is_rental = puf["rental_income"].to_numpy() > 0
-
-    labor_ratios = np.where(
-        is_rental,
-        rng.beta(rental_beta_a, rental_beta_b, qbi.size) * rental_scale,
-        rng.beta(non_rental_beta_a, non_rental_beta_b, qbi.size) * non_rental_scale,
-    )
-
+    labor_ratios = draw_source_weighted_beta(qbi_components, labor_params, rng)
     w2_wages = revenues * labor_ratios * has_employees
 
     # UBIA simulation: lognormal, but only for capital-heavy records.
     pr_capital_intensive = capital_intensity_probability(qbi_components)
     is_capital_intensive = rng.binomial(1, pr_capital_intensive).astype(bool)
+    ubia_multiple_of_qbi = source_weighted_parameter(
+        qbi_components,
+        ubia_params["multiple_of_qbi"],
+    )
 
     ubia = conditionally_sample_lognormal(
         is_capital_intensive,
@@ -227,7 +343,13 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
 
     if diagnostics:
         share_qbi_pos = np.mean(qbi > 0)
-        share_wages = np.mean((w2_wages > 0) & (qbi > 0))
+        qbi_positive = qbi > 0
+        qbi_positive_count = np.sum(qbi_positive)
+        share_wages = (
+            np.sum((w2_wages > 0) & qbi_positive) / qbi_positive_count
+            if qbi_positive_count
+            else 0.0
+        )
         print(f"Share with QBI > 0: {share_qbi_pos:6.2%}")
         print(f"Among those, share with W-2 wages: {share_wages:6.2%}")
         if np.any(w2_wages > 0):
@@ -501,7 +623,11 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["w2_wages_from_qualified_business"] = w2
     puf["unadjusted_basis_qualified_property"] = ubia
 
-    puf["business_is_sstb"] = simulate_business_is_sstb(puf, rng=rng)
+    puf["business_is_sstb"] = simulate_business_is_sstb(
+        puf,
+        rng=np.random.default_rng(QBI_SSTB_SEED),
+        probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
+    )
     is_sstb = puf["business_is_sstb"].astype(bool)
 
     # The current PUF pipeline only imputes an all-or-nothing SSTB flag.
@@ -526,23 +652,11 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["sstb_w2_wages_from_qualified_business"] = np.where(is_sstb, w2, 0.0)
     puf["sstb_unadjusted_basis_qualified_property"] = np.where(is_sstb, ubia, 0.0)
 
-    reit_params = QBI_PARAMS["reit_ptp_income_distribution"]
-    p_reit_ptp = reit_params["probability_of_receiving"]
-    mu_reit_ptp = reit_params["log_normal_mu"]
-    sigma_reit_ptp = reit_params["log_normal_sigma"]
-
-    puf["qualified_reit_and_ptp_income"] = sample_bernoulli_lognormal(
-        len(puf), p_reit_ptp, mu_reit_ptp, sigma_reit_ptp, rng
+    investment_qbi = simulate_investment_qbi_income_from_puf(
+        puf, rng=np.random.default_rng(QBI_INVESTMENT_SEED)
     )
-
-    bdc_params = QBI_PARAMS["bdc_income_distribution"]
-    p_bdc = bdc_params["probability_of_receiving"]
-    mu_bdc = bdc_params["log_normal_mu"]
-    sigma_bdc = bdc_params["log_normal_sigma"]
-
-    puf["qualified_bdc_income"] = sample_bernoulli_lognormal(
-        len(puf), p_bdc, mu_bdc, sigma_bdc, rng
-    )
+    for variable, values in investment_qbi.items():
+        puf[variable] = values
     # -------- End of Qualified Business Income Deduction (QBID) -------
     puf["filing_status"] = puf.MARS.map(
         {
@@ -805,6 +919,17 @@ class PUF(Dataset):
             qbi_frame = pd.DataFrame(source_arrays)
             for source, qualified in raw_qualification_flags.items():
                 qbi_frame[QBI_QUALIFICATION_FLAG_BY_SOURCE[source]] = qualified
+            for source in (
+                "qualified_dividend_income",
+                "non_qualified_dividend_income",
+                "ordinary_dividend_income",
+                "E00600",
+                "E00650",
+            ):
+                if source in file_handle or source in existing_overrides:
+                    qbi_frame[source] = self._values_from_file_or_overrides(
+                        file_handle, source, existing_overrides, length
+                    ).astype(float)
 
             w2, ubia = simulate_w2_and_ubia_from_puf(
                 qbi_frame, seed=QBI_W2_UBIA_SEED, diagnostics=False
@@ -814,10 +939,14 @@ class PUF(Dataset):
                 rng=np.random.default_rng(QBI_SSTB_SEED),
                 probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
             )
+            investment_qbi = simulate_investment_qbi_income_from_puf(
+                qbi_frame, rng=np.random.default_rng(QBI_INVESTMENT_SEED)
+            )
             legacy_self_employment_income = source_arrays["self_employment_income"]
 
             overrides = {
                 **flag_overrides,
+                **investment_qbi,
                 "business_is_sstb": is_sstb,
                 "self_employment_income": np.where(
                     is_sstb, 0.0, legacy_self_employment_income

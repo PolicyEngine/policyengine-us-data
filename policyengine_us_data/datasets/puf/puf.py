@@ -34,6 +34,23 @@ with open(yamlfilename, "r", encoding="utf-8") as yamlfile:
     QBI_PARAMS = yaml.safe_load(yamlfile)
 assert isinstance(QBI_PARAMS, dict)
 
+QBI_SOURCE_NAMES = tuple(QBI_PARAMS["qbi_qualification_probabilities"])
+QBI_QUALIFICATION_FLAG_BY_SOURCE = {
+    source: f"{source}_would_be_qualified" for source in QBI_SOURCE_NAMES
+}
+SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG = (
+    "sstb_self_employment_income_would_be_qualified"
+)
+QBI_QUALIFICATION_SEED = 41
+QBI_W2_UBIA_SEED = 42
+QBI_SSTB_SEED = 64
+QBI_SIMULATION_REQUIRED_VARIABLES = frozenset(
+    (
+        *QBI_QUALIFICATION_FLAG_BY_SOURCE.values(),
+        SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+    )
+)
+
 
 # Helper functions ---
 def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
@@ -49,15 +66,81 @@ def sample_bernoulli_lognormal(n, prob, log_mean, log_sigma, rng):
 
 def conditionally_sample_lognormal(flag, target_mean, log_sigma, rng):
     """Generate a lognormal conditional on a binary flag."""
-    mu = np.log(target_mean) - (log_sigma**2 / 2)
+    flag = np.asarray(flag, dtype=bool)
+    target_mean = np.asarray(target_mean, dtype=float)
+    eligible = flag & (target_mean > 0)
+    safe_target_mean = np.where(target_mean > 0, target_mean, 1.0)
+    mu = np.log(safe_target_mean) - (log_sigma**2 / 2)
     return np.where(
-        flag,
+        eligible,
         rng.lognormal(
             mean=mu,
             sigma=log_sigma,
         ),
         0.0,
     )
+
+
+def draw_qbi_qualification_flags(n, *, seed=None):
+    """Draw source-level QBI qualification inputs."""
+    flag_rng = np.random.default_rng(seed)
+    return {
+        source: flag_rng.random(n) < prob
+        for source, prob in QBI_PARAMS["qbi_qualification_probabilities"].items()
+    }
+
+
+def add_qbi_qualification_flags_to_puf(puf, *, seed=None):
+    """Draw and persist source-level QBI qualification inputs."""
+    flags = draw_qbi_qualification_flags(len(puf), seed=seed)
+    for source, qualified in flags.items():
+        puf[QBI_QUALIFICATION_FLAG_BY_SOURCE[source]] = qualified
+    return puf
+
+
+def qualified_qbi_components(puf):
+    """Return source amounts after applying persisted QBI qualification flags."""
+    components = {}
+    for source, prob in QBI_PARAMS["qbi_qualification_probabilities"].items():
+        source_values = puf[source].fillna(0).to_numpy(dtype=float)
+        flag_name = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
+        if flag_name in puf:
+            qualified = puf[flag_name].fillna(False).astype(bool).to_numpy()
+            components[source] = source_values * qualified
+        else:
+            components[source] = source_values * prob
+    return pd.DataFrame(components, index=puf.index)
+
+
+def capital_intensity_probability(qbi_components):
+    """Estimate UBIA eligibility probability from positive qualified QBI sources."""
+    positive_components = qbi_components.clip(lower=0)
+    positive_total = positive_components.sum(axis=1).to_numpy()
+    source_probs = QBI_PARAMS["ubia_simulation"]["capital_intensity_probabilities"]
+    weighted_prob = np.zeros(len(qbi_components), dtype=float)
+    for source, prob in source_probs.items():
+        if source in positive_components:
+            weighted_prob += positive_components[source].to_numpy() * prob
+    return np.divide(
+        weighted_prob,
+        positive_total,
+        out=np.zeros_like(positive_total, dtype=float),
+        where=positive_total > 0,
+    ).clip(0, 1)
+
+
+def simulate_business_is_sstb(puf, *, rng, probability_map=None):
+    """Draw SSTB status only from positive mapped SSTB source amounts."""
+    sstb_probs = probability_map or QBI_PARAMS["sstb_prob_map_by_name"]
+    available_sources = [source for source in sstb_probs if source in puf]
+    if not available_sources:
+        return np.zeros(len(puf), dtype=bool)
+    sstb_sources = puf[available_sources].fillna(0).clip(lower=0)
+    has_sstb_source = sstb_sources.sum(axis=1).to_numpy() > 0
+    largest_sstb_source = sstb_sources.idxmax(axis=1)
+    pr_sstb = largest_sstb_source.map(sstb_probs).fillna(0.0).to_numpy()
+    pr_sstb = np.where(has_sstb_source, pr_sstb, 0.0)
+    return rng.binomial(n=1, p=pr_sstb).astype(bool)
 
 
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
@@ -83,7 +166,6 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     rng = np.random.default_rng(seed)
 
     # Extract Qualified Business Income simulation parameters
-    qbi_probs = QBI_PARAMS["qbi_qualification_probabilities"]
     margin_params = QBI_PARAMS["profit_margin_distribution"]
     logit_params = QBI_PARAMS["has_employees_logit"]
 
@@ -99,16 +181,13 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     non_rental_beta_b = non_rental_labor["beta_b"]
     non_rental_scale = non_rental_labor["scale"]
 
-    depr_sigma = QBI_PARAMS["depreciation_proxy_sigma"]
-
     ubia_params = QBI_PARAMS["ubia_simulation"]
     ubia_multiple_of_qbi = ubia_params["multiple_of_qbi"]
     ubia_sigma = ubia_params["sigma"]
 
     # Estimate qualified business income
-    qbi = sum(
-        puf[income_type] * prob for income_type, prob in qbi_probs.items()
-    ).to_numpy()
+    qbi_components = qualified_qbi_components(puf)
+    qbi = qbi_components.sum(axis=1).to_numpy()
 
     # Simulate gross receipts by drawing a profit margin
     margins = (
@@ -135,16 +214,9 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
 
     w2_wages = revenues * labor_ratios * has_employees
 
-    # A depreciation stand-in that scales with rents
-    depreciation_proxy = conditionally_sample_lognormal(
-        is_rental,
-        puf["rental_income"],
-        depr_sigma,
-        rng,
-    )
-
-    # UBIA simulation: lognormal, but only for capital-heavy records
-    is_capital_intensive = is_rental | (depreciation_proxy > 0)
+    # UBIA simulation: lognormal, but only for capital-heavy records.
+    pr_capital_intensive = capital_intensity_probability(qbi_components)
+    is_capital_intensive = rng.binomial(1, pr_capital_intensive).astype(bool)
 
     ubia = conditionally_sample_lognormal(
         is_capital_intensive,
@@ -424,28 +496,32 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["partnership_se_income"] = partnership_se
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
-    w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=42)
+    puf = add_qbi_qualification_flags_to_puf(puf, seed=QBI_QUALIFICATION_SEED)
+    w2, ubia = simulate_w2_and_ubia_from_puf(puf, seed=QBI_W2_UBIA_SEED)
     puf["w2_wages_from_qualified_business"] = w2
     puf["unadjusted_basis_qualified_property"] = ubia
 
-    puf_qbi_sources_for_sstb = puf[QBI_PARAMS["sstb_prob_map_by_name"].keys()]
-    largest_qbi_source_name = puf_qbi_sources_for_sstb.idxmax(axis=1)
-
-    pr_sstb = largest_qbi_source_name.map(QBI_PARAMS["sstb_prob_map_by_name"]).fillna(
-        0.0
-    )
-    puf["business_is_sstb"] = rng.binomial(n=1, p=pr_sstb)
+    puf["business_is_sstb"] = simulate_business_is_sstb(puf, rng=rng)
     is_sstb = puf["business_is_sstb"].astype(bool)
 
     # The current PUF pipeline only imputes an all-or-nothing SSTB flag.
     # Use that to split Schedule C self-employment and allocable W-2/UBIA
     # inputs for policyengine-us without pretending to observe mixed cases.
     legacy_self_employment_income = puf["self_employment_income"].fillna(0)
+    self_employment_would_be_qualified = puf[
+        "self_employment_income_would_be_qualified"
+    ].astype(bool)
     puf["sstb_self_employment_income"] = np.where(
         is_sstb, legacy_self_employment_income, 0.0
     )
     puf["self_employment_income"] = np.where(
         is_sstb, 0.0, legacy_self_employment_income
+    )
+    puf[SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = np.where(
+        is_sstb, self_employment_would_be_qualified, False
+    )
+    puf["self_employment_income_would_be_qualified"] = np.where(
+        is_sstb, False, self_employment_would_be_qualified
     )
     puf["sstb_w2_wages_from_qualified_business"] = np.where(is_sstb, w2, 0.0)
     puf["sstb_unadjusted_basis_qualified_property"] = np.where(is_sstb, ubia, 0.0)
@@ -540,6 +616,13 @@ FINANCIAL_SUBSET = [
     "recapture_of_investment_credit",
     "unreported_payroll_tax",
     "pre_tax_contributions",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified",
+    "sstb_self_employment_income_would_be_qualified",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
@@ -563,6 +646,16 @@ class PUF(Dataset):
         if key in file_handle:
             del file_handle[key]
         file_handle.create_dataset(key, data=values)
+
+    @staticmethod
+    def _values_from_file_or_overrides(
+        file_handle, key: str, overrides: dict[str, np.ndarray], length: int
+    ) -> np.ndarray:
+        if key in overrides:
+            return np.asarray(overrides[key])
+        if key in file_handle:
+            return np.asarray(file_handle[key])
+        return np.zeros(length)
 
     def _sstb_split_overrides(self) -> dict[str, np.ndarray]:
         if not self.file_path.exists():
@@ -636,8 +729,121 @@ class PUF(Dataset):
 
         return overrides
 
+    def _qbi_simulation_overrides(
+        self, existing_overrides: dict[str, np.ndarray]
+    ) -> dict[str, np.ndarray]:
+        if not self.file_path.exists():
+            return {}
+
+        with h5py.File(self.file_path, "r") as file_handle:
+            keys = set(file_handle.keys())
+            if QBI_SIMULATION_REQUIRED_VARIABLES.issubset(keys):
+                return {}
+
+            length = None
+            for key in (
+                "household_id",
+                "self_employment_income",
+                "partnership_s_corp_income",
+            ):
+                if key in file_handle:
+                    length = len(file_handle[key])
+                    break
+            if length is None:
+                return {}
+
+            raw_qualification_flags = draw_qbi_qualification_flags(
+                length, seed=QBI_QUALIFICATION_SEED
+            )
+            is_sstb_existing = self._values_from_file_or_overrides(
+                file_handle, "business_is_sstb", existing_overrides, length
+            ).astype(bool)
+            self_employment_would_be_qualified = raw_qualification_flags[
+                "self_employment_income"
+            ]
+            flag_overrides = {
+                "self_employment_income_would_be_qualified": np.where(
+                    is_sstb_existing, False, self_employment_would_be_qualified
+                ),
+                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG: np.where(
+                    is_sstb_existing, self_employment_would_be_qualified, False
+                ),
+            }
+            for source, qualified in raw_qualification_flags.items():
+                flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
+                if source != "self_employment_income":
+                    flag_overrides[flag] = qualified
+
+            has_all_qbi_sources = all(
+                source in file_handle or source in existing_overrides
+                for source in QBI_SOURCE_NAMES
+            )
+            if not has_all_qbi_sources:
+                return flag_overrides
+
+            source_arrays = {}
+            for source in QBI_SOURCE_NAMES:
+                source_arrays[source] = self._values_from_file_or_overrides(
+                    file_handle, source, existing_overrides, length
+                ).astype(float)
+
+            source_arrays["self_employment_income"] = (
+                self._values_from_file_or_overrides(
+                    file_handle,
+                    "self_employment_income",
+                    existing_overrides,
+                    length,
+                ).astype(float)
+                + self._values_from_file_or_overrides(
+                    file_handle,
+                    "sstb_self_employment_income",
+                    existing_overrides,
+                    length,
+                ).astype(float)
+            )
+
+            qbi_frame = pd.DataFrame(source_arrays)
+            for source, qualified in raw_qualification_flags.items():
+                qbi_frame[QBI_QUALIFICATION_FLAG_BY_SOURCE[source]] = qualified
+
+            w2, ubia = simulate_w2_and_ubia_from_puf(
+                qbi_frame, seed=QBI_W2_UBIA_SEED, diagnostics=False
+            )
+            is_sstb = simulate_business_is_sstb(
+                qbi_frame,
+                rng=np.random.default_rng(QBI_SSTB_SEED),
+                probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
+            )
+            legacy_self_employment_income = source_arrays["self_employment_income"]
+
+            overrides = {
+                **flag_overrides,
+                "business_is_sstb": is_sstb,
+                "self_employment_income": np.where(
+                    is_sstb, 0.0, legacy_self_employment_income
+                ),
+                "sstb_self_employment_income": np.where(
+                    is_sstb, legacy_self_employment_income, 0.0
+                ),
+                "w2_wages_from_qualified_business": w2,
+                "unadjusted_basis_qualified_property": ubia,
+                "sstb_w2_wages_from_qualified_business": np.where(is_sstb, w2, 0.0),
+                "sstb_unadjusted_basis_qualified_property": np.where(
+                    is_sstb, ubia, 0.0
+                ),
+                "self_employment_income_would_be_qualified": np.where(
+                    is_sstb, False, self_employment_would_be_qualified
+                ),
+                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG: np.where(
+                    is_sstb, self_employment_would_be_qualified, False
+                ),
+            }
+
+        return overrides
+
     def _ensure_sstb_split_inputs(self) -> dict[str, np.ndarray]:
         overrides = self._sstb_split_overrides()
+        overrides.update(self._qbi_simulation_overrides(overrides))
         if not overrides:
             return {}
 

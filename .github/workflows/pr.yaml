@@ -184,6 +184,7 @@ jobs:
     needs: check-fork
     outputs:
       run_integration: ${{ steps.check.outputs.run_integration }}
+      run_long_term_smoke: ${{ steps.check.outputs.run_long_term_smoke }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -197,3 +198,59 @@ jobs:
           else
             echo "run_integration=false" >> "$GITHUB_OUTPUT"
           fi
+          if echo "$CHANGED" | grep -qE '^(\.github/workflows/(pr|pipeline)\.yaml|policyengine_us_data/datasets/cps/long_term/|policyengine_us_data/storage/long_term_target_sources/|tests/unit/test_long_term_calibration_contract\.py)'; then
+            echo "run_long_term_smoke=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_long_term_smoke=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  long-term-projection-smoke:
+    name: Long-term 2100 smoke build
+    runs-on: ubuntu-latest
+    needs: [check-fork, lint, unit-tests, smoke-test, decide-test-scope]
+    if: needs.decide-test-scope.outputs.run_long_term_smoke == 'true'
+    timeout-minutes: 120
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - run: uv sync --dev
+      - name: Run 2100 long-term projection smoke build
+        run: |
+          OUTPUT_DIR="${RUNNER_TEMP}/long-term-projection-smoke"
+          mkdir -p "${OUTPUT_DIR}"
+          cd policyengine_us_data/datasets/cps/long_term
+          uv run python run_household_projection.py 2100 2100 \
+            --profile ss-payroll-tob \
+            --target-source oact_2025_08_05_provisional \
+            --support-augmentation-profile donor-backed-composite-v1 \
+            --support-augmentation-target-year 2100 \
+            --support-augmentation-blueprint-base-weight-scale 0.5 \
+            --allow-validation-failures \
+            --output-dir "${OUTPUT_DIR}" \
+            --save-h5
+      - name: Validate smoke build artifacts
+        run: |
+          OUTPUT_DIR="${RUNNER_TEMP}/long-term-projection-smoke"
+          test -f "${OUTPUT_DIR}/2100.h5"
+          test -f "${OUTPUT_DIR}/2100.h5.metadata.json"
+          test -f "${OUTPUT_DIR}/calibration_manifest.json"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          output_dir = Path(os.environ["RUNNER_TEMP"]) / "long-term-projection-smoke"
+          metadata = json.loads((output_dir / "2100.h5.metadata.json").read_text())
+          manifest = json.loads((output_dir / "calibration_manifest.json").read_text())
+
+          assert metadata["year"] == 2100
+          assert metadata["target_source"]["name"] == "oact_2025_08_05_provisional"
+          assert metadata["target_source"]["scenario_id"] == "crfb_post_obbba_tob_75y"
+          assert metadata["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
+          assert manifest["years"] == [2100]
+          PY

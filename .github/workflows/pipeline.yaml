@@ -1,8 +1,8 @@
 name: Run Pipeline
 
 on:
-  push:
-    branches: [main]
+  # Full production pipeline runs are intentionally manual. They are too
+  # expensive to attach to every merged PR or automatic version-bump commit.
   workflow_dispatch:
     inputs:
       gpu:
@@ -41,9 +41,6 @@ concurrency:
 jobs:
   pipeline:
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.head_commit.message == 'Update package version'
     steps:
       - uses: actions/checkout@v4
 

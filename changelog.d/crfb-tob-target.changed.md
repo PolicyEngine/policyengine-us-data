@@ -1,0 +1,1 @@
+Hardened long-run TOB target metadata with the CRFB Post-OBBBA scenario contract and hash validation, kept full production pipeline runs manual-only, and added a path-gated PR smoke check that builds a single 2100 long-term projection artifact when long-term pipeline code or targets change.

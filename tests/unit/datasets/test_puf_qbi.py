@@ -340,6 +340,61 @@ def test_puf_load_dataset_repairs_partially_migrated_qbi_outputs(tmp_path, monke
     assert "sstb_unadjusted_basis_qualified_property" in arrays
 
 
+def test_puf_load_dataset_preserves_existing_qbi_qualification_flags(tmp_path):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    stored_flags = {}
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset("household_id", data=np.array([1, 2]))
+        file_handle.create_dataset(
+            "self_employment_income", data=np.array([0.0, 20_000.0])
+        )
+        file_handle.create_dataset(
+            "sstb_self_employment_income", data=np.array([10_000.0, 0.0])
+        )
+        for source in set(puf_module.QBI_SOURCE_NAMES) - {"self_employment_income"}:
+            file_handle.create_dataset(source, data=np.zeros(2))
+        for index, flag in enumerate(
+            puf_module.QBI_QUALIFICATION_FLAG_BY_SOURCE.values()
+        ):
+            values = np.array([index % 2 == 0, index % 2 == 1])
+            stored_flags[flag] = values
+            file_handle.create_dataset(flag, data=values)
+        stored_flags[puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = np.array(
+            [True, False]
+        )
+        file_handle.create_dataset(
+            puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+            data=stored_flags[puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG],
+        )
+        file_handle.create_dataset("business_is_sstb", data=np.array([True, False]))
+        file_handle.create_dataset(
+            "w2_wages_from_qualified_business", data=np.array([10.0, 20.0])
+        )
+        file_handle.create_dataset(
+            "unadjusted_basis_qualified_property", data=np.array([5.0, 6.0])
+        )
+        file_handle.create_dataset(
+            "sstb_w2_wages_from_qualified_business", data=np.array([10.0, 0.0])
+        )
+        file_handle.create_dataset(
+            "sstb_unadjusted_basis_qualified_property", data=np.array([5.0, 0.0])
+        )
+        file_handle.create_dataset(
+            "qualified_reit_and_ptp_income", data=np.array([0.0, 0.0])
+        )
+
+    arrays = DummyPUF().load_dataset()
+
+    assert "qualified_bdc_income" in arrays
+    for flag, values in stored_flags.items():
+        np.testing.assert_array_equal(arrays[flag], values)
+
+
 def test_puf_load_dataset_repairs_missing_qbi_source_with_full_outputs(
     tmp_path, monkeypatch
 ):

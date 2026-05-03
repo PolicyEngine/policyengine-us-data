@@ -882,21 +882,33 @@ class PUF(Dataset):
             is_sstb_existing = self._values_from_file_or_overrides(
                 file_handle, "business_is_sstb", existing_overrides, length
             ).astype(bool)
-            self_employment_would_be_qualified = raw_qualification_flags[
-                "self_employment_income"
-            ]
-            flag_overrides = {
-                "self_employment_income_would_be_qualified": np.where(
-                    is_sstb_existing, False, self_employment_would_be_qualified
-                ),
-                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG: np.where(
-                    is_sstb_existing, self_employment_would_be_qualified, False
-                ),
-            }
+
+            qualification_flags = {}
             for source, qualified in raw_qualification_flags.items():
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
-                if source != "self_employment_income":
-                    flag_overrides[flag] = qualified
+                qualification_flags[source] = (
+                    self._values_from_file_or_overrides(
+                        file_handle, flag, existing_overrides, length
+                    ).astype(bool)
+                    if flag in file_handle or flag in existing_overrides
+                    else qualified
+                )
+            if (
+                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in file_handle
+                or SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in existing_overrides
+            ):
+                sstb_self_employment_would_be_qualified = (
+                    self._values_from_file_or_overrides(
+                        file_handle,
+                        SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+                        existing_overrides,
+                        length,
+                    ).astype(bool)
+                )
+                qualification_flags["self_employment_income"] = (
+                    qualification_flags["self_employment_income"]
+                    | sstb_self_employment_would_be_qualified
+                )
 
             source_arrays = {}
             for source in QBI_SOURCE_NAMES:
@@ -920,7 +932,7 @@ class PUF(Dataset):
             )
 
             qbi_frame = pd.DataFrame(source_arrays)
-            for source, qualified in raw_qualification_flags.items():
+            for source, qualified in qualification_flags.items():
                 qbi_frame[QBI_QUALIFICATION_FLAG_BY_SOURCE[source]] = qualified
             for source in (
                 "qualified_dividend_income",
@@ -976,6 +988,26 @@ class PUF(Dataset):
                 qbi_frame, rng=np.random.default_rng(QBI_INVESTMENT_SEED)
             )
             legacy_self_employment_income = source_arrays["self_employment_income"]
+            self_employment_would_be_qualified = qualification_flags[
+                "self_employment_income"
+            ]
+
+            flag_overrides = {}
+            for source, qualified in qualification_flags.items():
+                flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
+                if flag in file_handle or flag in existing_overrides:
+                    continue
+                if source == "self_employment_income":
+                    flag_overrides[flag] = np.where(is_sstb, False, qualified)
+                else:
+                    flag_overrides[flag] = qualified
+            if (
+                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in file_handle
+                and SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in existing_overrides
+            ):
+                flag_overrides[SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = np.where(
+                    is_sstb, self_employment_would_be_qualified, False
+                )
 
             overrides = {
                 **flag_overrides,
@@ -992,12 +1024,6 @@ class PUF(Dataset):
                 "sstb_w2_wages_from_qualified_business": np.where(is_sstb, w2, 0.0),
                 "sstb_unadjusted_basis_qualified_property": np.where(
                     is_sstb, ubia, 0.0
-                ),
-                "self_employment_income_would_be_qualified": np.where(
-                    is_sstb, False, self_employment_would_be_qualified
-                ),
-                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG: np.where(
-                    is_sstb, self_employment_would_be_qualified, False
                 ),
             }
 

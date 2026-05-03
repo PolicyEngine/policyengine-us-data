@@ -18,6 +18,11 @@ sstb_prob_map_by_name:
   E26390: 0.10
   E26400: 0.10
 
+sstb_prob_map_by_source_name:
+  self_employment_income: 0.20
+  partnership_s_corp_income: 0.15
+  estate_income: 0.10
+
 # Below, we assume that 7% of filers have nonzero REIT/PTP income,
 # and of those 7%, their REIT/PTP income is lognormal distributed with
 # mean of exp(8.04) = $3,103, and standard deviation 1.20 of the lognormal.
@@ -54,11 +59,19 @@ labor_ratio_distribution:
     beta_b: 2.0
     scale: 0.25
 
-depreciation_proxy_sigma: 0.8
-
 # lognormal(mean = 4 * QBI, sigma = 1)
 # produce a right-skewed spread whose mean is roughly 4 * QBI,
 # matching aggregate SOI ratios.
 ubia_simulation:
     multiple_of_qbi: 4.0
     sigma: 1.0
+    # Probability that positive QBI from each source is capital-intensive
+    # enough to hold qualified property. Row-level probabilities are weighted
+    # by positive qualified QBI source amounts.
+    capital_intensity_probabilities:
+      self_employment_income: 0.20
+      farm_operations_income: 0.45
+      farm_rent_income: 0.75
+      rental_income: 1.00
+      estate_income: 0.50
+      partnership_s_corp_income: 0.35

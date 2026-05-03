@@ -957,7 +957,7 @@ def score_forbes_selection_with_scf(
     for row in prepared_forbes.itertuples(index=False):
         candidates = scf_candidates_for_receiver(scf_donors, row)
         probabilities = scf_match_probabilities(candidates, row)
-        agi_values = scf_implied_agi_values(candidates, row)
+        agi_values = scf_wealth_ratio_agi_values(candidates, row)
         tail_probabilities.append(
             float(probabilities[agi_values >= FORBES_TOP_TAIL_AGI_THRESHOLD].sum())
         )
@@ -966,10 +966,6 @@ def score_forbes_selection_with_scf(
     scored = prepared_forbes.copy()
     scored["scf_tail_probability"] = tail_probabilities
     scored["scf_expected_agi"] = expected_agi
-    scored["estimated_agi"] = np.maximum(
-        scored["scf_expected_agi"].to_numpy(dtype=float),
-        1.0,
-    )
     return scored
 
 
@@ -1068,7 +1064,80 @@ def scf_implied_component_values(
     candidates: pd.DataFrame,
     receiver,
 ) -> dict[str, np.ndarray]:
-    """Scale SCF donor ratios up to one Forbes receiver's wealth level."""
+    """Scale SCF donor income composition to one Forbes receiver's AGI level."""
+
+    receiver_agi = _receiver_estimated_agi(receiver)
+    employment_base = np.maximum(
+        0.0,
+        candidates["wageinc"].to_numpy(dtype=float),
+    )
+    capital_gains_base = candidates["kginc"].to_numpy(dtype=float)
+    interest_dividend_base = np.maximum(
+        0.0,
+        candidates["intdivinc"].to_numpy(dtype=float),
+    )
+    business_farm_base = candidates["bussefarminc"].to_numpy(dtype=float)
+    pension_base = np.maximum(
+        0.0,
+        candidates["ssretinc"].to_numpy(dtype=float),
+    )
+    donor_agi_base = (
+        employment_base
+        + capital_gains_base
+        + interest_dividend_base
+        + business_farm_base
+        + 0.5 * pension_base
+    )
+    donor_abs_income_base = (
+        np.abs(employment_base)
+        + np.abs(capital_gains_base)
+        + np.abs(interest_dividend_base)
+        + np.abs(business_farm_base)
+        + 0.5 * np.abs(pension_base)
+    )
+    scale_base = np.where(
+        donor_agi_base > 1.0,
+        donor_agi_base,
+        np.maximum(donor_abs_income_base, 1.0),
+    )
+    scale = receiver_agi / scale_base
+    employment_income = np.maximum(
+        0.0,
+        employment_base * scale,
+    )
+    capital_gains = capital_gains_base * scale
+    interest_dividend_income = np.maximum(
+        0.0,
+        interest_dividend_base * scale,
+    )
+    business_farm_income = business_farm_base * scale
+    pension_income = np.maximum(
+        0.0,
+        pension_base * scale,
+    )
+    agi = np.maximum(
+        employment_income
+        + capital_gains
+        + interest_dividend_income
+        + business_farm_income
+        + 0.5 * pension_income,
+        0.0,
+    )
+    return {
+        "employment_income": employment_income,
+        "capital_gains": capital_gains,
+        "interest_dividend_income": interest_dividend_income,
+        "business_farm_income": business_farm_income,
+        "pension_income": pension_income,
+        "agi": agi,
+    }
+
+
+def scf_wealth_ratio_agi_values(
+    candidates: pd.DataFrame,
+    receiver,
+) -> np.ndarray:
+    """Return wealth-ratio AGI values for selection only, not amount priors."""
 
     networth = float(getattr(receiver, "networth_dollars", 0.0))
     employment_income = np.maximum(
@@ -1087,7 +1156,7 @@ def scf_implied_component_values(
         0.0,
         networth * candidates["ssretinc_ratio"].to_numpy(dtype=float),
     )
-    agi = np.maximum(
+    return np.maximum(
         employment_income
         + capital_gains
         + interest_dividend_income
@@ -1095,14 +1164,19 @@ def scf_implied_component_values(
         + 0.5 * pension_income,
         0.0,
     )
-    return {
-        "employment_income": employment_income,
-        "capital_gains": capital_gains,
-        "interest_dividend_income": interest_dividend_income,
-        "business_farm_income": business_farm_income,
-        "pension_income": pension_income,
-        "agi": agi,
-    }
+
+
+def _receiver_estimated_agi(receiver) -> float:
+    """Return the Forbes receiver AGI anchor used for SCF composition draws."""
+
+    estimated_agi = float(getattr(receiver, "estimated_agi", np.nan))
+    if np.isfinite(estimated_agi) and estimated_agi > 0:
+        return estimated_agi
+
+    networth = float(getattr(receiver, "networth_dollars", 0.0))
+    agi_ratio = float(getattr(receiver, "agi_ratio", DEFAULT_PROFILE.agi_ratio))
+    self_made_scale = 1.05 if bool(getattr(receiver, "self_made_flag", False)) else 0.95
+    return max(networth * agi_ratio * self_made_scale, 1.0)
 
 
 def scf_implied_agi_values(

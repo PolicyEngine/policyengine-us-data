@@ -882,7 +882,7 @@ class TestForbesBackbone:
         assert (bucket.DSI == 0).all()
         assert (bucket.EIC == 0).all()
 
-    def test_scf_joint_profiles_scale_ratios_to_forbes_wealth(self):
+    def test_scf_joint_profiles_scale_composition_to_forbes_agi(self):
         from policyengine_us_data.datasets.puf.forbes_backbone import (
             sample_scf_joint_profiles,
         )
@@ -899,6 +899,7 @@ class TestForbesBackbone:
                     "self_made_flag": True,
                     "children": 2,
                     "networth_dollars": 1_000_000_000.0,
+                    "estimated_agi": 19_300_000.0,
                     "forbes_unit_id": 0,
                     "replicate_id": 0,
                 }
@@ -912,10 +913,10 @@ class TestForbesBackbone:
             rng=np.random.default_rng(0),
         )
 
-        assert result["employment_income"].iloc[0] == pytest.approx(10_000_000.0)
-        assert result["capital_gains"].iloc[0] == pytest.approx(187_500_000.0)
-        assert result["interest_dividend_income"].iloc[0] == pytest.approx(25_000_000.0)
-        assert result["business_farm_income"].iloc[0] == pytest.approx(18_750_000.0)
+        assert result["employment_income"].iloc[0] == pytest.approx(800_000.0)
+        assert result["capital_gains"].iloc[0] == pytest.approx(15_000_000.0)
+        assert result["interest_dividend_income"].iloc[0] == pytest.approx(2_000_000.0)
+        assert result["business_farm_income"].iloc[0] == pytest.approx(1_500_000.0)
 
     def test_forbes_selection_uses_scf_membership_scores(self, monkeypatch):
         from policyengine_us_data.datasets.puf import forbes_backbone

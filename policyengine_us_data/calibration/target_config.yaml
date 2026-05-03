@@ -182,10 +182,9 @@ include:
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
-  # Per-AGI-bracket cap-gains targets — without these the optimizer can
+  # Per-AGI-bracket capital-income targets — without these the optimizer can
   # match the single national aggregate while letting individual records
-  # blow up (see issues #555, #866). The DB already has these targets from
-  # the SOI ETL (IRS code 01000 by agi_stub); they just weren't included.
+  # blow up (see issues #555, #866).
   - variable: net_capital_gains
     geo_level: national
     domain_variable: adjusted_gross_income,net_capital_gains
@@ -201,12 +200,39 @@ include:
   - variable: qualified_dividend_income
     geo_level: national
     domain_variable: qualified_dividend_income
+  - variable: qualified_dividend_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,qualified_dividend_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: qualified_dividend_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,qualified_dividend_income
   - variable: dividend_income
     geo_level: national
     domain_variable: dividend_income
+  - variable: dividend_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,dividend_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: dividend_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,dividend_income
   - variable: taxable_interest_income
     geo_level: national
     domain_variable: taxable_interest_income
+  - variable: taxable_interest_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,taxable_interest_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: taxable_interest_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,taxable_interest_income
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc

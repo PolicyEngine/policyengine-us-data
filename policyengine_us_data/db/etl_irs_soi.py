@@ -163,6 +163,13 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
 }
 
 CTC_GEOGRAPHY_TARGET_VARIABLES = ("refundable_ctc", "non_refundable_ctc")
+NATIONAL_GEOGRAPHY_AGI_DOMAIN_TARGET_VARIABLES = (
+    *CTC_GEOGRAPHY_TARGET_VARIABLES,
+    "net_capital_gains",
+    "dividend_income",
+    "qualified_dividend_income",
+    "taxable_interest_income",
+)
 
 
 def create_records(df, breakdown_variable, target_variable):
@@ -628,8 +635,8 @@ def load_national_geography_ctc_agi_targets(
     national_filer_stratum_id: int,
     geography_year: int,
 ) -> None:
-    """Create national AGI-split CTC targets from the IRS geography file."""
-    for variable in CTC_GEOGRAPHY_TARGET_VARIABLES:
+    """Create national AGI-split domain targets from the IRS geography file."""
+    for variable in NATIONAL_GEOGRAPHY_AGI_DOMAIN_TARGET_VARIABLES:
         for target in _get_national_geography_soi_agi_targets_from_year(
             variable, geography_year
         ):

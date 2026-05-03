@@ -1,1 +1,1 @@
-Add CBO aggregate targets for capital gains, dividends, and interest income to constrain the calibration optimizer — without these the per-AGI-bracket SOI targets fail to constrain national aggregates and a few records blow up the totals (issues #555, #866).
+Add CBO aggregate and AGI-bracket targets for capital gains, dividends, and interest income, and scale Forbes top-tail SCF draws to Forbes AGI estimates instead of Forbes wealth, to constrain inflated capital-income aggregates (issues #555, #866).

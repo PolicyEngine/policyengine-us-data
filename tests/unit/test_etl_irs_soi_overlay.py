@@ -433,3 +433,60 @@ def test_load_national_geography_ctc_agi_targets_creates_agi_domain_strata(
 
     assert overview_rows
     assert all(row.geographic_id == "US" for row in overview_rows)
+
+
+def test_load_national_geography_ctc_agi_targets_creates_capital_income_domains(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi._get_national_geography_soi_agi_targets_from_year",
+        lambda variable, geography_year: [
+            {
+                "variable": variable,
+                "source_year": geography_year,
+                "agi_stub": 9,
+                "agi_lower_bound": 500_000.0,
+                "agi_upper_bound": float("inf"),
+                "count": 12.0,
+                "amount": 34_000.0,
+            }
+        ],
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_geography_ctc_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2022,
+        )
+        session.commit()
+
+    variables = [
+        "net_capital_gains",
+        "dividend_income",
+        "qualified_dividend_income",
+        "taxable_interest_income",
+    ]
+    domains = [f"adjusted_gross_income,{variable}" for variable in variables]
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count", *variables],
+            "domain_variables": domains,
+        }
+    )
+
+    expected_pairs = {
+        (f"adjusted_gross_income,{variable}", variable) for variable in variables
+    } | {
+        (f"adjusted_gross_income,{variable}", "tax_unit_count")
+        for variable in variables
+    }
+    actual_pairs = set(zip(rows["domain_variable"], rows["variable"]))
+
+    assert actual_pairs == expected_pairs
+    assert set(rows["geo_level"]) == {"national"}
+    assert set(rows["geographic_id"]) == {"US"}

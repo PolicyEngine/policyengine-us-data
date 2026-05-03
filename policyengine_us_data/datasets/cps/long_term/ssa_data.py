@@ -1,5 +1,6 @@
 import json
 import os
+import hashlib
 from functools import lru_cache
 
 import numpy as np
@@ -14,6 +15,25 @@ _CURRENT_LONG_TERM_TARGET_SOURCE = os.environ.get(
     "POLICYENGINE_US_DATA_LONG_TERM_TARGET_SOURCE",
     DEFAULT_LONG_TERM_TARGET_SOURCE,
 )
+REQUIRED_LONG_TERM_TARGET_COLUMNS = {
+    "year",
+    "oasdi_cost_in_billion_2025_usd",
+    "cpi_w_intermediate",
+    "oasdi_cost_in_billion_nominal_usd",
+    "taxable_payroll_in_billion_nominal_usd",
+    "h6_income_rate_change",
+    "oasdi_tob_pct_of_taxable_payroll",
+    "oasdi_tob_billions_nominal_usd",
+    "hi_tob_billions_nominal_usd",
+}
+
+
+def file_sha256(path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 @lru_cache(maxsize=1)
@@ -54,9 +74,52 @@ def describe_long_term_target_source(source_name: str | None = None) -> dict:
     return source
 
 
+def validate_long_term_target_source(source_name: str | None = None) -> dict:
+    source = describe_long_term_target_source(source_name)
+    csv_path = LONG_TERM_TARGET_SOURCES_DIR / source["file"]
+    actual_sha256 = file_sha256(csv_path)
+    expected_sha256 = source.get("sha256")
+    if expected_sha256 is not None and actual_sha256 != expected_sha256:
+        raise ValueError(
+            f"Hash mismatch for long-term target source {source['name']!r}: "
+            f"{actual_sha256} != {expected_sha256}"
+        )
+
+    df = pd.read_csv(csv_path)
+    missing_columns = REQUIRED_LONG_TERM_TARGET_COLUMNS - set(df.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Long-term target source {source['name']!r} is missing columns: "
+            f"{sorted(missing_columns)}"
+        )
+
+    if df["year"].tolist() != list(range(2025, 2101)):
+        raise ValueError(
+            f"Long-term target source {source['name']!r} must contain one row "
+            "for each year 2025-2100."
+        )
+
+    contract = source.get("artifact_contract", {})
+    required_sha = contract.get("must_consume_baseline_sha256")
+    if required_sha is not None and required_sha != actual_sha256:
+        raise ValueError(
+            f"Long-term target source {source['name']!r} artifact contract "
+            "does not match the target CSV hash."
+        )
+
+    return {
+        "name": source["name"],
+        "file": source["file"],
+        "sha256": actual_sha256,
+        "rows": int(len(df)),
+        "years": [int(df["year"].min()), int(df["year"].max())],
+    }
+
+
 @lru_cache(maxsize=None)
 def _load_long_term_target_frame(source_name: str) -> pd.DataFrame:
     source = describe_long_term_target_source(source_name)
+    validate_long_term_target_source(source_name)
     csv_path = LONG_TERM_TARGET_SOURCES_DIR / source["file"]
     return pd.read_csv(csv_path)
 

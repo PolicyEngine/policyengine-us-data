@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,6 +15,14 @@ OACT_DELTA_PATH = SOURCES_DIR / "oasdi_oact_20250805_nominal_delta.csv"
 TRUSTEES_OUTPUT_PATH = SOURCES_DIR / "trustees_2025_current_law.csv"
 OACT_OUTPUT_PATH = SOURCES_DIR / "oact_2025_08_05_provisional.csv"
 MANIFEST_PATH = SOURCES_DIR / "sources.json"
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def build_trustees_source() -> pd.DataFrame:
@@ -69,6 +78,8 @@ def build_oact_source(trustees: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_manifest() -> None:
+    trustees_sha256 = file_sha256(TRUSTEES_OUTPUT_PATH)
+    oact_sha256 = file_sha256(OACT_OUTPUT_PATH)
     manifest = {
         "default_source": "trustees_2025_current_law",
         "sources": {
@@ -87,6 +98,9 @@ def write_manifest() -> None:
                 "notes": [
                     "Generated from social_security_aux.csv for explicit source selection.",
                 ],
+                "baseline_kind": "current_law_comparator",
+                "not_law": False,
+                "sha256": trustees_sha256,
             },
             "oact_2025_08_05_provisional": {
                 "name": "oact_2025_08_05_provisional",
@@ -107,6 +121,17 @@ def write_manifest() -> None:
                 ],
                 "derived_from": "trustees_2025_current_law",
                 "hi_method": "match_oasdi_pct_change",
+                "scenario_id": "crfb_post_obbba_tob_75y",
+                "baseline_kind": "calibration_target",
+                "calibration_target_id": "post_obbba_calibrated_tob_75y",
+                "law_mode": "trustees-2025-core-thresholds-v1",
+                "not_law": True,
+                "sha256": oact_sha256,
+                "artifact_contract": {
+                    "must_consume_baseline_sha256": oact_sha256,
+                    "must_expose_scenario_id": "crfb_post_obbba_tob_75y",
+                    "reject_raw_current_law_substitution": True,
+                },
             },
         },
     }

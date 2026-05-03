@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from argparse import Namespace
+
 import numpy as np
 import pytest
 from policyengine_core.data.dataset import Dataset
 
 from policyengine_us_data.datasets.cps.long_term import (
+    build_long_term_target_sources as target_source_builder,
     calibration as calibration_module,
 )
 from policyengine_us_data.datasets.cps.long_term.calibration import (
@@ -40,6 +44,7 @@ from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     describe_long_term_target_source,
     load_oasdi_tob_projections,
     load_taxable_payroll_projections,
+    validate_long_term_target_source,
 )
 from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     AgeShiftCloneRule,
@@ -54,6 +59,10 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     select_donor_households,
     valid_support_augmentation_profile_names,
 )
+from policyengine_us_data.datasets.cps.long_term.tax_assumptions import (
+    TRUSTEES_CORE_THRESHOLD_ASSUMPTION,
+    create_trustees_core_thresholds_reform,
+)
 from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
     SyntheticCandidate,
     _compose_role_donor_rows_to_target,
@@ -66,6 +75,9 @@ from policyengine_us_data.datasets.cps.long_term.run_household_projection_parall
     parse_years,
     validate_forwarded_args,
     year_output_dir,
+)
+from policyengine_us_data.datasets.cps.long_term.run_long_term_production import (
+    build_projection_command,
 )
 
 
@@ -1060,6 +1072,90 @@ def test_long_term_target_sources_are_available_and_distinct():
     assert oact_oasdi_2026 < trustees_oasdi_2026
 
 
+def test_post_obbba_target_source_carries_reproducibility_contract():
+    source = describe_long_term_target_source("oact_2025_08_05_provisional")
+    assert source["scenario_id"] == "crfb_post_obbba_tob_75y"
+    assert source["baseline_kind"] == "calibration_target"
+    assert source["not_law"] is True
+    assert source["law_mode"] == "trustees-2025-core-thresholds-v1"
+    assert source["artifact_contract"] == {
+        "must_consume_baseline_sha256": source["sha256"],
+        "must_expose_scenario_id": "crfb_post_obbba_tob_75y",
+        "reject_raw_current_law_substitution": True,
+    }
+
+    validation = validate_long_term_target_source("oact_2025_08_05_provisional")
+    assert validation["sha256"] == source["sha256"]
+    assert validation["rows"] == 76
+    assert validation["years"] == [2025, 2100]
+
+
+def test_long_term_target_source_rebuild_manifest_preserves_contract(
+    tmp_path, monkeypatch
+):
+    sources_dir = tmp_path / "long_term_target_sources"
+    sources_dir.mkdir()
+    trustees_path = sources_dir / "trustees_2025_current_law.csv"
+    oact_path = sources_dir / "oact_2025_08_05_provisional.csv"
+    manifest_path = sources_dir / "sources.json"
+    trustees_path.write_text("year,value\n2025,1\n", encoding="utf-8")
+    oact_path.write_text("year,value\n2025,2\n", encoding="utf-8")
+
+    monkeypatch.setattr(target_source_builder, "SOURCES_DIR", sources_dir)
+    monkeypatch.setattr(
+        target_source_builder,
+        "TRUSTEES_OUTPUT_PATH",
+        trustees_path,
+    )
+    monkeypatch.setattr(target_source_builder, "OACT_OUTPUT_PATH", oact_path)
+    monkeypatch.setattr(target_source_builder, "MANIFEST_PATH", manifest_path)
+
+    target_source_builder.write_manifest()
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    oact_sha256 = hashlib.sha256(oact_path.read_bytes()).hexdigest()
+    trustees_sha256 = hashlib.sha256(trustees_path.read_bytes()).hexdigest()
+    trustees = manifest["sources"]["trustees_2025_current_law"]
+    oact = manifest["sources"]["oact_2025_08_05_provisional"]
+    assert trustees["sha256"] == trustees_sha256
+    assert trustees["baseline_kind"] == "current_law_comparator"
+    assert trustees["not_law"] is False
+    assert oact["sha256"] == oact_sha256
+    assert oact["scenario_id"] == "crfb_post_obbba_tob_75y"
+    assert oact["baseline_kind"] == "calibration_target"
+    assert oact["calibration_target_id"] == "post_obbba_calibrated_tob_75y"
+    assert oact["law_mode"] == "trustees-2025-core-thresholds-v1"
+    assert oact["not_law"] is True
+    assert oact["artifact_contract"] == {
+        "must_consume_baseline_sha256": oact_sha256,
+        "must_expose_scenario_id": "crfb_post_obbba_tob_75y",
+        "reject_raw_current_law_substitution": True,
+    }
+
+
+def test_trustees_core_threshold_assumption_preserves_pre_2035_baseline():
+    from policyengine_us import CountryTaxBenefitSystem
+
+    baseline = CountryTaxBenefitSystem().parameters
+    reformed = CountryTaxBenefitSystem(
+        reform=(create_trustees_core_thresholds_reform(),)
+    ).parameters
+
+    baseline_threshold = baseline.gov.irs.income.bracket.thresholds.children["1"].SINGLE
+    reformed_threshold = reformed.gov.irs.income.bracket.thresholds.children["1"].SINGLE
+    ss_threshold = (
+        baseline.gov.irs.social_security.taxability.threshold.base.main.SINGLE
+    )
+    reformed_ss_threshold = (
+        reformed.gov.irs.social_security.taxability.threshold.base.main.SINGLE
+    )
+
+    assert TRUSTEES_CORE_THRESHOLD_ASSUMPTION["not_default_current_law"] is True
+    assert reformed_threshold("2034-01-01") == baseline_threshold("2034-01-01")
+    assert reformed_threshold("2035-01-01") != baseline_threshold("2035-01-01")
+    assert reformed_ss_threshold("2100-01-01") == ss_threshold("2100-01-01")
+
+
 def test_normalize_metadata_backfills_validation_passed():
     metadata = normalize_metadata(
         {
@@ -1309,6 +1405,49 @@ def test_write_support_augmentation_report_custom_filename(tmp_path):
 
 def test_parallel_projection_parse_years_supports_ranges_and_sorting():
     assert parse_years("2030,2028-2029,2030,2027") == [2027, 2028, 2029, 2030]
+
+
+def test_long_term_production_command_carries_2100_contract(tmp_path):
+    args = Namespace(
+        years="2100",
+        jobs=1,
+        profile="ss-payroll-tob",
+        target_source="oact_2025_08_05_provisional",
+        tax_assumption=TRUSTEES_CORE_THRESHOLD_ASSUMPTION["name"],
+        keep_temp=False,
+        base_dataset="",
+        support_augmentation_profile="donor-backed-composite-v1",
+        support_augmentation_target_year=2100,
+        support_augmentation_align_to_run_year=False,
+        support_augmentation_start_year=None,
+        support_augmentation_top_n_targets=None,
+        support_augmentation_donors_per_target=None,
+        support_augmentation_max_distance=None,
+        support_augmentation_clone_weight_scale=None,
+        support_augmentation_blueprint_base_weight_scale=0.5,
+        allow_validation_failures=True,
+    )
+
+    command = build_projection_command(args, tmp_path)
+
+    assert "run_household_projection_parallel.py" in command[1]
+    assert command[command.index("--years") + 1] == "2100"
+    assert command[command.index("--profile") + 1] == "ss-payroll-tob"
+    assert (
+        command[command.index("--target-source") + 1] == "oact_2025_08_05_provisional"
+    )
+    assert command[command.index("--tax-assumption") + 1] == (
+        "trustees-2025-core-thresholds-v1"
+    )
+    assert command[command.index("--support-augmentation-target-year") + 1] == "2100"
+    assert command[command.index("--support-augmentation-profile") + 1] == (
+        "donor-backed-composite-v1"
+    )
+    assert (
+        command[command.index("--support-augmentation-blueprint-base-weight-scale") + 1]
+        == "0.5"
+    )
+    assert "--allow-validation-failures" in command
 
 
 def test_parallel_projection_validate_forwarded_args_rejects_wrapper_flags():

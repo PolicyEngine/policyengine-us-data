@@ -30,7 +30,7 @@ QBI-related inputs are simulated from source-level PUF income fields using the a
 
 The persisted \texttt{*\_would\_be\_qualified} flags are then used consistently when constructing the QBI base for downstream imputation. W-2 wages from qualified business are simulated from positive qualified QBI by drawing source-weighted profit margins, gross receipts, employee presence, and source-weighted labor shares. UBIA is drawn for capital-intensive records using source-weighted capital-intensity probabilities and a lognormal amount scaled to positive QBI.
 
-Specified service trade or business (SSTB) status is drawn from positive mapped SSTB source amounts. When a record is classified as SSTB, Schedule C self-employment income and allocable W-2/UBIA inputs are split into SSTB-specific variables. Qualified REIT/PTP income and qualified BDC income are simulated from observed dividend and pass-through exposure bases rather than assigned independently to all records.
+Specified service trade or business (SSTB) status is drawn from positive qualified mapped SSTB source amounts. When a record is classified as SSTB, Schedule C self-employment income and allocable W-2/UBIA inputs are split into SSTB-specific variables. Qualified REIT/PTP income and qualified BDC income are simulated from observed dividend and pass-through exposure bases rather than assigned independently to all records.
 
 \paragraph{Filing Status}
 Mapped from MARS codes:

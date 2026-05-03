@@ -127,6 +127,7 @@ def test_simulate_business_is_sstb_ignores_zero_and_unmapped_sources(monkeypatch
             params["sstb_prob_map_by_name"][source] = 1.0
 
     _set_qbi_params(monkeypatch, mutate)
+    assert "E26400" not in puf_module.QBI_PARAMS["sstb_prob_map_by_name"]
     puf = _qbi_frame(n=4)
     puf.loc[0, "rental_income"] = 10_000.0
     puf.loc[1, "E00900"] = 10_000.0
@@ -150,6 +151,31 @@ def test_simulate_business_is_sstb_source_map_ignores_estate_loss_column(
     puf.loc[0, "rental_income"] = 10_000.0
     puf.loc[0, "E26400"] = 10_000.0
     puf.loc[1, "estate_income"] = 10_000.0
+
+    is_sstb = puf_module.simulate_business_is_sstb(
+        puf,
+        rng=np.random.default_rng(0),
+        probability_map=puf_module.QBI_PARAMS["sstb_prob_map_by_source_name"],
+    )
+
+    np.testing.assert_array_equal(is_sstb, np.array([False, True]))
+
+
+def test_simulate_business_is_sstb_ignores_unqualified_sources(monkeypatch):
+    def mutate(params):
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 1.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    puf = _qbi_frame(n=2)
+    puf.loc[0, "self_employment_income"] = 10_000.0
+    puf.loc[0, "rental_income"] = 20_000.0
+    puf.loc[1, "self_employment_income"] = 10_000.0
+    puf.loc[1, "rental_income"] = 20_000.0
+    for source in puf_module.QBI_SOURCE_NAMES:
+        puf[puf_module.QBI_QUALIFICATION_FLAG_BY_SOURCE[source]] = False
+    puf.loc[:, "rental_income_would_be_qualified"] = True
+    puf.loc[1, "self_employment_income_would_be_qualified"] = True
 
     is_sstb = puf_module.simulate_business_is_sstb(
         puf,
@@ -312,3 +338,38 @@ def test_puf_load_dataset_repairs_partially_migrated_qbi_outputs(tmp_path, monke
     assert "business_is_sstb" in arrays
     assert "sstb_w2_wages_from_qualified_business" in arrays
     assert "sstb_unadjusted_basis_qualified_property" in arrays
+
+
+def test_puf_load_dataset_repairs_missing_qbi_source_with_full_outputs(
+    tmp_path, monkeypatch
+):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    def mutate(params):
+        for source in params["qbi_qualification_probabilities"]:
+            params["qbi_qualification_probabilities"][source] = 1.0
+        for source in params["ubia_simulation"]["capital_intensity_probabilities"]:
+            params["ubia_simulation"]["capital_intensity_probabilities"][source] = 1.0
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 0.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset("household_id", data=np.array([1]))
+        file_handle.create_dataset("self_employment_income", data=np.array([10_000.0]))
+        for source in set(puf_module.QBI_SOURCE_NAMES) - {
+            "self_employment_income",
+            "estate_income",
+        }:
+            file_handle.create_dataset(source, data=np.zeros(1))
+
+    arrays = DummyPUF().load_dataset()
+
+    for variable in puf_module.QBI_SIMULATION_REQUIRED_VARIABLES:
+        assert variable in arrays
+    assert "estate_income" not in arrays
+    assert arrays["unadjusted_basis_qualified_property"][0] > 0

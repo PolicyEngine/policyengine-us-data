@@ -256,12 +256,18 @@ def simulate_investment_qbi_income_from_puf(puf, *, rng):
 
 
 def simulate_business_is_sstb(puf, *, rng, probability_map=None):
-    """Draw SSTB status only from positive mapped SSTB source amounts."""
+    """Draw SSTB status only from positive qualified mapped SSTB sources."""
     sstb_probs = probability_map or QBI_PARAMS["sstb_prob_map_by_name"]
     available_sources = [source for source in sstb_probs if source in puf]
     if not available_sources:
         return np.zeros(len(puf), dtype=bool)
     sstb_sources = puf[available_sources].fillna(0).clip(lower=0)
+    for source in available_sources:
+        flag_name = QBI_QUALIFICATION_FLAG_BY_SOURCE.get(source)
+        if flag_name is None or flag_name not in puf:
+            continue
+        qualified = puf[flag_name].fillna(False).astype(bool).to_numpy()
+        sstb_sources[source] = sstb_sources[source].to_numpy(dtype=float) * qualified
     has_sstb_source = sstb_sources.sum(axis=1).to_numpy() > 0
     largest_sstb_source = sstb_sources.idxmax(axis=1)
     pr_sstb = largest_sstb_source.map(sstb_probs).fillna(0.0).to_numpy()
@@ -869,6 +875,10 @@ class PUF(Dataset):
             raw_qualification_flags = draw_qbi_qualification_flags(
                 length, seed=QBI_QUALIFICATION_SEED
             )
+            has_existing_sstb = (
+                "business_is_sstb" in file_handle
+                or "business_is_sstb" in existing_overrides
+            )
             is_sstb_existing = self._values_from_file_or_overrides(
                 file_handle, "business_is_sstb", existing_overrides, length
             ).astype(bool)
@@ -887,13 +897,6 @@ class PUF(Dataset):
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
                 if source != "self_employment_income":
                     flag_overrides[flag] = qualified
-
-            has_all_qbi_sources = all(
-                source in file_handle or source in existing_overrides
-                for source in QBI_SOURCE_NAMES
-            )
-            if not has_all_qbi_sources:
-                return flag_overrides
 
             source_arrays = {}
             for source in QBI_SOURCE_NAMES:
@@ -931,13 +934,43 @@ class PUF(Dataset):
                         file_handle, source, existing_overrides, length
                     ).astype(float)
 
-            w2, ubia = simulate_w2_and_ubia_from_puf(
+            simulated_w2, simulated_ubia = simulate_w2_and_ubia_from_puf(
                 qbi_frame, seed=QBI_W2_UBIA_SEED, diagnostics=False
             )
-            is_sstb = simulate_business_is_sstb(
-                qbi_frame,
-                rng=np.random.default_rng(QBI_SSTB_SEED),
-                probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
+            w2 = (
+                self._values_from_file_or_overrides(
+                    file_handle,
+                    "w2_wages_from_qualified_business",
+                    existing_overrides,
+                    length,
+                ).astype(float)
+                if (
+                    "w2_wages_from_qualified_business" in file_handle
+                    or "w2_wages_from_qualified_business" in existing_overrides
+                )
+                else simulated_w2
+            )
+            ubia = (
+                self._values_from_file_or_overrides(
+                    file_handle,
+                    "unadjusted_basis_qualified_property",
+                    existing_overrides,
+                    length,
+                ).astype(float)
+                if (
+                    "unadjusted_basis_qualified_property" in file_handle
+                    or "unadjusted_basis_qualified_property" in existing_overrides
+                )
+                else simulated_ubia
+            )
+            is_sstb = (
+                is_sstb_existing
+                if has_existing_sstb
+                else simulate_business_is_sstb(
+                    qbi_frame,
+                    rng=np.random.default_rng(QBI_SSTB_SEED),
+                    probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
+                )
             )
             investment_qbi = simulate_investment_qbi_income_from_puf(
                 qbi_frame, rng=np.random.default_rng(QBI_INVESTMENT_SEED)

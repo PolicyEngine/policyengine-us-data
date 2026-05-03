@@ -31,7 +31,7 @@ services, brokerage, investing and investment management, trading, dealing, and
 businesses where reputation or skill is the principal asset. The current PUF
 does not identify these industries directly, so the model assigns probabilities
 by mapped source field and only draws SSTB status for records with a positive
-mapped SSTB source.
+qualified mapped SSTB source.
 
 ## Source Mapping
 

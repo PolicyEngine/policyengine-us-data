@@ -13,7 +13,6 @@ sstb_prob_map_by_name:
   E00900: 0.30
   E26270: 0.25
   E26390: 0.15
-  E26400: 0.15
 
 sstb_prob_map_by_source_name:
   self_employment_income: 0.30

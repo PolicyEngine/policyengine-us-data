@@ -684,6 +684,41 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[param_name]
         )
 
+    # CBO income-by-source aggregate targets.
+    # Without these, the per-AGI-bracket SOI targets fail to constrain the
+    # *aggregate* (the optimizer can satisfy bracket-level totals while
+    # concentrating weight on a few records and blowing up the national sum).
+    # See issues #555 and #866 — single records with $60M+ raw LTCG were
+    # ending up with calibration weights of 50k-70k, inflating the national
+    # net_capital_gains aggregate to 12x the CBO target.
+    #
+    # Each entry maps a PolicyEngine variable (or sum of variables) to the
+    # corresponding CBO `income_by_source` parameter.
+    CBO_INCOME_BY_SOURCE_TARGETS = [
+        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
+        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
+        (
+            "qualified_dividend_income",
+            ["qualified_dividend_income"],
+            "qualified_dividend_income",
+        ),
+        (
+            "taxable_interest_and_ordinary_dividends",
+            ["taxable_interest_income", "non_qualified_dividend_income"],
+            "taxable_interest_and_ordinary_dividends",
+        ),
+    ]
+
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+
+    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
+        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
+        loss_matrix[label] = values
+        targets_array.append(income_by_source._children[cbo_param_name])
+
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (
         _get_medicaid_national_targets(time_period)

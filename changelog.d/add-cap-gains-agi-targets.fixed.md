@@ -1,0 +1,1 @@
+Add CBO aggregate targets for capital gains, dividends, and interest income to constrain the calibration optimizer — without these the per-AGI-bracket SOI targets fail to constrain national aggregates and a few records blow up the totals (issues #555, #866).

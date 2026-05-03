@@ -182,6 +182,31 @@ include:
   - variable: net_capital_gains
     geo_level: national
     domain_variable: net_capital_gains
+  # Per-AGI-bracket cap-gains targets — without these the optimizer can
+  # match the single national aggregate while letting individual records
+  # blow up (see issues #555, #866). The DB already has these targets from
+  # the SOI ETL (IRS code 01000 by agi_stub); they just weren't included.
+  - variable: net_capital_gains
+    geo_level: national
+    domain_variable: adjusted_gross_income,net_capital_gains
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: net_capital_gains
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,net_capital_gains
+  # Re-include dividend / interest aggregates that were previously dropped
+  # for "high error or tension". 30% rel-error on a soft target is still
+  # vastly better than the 5-15x inflation we get with no constraint.
+  - variable: qualified_dividend_income
+    geo_level: national
+    domain_variable: qualified_dividend_income
+  - variable: dividend_income
+    geo_level: national
+    domain_variable: dividend_income
+  - variable: taxable_interest_income
+    geo_level: national
+    domain_variable: taxable_interest_income
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc
@@ -272,8 +297,13 @@ include:
 
   # NOT INCLUDED — high error or tension (from prior validation)
   # =====================================================================
-  # dividend_income (26%, tension), qualified_dividend_income (29%, tension),
   # rental_income (20%), income_tax_before_credits (21%),
-  # salt SOI (102%), taxable_interest_income (61%),
-  # tax_exempt_interest_income (61%), taxable_ira_distributions (68%),
-  # taxable_social_security (55%), person_count by AGI bins (100%)
+  # salt SOI (102%), tax_exempt_interest_income (61%),
+  # taxable_ira_distributions (68%), taxable_social_security (55%),
+  # person_count by AGI bins (100%)
+  #
+  # Re-included above (despite higher error) because excluding them lets
+  # aggregates run wild — see issues #555 and #866:
+  #   dividend_income (was 26% rel-err)
+  #   qualified_dividend_income (was 29%)
+  #   taxable_interest_income (was 61%)

@@ -71,24 +71,35 @@ def load_local_area_module(*, stub_policyengine: bool = True):
     if stub_policyengine:
         fake_policyengine = ModuleType("policyengine_us_data")
         fake_calibration = ModuleType("policyengine_us_data.calibration")
-        fake_local_h5 = ModuleType("policyengine_us_data.calibration.local_h5")
-        fake_utils = ModuleType("policyengine_us_data.utils")
-        fake_run_context = ModuleType("policyengine_us_data.utils.run_context")
+        fake_build_outputs = ModuleType("policyengine_us_data.build_outputs")
         fake_pipeline_metadata = ModuleType("policyengine_us_data.pipeline_metadata")
         fake_pipeline_schema = ModuleType("policyengine_us_data.pipeline_schema")
+        fake_utils = ModuleType("policyengine_us_data.utils")
+        fake_run_context = ModuleType("policyengine_us_data.utils.run_context")
         fake_partitioning = ModuleType(
-            "policyengine_us_data.calibration.local_h5.partitioning"
+            "policyengine_us_data.build_outputs.partitioning"
         )
         fake_fingerprinting = ModuleType(
-            "policyengine_us_data.calibration.local_h5.fingerprinting"
+            "policyengine_us_data.build_outputs.fingerprinting"
         )
         fake_policyengine.__path__ = []
         fake_calibration.__path__ = []
-        fake_local_h5.__path__ = []
+        fake_build_outputs.__path__ = []
         fake_utils.__path__ = []
+
+        class _FakePipelineNode:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        def _fake_pipeline_node(*args, **kwargs):
+            def decorator(func):
+                return func
+
+            return decorator
+
+        fake_pipeline_metadata.pipeline_node = _fake_pipeline_node
+        fake_pipeline_schema.PipelineNode = _FakePipelineNode
         fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
-        fake_pipeline_metadata.pipeline_node = lambda *args, **kwargs: lambda func: func
-        fake_pipeline_schema.PipelineNode = SimpleNamespace
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
         fake_fingerprinting.PublishingInputBundle = object
 
@@ -104,17 +115,15 @@ def load_local_area_module(*, stub_policyengine: bool = True):
             {
                 "policyengine_us_data": fake_policyengine,
                 "policyengine_us_data.calibration": fake_calibration,
-                "policyengine_us_data.calibration.local_h5": fake_local_h5,
-                "policyengine_us_data.utils": fake_utils,
-                "policyengine_us_data.utils.run_context": fake_run_context,
-                "policyengine_us_data.calibration.local_h5.fingerprinting": (
-                    fake_fingerprinting
-                ),
-                "policyengine_us_data.calibration.local_h5.partitioning": (
-                    fake_partitioning
-                ),
                 "policyengine_us_data.pipeline_metadata": fake_pipeline_metadata,
                 "policyengine_us_data.pipeline_schema": fake_pipeline_schema,
+                "policyengine_us_data.utils": fake_utils,
+                "policyengine_us_data.utils.run_context": fake_run_context,
+                "policyengine_us_data.build_outputs": fake_build_outputs,
+                "policyengine_us_data.build_outputs.fingerprinting": (
+                    fake_fingerprinting
+                ),
+                "policyengine_us_data.build_outputs.partitioning": (fake_partitioning),
             }
         )
 

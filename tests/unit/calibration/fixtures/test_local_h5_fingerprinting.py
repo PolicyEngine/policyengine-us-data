@@ -26,7 +26,7 @@ def load_fingerprinting_exports():
         return _FINGERPRINTING_EXPORTS
 
     module = importlib.import_module(
-        "policyengine_us_data.calibration.local_h5.fingerprinting"
+        "policyengine_us_data.build_outputs.fingerprinting"
     )
     _FINGERPRINTING_EXPORTS = {
         "module": module,

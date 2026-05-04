@@ -317,8 +317,8 @@ def main(argv: list[str] | None = None):
         build_h5,
         load_calibration_geography,
     )
-    from policyengine_us_data.calibration.local_h5.area_catalog import USAreaCatalog
-    from policyengine_us_data.calibration.local_h5.requests import AreaBuildRequest
+    from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog
+    from policyengine_us_data.build_outputs.requests import AreaBuildRequest
 
     weights = np.load(weights_path)
 

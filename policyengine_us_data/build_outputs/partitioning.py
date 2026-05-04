@@ -31,7 +31,7 @@ def work_item_key(item: WorkItem) -> str:
     label="Partition Local H5 Work",
     node_type="library",
     description="Assign weighted area work items to worker batches using longest-processing-time scheduling.",
-    source_file="policyengine_us_data/calibration/local_h5/partitioning.py",
+    source_file="policyengine_us_data/build_outputs/partitioning.py",
     status="current",
     stability="stable",
     pathways=["local_h5"],

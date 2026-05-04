@@ -5,7 +5,7 @@ from pathlib import Path
 import h5py
 import pytest
 
-from policyengine_us_data.calibration.local_h5.fingerprinting import (
+from policyengine_us_data.build_outputs.fingerprinting import (
     FingerprintingService,
 )
 from policyengine_us_data.utils.manifest import generate_manifest, verify_manifest

@@ -38,11 +38,8 @@ def _load_module(name: str, path: Path):
 def load_area_catalog_exports():
     """Load the local H5 area catalog and related request contracts."""
 
-    local_h5_root = (
-        Path(__file__).resolve().parents[4]
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
+    build_outputs_root = (
+        Path(__file__).resolve().parents[4] / "policyengine_us_data" / "build_outputs"
     )
     package_name = "local_h5_area_catalog_fixture"
 
@@ -50,14 +47,14 @@ def load_area_catalog_exports():
         if name == package_name or name.startswith(f"{package_name}."):
             sys.modules.pop(name, None)
 
-    _ensure_package(package_name, local_h5_root)
+    _ensure_package(package_name, build_outputs_root)
     requests_module = _load_module(
         f"{package_name}.requests",
-        local_h5_root / "requests.py",
+        build_outputs_root / "requests.py",
     )
     area_catalog_module = _load_module(
         f"{package_name}.area_catalog",
-        local_h5_root / "area_catalog.py",
+        build_outputs_root / "area_catalog.py",
     )
     return {
         "module": area_catalog_module,

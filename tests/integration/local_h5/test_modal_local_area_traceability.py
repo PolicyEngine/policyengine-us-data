@@ -1,4 +1,4 @@
-from policyengine_us_data.calibration.local_h5.fingerprinting import (
+from policyengine_us_data.build_outputs.fingerprinting import (
     FingerprintingService,
 )
 import pytest

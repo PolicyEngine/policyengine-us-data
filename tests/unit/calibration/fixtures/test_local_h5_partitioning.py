@@ -14,11 +14,7 @@ def _load_partitioning_module():
 
     repo_root = Path(__file__).resolve().parents[4]
     module_path = (
-        repo_root
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
-        / "partitioning.py"
+        repo_root / "policyengine_us_data" / "build_outputs" / "partitioning.py"
     )
     spec = importlib.util.spec_from_file_location(
         "local_h5_partitioning",

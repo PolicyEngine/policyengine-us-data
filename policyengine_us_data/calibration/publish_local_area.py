@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from policyengine_us import Microsimulation
-from policyengine_us_data.calibration.local_h5.fingerprinting import (
+from policyengine_us_data.build_outputs.fingerprinting import (
     FingerprintingService,
     PublishingInputBundle,
 )
-from policyengine_us_data.calibration.local_h5.geography_loader import (
+from policyengine_us_data.build_outputs.geography_loader import (
     CalibrationGeographyLoader,
 )
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
@@ -67,7 +67,7 @@ META_FILE = WORK_DIR / "checkpoint_meta.json"
         stability="moving",
         pathways=["local_h5"],
         api_refs=[
-            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+            "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService"
         ],
         validation_commands=[
             "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
@@ -121,7 +121,7 @@ def compute_input_fingerprint(
         stability="moving",
         pathways=["local_h5"],
         api_refs=[
-            "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
+            "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader"
         ],
         artifacts_in=[
             "calibration_weights.npy",

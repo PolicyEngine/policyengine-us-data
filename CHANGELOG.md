@@ -1,3 +1,10 @@
+## [1.91.1] - 2026-05-04
+
+### Fixed
+
+- Fixed structural mortgage-interest conversion so QRF outliers cannot create implausibly large gross mortgage-interest inputs.
+
+
 ## [1.91.0] - 2026-05-04
 
 ### Added

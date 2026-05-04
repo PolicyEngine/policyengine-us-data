@@ -1,3 +1,10 @@
+## [1.92.0] - 2026-05-04
+
+### Added
+
+- Re-enabled SOI aggregate and AGI-bin targets for tax-exempt interest income and SOI aggregate targets for charitable deductions in calibration.
+
+
 ## [1.91.1] - 2026-05-04
 
 ### Fixed

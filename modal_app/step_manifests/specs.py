@@ -65,6 +65,11 @@ BUILD_DATASETS = PipelineStepSpec(
             "Source imputation",
             "1_build_datasets",
         ),
+        _substep(
+            "1g_stage_base_datasets",
+            "Stage base datasets",
+            "1_build_datasets",
+        ),
     ),
 )
 RAW_DATA_DOWNLOAD = BUILD_DATASETS.substeps[0]
@@ -73,6 +78,7 @@ EXTENDED_CPS_PUF_CLONE = BUILD_DATASETS.substeps[2]
 ENHANCED_CPS_REWEIGHTING = BUILD_DATASETS.substeps[3]
 STRATIFIED_CPS = BUILD_DATASETS.substeps[4]
 SOURCE_IMPUTATION = BUILD_DATASETS.substeps[5]
+STAGE_BASE_DATASETS = BUILD_DATASETS.substeps[6]
 
 BUILD_CALIBRATION_PACKAGE = PipelineStepSpec(
     id="2_build_calibration_package",
@@ -121,11 +127,6 @@ BUILD_OUTPUTS = PipelineStepSpec(
             "4_build_outputs",
         ),
         _substep(
-            "4c_stage_base_datasets",
-            "Stage base datasets",
-            "4_build_outputs",
-        ),
-        _substep(
             "4d_upload_diagnostics",
             "Upload diagnostics",
             "4_build_outputs",
@@ -134,8 +135,7 @@ BUILD_OUTPUTS = PipelineStepSpec(
 )
 LOCAL_AREA_H5_REGIONAL = BUILD_OUTPUTS.substeps[0]
 LOCAL_AREA_H5_NATIONAL = BUILD_OUTPUTS.substeps[1]
-STAGE_BASE_DATASETS = BUILD_OUTPUTS.substeps[2]
-UPLOAD_DIAGNOSTICS = BUILD_OUTPUTS.substeps[3]
+UPLOAD_DIAGNOSTICS = BUILD_OUTPUTS.substeps[2]
 
 VALIDATE_AND_PROMOTE_RELEASE = PipelineStepSpec(
     id="5_validate_and_promote_release",

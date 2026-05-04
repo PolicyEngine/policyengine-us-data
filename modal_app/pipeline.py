@@ -58,6 +58,7 @@ from modal_app.step_manifests.specs import (  # noqa: E402
     BUILD_OUTPUTS,
     LOCAL_AREA_H5_NATIONAL,
     LOCAL_AREA_H5_REGIONAL,
+    STAGE_BASE_DATASETS,
     UPLOAD_DIAGNOSTICS,
     VALIDATE_AND_PROMOTE_RELEASE,
     WEIGHT_FITTING_NATIONAL,
@@ -858,6 +859,34 @@ def run_pipeline(
                 _artifacts_dir(run_id),
                 role="output",
             )
+            build_manifest = active_step_manifest
+            stage_base_manifest = _start_step_manifest(
+                meta,
+                STAGE_BASE_DATASETS,
+                parameters={
+                    "version": version,
+                    "run_id": run_id,
+                    "stage_only": True,
+                },
+                input_identities={
+                    "dataset_outputs": [
+                        artifact.to_dict() for artifact in dataset_outputs
+                    ],
+                },
+                vol=pipeline_volume,
+            )
+            active_step_manifest = stage_base_manifest
+            _complete_step_manifest(
+                stage_base_manifest,
+                outputs=dataset_outputs,
+                reuse_decision="computed",
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=len(dataset_outputs),
+                    recomputed_outputs=len(dataset_outputs),
+                ),
+                vol=pipeline_volume,
+            )
+            active_step_manifest = build_manifest
             checkpoint_stats_path = (
                 _artifacts_dir(run_id) / "data_build_checkpoint_stats.json"
             )
@@ -1233,6 +1262,9 @@ def run_pipeline(
         publish_reusable = regional_h5_reuse.reusable and (
             skip_national or national_h5_reuse.reusable
         )
+        step_start = time.time()
+        regional_h5_result = None
+        national_h5_result = None
         if publish_reusable:
             _mark_step_reused(
                 meta,
@@ -1247,14 +1279,16 @@ def run_pipeline(
                     national_h5_reuse,
                     vol=pipeline_volume,
                 )
-            print(f"\n[Step 4/5] {BUILD_OUTPUTS.title} (skipped - manifests valid)")
+            print(
+                f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
+                "H5 outputs skipped - manifests valid; refreshing diagnostics..."
+            )
         else:
             print(
                 f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
                 "building H5s and uploading diagnostics "
                 "(parallel)..."
             )
-            step_start = time.time()
 
             # Spawn H5 builds (run on separate Modal containers)
             print(f"  Spawning regional H5 build ({num_workers} workers)...")
@@ -1379,45 +1413,44 @@ def run_pipeline(
                 )
                 active_step_manifest = None
 
-            # ── Aggregate validation results ──
-            _write_validation_diagnostics(
-                run_id=run_id,
-                regional_result=regional_h5_result,
-                national_result=national_h5_result,
-                vol=pipeline_volume,
-            )
+        # ── Aggregate validation results ──
+        _write_validation_diagnostics(
+            run_id=run_id,
+            regional_result=regional_h5_result,
+            national_result=national_h5_result,
+            vol=pipeline_volume,
+        )
 
-            # Upload validation diagnostics (written after H5 builds)
-            print("  Uploading validation diagnostics...")
-            diagnostics_manifest = _start_step_manifest(
-                meta,
-                UPLOAD_DIAGNOSTICS,
-                parameters={"branch": branch, "run_id": run_id},
-                input_identities={
-                    "diagnostics": [
-                        artifact.to_dict() for artifact in _collect_diagnostics(run_id)
-                    ]
-                },
-                vol=pipeline_volume,
-            )
-            active_step_manifest = diagnostics_manifest
-            upload_run_diagnostics(run_id, branch)
-            diagnostic_outputs = _collect_diagnostics(run_id)
-            _complete_step_manifest(
-                diagnostics_manifest,
-                outputs=diagnostic_outputs,
-                diagnostics=diagnostic_outputs,
-                reuse_decision="computed",
-                reuse_measurement=ReuseMeasurement(
-                    expected_outputs=len(diagnostic_outputs),
-                    recomputed_outputs=len(diagnostic_outputs),
-                ),
-                vol=pipeline_volume,
-            )
-            active_step_manifest = regional_h5_manifest
+        # Upload validation diagnostics even when H5 outputs are reused.
+        print("  Uploading validation diagnostics...")
+        diagnostics_manifest = _start_step_manifest(
+            meta,
+            UPLOAD_DIAGNOSTICS,
+            parameters={"branch": branch, "run_id": run_id},
+            input_identities={
+                "diagnostics": [
+                    artifact.to_dict() for artifact in _collect_diagnostics(run_id)
+                ]
+            },
+            vol=pipeline_volume,
+        )
+        active_step_manifest = diagnostics_manifest
+        upload_run_diagnostics(run_id, branch)
+        diagnostic_outputs = _collect_diagnostics(run_id)
+        _complete_step_manifest(
+            diagnostics_manifest,
+            outputs=diagnostic_outputs,
+            diagnostics=diagnostic_outputs,
+            reuse_decision="computed",
+            reuse_measurement=ReuseMeasurement(
+                expected_outputs=len(diagnostic_outputs),
+                recomputed_outputs=len(diagnostic_outputs),
+            ),
+            vol=pipeline_volume,
+        )
 
-            active_step_manifest = None
-            print(f"  Completed in {round(time.time() - step_start, 1)}s")
+        active_step_manifest = None
+        print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
         # ── Step 5: Finalize ──
         print("\n[Step 5/5] Finalizing run...")
@@ -1614,33 +1647,6 @@ print("Promoted staged base datasets")
             run_id=run_id,
         )
         print(f"  {national_result}")
-
-        # Register version in manifest
-        print("\nRegistering version in manifest...")
-        version_stdout = _run_required_promotion_subprocess(
-            "Version registration",
-            f"""
-from policyengine_us_data.utils.version_manifest import (
-    build_manifest,
-    upload_manifest,
-)
-
-blob_names = [
-    "calibration/source_imputed_stratified_extended_cps.h5",
-    "calibration/policy_data.db",
-    "calibration/calibration_weights.npy",
-]
-manifest = build_manifest(
-    version="{version}",
-    blob_names=blob_names,
-)
-manifest.run_id = "{run_id}"
-manifest.diagnostics_path = "calibration/runs/{run_id}/diagnostics/"
-upload_manifest(manifest)
-print("Registered version {version} in version_manifest.json")
-""",
-        )
-        print(f"  {version_stdout}")
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"

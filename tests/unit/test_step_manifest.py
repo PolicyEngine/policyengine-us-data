@@ -8,6 +8,7 @@ from modal_app.step_manifests.specs import (
     PIPELINE_SUBSTEP_IDS,
     RAW_DATA_DOWNLOAD,
     RUN_MANIFEST_STEP_IDS,
+    STAGE_BASE_DATASETS,
     WEIGHT_FITTING_REGIONAL,
     WRITE_VERSION_MANIFEST,
 )
@@ -265,8 +266,10 @@ def test_pipeline_step_specs_define_top_level_steps_and_substeps():
         "5_validate_and_promote_release",
     )
     assert RAW_DATA_DOWNLOAD.id == "1a_raw_data_download"
+    assert STAGE_BASE_DATASETS.id == "1g_stage_base_datasets"
     assert WRITE_VERSION_MANIFEST.id == "5d_write_version_manifest"
     assert RAW_DATA_DOWNLOAD.id in PIPELINE_SUBSTEP_IDS
+    assert STAGE_BASE_DATASETS.parent_id == "1_build_datasets"
     assert WRITE_VERSION_MANIFEST.id in PIPELINE_SUBSTEP_IDS
     assert WEIGHT_FITTING_REGIONAL.parent_id == "3_fit_weights"
     assert set(PIPELINE_STEP_IDS).issubset(RUN_MANIFEST_STEP_IDS)

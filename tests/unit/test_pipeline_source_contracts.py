@@ -67,6 +67,7 @@ def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
     assert "WARNING: Regional promote" not in source
     assert "WARNING: National promote" not in source
     assert "WARNING: Version registration failed" not in source
+    assert "Registering version in manifest" not in source
 
 
 def test_promote_run_uses_canonical_dataset_promote_only_path() -> None:
@@ -79,3 +80,13 @@ def test_promote_run_uses_canonical_dataset_promote_only_path() -> None:
     assert "promote_only=True" in source
     assert "promote_staging_to_production_hf" not in source
     assert "base_files = [" not in source
+    assert "policyengine_us_data.utils.version_manifest" not in source
+
+
+def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    run_pipeline = _function_def(tree, "run_pipeline")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), run_pipeline)
+
+    assert "H5 outputs skipped - manifests valid; refreshing diagnostics" in source
+    assert "Upload validation diagnostics even when H5 outputs are reused." in source

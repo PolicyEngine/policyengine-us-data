@@ -914,13 +914,24 @@ class PUF(Dataset):
                 "business_is_sstb" in file_handle
                 or "business_is_sstb" in existing_overrides
             )
-            has_self_employment_split_overrides = (
-                "self_employment_income" in existing_overrides
-                or "sstb_self_employment_income" in existing_overrides
-            )
-            preserve_self_employment_split_flags = (
-                has_existing_sstb and not has_self_employment_split_overrides
-            )
+            self_employment_split_changed = np.zeros(length, dtype=bool)
+            for split_source in (
+                "self_employment_income",
+                "sstb_self_employment_income",
+            ):
+                if split_source in existing_overrides:
+                    original_values = (
+                        np.asarray(file_handle[split_source]).astype(float)
+                        if split_source in file_handle
+                        else np.zeros(length)
+                    )
+                    self_employment_split_changed = (
+                        self_employment_split_changed
+                        | ~np.isclose(
+                            np.asarray(existing_overrides[split_source]).astype(float),
+                            original_values,
+                        )
+                    )
             is_sstb_existing = self._values_from_file_or_overrides(
                 file_handle, "business_is_sstb", existing_overrides, length
             ).astype(bool)
@@ -948,14 +959,18 @@ class PUF(Dataset):
                                 length,
                             ).astype(bool)
                         )
-                    if len(split_flags) == 2 and preserve_self_employment_split_flags:
-                        qualification_flags[source] = split_flags[0] | split_flags[1]
+                    drawn_qualification = qualified
+                    for split_flag in split_flags:
+                        drawn_qualification = drawn_qualification | split_flag
+                    if len(split_flags) == 2 and has_existing_sstb:
+                        stored_qualification = split_flags[0] | split_flags[1]
+                        qualification_flags[source] = np.where(
+                            self_employment_split_changed,
+                            drawn_qualification,
+                            stored_qualification,
+                        )
                     else:
-                        qualification_flags[source] = qualified
-                        for split_flag in split_flags:
-                            qualification_flags[source] = (
-                                qualification_flags[source] | split_flag
-                            )
+                        qualification_flags[source] = drawn_qualification
                     continue
                 qualification_flags[source] = (
                     self._values_from_file_or_overrides(
@@ -1064,22 +1079,50 @@ class PUF(Dataset):
             for source, qualified in qualification_flags.items():
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
                 if source == "self_employment_income":
-                    if preserve_self_employment_split_flags and (
+                    computed_flag = np.where(is_sstb, False, qualified)
+                    if has_existing_sstb and (
                         flag in file_handle or flag in existing_overrides
                     ):
+                        if self_employment_split_changed.any():
+                            existing_flag = self._values_from_file_or_overrides(
+                                file_handle, flag, existing_overrides, length
+                            ).astype(bool)
+                            flag_overrides[flag] = np.where(
+                                self_employment_split_changed,
+                                computed_flag,
+                                existing_flag,
+                            )
                         continue
+                    flag_overrides[flag] = computed_flag
+                    continue
                 elif flag in file_handle or flag in existing_overrides:
                     continue
-                if source == "self_employment_income":
-                    flag_overrides[flag] = np.where(is_sstb, False, qualified)
-                else:
-                    flag_overrides[flag] = qualified
-            if not preserve_self_employment_split_flags or (
-                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in file_handle
-                and SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in existing_overrides
-            ):
-                flag_overrides[SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = np.where(
-                    is_sstb, self_employment_would_be_qualified, False
+                flag_overrides[flag] = qualified
+            computed_sstb_self_employment_flag = np.where(
+                is_sstb, self_employment_would_be_qualified, False
+            )
+            has_sstb_self_employment_flag = (
+                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in file_handle
+                or SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in existing_overrides
+            )
+            if has_existing_sstb and has_sstb_self_employment_flag:
+                if self_employment_split_changed.any():
+                    existing_sstb_self_employment_flag = (
+                        self._values_from_file_or_overrides(
+                            file_handle,
+                            SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+                            existing_overrides,
+                            length,
+                        ).astype(bool)
+                    )
+                    flag_overrides[SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = np.where(
+                        self_employment_split_changed,
+                        computed_sstb_self_employment_flag,
+                        existing_sstb_self_employment_flag,
+                    )
+            else:
+                flag_overrides[SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG] = (
+                    computed_sstb_self_employment_flag
                 )
 
             overrides = {

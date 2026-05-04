@@ -1232,6 +1232,8 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
         )
         return
 
+    prior_year_income_sentinels = {-1, -9999}
+
     with (
         _open_dataset_read_only(self.raw_cps) as cps_current_year_data,
         _open_dataset_read_only(self.previous_year_raw_cps) as cps_previous_year_data,
@@ -1261,19 +1263,48 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
         joined_data = cps_current_year.join(previous_year_data)[
             [
+                "WSAL_VAL",
+                "SEMP_VAL",
                 "employment_income_last_year",
                 "self_employment_income_last_year",
-                "I_ERNVAL",
-                "I_SEVAL",
             ]
-        ]
+        ].rename(
+            {
+                "WSAL_VAL": "current_year_employment_income",
+                "SEMP_VAL": "current_year_self_employment_income",
+            },
+            axis=1,
+        )
+
+    invalid_previous_year_income = joined_data.employment_income_last_year.isin(
+        prior_year_income_sentinels
+    ) | joined_data.self_employment_income_last_year.isin(prior_year_income_sentinels)
+    joined_data.loc[
+        invalid_previous_year_income,
+        ["employment_income_last_year", "self_employment_income_last_year"],
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_employment_income.isin(prior_year_income_sentinels),
+        "current_year_employment_income",
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_self_employment_income.isin(
+            prior_year_income_sentinels
+        ),
+        "current_year_self_employment_income",
+    ] = np.nan
+
     joined_data["previous_year_income_available"] = (
         ~joined_data.employment_income_last_year.isna()
         & ~joined_data.self_employment_income_last_year.isna()
-        & (joined_data.I_ERNVAL == 0)
-        & (joined_data.I_SEVAL == 0)
     )
-    joined_data = joined_data.fillna(-1).drop(["I_ERNVAL", "I_SEVAL"], axis=1)
+    joined_data["employment_income_last_year"] = joined_data[
+        "employment_income_last_year"
+    ].fillna(joined_data["current_year_employment_income"])
+    joined_data["self_employment_income_last_year"] = joined_data[
+        "self_employment_income_last_year"
+    ].fillna(joined_data["current_year_self_employment_income"])
+    joined_data = joined_data.fillna(0)
 
     # CPS already ordered by PERIDNUM, so the join wouldn't change the order.
     cps["employment_income_last_year"] = joined_data[

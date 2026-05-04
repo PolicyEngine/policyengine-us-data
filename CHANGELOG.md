@@ -1,3 +1,10 @@
+## [1.90.1] - 2026-05-04
+
+### Fixed
+
+- Add CBO aggregate and AGI-bracket targets for capital gains, dividends, and interest income, and scale Forbes top-tail SCF draws to Forbes AGI estimates instead of Forbes wealth, to constrain inflated capital-income aggregates (issues #555, #866).
+
+
 ## [1.90.0] - 2026-05-01
 
 ### Added

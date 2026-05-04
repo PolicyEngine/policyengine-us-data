@@ -1,3 +1,10 @@
+## [1.94.0] - 2026-05-04
+
+### Added
+
+- Add 2026 ACA Marketplace and Medicaid enrollment calibration targets.
+
+
 ## [1.93.0] - 2026-05-04
 
 ### Added

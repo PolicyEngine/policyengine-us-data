@@ -1,3 +1,10 @@
+## [1.93.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate targets for positive miscellaneous income in calibration.
+
+
 ## [1.92.0] - 2026-05-04
 
 ### Added

@@ -89,7 +89,7 @@ def extract_usda_snap_data(year=2023):
         )
         try:
             session.get(main_page, timeout=30)
-        except:
+        except Exception:
             pass  # Ignore errors on the main page
 
         response = session.get(url, timeout=30, allow_redirects=True)

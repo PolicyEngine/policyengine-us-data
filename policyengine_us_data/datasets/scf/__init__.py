@@ -1,1 +1,1 @@
-from policyengine_us_data.datasets.scf import *
+from policyengine_us_data.datasets.scf import *  # noqa: F403

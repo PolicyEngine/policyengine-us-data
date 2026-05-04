@@ -806,7 +806,6 @@ def synthesize_composite_households(
         id_counters=id_counters,
     )
     household_id_col = _period_column("household_id", base_year)
-    original_household_col = _period_column("person_household_id", base_year)
     payroll_totals = _household_component_totals(
         input_df,
         base_year=base_year,

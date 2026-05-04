@@ -42,7 +42,7 @@ for state_fips in range(1, 57):
                         "median_2br_rent": float(row[0]) if row[0] else None,
                     }
                 )
-    except Exception as e:
+    except Exception:
         pass
 
 df = pd.DataFrame(all_rows)

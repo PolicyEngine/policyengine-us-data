@@ -49,7 +49,6 @@ def analyze_benefit_underreporting():
         total = (benefit * weight).sum() / 1e9  # billions
 
         # Participation
-        participants = (benefit > 0).sum()
         weighted_participants = ((benefit > 0) * weight).sum() / 1e6  # millions
 
         # Underreporting factor
@@ -248,7 +247,6 @@ def analyze_aca_subsidies():
 
         if mask.any():
             total_ptc = (ptc[mask] * weight[mask]).sum() / 1e9
-            recipients = ((ptc > 0) & mask).sum()
             weighted_recipients = (((ptc > 0) & mask) * weight).sum() / 1e6
             mean_ptc = ptc[(ptc > 0) & mask].mean() if ((ptc > 0) & mask).any() else 0
 

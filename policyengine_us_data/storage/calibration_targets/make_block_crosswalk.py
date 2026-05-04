@@ -214,7 +214,7 @@ def build_block_crosswalk():
     print(f"  File size: {output_path.stat().st_size / 1024 / 1024:.1f} MB")
 
     # Stats
-    print(f"\nCoverage:")
+    print("\nCoverage:")
     print(f"  Blocks with SLDU: {combined['sldu'].notna().sum():,}")
     print(f"  Blocks with SLDL: {combined['sldl'].notna().sum():,}")
     print(f"  Blocks with Place: {combined['place_fips'].notna().sum():,}")

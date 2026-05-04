@@ -132,7 +132,6 @@ class TestTakeUpProportions:
         assert rates["NONE"] == 0
 
     def test_wic_category_specific_proportions(self):
-        rates = load_take_up_rate("wic_takeup", 2022)
         n = 10_000
         rng = seeded_rng("would_claim_wic")
         draws = rng.random(n)
@@ -144,7 +143,6 @@ class TestTakeUpProportions:
             assert abs(take_up.mean() - expected_rate) < 0.05
 
     def test_state_specific_medicaid_proportions(self):
-        rates = load_take_up_rate("medicaid", 2022)
         rng = seeded_rng("takes_up_medicaid_if_eligible")
         n = 50_000
         draws = rng.random(n)

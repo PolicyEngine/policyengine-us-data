@@ -375,7 +375,6 @@ def assess_years(
 
         rows.append(row)
 
-        del sim
         gc.collect()
 
     return rows

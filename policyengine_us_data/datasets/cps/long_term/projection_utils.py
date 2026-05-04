@@ -287,13 +287,11 @@ def calculate_year_statistics(
 
     household_microseries = sim.calculate("household_id", map_to="household")
     baseline_weights_actual = household_microseries.weights.values
-    household_ids_hh = household_microseries.values
 
     ss_values = None
     ss_target = None
     if use_ss:
         ss_hh = sim.calculate("social_security", period=year, map_to="household")
-        ss_baseline_total = ss_hh.sum()
         ss_values = ss_hh.values
 
     w_new, iterations = calibrate_fn(

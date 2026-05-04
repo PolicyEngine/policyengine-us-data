@@ -16,7 +16,6 @@ repos with no token.
 """
 
 import importlib
-import os
 
 import pytest
 

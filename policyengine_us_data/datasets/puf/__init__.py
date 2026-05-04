@@ -1,1 +1,1 @@
-from .puf import *
+from .puf import *  # noqa: F403

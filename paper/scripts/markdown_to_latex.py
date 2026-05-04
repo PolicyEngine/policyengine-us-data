@@ -50,7 +50,6 @@ def convert_markdown_to_latex(markdown_content: str) -> str:
     # Convert lists
     lines = latex.split("\n")
     new_lines = []
-    in_list = False
     list_stack = []
 
     for line in lines:
@@ -70,14 +69,12 @@ def convert_markdown_to_latex(markdown_content: str) -> str:
                 list_stack.append("itemize")
 
             new_lines.append("  " * (indent_level + 1) + f"\\item {content}")
-            in_list = True
         else:
             # Close any open lists
             while list_stack:
                 new_lines.append("  " * (len(list_stack) - 1) + "\\end{itemize}")
                 list_stack.pop()
             new_lines.append(line)
-            in_list = False
 
     # Close any remaining lists
     while list_stack:

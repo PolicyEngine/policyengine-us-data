@@ -83,7 +83,7 @@ def audit_county_enum():
             else:
                 invalid_entries["non_existent"].append((name, state))
 
-    print(f"\nAudit Results:")
+    print("\nAudit Results:")
     print(f"  Valid entries: {valid_count}")
     print(
         f"  Wrong state: {len(invalid_entries['wrong_state'])} "

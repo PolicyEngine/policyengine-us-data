@@ -88,7 +88,6 @@ def _validate_variable_constraints(
 def _check_operation_compatibility(var_name: str, operations: set) -> None:
     """Check that operations on a variable are compatible."""
     has_equality = bool(operations & EQUALITY_OPS)
-    has_range = bool(operations & RANGE_OPS)
 
     # Equality ops must be alone
     if has_equality:

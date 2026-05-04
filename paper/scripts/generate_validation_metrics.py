@@ -52,7 +52,7 @@ def calculate_validation_metrics(year: int = 2024):
             print(f"\nCalculating metrics for {dataset_name}...")
 
             # Create microsimulation
-            sim = Microsimulation(dataset=dataset)
+            Microsimulation(dataset=dataset)
 
             # Calculate achieved values for each target
             # This is placeholder - actual implementation would compute

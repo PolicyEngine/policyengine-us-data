@@ -227,10 +227,14 @@ def build_forbes_top_tail_artifact(
         target_n=target_n,
         scf_donors=scf_donors,
     )
+    if selected_forbes.empty:
+        raise ValueError("Forbes backbone produced no eligible units.")
     if len(selected_forbes) < target_n:
-        raise ValueError(
-            "Forbes backbone produced only "
-            f"{len(selected_forbes)} eligible units for target {target_n}."
+        logger.warning(
+            "Forbes backbone produced %s eligible units for target %s; "
+            "scaling replicate weights to the aggregate-row population.",
+            len(selected_forbes),
+            target_n,
         )
 
     forbes_draws = expand_forbes_replicates(
@@ -265,16 +269,16 @@ def build_forbes_top_tail_artifact(
         next_recid + len(scf_draws),
         dtype=int,
     )
-    synthetic["S006"] = config.unit_weight_hundredths
+    synthetic_weight_hundredths = _scaled_replicate_weight_hundredths(
+        total_units=target_n,
+        row_count=len(scf_draws),
+    )
+    synthetic["S006"] = synthetic_weight_hundredths
 
     utils._apply_structural_templates(synthetic, donor_templates)
     apply_forbes_structural_overrides(synthetic, scf_draws)
 
-    synthetic_weights = np.full(
-        len(scf_draws),
-        1.0 / config.replicate_count,
-        dtype=float,
-    )
+    synthetic_weights = synthetic_weight_hundredths.astype(float) / 100
     utils._calibrate_amount_columns(
         synthetic=synthetic,
         selected=puf_priors,
@@ -285,7 +289,7 @@ def build_forbes_top_tail_artifact(
         amount_columns=amount_columns,
         synthetic_weights=synthetic_weights,
     )
-    synthetic["S006"] = config.unit_weight_hundredths
+    synthetic["S006"] = synthetic_weight_hundredths
 
     artifact = ForbesTopTailArtifact(
         source_forbes=source_forbes,
@@ -341,6 +345,34 @@ def build_forbes_top_tail_diagnostics(
         "synthetic_weight": float((synthetic["S006"] / 100).sum()),
         "target_total_agi": float(target_total_agi),
     }
+
+
+def _scaled_replicate_weight_hundredths(
+    total_units: int,
+    row_count: int,
+) -> np.ndarray:
+    """Return integer hundredth weights that exactly sum to a unit target."""
+
+    if total_units <= 0:
+        raise ValueError("Forbes synthetic target units must be positive.")
+    if row_count <= 0:
+        raise ValueError("Forbes synthetic row count must be positive.")
+
+    total_hundredths = int(total_units * 100)
+    base = total_hundredths // row_count
+    remainder = total_hundredths - base * row_count
+    if base <= 0:
+        raise ValueError(
+            "Forbes synthetic row count exceeds available hundredth weights."
+        )
+
+    weights = np.full(row_count, base, dtype=int)
+    if remainder:
+        remainder_positions = (
+            np.arange(remainder, dtype=np.int64) * row_count // remainder
+        )
+        weights[remainder_positions] += 1
+    return weights
 
 
 def build_forbes_top_tail_diagnostic_tables(
@@ -509,12 +541,15 @@ def validate_forbes_top_tail_artifact(
 
     config.validate()
     expected_units = int(round(pop_weight))
-    expected_draws = expected_units * config.replicate_count
+    selected_units = len(artifact.selected_forbes)
+    expected_draws = selected_units * config.replicate_count
 
-    if len(artifact.selected_forbes) != expected_units:
+    if selected_units <= 0:
+        raise ValueError("Forbes artifact selected no units.")
+    if selected_units > expected_units:
         raise ValueError(
             "Forbes artifact selected "
-            f"{len(artifact.selected_forbes)} units for target {expected_units}."
+            f"{selected_units} units for target {expected_units}."
         )
     for name, frame in {
         "scf_draws": artifact.scf_draws,
@@ -534,8 +569,8 @@ def validate_forbes_top_tail_artifact(
             "Forbes synthetic weights sum to "
             f"{synthetic_weight}; expected {expected_units}."
         )
-    if not artifact.synthetic["S006"].eq(config.unit_weight_hundredths).all():
-        raise ValueError("Forbes synthetic replicate weights are not uniform.")
+    if not (artifact.synthetic["S006"] > 0).all():
+        raise ValueError("Forbes synthetic replicate weights must be positive.")
 
     required_columns = {"RECID", "S006", "E00100", *amount_columns}
     missing_columns = required_columns.difference(artifact.synthetic.columns)
@@ -554,7 +589,7 @@ def validate_forbes_top_tail_artifact(
 
     weights = artifact.synthetic["S006"].to_numpy(dtype=float) / 100
     for column in amount_columns:
-        target_total = pop_weight * float(row.get(column, 0.0))
+        target_total = pop_weight * utils._finite_amount(row.get(column, 0.0))
         actual_total = float(
             np.dot(artifact.synthetic[column].to_numpy(dtype=float), weights)
         )
@@ -1604,7 +1639,7 @@ def _build_calibration_diagnostics(
 ) -> pd.DataFrame:
     rows = []
     for column in amount_columns:
-        target_total = pop_weight * float(row.get(column, 0.0))
+        target_total = pop_weight * utils._finite_amount(row.get(column, 0.0))
         synthetic_total = _weighted_columns_total(synthetic, (column,), weights)
         absolute_error = synthetic_total - target_total
         if abs(target_total) > ARTIFACT_NUMERIC_TOL:
@@ -1651,7 +1686,7 @@ def _build_composition_diagnostics(
             continue
 
         target_total = pop_weight * sum(
-            float(row.get(column, 0.0)) for column in columns
+            utils._finite_amount(row.get(column, 0.0)) for column in columns
         )
         synthetic_total = _weighted_columns_total(
             artifact.synthetic,

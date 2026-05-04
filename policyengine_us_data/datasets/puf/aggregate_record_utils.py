@@ -95,6 +95,12 @@ def _get_bucket_targets(row: pd.Series) -> tuple[float, float, float]:
     return pop_weight, target_mean_agi, target_total_agi
 
 
+def _finite_amount(value) -> float:
+    """Return a finite aggregate amount, treating missing targets as zero."""
+    value = float(value)
+    return value if np.isfinite(value) else 0.0
+
+
 def _get_donor_bucket(regular: pd.DataFrame, recid: int) -> pd.DataFrame:
     """Return donor records for one aggregate bucket, with a safe fallback."""
     donor_bucket = regular[_get_bucket_mask(regular, recid)].copy()
@@ -406,7 +412,7 @@ def _calibrate_amount_columns(
         if column == "E00100":
             continue
 
-        target_total = pop_weight * float(row.get(column, 0))
+        target_total = pop_weight * _finite_amount(row.get(column, 0))
         synthetic[column] = _allocate_weighted_values(
             base_values=selected[column].to_numpy(dtype=float),
             weights=synthetic_weights,

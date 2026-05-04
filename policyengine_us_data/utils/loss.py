@@ -133,6 +133,13 @@ MEDICAID_ENROLLMENT_TARGETS = {
     2024: 72_429_055,
 }
 
+LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "qualified_dividends",
+    "taxable_interest_income",
+}
+
 
 def fmt(x):
     if x == -np.inf:
@@ -514,6 +521,20 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _should_skip_soi_agi_row(row) -> bool:
+    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    if row["AGI upper bound"] > 10_000:
+        return False
+    return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+
+def _should_skip_soi_taxability_row(row) -> bool:
+    """Use all-return SOI rows only for investment-income controls."""
+    if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
+        return row["Taxable only"]
+    return not row["Taxable only"]
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -567,10 +588,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if not row["Taxable only"]:
-            continue  # exclude non "taxable returns" statistics
+        if _should_skip_soi_taxability_row(row):
+            continue  # exclude non "taxable returns" statistics by default
 
-        if row["AGI upper bound"] <= 10_000:
+        if _should_skip_soi_agi_row(row):
             continue
 
         mask = (

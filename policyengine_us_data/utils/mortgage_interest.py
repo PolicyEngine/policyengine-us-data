@@ -32,6 +32,12 @@ MORTGAGE_IMPUTATION_PREDICTORS = [
     "mortgage_owner_status",
 ]
 
+# Upper bound used to reject impossible QRF mortgage-deduction outliers before
+# converting formula-level deductions into structural mortgage inputs. This is
+# intentionally above recent mortgage rates, but low enough to prevent an
+# imputed current-law deductible from requiring billion-dollar gross interest.
+MAX_DEDUCTIBLE_MORTGAGE_INTEREST_RATE = 0.15
+
 
 def impute_tax_unit_mortgage_balance_hints(
     data: Dict[str, Dict[int, np.ndarray]],
@@ -117,10 +123,14 @@ def convert_mortgage_interest_to_structural_inputs(
 
     The conversion is intentionally conservative:
     * current-law deductible mortgage interest is preserved exactly
+      unless a QRF-imputed outlier exceeds a high-rate bound
     * current-law total interest deduction is preserved exactly
     * SCF-imputed first-lien and HELOC splits are preserved when available
     * weak balance hints are lifted to a conservative lower bound implied by
       the observed deductible mortgage interest
+    * itemizer balances are capped at the current-law debt cap when needed so
+      the conversion cannot create implausible gross interest to preserve a
+      noisy formula-level imputation
     * the origination year is heuristic, because the current public pipeline
       does not carry a mortgage-vintage input
 
@@ -155,12 +165,6 @@ def convert_mortgage_interest_to_structural_inputs(
     ) = _get_tax_unit_mortgage_balance_hints(data, tp, n_tax_units)
     hinted_total_balance = np.maximum(first_balance_hint + second_balance_hint, 0)
     balance_floor = _interest_implied_balance_floor(tax_unit_deductible, tp)
-
-    total_interest_deduction = _get_tax_unit_interest_deduction_target(
-        data,
-        tp,
-        tax_unit_deductible,
-    )
 
     fallback_person_share = _filer_share(data, tp, person_tax_unit_idx, n_tax_units)
     person_share = _normalize_person_share(
@@ -216,6 +220,24 @@ def convert_mortgage_interest_to_structural_inputs(
     total_balance = first_balance + second_balance
 
     applicable_cap = np.where(origination_year <= 2017, pre_cap, post_cap)
+    tax_unit_deductible = _cap_deductible_mortgage_interest(
+        tax_unit_deductible,
+        applicable_cap,
+    )
+    first_balance, second_balance = _cap_itemizer_balances_to_current_law_cap(
+        first_balance,
+        second_balance,
+        applicable_cap,
+        has_mortgage,
+    )
+    total_balance = first_balance + second_balance
+
+    total_interest_deduction = _get_tax_unit_interest_deduction_target(
+        data,
+        tp,
+        tax_unit_deductible,
+    )
+
     deductible_share = np.ones(n_tax_units, dtype=np.float32)
     capped_mask = has_mortgage & (total_balance > applicable_cap)
     deductible_share[capped_mask] = (
@@ -292,6 +314,33 @@ def _get_tax_unit_interest_deduction_target(
         return tax_unit_deductible.astype(np.float32)
     values = np.asarray(data["interest_deduction"][time_period], dtype=np.float32)
     return np.maximum(values, tax_unit_deductible).astype(np.float32)
+
+
+def _cap_deductible_mortgage_interest(
+    deductible_mortgage_interest: np.ndarray,
+    applicable_cap: np.ndarray,
+) -> np.ndarray:
+    max_deductible = MAX_DEDUCTIBLE_MORTGAGE_INTEREST_RATE * applicable_cap
+    return np.minimum(deductible_mortgage_interest, max_deductible).astype(np.float32)
+
+
+def _cap_itemizer_balances_to_current_law_cap(
+    first_balance: np.ndarray,
+    second_balance: np.ndarray,
+    applicable_cap: np.ndarray,
+    has_mortgage: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    total_balance = first_balance + second_balance
+    needs_cap = has_mortgage & (total_balance > applicable_cap)
+    if not np.any(needs_cap):
+        return first_balance, second_balance
+
+    scale = np.ones_like(total_balance, dtype=np.float32)
+    scale[needs_cap] = applicable_cap[needs_cap] / total_balance[needs_cap]
+    return (
+        (first_balance * scale).astype(np.float32),
+        (second_balance * scale).astype(np.float32),
+    )
 
 
 def _get_tax_unit_mortgage_balance_hints(

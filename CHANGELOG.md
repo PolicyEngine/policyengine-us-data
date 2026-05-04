@@ -1,3 +1,10 @@
+## [1.95.1] - 2026-05-04
+
+### Fixed
+
+- Make the 2025 ACA take-up override state-aware and spending-aware, allowing the final vector to add or remove tax-unit take-up by state against checked-in APTC enrollment and spending targets.
+
+
 ## [1.95.0] - 2026-05-04
 
 ### Fixed

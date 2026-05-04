@@ -1037,15 +1037,18 @@ class PUF(Dataset):
             flag_overrides = {}
             for source, qualified in qualification_flags.items():
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
-                if (
-                    source != "self_employment_income" or is_current_qbi_simulation
-                ) and (flag in file_handle or flag in existing_overrides):
+                if source == "self_employment_income":
+                    if has_existing_sstb and (
+                        flag in file_handle or flag in existing_overrides
+                    ):
+                        continue
+                elif flag in file_handle or flag in existing_overrides:
                     continue
                 if source == "self_employment_income":
                     flag_overrides[flag] = np.where(is_sstb, False, qualified)
                 else:
                     flag_overrides[flag] = qualified
-            if not is_current_qbi_simulation or (
+            if not has_existing_sstb or (
                 SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in file_handle
                 and SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in existing_overrides
             ):

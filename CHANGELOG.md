@@ -1,3 +1,10 @@
+## [1.91.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate and AGI-bin targets for long-term capital gains to the legacy enhanced CPS calibration loss matrix and target database.
+
+
 ## [1.90.2] - 2026-05-04
 
 ### Changed

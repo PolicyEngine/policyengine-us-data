@@ -1,4 +1,8 @@
 import json
+from unittest.mock import MagicMock, patch
+
+from modal_app.step_manifests.state import RunMetadata
+from modal_app.step_manifests.store import read_run_meta, write_run_meta
 
 from policyengine_us_data.utils.step_manifest import (
     ArtifactReference,
@@ -230,3 +234,30 @@ def test_completed_validated_outputs_reads_release_candidates_from_steps(tmp_pat
         read_step_manifest(step_manifest_path(run_dir, "04_build_h5_regional")).step_id
         == "04_build_h5_regional"
     )
+
+
+def test_run_state_is_stored_in_run_manifest_not_meta_json(tmp_path):
+    meta = RunMetadata(
+        run_id="run-1",
+        branch="main",
+        sha="abc123",
+        version="1.0.0",
+        start_time="2026-04-30T12:00:00+00:00",
+        status="running",
+        run_context={"github_run_id": "12345"},
+        modal_app_name="policyengine-us-data-pipeline-run-1",
+        modal_environment="main",
+    )
+    volume = MagicMock()
+    runs_dir = tmp_path / "runs"
+
+    with patch("modal_app.step_manifests.state.RUNS_DIR", str(runs_dir)):
+        write_run_meta(meta, volume)
+        roundtripped = read_run_meta("run-1", volume)
+
+    assert (runs_dir / "run-1" / "run_manifest.json").exists()
+    assert not (runs_dir / "run-1" / "meta.json").exists()
+    assert roundtripped.run_id == meta.run_id
+    assert roundtripped.run_context == {"github_run_id": "12345"}
+    volume.commit.assert_called_once()
+    volume.reload.assert_called_once()

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-import time
-from datetime import datetime, timezone
 from typing import Any
 
 from policyengine_us_data.utils.step_manifest import (
@@ -13,6 +10,7 @@ from policyengine_us_data.utils.step_manifest import (
     RunManifest,
     StepManifest,
     evaluate_step_reuse,
+    read_run_manifest,
     read_step_manifest,
     run_manifest_path,
     step_manifest_path,
@@ -25,7 +23,7 @@ from modal_app.step_manifests.state import RUN_STEP_IDS, RunMetadata, run_dir
 
 
 def build_run_manifest(meta: RunMetadata) -> RunManifest:
-    """Build the run-scoped execution ledger from compatibility metadata."""
+    """Build the run-scoped execution ledger from pipeline metadata."""
     return RunManifest(
         run_id=meta.run_id,
         branch=meta.branch,
@@ -47,6 +45,24 @@ def build_run_manifest(meta: RunMetadata) -> RunManifest:
     )
 
 
+def run_manifest_to_metadata(manifest: RunManifest) -> RunMetadata:
+    """Build the in-memory pipeline state from the canonical run manifest."""
+    return RunMetadata(
+        run_id=manifest.run_id,
+        branch=manifest.branch,
+        sha=manifest.sha,
+        version=manifest.version,
+        start_time=manifest.started_at,
+        status=manifest.status,
+        error=manifest.error,
+        resume_history=manifest.resume_history,
+        run_context=manifest.run_context,
+        modal_app_name=manifest.modal_app_name,
+        modal_environment=manifest.modal_environment,
+        hf_staging_prefix=manifest.hf_staging_prefix,
+    )
+
+
 def write_run_manifest_for_meta(meta: RunMetadata) -> None:
     """Write the canonical run manifest for a pipeline run."""
     write_run_manifest(
@@ -56,24 +72,22 @@ def write_run_manifest_for_meta(meta: RunMetadata) -> None:
 
 
 def write_run_meta(meta: RunMetadata, vol: Any) -> None:
-    """Write compatibility metadata and the canonical run manifest."""
+    """Write the canonical run manifest for this run."""
     destination = run_dir(meta.run_id)
     destination.mkdir(parents=True, exist_ok=True)
-    meta_path = destination / "meta.json"
-    with open(meta_path, "w") as f:
-        json.dump(meta.to_dict(), f, indent=2)
     write_run_manifest_for_meta(meta)
     vol.commit()
 
 
 def read_run_meta(run_id: str, vol: Any) -> RunMetadata:
-    """Read run metadata from the pipeline volume."""
+    """Read run state from the canonical run manifest."""
     vol.reload()
-    meta_path = run_dir(run_id) / "meta.json"
-    if not meta_path.exists():
-        raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
-    with open(meta_path) as f:
-        return RunMetadata.from_dict(json.load(f))
+    manifest_path = run_manifest_path(run_dir(run_id))
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            f"No run manifest found for run {run_id} at {manifest_path}"
+        )
+    return run_manifest_to_metadata(read_run_manifest(manifest_path))
 
 
 def _next_step_attempt(run_id: str, step_id: str) -> int:
@@ -167,14 +181,13 @@ def mark_step_reused(
     decision,
     *,
     vol: Any,
-    legacy_step: str | None = None,
 ) -> StepManifest:
     previous = decision.manifest
     if previous is None:
         raise RuntimeError(f"Cannot reuse {step_id}: missing prior manifest")
     reused = StepManifest(
-        run_id=previous.run_id,
-        step_id=previous.step_id,
+        run_id=meta.run_id,
+        step_id=step_id,
         scope=previous.scope,
         status="reused",
         attempt=previous.attempt + 1,
@@ -203,14 +216,6 @@ def mark_step_reused(
         ),
     )
     write_step_manifest(step_manifest_path(run_dir(meta.run_id), step_id), reused)
-    meta.step_timings[legacy_step or step_id] = {
-        "start": reused.started_at,
-        "end": reused.completed_at,
-        "duration_s": 0.0,
-        "status": "completed",
-        "reuse_decision": "reused",
-        "reuse_reason": decision.reason,
-    }
     write_run_meta(meta, vol)
     return reused
 
@@ -227,55 +232,3 @@ def step_reusable(
         expected_input_identities=expected_input_identities,
         expected_parameters=expected_parameters,
     )
-
-
-def record_step(
-    meta: RunMetadata,
-    step: str,
-    start: float,
-    vol: Any,
-    status: str = "completed",
-    *,
-    step_id: str | None = None,
-    step_manifest: StepManifest | None = None,
-    parameters: dict | None = None,
-    input_identities: dict | None = None,
-    outputs: list[ArtifactReference] | None = None,
-    diagnostics: list[ArtifactReference] | None = None,
-    reuse_decision: str = "computed",
-    reuse_reason: str | None = None,
-    reuse_measurement: ReuseMeasurement | None = None,
-) -> None:
-    """Record step timing/status and complete the step manifest."""
-    meta.step_timings[step] = {
-        "start": datetime.fromtimestamp(start, tz=timezone.utc).isoformat(),
-        "end": datetime.now(timezone.utc).isoformat(),
-        "duration_s": round(time.time() - start, 1),
-        "status": status,
-    }
-    canonical_step_id = step_id or step
-    manifest = step_manifest or StepManifest(
-        run_id=meta.run_id,
-        step_id=canonical_step_id,
-        status="running",
-        attempt=_next_step_attempt(meta.run_id, canonical_step_id),
-        started_at=datetime.fromtimestamp(start, tz=timezone.utc).isoformat(),
-        branch=meta.branch,
-        sha=meta.sha,
-        version=meta.version,
-        modal_app_name=meta.modal_app_name,
-        modal_environment=meta.modal_environment,
-        hf_staging_prefix=meta.hf_staging_prefix,
-        parameters=parameters or {},
-        input_identities=input_identities or {},
-    )
-    complete_step_manifest(
-        manifest,
-        outputs=outputs or [],
-        diagnostics=diagnostics or [],
-        reuse_decision=reuse_decision,
-        reuse_reason=reuse_reason,
-        reuse_measurement=reuse_measurement,
-        status=status,
-    )
-    write_run_meta(meta, vol)

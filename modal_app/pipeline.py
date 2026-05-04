@@ -71,7 +71,6 @@ from modal_app.step_manifests.store import (  # noqa: E402
     fail_step_manifest as _fail_step_manifest,
     mark_step_reused as _mark_step_reused,
     read_run_meta,
-    record_step as _record_step,
     start_step_manifest as _start_step_manifest,
     step_reusable as _step_reusable,
     write_run_meta,
@@ -536,7 +535,6 @@ def _write_validation_diagnostics(
     run_id: str,
     regional_result,
     national_result,
-    meta: RunMetadata,
     vol: modal.Volume,
 ) -> None:
     """Aggregate validation rows into a diagnostics CSV.
@@ -544,7 +542,7 @@ def _write_validation_diagnostics(
     Extracts validation_rows from coordinate_publish and
     national_validation from coordinate_national_publish,
     writes them to runs/{run_id}/diagnostics/validation_results.csv,
-    and records a summary in meta.json.
+    and records a summary in diagnostics/validation_summary.json.
     """
     import csv
 
@@ -659,9 +657,9 @@ def _write_validation_diagnostics(
             f"mean RAE={mean_rae:.4f}"
         )
 
-        # Record in meta.json
-        meta.step_timings["validation"] = validation_summary
-        write_run_meta(meta, vol)
+        summary_path = diag_dir / "validation_summary.json"
+        summary_path.write_text(json.dumps(validation_summary, indent=2) + "\n")
+        print(f"  Wrote validation summary to {summary_path}")
 
     # Write national validation output
     if national_output:
@@ -843,9 +841,7 @@ def run_pipeline(
     print(f"  Workers: {num_workers}")
     print(f"  Clones:  {n_clones}")
     if resume_run_id:
-        completed = [
-            s for s, t in meta.step_timings.items() if t.get("status") == "completed"
-        ]
+        completed = _completed_step_manifest_ids(run_id)
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
 
@@ -855,7 +851,7 @@ def run_pipeline(
         # ── Step 1: Build datasets ──
         build_dataset_inputs = {"source": {"branch": branch, "sha": sha}}
         build_dataset_parameters = {
-            "upload": True,
+            "upload": False,
             "sequential": False,
             "clear_checkpoints": clear_checkpoints,
             "skip_tests": False,
@@ -874,12 +870,10 @@ def run_pipeline(
                 "01_build_datasets",
                 build_dataset_reuse,
                 vol=pipeline_volume,
-                legacy_step="build_datasets",
             )
             print("\n[Step 1/5] Build datasets (skipped - manifest valid)")
         else:
             print("\n[Step 1/5] Building datasets...")
-            step_start = time.time()
             active_step_manifest = _start_step_manifest(
                 meta,
                 "01_build_datasets",
@@ -889,7 +883,7 @@ def run_pipeline(
             )
 
             build_datasets.remote(
-                upload=True,
+                upload=False,
                 branch=branch,
                 sequential=False,
                 clear_checkpoints=clear_checkpoints,
@@ -915,13 +909,8 @@ def run_pipeline(
                 if checkpoint_stats_path.exists()
                 else {}
             )
-            _record_step(
-                meta,
-                "build_datasets",
-                step_start,
-                pipeline_volume,
-                step_id="01_build_datasets",
-                step_manifest=active_step_manifest,
+            completed_build_manifest = _complete_step_manifest(
+                active_step_manifest,
                 outputs=dataset_outputs,
                 reuse_measurement=ReuseMeasurement(
                     expected_outputs=checkpoint_stats.get(
@@ -935,11 +924,10 @@ def run_pipeline(
                     ),
                     invalid_outputs=checkpoint_stats.get("invalid_outputs", 0),
                 ),
+                vol=pipeline_volume,
             )
             active_step_manifest = None
-            print(
-                f"  Completed in {meta.step_timings['build_datasets']['duration_s']}s"
-            )
+            print(f"  Completed in {completed_build_manifest.duration_s}s")
 
         # ── Step 2: Build calibration package ──
         package_inputs = _artifact_identities(
@@ -967,12 +955,10 @@ def run_pipeline(
                 "02_build_package",
                 package_reuse,
                 vol=pipeline_volume,
-                legacy_step="build_package",
             )
             print("\n[Step 2/5] Build package (skipped - manifest valid)")
         else:
             print("\n[Step 2/5] Building calibration package...")
-            step_start = time.time()
             active_step_manifest = _start_step_manifest(
                 meta,
                 "02_build_package",
@@ -989,20 +975,16 @@ def run_pipeline(
             )
             print(f"  Package at: {pkg_path}")
 
-            _record_step(
-                meta,
-                "build_package",
-                step_start,
-                pipeline_volume,
-                step_id="02_build_package",
-                step_manifest=active_step_manifest,
+            completed_package_manifest = _complete_step_manifest(
+                active_step_manifest,
                 outputs=collect_artifacts(
                     [_artifacts_dir(run_id) / "calibration_package.pkl"],
                     missing_ok=True,
                 ),
+                vol=pipeline_volume,
             )
             active_step_manifest = None
-            print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
+            print(f"  Completed in {completed_package_manifest.duration_s}s")
 
         # ── Step 3: Fit weights (parallel) ──
         fit_inputs = _artifact_identities(
@@ -1055,7 +1037,6 @@ def run_pipeline(
                 "03_fit_weights_regional",
                 regional_fit_reuse,
                 vol=pipeline_volume,
-                legacy_step="fit_weights",
             )
             if national_fit_reuse is not None:
                 _mark_step_reused(
@@ -1228,19 +1209,8 @@ def run_pipeline(
                 )
                 active_step_manifest = None
 
-            _record_step(
-                meta,
-                "fit_weights",
-                step_start,
-                pipeline_volume,
-                step_id="03_fit_weights_regional",
-                step_manifest=regional_fit_manifest,
-                outputs=regional_outputs,
-                diagnostics=_collect_diagnostics(run_id),
-                reuse_measurement=regional_fit_reuse_measurement,
-            )
             active_step_manifest = None
-            print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
+            print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
         # ── Step 4: Build H5s + stage + diagnostics (parallel) ──
         #   4a. coordinate_publish (regional H5s)
@@ -1330,7 +1300,6 @@ def run_pipeline(
                 "04_build_h5_regional",
                 regional_h5_reuse,
                 vol=pipeline_volume,
-                legacy_step="publish_and_stage",
             )
             if national_h5_reuse is not None:
                 _mark_step_reused(
@@ -1509,7 +1478,6 @@ def run_pipeline(
                 run_id=run_id,
                 regional_result=regional_h5_result,
                 national_result=national_h5_result,
-                meta=meta,
                 vol=pipeline_volume,
             )
 
@@ -1542,27 +1510,8 @@ def run_pipeline(
             )
             active_step_manifest = regional_h5_manifest
 
-            _record_step(
-                meta,
-                "publish_and_stage",
-                step_start,
-                pipeline_volume,
-                step_id="04_build_h5_regional",
-                step_manifest=regional_h5_manifest,
-                outputs=_collect_staging_outputs(run_id, scope="regional"),
-                diagnostics=_collect_diagnostics(run_id),
-                reuse_decision=(
-                    "partially_reused"
-                    if regional_reuse_measurement.valid_reused_outputs
-                    else "computed"
-                ),
-                reuse_measurement=regional_reuse_measurement,
-            )
             active_step_manifest = None
-            print(
-                f"  Completed in "
-                f"{meta.step_timings['publish_and_stage']['duration_s']}s"
-            )
+            print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
         # ── Step 5: Finalize ──
         print("\n[Step 5/5] Finalizing run...")
@@ -1574,7 +1523,7 @@ def run_pipeline(
         print("=" * 60)
         print(f"  Run ID: {run_id}")
         print(f"  Status: {meta.status}")
-        _print_step_timings(meta)
+        _print_step_manifests(run_id)
         print(
             f"\nTo promote, run:\n"
             f"  modal run modal_app/pipeline.py"
@@ -1595,14 +1544,33 @@ def run_pipeline(
         raise
 
 
-def _print_step_timings(meta: RunMetadata) -> None:
-    """Print formatted step timings."""
+def _read_step_manifests(run_id: str) -> list[StepManifest]:
+    """Read all step manifests for a run."""
+    steps_dir = _run_dir(run_id) / "steps"
+    if not steps_dir.exists():
+        return []
+    return [read_step_manifest(path) for path in sorted(steps_dir.glob("*.json"))]
+
+
+def _completed_step_manifest_ids(run_id: str) -> list[str]:
+    """Return step IDs that have a completed/reusable manifest state."""
+    return [
+        manifest.step_id
+        for manifest in _read_step_manifests(run_id)
+        if manifest.status in {"completed", "reused", "partially_reused"}
+    ]
+
+
+def _print_step_manifests(run_id: str) -> None:
+    """Print formatted step-manifest durations."""
     total = 0.0
-    for step, timing in meta.step_timings.items():
-        dur = timing.get("duration_s", 0)
-        total += dur
-        status = timing.get("status", "unknown")
-        print(f"  {step}: {dur}s ({status})")
+    for manifest in _read_step_manifests(run_id):
+        duration = manifest.duration_s or 0.0
+        total += duration
+        print(
+            f"  {manifest.step_id}: "
+            f"{duration}s ({manifest.status}, {manifest.reuse_decision})"
+        )
     hours = total / 3600
     print(f"  TOTAL: {total:.0f}s ({hours:.1f}h)")
 
@@ -1864,30 +1832,14 @@ def pipeline_status(
                 lines.append(
                     f"    {manifest.step_id}: {duration}s ({manifest.status}, {reuse})"
                 )
-        if meta.step_timings:
-            lines.append("  Legacy step timings:")
-            for step, timing in meta.step_timings.items():
-                dur = timing.get("duration_s", "?")
-                status = timing.get("status", "unknown")
-                lines.append(f"    {step}: {dur}s ({status})")
         return "\n".join(lines)
 
     # List all runs
     runs = []
     for entry in sorted(runs_dir.iterdir()):
         manifest_path = entry / "run_manifest.json"
-        meta_path = entry / "meta.json"
         if manifest_path.exists():
             with open(manifest_path) as f:
-                data = json.load(f)
-            runs.append(
-                f"  {data['run_id']}: "
-                f"{data['status']} "
-                f"(branch={data['branch']}, "
-                f"v={data['version']})"
-            )
-        elif meta_path.exists():
-            with open(meta_path) as f:
                 data = json.load(f)
             runs.append(
                 f"  {data['run_id']}: "

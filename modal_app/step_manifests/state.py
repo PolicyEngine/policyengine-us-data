@@ -49,7 +49,6 @@ class RunMetadata:
     version: str
     start_time: str
     status: str
-    step_timings: dict = field(default_factory=dict)
     error: Optional[str] = None
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
@@ -111,12 +110,6 @@ def run_dir(run_id: str) -> Path:
 
 def artifacts_dir(run_id: str) -> Path:
     return Path(artifacts_dir_for_run(run_id))
-
-
-def step_completed(meta: RunMetadata, step: str) -> bool:
-    """Check if a legacy step is marked completed in compatibility metadata."""
-    timing = meta.step_timings.get(step, {})
-    return timing.get("status") == "completed"
 
 
 def artifact_identity(path: str | Path) -> dict:

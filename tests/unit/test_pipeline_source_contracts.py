@@ -33,3 +33,26 @@ def test_promote_run_passes_version_to_national_promotion() -> None:
     assert len(national_calls) == 1
     keyword_names = {keyword.arg for keyword in national_calls[0].keywords}
     assert {"branch", "version", "run_id"}.issubset(keyword_names)
+
+
+def test_run_pipeline_stage_1_builds_without_publishing() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    run_pipeline = _function_def(tree, "run_pipeline")
+
+    build_calls = [
+        node
+        for node in ast.walk(run_pipeline)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "remote"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "build_datasets"
+    ]
+
+    assert len(build_calls) == 1
+    upload_keywords = [
+        keyword for keyword in build_calls[0].keywords if keyword.arg == "upload"
+    ]
+    assert len(upload_keywords) == 1
+    assert isinstance(upload_keywords[0].value, ast.Constant)
+    assert upload_keywords[0].value.value is False

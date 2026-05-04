@@ -2,7 +2,6 @@
 
 import json
 import sys
-import time
 from types import ModuleType
 from unittest.mock import MagicMock, patch
 
@@ -13,10 +12,9 @@ modal = pytest.importorskip("modal")
 from modal_app.pipeline import (  # noqa: E402
     _build_diagnostics_upload_script,
 )
-from modal_app.step_manifests.state import RunMetadata, step_completed  # noqa: E402
+from modal_app.step_manifests.state import RunMetadata  # noqa: E402
 from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
-    record_step,
     write_run_meta,
 )
 
@@ -41,7 +39,6 @@ class TestRunMetadata:
         assert d["sha"] == "abc12345deadbeef"
         assert d["version"] == "1.72.3"
         assert d["status"] == "running"
-        assert d["step_timings"] == {}
         assert d["error"] is None
 
     def test_from_dict(self):
@@ -52,19 +49,12 @@ class TestRunMetadata:
             "version": "1.72.3",
             "start_time": "2026-03-19T12:00:00Z",
             "status": "completed",
-            "step_timings": {
-                "build_datasets": {
-                    "status": "completed",
-                    "duration_s": 100.0,
-                }
-            },
             "error": None,
         }
         meta = RunMetadata.from_dict(data)
 
         assert meta.run_id == ("1.72.3_abc12345_20260319_120000")
         assert meta.status == "completed"
-        assert meta.step_timings["build_datasets"]["status"] == "completed"
 
     def test_from_dict_maps_legacy_fingerprint_to_regional_scope(self):
         meta = RunMetadata.from_dict(
@@ -148,122 +138,6 @@ class TestRunMetadata:
         assert payload["fingerprint"] == "legacy-fp"
         assert payload["regional_fingerprint"] == "regional-fp"
 
-    def test_step_timings_default_empty(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        assert meta.step_timings == {}
-
-
-# -- _step_completed tests ------------------------------------
-
-
-class TestStepCompleted:
-    def test_completed_step(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-            step_timings={
-                "build_datasets": {
-                    "status": "completed",
-                    "duration_s": 50.0,
-                }
-            },
-        )
-        assert step_completed(meta, "build_datasets")
-
-    def test_incomplete_step(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-            step_timings={
-                "build_datasets": {
-                    "status": "failed",
-                    "duration_s": 10.0,
-                }
-            },
-        )
-        assert not step_completed(meta, "build_datasets")
-
-    def test_missing_step(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        assert not step_completed(meta, "build_datasets")
-
-
-# -- _record_step tests ----------------------------------------
-
-
-class TestRecordStep:
-    def test_records_timing(self, tmp_path):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        mock_vol = MagicMock()
-        start = time.time() - 5.0
-
-        with (
-            patch("modal_app.step_manifests.state.RUNS_DIR", str(tmp_path / "runs")),
-            patch("modal_app.step_manifests.store.write_run_meta"),
-        ):
-            record_step(meta, "build_datasets", start, mock_vol)
-
-        timing = meta.step_timings["build_datasets"]
-        assert timing["status"] == "completed"
-        assert timing["duration_s"] >= 5.0
-        assert "start" in timing
-        assert "end" in timing
-        assert (tmp_path / "runs" / "test" / "steps" / "build_datasets.json").exists()
-
-    def test_records_custom_status(self, tmp_path):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        mock_vol = MagicMock()
-
-        with (
-            patch("modal_app.step_manifests.state.RUNS_DIR", str(tmp_path / "runs")),
-            patch("modal_app.step_manifests.store.write_run_meta"),
-        ):
-            record_step(
-                meta,
-                "build_datasets",
-                time.time(),
-                mock_vol,
-                status="failed",
-            )
-
-        assert meta.step_timings["build_datasets"]["status"] == "failed"
-
 
 # -- write/read_run_meta tests --------------------------------
 
@@ -289,14 +163,19 @@ class TestRunMetaIO:
             write_run_meta(meta, mock_vol)
             mock_vol.commit.assert_called_once()
 
-            # Verify file was written
-            meta_path = runs_dir / "test_run" / "meta.json"
-            assert meta_path.exists()
+            manifest_path = runs_dir / "test_run" / "run_manifest.json"
+            assert manifest_path.exists()
+            assert not (runs_dir / "test_run" / "meta.json").exists()
 
-            with open(meta_path) as f:
+            with open(manifest_path) as f:
                 data = json.load(f)
             assert data["run_id"] == "test_run"
             assert data["status"] == "running"
+            assert data["known_step_ids"]
+
+            roundtripped = read_run_meta("test_run", mock_vol)
+            assert roundtripped.run_id == meta.run_id
+            assert roundtripped.start_time == meta.start_time
 
     def test_read_nonexistent_raises(self):
         mock_vol = MagicMock()

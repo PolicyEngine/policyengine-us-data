@@ -31,7 +31,7 @@ def test_aca_targets_roll_forward_to_2025():
 
 def test_aca_targets_use_latest_available_year():
     _, data_year = _load_aca_spending_and_enrollment_targets(2026)
-    assert data_year == 2025
+    assert data_year == 2026
 
 
 def test_aca_targets_fall_back_to_earliest_available_year():
@@ -45,6 +45,14 @@ def test_aca_national_targets_annualize_2025_state_file():
     assert data_year == 2025
     assert enrollment == 21_822_894
     assert spending == pytest.approx(143_951_057_388.72)
+
+
+def test_aca_national_targets_annualize_2026_state_file():
+    spending, enrollment, data_year = _get_aca_national_targets(2026)
+
+    assert data_year == 2026
+    assert enrollment == 20_035_756
+    assert spending == pytest.approx(156_175_881_600.0)
 
 
 def test_medicaid_targets_roll_forward_to_2025():

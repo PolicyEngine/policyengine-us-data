@@ -90,17 +90,16 @@ def resolve_run_id(
     *,
     env: Mapping[str, str] | None = None,
 ) -> str:
-    """Resolve the canonical run ID from an explicit value or GitHub context."""
+    """Resolve the canonical run ID from an explicit value or publication env.
+
+    Raw GitHub Actions IDs are intentionally not publication run IDs. GitHub
+    workflow scripts translate them once, then export US_DATA_RUN_ID/RUN_ID for
+    library code and Modal entrypoints.
+    """
     env = env or os.environ
     candidate = explicit or env.get(RUN_ID_ENV, "") or env.get("RUN_ID", "")
     if candidate:
         return sanitize_run_id(candidate)
-    if env.get("GITHUB_RUN_ID"):
-        return build_run_id(
-            github_run_id=env.get("GITHUB_RUN_ID", ""),
-            github_run_attempt=env.get("GITHUB_RUN_ATTEMPT", "1"),
-            github_sha=env.get("GITHUB_SHA", ""),
-        )
     return ""
 
 

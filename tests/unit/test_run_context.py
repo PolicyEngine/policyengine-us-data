@@ -43,7 +43,22 @@ def test_resolve_run_id_prefers_explicit_value() -> None:
     assert resolve_run_id("Explicit Value", env=env) == "explicit-value"
 
 
+def test_resolve_run_id_ignores_raw_github_actions_identity() -> None:
+    env = {
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "GITHUB_SHA": "abcdef12",
+    }
+
+    assert resolve_run_id(env=env) == ""
+
+
 def test_run_context_from_env_records_cross_system_identity() -> None:
+    run_id = build_run_id(
+        github_run_id="123456789",
+        github_run_attempt="1",
+        github_sha="abcdef123456",
+    )
     env = {
         "GITHUB_SERVER_URL": "https://github.com",
         "GITHUB_REPOSITORY": "PolicyEngine/policyengine-us-data",
@@ -53,6 +68,7 @@ def test_run_context_from_env_records_cross_system_identity() -> None:
         "GITHUB_SHA": "abcdef123456",
         "GITHUB_RUN_ID": "123456789",
         "GITHUB_RUN_ATTEMPT": "1",
+        "US_DATA_RUN_ID": run_id,
         "US_DATA_PIPELINE_VOLUME_NAME": "pipeline-artifacts-test",
         "US_DATA_STAGING_VOLUME_NAME": "local-area-staging-test",
         "US_DATA_CHECKPOINT_VOLUME_NAME": "data-build-checkpoints-test",
@@ -60,7 +76,7 @@ def test_run_context_from_env_records_cross_system_identity() -> None:
 
     context = RunContext.from_env(env=env)
 
-    assert context.run_id == "usdata-gha123456789-a1-abcdef12"
+    assert context.run_id == run_id
     assert context.modal_app_name == (
         "policyengine-us-data-pub-usdata-gha123456789-a1-abcdef12"
     )

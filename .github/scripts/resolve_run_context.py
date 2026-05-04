@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import Mapping
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
@@ -12,8 +13,10 @@ if str(_REPO_ROOT) not in sys.path:
 
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     DEFAULT_MODAL_APP_PREFIX,
+    RUN_ID_ENV,
     RunContext,
     build_modal_resource_name,
+    build_run_id,
 )
 
 
@@ -26,9 +29,24 @@ def _append_key_values(path_env: str, values: dict[str, str]) -> None:
             handle.write(f"{key}={value}\n")
 
 
+def _github_actions_run_id(env: Mapping[str, str]) -> str:
+    if not env.get("GITHUB_RUN_ID"):
+        return ""
+    return build_run_id(
+        github_run_id=env.get("GITHUB_RUN_ID", ""),
+        github_run_attempt=env.get("GITHUB_RUN_ATTEMPT", "1"),
+        github_sha=env.get("GITHUB_SHA", ""),
+    )
+
+
 def main() -> None:
-    app_prefix = os.environ.get("US_DATA_MODAL_APP_PREFIX", DEFAULT_MODAL_APP_PREFIX)
-    context = RunContext.from_env(modal_app_prefix=app_prefix)
+    env = os.environ
+    app_prefix = env.get("US_DATA_MODAL_APP_PREFIX", DEFAULT_MODAL_APP_PREFIX)
+    run_id = env.get(RUN_ID_ENV, "") or env.get("RUN_ID", "")
+    context = RunContext.from_env(
+        run_id=run_id or _github_actions_run_id(env),
+        modal_app_prefix=app_prefix,
+    )
     if not context.run_id:
         raise RuntimeError(
             "Could not resolve run ID. Set US_DATA_RUN_ID or run "

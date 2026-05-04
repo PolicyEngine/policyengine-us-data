@@ -211,8 +211,6 @@ from modal_app.local_area import app as _local_area_app  # noqa: E402
 from modal_app.local_area import (  # noqa: E402
     coordinate_publish,
     coordinate_national_publish,
-    promote_publish,
-    promote_national_publish,
 )
 
 app.include(_local_area_app)
@@ -335,30 +333,54 @@ def _regional_h5_staging_rel_paths(run_id: str) -> list[str]:
     return list(manifest.get("files", {}).keys())
 
 
-def _cleanup_promoted_staging_artifacts(run_id: str, version: str) -> str:
-    """Clean all staged files only after the full promotion succeeds."""
-    rel_paths = sorted(
+def _full_release_staging_rel_paths(run_id: str) -> list[str]:
+    """Return the full set of staged production artifact paths for a run."""
+    return sorted(
         {
             *BASE_DATASET_STAGING_REL_PATHS,
             *_regional_h5_staging_rel_paths(run_id),
             "national/US.h5",
-            "_run_context.json",
         }
     )
+
+
+def _full_release_manifest_files(
+    run_id: str, rel_paths: list[str]
+) -> list[tuple[str, str]]:
+    """Map staged release repo paths to local files for manifest checksums."""
+    base_dir = _artifacts_dir(run_id)
+    h5_dir = Path(STAGING_MOUNT) / run_id
+    files = []
+    for rel_path in rel_paths:
+        if rel_path in BASE_DATASET_STAGING_REL_PATHS:
+            local_path = base_dir / rel_path
+        else:
+            local_path = h5_dir / rel_path
+        files.append((str(local_path), rel_path))
+    return files
+
+
+def _promote_full_release_from_staging(run_id: str, version: str) -> str:
+    """Promote all staged artifacts as one finalized release."""
+    rel_paths = _full_release_staging_rel_paths(run_id)
     rel_paths_json = json.dumps(rel_paths)
+    files_json = json.dumps(_full_release_manifest_files(run_id, rel_paths))
     return _run_required_promotion_subprocess(
-        "Staging cleanup",
+        "Full release promotion",
         f"""
 import json
-from policyengine_us_data.utils.data_upload import cleanup_staging_hf
+from policyengine_us_data.utils.data_upload import promote_full_release_from_staging
 
 rel_paths = json.loads({rel_paths_json!r})
-cleaned = cleanup_staging_hf(
-    rel_paths,
+files_with_paths = json.loads({files_json!r})
+result = promote_full_release_from_staging(
+    rel_paths=rel_paths,
     version="{version}",
     run_id="{run_id}",
+    files_with_paths=files_with_paths,
+    extra_cleanup_paths=["_run_context.json"],
 )
-print(f"Cleaned {{cleaned}} staged release artifact(s)")
+print(json.dumps(result, indent=2, sort_keys=True))
 """,
     )
 
@@ -1581,10 +1603,11 @@ def promote_run(
     """Promote a completed pipeline run to production.
 
     1. Verify run status is "completed"
-    2. Promote H5s (regional + national) via existing
-       promote functions
-    3. Register version in version_manifest.json
-    4. Update run status to "promoted"
+    2. Promote every staged artifact in one Hugging Face commit
+    3. Upload/copy every artifact to GCS
+    4. Finalize release_manifest.json, tag the release, and update
+       version_manifest.json
+    5. Update run status to "promoted"
 
     Args:
         run_id: The run ID to promote.
@@ -1657,54 +1680,10 @@ def promote_run(
     _setup_repo()
 
     try:
-        # Promote base datasets from staging → production
-        print("\nPromoting base datasets (staging → production)...")
-        base_stdout = _run_required_promotion_subprocess(
-            "Base dataset promotion",
-            f"""
-from policyengine_us_data.storage.upload_completed_datasets import (
-    upload_datasets,
-)
-
-upload_datasets(
-    promote_only=True,
-    version="{version}",
-    run_id="{run_id}",
-    cleanup_staging=False,
-)
-print("Promoted staged base datasets")
-""",
-        )
-        print(f"  {base_stdout}")
-
-        # Promote H5s via existing functions
-        print("\nPromoting regional H5s...")
-        regional_result = promote_publish.remote(
-            branch=meta.branch,
-            version=version,
-            run_id=run_id,
-            cleanup_staging=False,
-        )
-        print(f"  {regional_result}")
-
-        print("\nPromoting national H5...")
-        national_result = promote_national_publish.remote(
-            branch=meta.branch,
-            version=version,
-            run_id=run_id,
-            cleanup_staging=False,
-        )
-        print(f"  {national_result}")
-
-        print("\nCleaning up staged release artifacts...")
-        try:
-            cleanup_stdout = _cleanup_promoted_staging_artifacts(run_id, version)
-            print(f"  {cleanup_stdout}")
-        except Exception as cleanup_exc:
-            print(
-                "WARNING: Release promotion succeeded, but staged artifact "
-                f"cleanup failed: {cleanup_exc}"
-            )
+        rel_paths = _full_release_staging_rel_paths(run_id)
+        print(f"\nPromoting {len(rel_paths)} staged release artifact(s)...")
+        promotion_stdout = _promote_full_release_from_staging(run_id, version)
+        print(f"  {promotion_stdout}")
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"

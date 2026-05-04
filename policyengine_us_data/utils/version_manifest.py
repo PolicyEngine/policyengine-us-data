@@ -398,6 +398,7 @@ def upload_manifest(
     """
     bucket = _get_gcs_bucket()
     registry = _read_registry_from_gcs(bucket)
+    registry.versions = [v for v in registry.versions if v.version != manifest.version]
     registry.versions.insert(0, manifest)
     registry.current = manifest.version
     _upload_registry_to_gcs(bucket, registry)

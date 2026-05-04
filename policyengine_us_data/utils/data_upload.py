@@ -874,12 +874,73 @@ def _staging_prefix(run_id: str = "") -> str:
     return f"staging/{run_id}" if run_id else "staging"
 
 
+def _dedupe_preserving_order(paths: Sequence[str]) -> list[str]:
+    seen = set()
+    deduped = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def list_missing_staged_artifacts(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[str]:
+    """Return staged HF paths that are missing for this run."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    repo_files = set(
+        api.list_repo_files(
+            repo_id=hf_repo_name,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+    )
+    return [
+        f"{staging_prefix}/{rel_path}"
+        for rel_path in _dedupe_preserving_order(rel_paths)
+        if f"{staging_prefix}/{rel_path}" not in repo_files
+    ]
+
+
+def download_staged_artifacts_for_manifest(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[tuple[Path, str]]:
+    """Download staged HF artifacts for release-manifest checksums."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    files_with_paths = []
+    for rel_path in _dedupe_preserving_order(rel_paths):
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=f"{staging_prefix}/{rel_path}",
+            repo_type=hf_repo_type,
+            token=token,
+        )
+        files_with_paths.append((Path(local_path), rel_path))
+    return files_with_paths
+
+
 def promote_staging_to_production_hf(
     files: List[str],
     version: str,
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
+    allow_noop: bool = False,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -893,6 +954,9 @@ def promote_staging_to_production_hf(
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
+        allow_noop: Treat an unchanged HF HEAD as success. This is useful
+            when retrying a full-release promotion after the single HF copy
+            commit already succeeded but later backends failed.
 
     Returns:
         Number of files promoted
@@ -938,6 +1002,13 @@ def promote_staging_to_production_hf(
     )
 
     if result.oid == head_before:
+        if allow_noop:
+            logging.warning(
+                "Promote commit was a no-op: HEAD stayed at %s. "
+                "Treating as success for idempotent release retry.",
+                head_before,
+            )
+            return len(files)
         raise RuntimeError(
             f"Promote commit was a no-op: HEAD stayed at {head_before}. "
             f"Staging files may be identical to production."
@@ -1030,8 +1101,8 @@ def cleanup_staging_hf(
             f"Staging files may not exist."
         )
 
-    logging.info(f"Cleaned up {len(files)} files from staging/")
-    return len(files)
+    logging.info(f"Cleaned up {len(operations)} files from staging/")
+    return len(operations)
 
 
 def upload_from_hf_staging_to_gcs(
@@ -1082,3 +1153,214 @@ def upload_from_hf_staging_to_gcs(
 
     logging.info(f"Total: uploaded {uploaded} files from HF staging to GCS")
     return uploaded
+
+
+def upload_final_version_manifest(
+    *,
+    version: str,
+    released_paths: Sequence[str],
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+) -> None:
+    """Update version_manifest.json after a release is finalized."""
+    from policyengine_us_data.utils.version_manifest import (
+        HFVersionInfo,
+        build_manifest,
+        upload_manifest,
+    )
+
+    upload_manifest(
+        build_manifest(
+            version=version,
+            blob_names=sorted(released_paths),
+            hf_info=HFVersionInfo(repo=hf_repo_name, commit=version),
+        )
+    )
+
+
+def promote_full_release_from_staging(
+    *,
+    rel_paths: Sequence[str],
+    version: str,
+    run_id: str = "",
+    files_with_paths: Optional[Sequence[Tuple[Path | str, str]]] = None,
+    extra_cleanup_paths: Sequence[str] = (),
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    cleanup_staging: bool = True,
+) -> dict:
+    """Promote one complete run-scoped staged release.
+
+    The order is deliberately transaction-like:
+    validate staged HF inputs, copy every HF artifact in one commit,
+    upload every GCS artifact, then finalize release_manifest.json,
+    tag the release, update version_manifest.json, and only then
+    clean staged inputs.
+    """
+    run_id = _resolve_staging_run_id(run_id)
+    if not run_id:
+        raise ValueError("run_id is required for full release promotion.")
+    if not version:
+        raise ValueError("version is required for full release promotion.")
+
+    os.environ["US_DATA_RUN_ID"] = run_id
+    rel_paths = _dedupe_preserving_order(rel_paths)
+    if not rel_paths:
+        raise ValueError("No release artifact paths were provided.")
+
+    if files_with_paths is None:
+        manifest_files = download_staged_artifacts_for_manifest(
+            rel_paths,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+            run_id=run_id,
+        )
+    else:
+        manifest_files = [
+            (Path(path), repo_path) for path, repo_path in files_with_paths
+        ]
+        manifest_paths = {repo_path for _, repo_path in manifest_files}
+        missing_manifest_paths = [
+            rel_path for rel_path in rel_paths if rel_path not in manifest_paths
+        ]
+        if missing_manifest_paths:
+            raise ValueError(
+                "Missing local files for release manifest: "
+                + ", ".join(sorted(missing_manifest_paths))
+            )
+        missing_local_files = [
+            str(path) for path, _ in manifest_files if not Path(path).exists()
+        ]
+        if missing_local_files:
+            raise FileNotFoundError(
+                "Missing local release manifest files: "
+                + ", ".join(sorted(missing_local_files))
+            )
+
+    finalized_manifest = get_matching_finalized_release_manifest(
+        files_with_paths=list(manifest_files),
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        model_package_name="policyengine-us",
+    )
+    if finalized_manifest is not None:
+        released_paths = sorted(
+            artifact["path"] for artifact in finalized_manifest["artifacts"].values()
+        )
+        upload_final_version_manifest(
+            version=version,
+            released_paths=released_paths,
+            hf_repo_name=hf_repo_name,
+        )
+        cleaned = 0
+        if cleanup_staging:
+            cleanup_paths = _dedupe_preserving_order([*rel_paths, *extra_cleanup_paths])
+            try:
+                cleaned = cleanup_staging_hf(
+                    cleanup_paths,
+                    version=version,
+                    hf_repo_name=hf_repo_name,
+                    hf_repo_type=hf_repo_type,
+                    run_id=run_id,
+                )
+            except Exception:
+                logging.warning(
+                    "Release %s was already finalized, but staging cleanup failed.",
+                    version,
+                    exc_info=True,
+                )
+        return {
+            "run_id": run_id,
+            "version": version,
+            "artifact_count": len(rel_paths),
+            "hf_promoted": 0,
+            "gcs_uploaded": 0,
+            "release_manifest_artifacts": len(finalized_manifest["artifacts"]),
+            "staging_cleaned": cleaned,
+            "already_finalized": True,
+        }
+
+    missing = list_missing_staged_artifacts(
+        rel_paths,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        run_id=run_id,
+    )
+    if missing:
+        raise FileNotFoundError(
+            "Missing staged release artifacts: " + ", ".join(sorted(missing))
+        )
+
+    should_finalize, missing_prefixes = preflight_release_manifest_publish(
+        manifest_files,
+        version=version,
+        new_repo_paths=rel_paths,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    if not should_finalize:
+        raise RuntimeError(
+            "Cannot finalize release; staged artifact set is incomplete. "
+            "Missing local-area prefixes: " + ", ".join(missing_prefixes)
+        )
+
+    promoted_hf = promote_staging_to_production_hf(
+        rel_paths,
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        run_id=run_id,
+        allow_noop=True,
+    )
+    uploaded_gcs = upload_from_hf_staging_to_gcs(
+        rel_paths,
+        version=version,
+        gcs_bucket_name=gcs_bucket_name,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        run_id=run_id,
+    )
+    release_manifest = publish_release_manifest_to_hf(
+        list(manifest_files),
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        create_tag=True,
+    )
+    released_paths = sorted(
+        artifact["path"] for artifact in release_manifest["artifacts"].values()
+    )
+    upload_final_version_manifest(
+        version=version,
+        released_paths=released_paths,
+        hf_repo_name=hf_repo_name,
+    )
+
+    cleaned = 0
+    if cleanup_staging:
+        cleanup_paths = _dedupe_preserving_order([*rel_paths, *extra_cleanup_paths])
+        try:
+            cleaned = cleanup_staging_hf(
+                cleanup_paths,
+                version=version,
+                hf_repo_name=hf_repo_name,
+                hf_repo_type=hf_repo_type,
+                run_id=run_id,
+            )
+        except Exception:
+            logging.warning(
+                "Release %s was finalized, but staging cleanup failed.",
+                version,
+                exc_info=True,
+            )
+
+    return {
+        "run_id": run_id,
+        "version": version,
+        "artifact_count": len(rel_paths),
+        "hf_promoted": promoted_hf,
+        "gcs_uploaded": uploaded_gcs,
+        "release_manifest_artifacts": len(release_manifest["artifacts"]),
+        "staging_cleaned": cleaned,
+    }

@@ -456,6 +456,63 @@ class TestUploadManifest:
         assert registry_data["versions"][0]["version"] == "1.72.3"
         assert registry_data["versions"][1]["version"] == "1.72.2"
 
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_replaces_existing_version_entry(
+        self,
+        mock_get_bucket,
+        mock_hf,
+        mock_bucket,
+        sample_manifest,
+    ):
+        mock_get_bucket.return_value = mock_bucket
+        stale = VersionManifest(
+            version="1.72.3",
+            created_at="2026-03-09T10:00:00Z",
+            hf=None,
+            gcs=GCSVersionInfo(
+                bucket="policyengine-us-data",
+                generations={"stale.h5": 111},
+            ),
+        )
+        older = VersionManifest(
+            version="1.72.2",
+            created_at="2026-03-08T10:00:00Z",
+            hf=None,
+            gcs=GCSVersionInfo(
+                bucket="policyengine-us-data",
+                generations={"old.h5": 222},
+            ),
+        )
+        existing_registry = VersionRegistry(
+            current="1.72.3",
+            versions=[stale, older],
+        )
+        existing_json = json.dumps(existing_registry.to_dict())
+        written = {}
+
+        def mock_blob(name):
+            b = MagicMock()
+            b.name = name
+            b.download_as_text.return_value = existing_json
+            written[name] = b
+            return b
+
+        mock_bucket.blob.side_effect = mock_blob
+
+        upload_manifest(sample_manifest)
+
+        blob = written["version_manifest.json"]
+        written_json = blob.upload_from_string.call_args[0][0]
+        registry_data = json.loads(written_json)
+
+        assert registry_data["current"] == "1.72.3"
+        assert [v["version"] for v in registry_data["versions"]] == [
+            "1.72.3",
+            "1.72.2",
+        ]
+        assert "stale.h5" not in registry_data["versions"][0]["gcs"]["generations"]
+
     @patch(f"{_MOD}.os")
     @patch(f"{_MOD}.HfApi")
     @patch(f"{_MOD}._get_gcs_bucket")

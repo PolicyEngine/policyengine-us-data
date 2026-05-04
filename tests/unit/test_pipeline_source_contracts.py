@@ -16,23 +16,15 @@ def _function_def(tree: ast.Module, name: str) -> ast.FunctionDef:
     raise AssertionError(f"Could not find function {name}")
 
 
-def test_promote_run_passes_version_to_national_promotion() -> None:
+def test_promote_run_uses_single_full_release_promotion() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     promote_run = _function_def(tree, "promote_run")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
 
-    national_calls = [
-        node
-        for node in ast.walk(promote_run)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "remote"
-        and isinstance(node.func.value, ast.Name)
-        and node.func.value.id == "promote_national_publish"
-    ]
-
-    assert len(national_calls) == 1
-    keyword_names = {keyword.arg for keyword in national_calls[0].keywords}
-    assert {"branch", "version", "run_id"}.issubset(keyword_names)
+    assert "_promote_full_release_from_staging(run_id, version)" in source
+    assert "promote_publish.remote(" not in source
+    assert "promote_national_publish.remote(" not in source
+    assert "upload_datasets(" not in source
 
 
 def test_run_pipeline_stage_1_stages_datasets_without_promoting() -> None:
@@ -70,17 +62,15 @@ def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
     assert "Registering version in manifest" not in source
 
 
-def test_promote_run_uses_canonical_dataset_promote_only_path() -> None:
+def test_promote_run_uses_unified_staged_release_path() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
-    promote_run = _function_def(tree, "promote_run")
-    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+    promote_full = _function_def(tree, "_promote_full_release_from_staging")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_full)
 
-    assert "policyengine_us_data.storage.upload_completed_datasets" in source
-    assert "upload_datasets(" in source
-    assert "promote_only=True" in source
-    assert "promote_staging_to_production_hf" not in source
-    assert "base_files = [" not in source
-    assert "policyengine_us_data.utils.version_manifest" not in source
+    assert "policyengine_us_data.utils.data_upload" in source
+    assert "promote_full_release_from_staging" in source
+    assert "files_with_paths=files_with_paths" in source
+    assert 'extra_cleanup_paths=["_run_context.json"]' in source
 
 
 def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> None:
@@ -92,16 +82,21 @@ def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> Non
     assert "Upload validation diagnostics even when H5 outputs are reused." in source
 
 
-def test_promote_run_defers_component_staging_cleanup_until_all_promotions_succeed():
+def test_full_release_path_combines_base_regional_and_national_outputs():
     tree = ast.parse(PIPELINE_SOURCE.read_text())
-    promote_run = _function_def(tree, "promote_run")
-    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+    helper = _function_def(tree, "_full_release_staging_rel_paths")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), helper)
 
-    assert source.count("cleanup_staging=False") == 3
-    assert source.index("upload_datasets(") < source.index("promote_publish.remote(")
-    assert source.index("promote_publish.remote(") < source.index(
-        "promote_national_publish.remote("
-    )
-    assert source.index("promote_national_publish.remote(") < source.index(
-        "_cleanup_promoted_staging_artifacts"
-    )
+    assert "BASE_DATASET_STAGING_REL_PATHS" in source
+    assert "_regional_h5_staging_rel_paths(run_id)" in source
+    assert '"national/US.h5"' in source
+
+
+def test_full_release_manifest_files_use_pipeline_and_staging_volumes():
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    helper = _function_def(tree, "_full_release_manifest_files")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), helper)
+
+    assert "_artifacts_dir(run_id)" in source
+    assert "Path(STAGING_MOUNT) / run_id" in source
+    assert "BASE_DATASET_STAGING_REL_PATHS" in source

@@ -60,4 +60,4 @@ Five workflow files in `.github/workflows/`:
 - `pr.yaml` — fork check, lint, uv.lock freshness, towncrier fragment check, unit tests, smoke test, docs build. Integration tests trigger when files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/` change. ~2–3 min for the unit path.
 - `push.yaml` — on push to main: either version-bump + PyPI publish (on `Update package version` commits), or a full Modal data build with integration tests (on everything else).
 - `pipeline.yaml` — dispatch only, spawns the H5 generation pipeline on Modal with configurable GPU/epochs/workers.
-- `local_area_publish.yaml` / `local_area_promote.yaml` — manual dispatch to build/stage and then promote local-area H5 files.
+- `local_area_publish.yaml` / `local_area_promote.yaml` — manual dispatch to build/stage local-area H5 files and promote a run-scoped US data release.

@@ -201,6 +201,10 @@ def test_workbook_domain_targets_include_charitable_deduction():
     )
 
 
+def test_workbook_domain_targets_include_miscellaneous_income():
+    assert WORKBOOK_NATIONAL_DOMAIN_TARGETS["miscellaneous_income"] == "other_income"
+
+
 def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
     assert _skip_coarse_state_agi_person_count_target("state", 9) is True
     assert _skip_coarse_state_agi_person_count_target("state", 8) is False

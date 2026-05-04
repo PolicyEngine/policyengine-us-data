@@ -177,6 +177,7 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
     "charitable_deduction": "charitable_contributions_deductions",
     "dividend_income": "ordinary_dividends",
     "income_tax_before_credits": "income_tax_before_credits",
+    "miscellaneous_income": "other_income",
     "qualified_dividend_income": "qualified_dividends",
     "rental_income": "rent_and_royalty_net_income",
     "tax_exempt_interest_income": "exempt_interest",

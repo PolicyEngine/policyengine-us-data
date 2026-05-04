@@ -17,6 +17,7 @@ SOI_UPRATING_MAP = {
     # deductions, so use total interest deductions as the closest available
     # proxy.
     "mortgage_interest_deductions": "interest_deduction",
+    "other_income": "miscellaneous_income",
     "total_pension_income": "pension_income",
     "total_social_security": "social_security",
     "business_net_losses": "total_self_employment_income",
@@ -77,6 +78,7 @@ def pe_to_soi(pe_dataset, year):
     df["ordinary_dividends"] = pe("non_qualified_dividend_income") + pe(
         "qualified_dividend_income"
     )
+    df["other_income"] = pe("miscellaneous_income") * (pe("miscellaneous_income") > 0)
     df["partnership_and_s_corp_income"] = pe("partnership_s_corp_income") * (
         pe("partnership_s_corp_income") > 0
     )
@@ -131,6 +133,7 @@ def puf_to_soi(puf, year):
     df["ira_distributions"] = puf.E01400
     df["count_of_exemptions"] = puf.XTOT
     df["ordinary_dividends"] = puf.E00600
+    df["other_income"] = puf.E01200 * (puf.E01200 > 0)
     df["partnership_and_s_corp_income"] = puf.E26270 * (puf.E26270 > 0)
     df["partnership_and_s_corp_losses"] = -puf.E26270 * (puf.E26270 < 0)
     df["total_pension_income"] = puf.E01500

@@ -55,6 +55,14 @@ def test_medicaid_targets_roll_forward_to_2025():
     assert int(targets["enrollment"].sum()) == 69_185_225
 
 
+def test_medicaid_targets_roll_forward_to_2026():
+    targets, data_year = _load_medicaid_enrollment_targets(2026)
+
+    assert data_year == 2026
+    assert len(targets) == 51
+    assert int(targets["enrollment"].sum()) == 68_022_529
+
+
 def test_medicaid_targets_fall_back_to_earliest_available_year():
     _, data_year = _load_medicaid_enrollment_targets(2023)
     assert data_year == 2024
@@ -65,6 +73,14 @@ def test_medicaid_national_targets_use_2025_values():
 
     assert data_year == 2025
     assert enrollment == 69_185_225
+    assert spending == pytest.approx(1_000_645_800_000.0001)
+
+
+def test_medicaid_national_targets_use_2026_enrollment():
+    spending, enrollment, data_year = _get_medicaid_national_targets(2026)
+
+    assert data_year == 2026
+    assert enrollment == 68_022_529
     assert spending == pytest.approx(1_000_645_800_000.0001)
 
 

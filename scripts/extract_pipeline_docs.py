@@ -239,8 +239,7 @@ def merge_map(
     }
     canonical_stages = manifest.get("canonical_stages", [])
     canonical_stage_by_id = {
-        canonical_stage["id"]: canonical_stage
-        for canonical_stage in canonical_stages
+        canonical_stage["id"]: canonical_stage for canonical_stage in canonical_stages
     }
     used_node_ids: set[str] = set()
     stages: list[dict[str, Any]] = []
@@ -377,14 +376,12 @@ def render_markdown(
                 stage.get("description", ""),
                 "",
                 f"- Substage ID: `{stage['id']}`",
-                f"- Canonical stage: "
-                f"`{stage.get('canonical_stage_id') or 'unknown'}`",
+                f"- Canonical stage: `{stage.get('canonical_stage_id') or 'unknown'}`",
                 f"- Legacy stage: `{stage.get('legacy_stage_id', 'none')}`",
                 "- Manifest steps: "
                 + (
                     ", ".join(
-                        f"`{step_id}`"
-                        for step_id in stage.get("manifest_step_ids", [])
+                        f"`{step_id}`" for step_id in stage.get("manifest_step_ids", [])
                     )
                     or "`none`"
                 ),

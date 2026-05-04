@@ -848,7 +848,7 @@ def run_pipeline(
             "upload": True,
             "sequential": False,
             "clear_checkpoints": clear_checkpoints,
-            "skip_tests": True,
+            "skip_tests": False,
             "skip_enhanced_cps": False,
             "run_id": run_id,
         }
@@ -883,7 +883,7 @@ def run_pipeline(
                 branch=branch,
                 sequential=False,
                 clear_checkpoints=clear_checkpoints,
-                skip_tests=True,
+                skip_tests=False,
                 skip_enhanced_cps=False,
                 run_id=run_id,
             )

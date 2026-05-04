@@ -1,3 +1,10 @@
+## [1.90.2] - 2026-05-04
+
+### Changed
+
+- Replace QBI simulation assumptions with a documented source-based model for qualification, SSTB status, W-2 wages, UBIA, and REIT/PTP/BDC income.
+
+
 ## [1.90.1] - 2026-05-04
 
 ### Fixed

@@ -7,6 +7,15 @@ from types import SimpleNamespace
 import pytest
 
 _DATA_UPLOAD_MODULE = None
+_RUN_CONTEXT_ENV_KEYS = (
+    "US_DATA_RUN_ID",
+    "US_DATA_MODAL_APP_NAME",
+    "MODAL_APP_NAME",
+    "US_DATA_MODAL_ENVIRONMENT",
+    "MODAL_ENVIRONMENT",
+    "US_DATA_HF_STAGING_PREFIX",
+    "US_DATA_GITHUB_RUN_URL",
+)
 
 
 def _install_fake_google_modules():
@@ -53,6 +62,11 @@ def _load_data_upload_module():
         )
 
     return _DATA_UPLOAD_MODULE
+
+
+def _track_run_context_env(monkeypatch):
+    for key in _RUN_CONTEXT_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def _install_fake_hf(monkeypatch, tmp_path):
@@ -361,6 +375,7 @@ def test_promote_full_release_orders_full_release_operations(
     rel_paths = ["cps_2024.h5", "states/AL.h5", "national/US.h5"]
     files = _make_files(tmp_path, rel_paths)
     calls = []
+    _track_run_context_env(monkeypatch)
 
     monkeypatch.setattr(
         data_upload,
@@ -401,7 +416,7 @@ def test_promote_full_release_orders_full_release_operations(
     monkeypatch.setattr(
         data_upload,
         "upload_final_version_manifest",
-        lambda **kwargs: calls.append("version_manifest"),
+        lambda **kwargs: calls.append(("version_manifest", kwargs.get("run_id"))),
     )
     monkeypatch.setattr(
         data_upload,
@@ -415,6 +430,7 @@ def test_promote_full_release_orders_full_release_operations(
         run_id="run-123",
         files_with_paths=files,
         extra_cleanup_paths=["_run_context.json"],
+        run_context={"github_run_id": "12345"},
     )
 
     assert calls == [
@@ -424,9 +440,10 @@ def test_promote_full_release_orders_full_release_operations(
         "promote_hf",
         "upload_gcs",
         "release_manifest",
-        "version_manifest",
+        ("version_manifest", "run-123"),
         "cleanup_staging",
     ]
+    assert data_upload.os.environ["US_DATA_RUN_ID"] == "run-123"
     assert result["artifact_count"] == 3
     assert result["hf_promoted"] == 3
     assert result["gcs_uploaded"] == 3
@@ -440,6 +457,7 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     data_upload = _load_data_upload_module()
     files = _make_files(tmp_path, ["states/AL.h5"])
     calls = []
+    _track_run_context_env(monkeypatch)
 
     monkeypatch.setattr(
         data_upload,
@@ -456,7 +474,13 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     monkeypatch.setattr(
         data_upload,
         "upload_final_version_manifest",
-        lambda **kwargs: calls.append(("version_manifest", kwargs["released_paths"])),
+        lambda **kwargs: calls.append(
+            (
+                "version_manifest",
+                kwargs["released_paths"],
+                kwargs.get("run_id"),
+            )
+        ),
     )
     monkeypatch.setattr(
         data_upload,
@@ -475,6 +499,6 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     assert result["hf_promoted"] == 0
     assert result["gcs_uploaded"] == 0
     assert calls == [
-        ("version_manifest", ["states/AL.h5"]),
+        ("version_manifest", ["states/AL.h5"], "run-123"),
         ("cleanup", ["states/AL.h5"]),
     ]

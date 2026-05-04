@@ -323,11 +323,13 @@ class TestBuildManifest:
             "1.72.3",
             ["file.h5"],
             hf_info=sample_hf_info,
+            run_id="usdata-gha123-a1-abcdef12",
         )
 
         assert result.hf is not None
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
+        assert result.run_id == "usdata-gha123-a1-abcdef12"
         assert result.policyengine_us == sample_policyengine_us_info
 
     @patch(f"{_MOD}.get_policyengine_us_build_info")

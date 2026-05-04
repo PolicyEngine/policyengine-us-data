@@ -152,6 +152,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")
@@ -243,6 +244,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")

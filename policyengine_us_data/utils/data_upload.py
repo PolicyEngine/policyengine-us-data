@@ -69,6 +69,18 @@ def _run_context_for_release() -> dict | None:
     return RunContext.from_env(run_id=run_id).to_dict()
 
 
+def _apply_run_context_for_release(
+    run_id: str,
+    run_context: Optional[Dict] = None,
+) -> dict | None:
+    if not run_id and not run_context:
+        return None
+    context = RunContext.from_mapping(run_context, run_id=run_id)
+    for key, value in context.export_env().items():
+        os.environ[key] = value
+    return context.to_dict()
+
+
 def _get_model_package_version(
     package_name: str = "policyengine-us",
 ) -> Optional[str]:
@@ -1159,6 +1171,7 @@ def upload_final_version_manifest(
     *,
     version: str,
     released_paths: Sequence[str],
+    run_id: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
 ) -> None:
     """Update version_manifest.json after a release is finalized."""
@@ -1173,6 +1186,7 @@ def upload_final_version_manifest(
             version=version,
             blob_names=sorted(released_paths),
             hf_info=HFVersionInfo(repo=hf_repo_name, commit=version),
+            run_id=run_id or None,
         )
     )
 
@@ -1182,6 +1196,7 @@ def promote_full_release_from_staging(
     rel_paths: Sequence[str],
     version: str,
     run_id: str = "",
+    run_context: Optional[Dict] = None,
     files_with_paths: Optional[Sequence[Tuple[Path | str, str]]] = None,
     extra_cleanup_paths: Sequence[str] = (),
     gcs_bucket_name: str = "policyengine-us-data",
@@ -1203,7 +1218,7 @@ def promote_full_release_from_staging(
     if not version:
         raise ValueError("version is required for full release promotion.")
 
-    os.environ["US_DATA_RUN_ID"] = run_id
+    _apply_run_context_for_release(run_id, run_context)
     rel_paths = _dedupe_preserving_order(rel_paths)
     if not rel_paths:
         raise ValueError("No release artifact paths were provided.")
@@ -1251,6 +1266,7 @@ def promote_full_release_from_staging(
         upload_final_version_manifest(
             version=version,
             released_paths=released_paths,
+            run_id=run_id,
             hf_repo_name=hf_repo_name,
         )
         cleaned = 0
@@ -1334,6 +1350,7 @@ def promote_full_release_from_staging(
     upload_final_version_manifest(
         version=version,
         released_paths=released_paths,
+        run_id=run_id,
         hf_repo_name=hf_repo_name,
     )
 

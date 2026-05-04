@@ -348,6 +348,7 @@ def build_manifest(
     blob_names: list[str],
     hf_info: Optional[HFVersionInfo] = None,
     policyengine_us_info: Optional[PolicyEngineUSBuildInfo] = None,
+    run_id: str | None = None,
 ) -> VersionManifest:
     """Build a version manifest by reading generation
     numbers from uploaded blobs.
@@ -356,6 +357,7 @@ def build_manifest(
         version: Semver version string.
         blob_names: List of blob paths to include.
         hf_info: Optional HF backend info to include.
+        run_id: Optional publication run ID that produced the version.
 
     Returns:
         A VersionManifest with generation numbers for
@@ -379,6 +381,7 @@ def build_manifest(
             bucket=bucket.name,
             generations=generations,
         ),
+        run_id=run_id,
         policyengine_us=policyengine_us_info or get_policyengine_us_build_info(),
     )
 

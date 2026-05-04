@@ -395,6 +395,7 @@ def promote_datasets(
                     artifact["path"] for artifact in manifest["artifacts"].values()
                 ),
                 hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+                run_id=run_id or None,
             )
         )
     else:

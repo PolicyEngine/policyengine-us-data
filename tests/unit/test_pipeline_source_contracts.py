@@ -21,7 +21,10 @@ def test_promote_run_uses_single_full_release_promotion() -> None:
     promote_run = _function_def(tree, "promote_run")
     source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
 
-    assert "_promote_full_release_from_staging(run_id, version)" in source
+    assert "promotion_context = RunContext.from_mapping(" in source
+    assert "_apply_run_context_env(promotion_context)" in source
+    assert "_promote_full_release_from_staging(" in source
+    assert "promotion_context.to_dict()" in source
     assert "promote_publish.remote(" not in source
     assert "promote_national_publish.remote(" not in source
     assert "upload_datasets(" not in source
@@ -69,6 +72,8 @@ def test_promote_run_uses_unified_staged_release_path() -> None:
 
     assert "policyengine_us_data.utils.data_upload" in source
     assert "promote_full_release_from_staging" in source
+    assert "run_context = json.loads" in source
+    assert "run_context=run_context" in source
     assert "files_with_paths=files_with_paths" in source
     assert 'extra_cleanup_paths=["_run_context.json"]' in source
 

@@ -182,10 +182,23 @@ PIPELINE_SUBSTEPS = tuple(
 
 PIPELINE_STEP_IDS = tuple(step.id for step in PIPELINE_STEPS)
 PIPELINE_SUBSTEP_IDS = tuple(substep.id for substep in PIPELINE_SUBSTEPS)
+
+# These are the step manifest records the current pipeline actually emits.
+# PIPELINE_STEPS and PIPELINE_SUBSTEPS define the intended taxonomy; not every
+# declared sub-step has a separate runtime manifest yet.
 RUN_MANIFEST_STEP_IDS = tuple(
-    step_id_value
-    for step in PIPELINE_STEPS
-    for step_id_value in (step.id, *(substep.id for substep in step.substeps))
+    step.id
+    for step in (
+        BUILD_DATASETS,
+        STAGE_BASE_DATASETS,
+        BUILD_CALIBRATION_PACKAGE,
+        WEIGHT_FITTING_REGIONAL,
+        WEIGHT_FITTING_NATIONAL,
+        LOCAL_AREA_H5_REGIONAL,
+        LOCAL_AREA_H5_NATIONAL,
+        UPLOAD_DIAGNOSTICS,
+        VALIDATE_AND_PROMOTE_RELEASE,
+    )
 )
 
 _STEP_BY_ID = {step.id: step for step in PIPELINE_STEPS}

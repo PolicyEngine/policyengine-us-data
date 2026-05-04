@@ -360,11 +360,16 @@ def _full_release_manifest_files(
     return files
 
 
-def _promote_full_release_from_staging(run_id: str, version: str) -> str:
+def _promote_full_release_from_staging(
+    run_id: str,
+    version: str,
+    run_context: dict | None = None,
+) -> str:
     """Promote all staged artifacts as one finalized release."""
     rel_paths = _full_release_staging_rel_paths(run_id)
     rel_paths_json = json.dumps(rel_paths)
     files_json = json.dumps(_full_release_manifest_files(run_id, rel_paths))
+    run_context_json = json.dumps(run_context or {})
     return _run_required_promotion_subprocess(
         "Full release promotion",
         f"""
@@ -373,10 +378,12 @@ from policyengine_us_data.utils.data_upload import promote_full_release_from_sta
 
 rel_paths = json.loads({rel_paths_json!r})
 files_with_paths = json.loads({files_json!r})
+run_context = json.loads({run_context_json!r})
 result = promote_full_release_from_staging(
     rel_paths=rel_paths,
     version="{version}",
     run_id="{run_id}",
+    run_context=run_context,
     files_with_paths=files_with_paths,
     extra_cleanup_paths=["_run_context.json"],
 )
@@ -1626,6 +1633,22 @@ def promote_run(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     meta = read_run_meta(run_id, pipeline_volume)
+    promotion_context = RunContext.from_mapping(
+        meta.run_context,
+        run_id=run_id,
+        modal_app_name=meta.modal_app_name,
+        modal_environment=meta.modal_environment,
+    )
+    _apply_run_context_env(promotion_context)
+    if not meta.run_context:
+        meta.run_context = promotion_context.to_dict()
+    meta.modal_app_name = meta.modal_app_name or promotion_context.modal_app_name
+    meta.modal_environment = (
+        meta.modal_environment or promotion_context.modal_environment
+    )
+    meta.hf_staging_prefix = (
+        meta.hf_staging_prefix or promotion_context.hf_staging_prefix
+    )
 
     if meta.status not in ("completed", "promoted"):
         raise RuntimeError(
@@ -1682,7 +1705,11 @@ def promote_run(
     try:
         rel_paths = _full_release_staging_rel_paths(run_id)
         print(f"\nPromoting {len(rel_paths)} staged release artifact(s)...")
-        promotion_stdout = _promote_full_release_from_staging(run_id, version)
+        promotion_stdout = _promote_full_release_from_staging(
+            run_id,
+            version,
+            promotion_context.to_dict(),
+        )
         print(f"  {promotion_stdout}")
 
         # Update run status only after all required promotion work succeeds.

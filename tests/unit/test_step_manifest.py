@@ -272,13 +272,21 @@ def test_pipeline_step_specs_define_top_level_steps_and_substeps():
     assert STAGE_BASE_DATASETS.parent_id == "1_build_datasets"
     assert WRITE_VERSION_MANIFEST.id in PIPELINE_SUBSTEP_IDS
     assert WEIGHT_FITTING_REGIONAL.parent_id == "3_fit_weights"
-    assert set(PIPELINE_STEP_IDS).issubset(RUN_MANIFEST_STEP_IDS)
-    assert set(PIPELINE_SUBSTEP_IDS).issubset(RUN_MANIFEST_STEP_IDS)
-    assert RUN_MANIFEST_STEP_IDS[:3] == (
+    assert RUN_MANIFEST_STEP_IDS == (
         "1_build_datasets",
-        "1a_raw_data_download",
-        "1b_base_dataset_construction",
+        "1g_stage_base_datasets",
+        "2_build_calibration_package",
+        "3a_weight_fitting_regional",
+        "3b_weight_fitting_national",
+        "4a_local_area_h5_regional",
+        "4b_local_area_h5_national",
+        "4d_upload_diagnostics",
+        "5_validate_and_promote_release",
     )
+    assert "3_fit_weights" in PIPELINE_STEP_IDS
+    assert "3_fit_weights" not in RUN_MANIFEST_STEP_IDS
+    assert "5d_write_version_manifest" in PIPELINE_SUBSTEP_IDS
+    assert "5d_write_version_manifest" not in RUN_MANIFEST_STEP_IDS
 
 
 def test_start_step_manifest_records_substep_parent(tmp_path):

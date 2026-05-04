@@ -387,6 +387,9 @@ def test_puf_load_dataset_preserves_existing_qbi_qualification_flags(tmp_path):
         file_handle.create_dataset(
             "qualified_reit_and_ptp_income", data=np.array([0.0, 0.0])
         )
+        file_handle.attrs[puf_module.QBI_SIMULATION_VERSION_ATTR] = (
+            puf_module.QBI_SIMULATION_VERSION
+        )
 
     arrays = DummyPUF().load_dataset()
 
@@ -439,6 +442,73 @@ def test_puf_load_dataset_recomputes_unversioned_qbi_outputs(tmp_path, monkeypat
 
     np.testing.assert_array_equal(arrays["business_is_sstb"], np.array([False]))
     assert arrays["unadjusted_basis_qualified_property"][0] > 0
+    with h5py.File(DummyPUF.file_path, "r") as file_handle:
+        assert (
+            file_handle.attrs[puf_module.QBI_SIMULATION_VERSION_ATTR]
+            == puf_module.QBI_SIMULATION_VERSION
+        )
+
+
+def test_puf_load_dataset_refreshes_unversioned_self_employment_qbi_flags(
+    tmp_path, monkeypatch
+):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    def mutate(params):
+        for source in params["qbi_qualification_probabilities"]:
+            params["qbi_qualification_probabilities"][source] = 0.0
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 0.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset("household_id", data=np.array([1]))
+        file_handle.create_dataset("self_employment_income", data=np.array([0.0]))
+        file_handle.create_dataset(
+            "sstb_self_employment_income", data=np.array([10_000.0])
+        )
+        for source in set(puf_module.QBI_SOURCE_NAMES) - {"self_employment_income"}:
+            file_handle.create_dataset(source, data=np.zeros(1))
+        for flag in puf_module.QBI_QUALIFICATION_FLAG_BY_SOURCE.values():
+            file_handle.create_dataset(flag, data=np.array([False]))
+        file_handle.create_dataset(
+            puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+            data=np.array([True]),
+        )
+        file_handle.create_dataset("business_is_sstb", data=np.array([True]))
+        file_handle.create_dataset(
+            "w2_wages_from_qualified_business", data=np.array([0.0])
+        )
+        file_handle.create_dataset(
+            "unadjusted_basis_qualified_property", data=np.array([0.0])
+        )
+        file_handle.create_dataset(
+            "sstb_w2_wages_from_qualified_business", data=np.array([0.0])
+        )
+        file_handle.create_dataset(
+            "sstb_unadjusted_basis_qualified_property", data=np.array([0.0])
+        )
+        file_handle.create_dataset(
+            "qualified_reit_and_ptp_income", data=np.array([0.0])
+        )
+        file_handle.create_dataset("qualified_bdc_income", data=np.array([0.0]))
+
+    arrays = DummyPUF().load_dataset()
+
+    np.testing.assert_array_equal(arrays["business_is_sstb"], np.array([False]))
+    np.testing.assert_allclose(arrays["self_employment_income"], np.array([10_000.0]))
+    np.testing.assert_allclose(arrays["sstb_self_employment_income"], np.array([0.0]))
+    np.testing.assert_array_equal(
+        arrays["self_employment_income_would_be_qualified"], np.array([True])
+    )
+    np.testing.assert_array_equal(
+        arrays[puf_module.SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG],
+        np.array([False]),
+    )
     with h5py.File(DummyPUF.file_path, "r") as file_handle:
         assert (
             file_handle.attrs[puf_module.QBI_SIMULATION_VERSION_ATTR]

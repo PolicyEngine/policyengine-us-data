@@ -708,9 +708,11 @@ class TestForbesBackbone:
         regular = puf_with_missing_target[
             ~puf_with_missing_target.RECID.isin(AGGREGATE_RECIDS)
         ].copy()
-        row = puf_with_missing_target.loc[
-            puf_with_missing_target.RECID == 999999
-        ].iloc[0].copy()
+        row = (
+            puf_with_missing_target.loc[puf_with_missing_target.RECID == 999999]
+            .iloc[0]
+            .copy()
+        )
         row["S006"] = 410 * 100
         row["E03500"] = np.nan
         amount_columns = _get_amount_columns(puf_with_missing_target.columns)

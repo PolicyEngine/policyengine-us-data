@@ -920,28 +920,41 @@ class PUF(Dataset):
             qualification_flags = {}
             for source, qualified in raw_qualification_flags.items():
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
+                if source == "self_employment_income":
+                    split_flags = []
+                    if flag in file_handle or flag in existing_overrides:
+                        split_flags.append(
+                            self._values_from_file_or_overrides(
+                                file_handle, flag, existing_overrides, length
+                            ).astype(bool)
+                        )
+                    if (
+                        SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in file_handle
+                        or SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in existing_overrides
+                    ):
+                        split_flags.append(
+                            self._values_from_file_or_overrides(
+                                file_handle,
+                                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
+                                existing_overrides,
+                                length,
+                            ).astype(bool)
+                        )
+                    if len(split_flags) == 2:
+                        qualification_flags[source] = split_flags[0] | split_flags[1]
+                    else:
+                        qualification_flags[source] = qualified
+                        for split_flag in split_flags:
+                            qualification_flags[source] = (
+                                qualification_flags[source] | split_flag
+                            )
+                    continue
                 qualification_flags[source] = (
                     self._values_from_file_or_overrides(
                         file_handle, flag, existing_overrides, length
                     ).astype(bool)
                     if flag in file_handle or flag in existing_overrides
                     else qualified
-                )
-            if (
-                SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in file_handle
-                or SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG in existing_overrides
-            ):
-                sstb_self_employment_would_be_qualified = (
-                    self._values_from_file_or_overrides(
-                        file_handle,
-                        SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG,
-                        existing_overrides,
-                        length,
-                    ).astype(bool)
-                )
-                qualification_flags["self_employment_income"] = (
-                    qualification_flags["self_employment_income"]
-                    | sstb_self_employment_would_be_qualified
                 )
 
             source_arrays = {}

@@ -1,3 +1,10 @@
+## [1.95.4] - 2026-05-04
+
+### Changed
+
+- Add run-scoped publication identity for GitHub, Modal, and Hugging Face staging.
+
+
 ## [1.95.3] - 2026-05-04
 
 ### Fixed

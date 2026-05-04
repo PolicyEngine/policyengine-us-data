@@ -37,7 +37,7 @@ jobs:
 
       - name: Promote staged files to production
         run: |
-          RUN_ID="${{ github.event.inputs.run_id }}"
+          US_DATA_RUN_ID="${{ github.event.inputs.run_id }}"
           BRANCH="${{ github.event.inputs.branch }}"
-          echo "Promoting run ${RUN_ID} from branch ${BRANCH}"
-          modal run modal_app/local_area.py::main_promote --run-id="${RUN_ID}" --branch="${BRANCH}"
+          echo "Promoting run ${US_DATA_RUN_ID} from branch ${BRANCH}"
+          modal run modal_app/local_area.py::main_promote --run-id="${US_DATA_RUN_ID}" --branch="${BRANCH}"

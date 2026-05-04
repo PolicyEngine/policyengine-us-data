@@ -93,6 +93,7 @@ def _build_promote_national_publish_script(
     rel_paths_json = json.dumps(rel_paths)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -109,6 +110,7 @@ from policyengine_us_data.utils.version_manifest import (
 
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
 rel_paths = json.loads('''{rel_paths_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
@@ -172,6 +174,7 @@ def _build_promote_publish_script(
     rel_paths_json = json.dumps(rel_paths)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -189,6 +192,7 @@ from policyengine_us_data.utils.version_manifest import (
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")

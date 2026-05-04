@@ -115,7 +115,7 @@ jobs:
       - name: Dispatch pipeline workflow
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ needs.run-context.outputs.run_id }}
+          US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
           SOURCE_SHA: ${{ needs.versioning.outputs.version_sha }}
         run: bash .github/scripts/dispatch_publication_pipeline.sh
 

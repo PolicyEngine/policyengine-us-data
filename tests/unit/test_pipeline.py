@@ -2,7 +2,7 @@
 
 import json
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +11,7 @@ modal = pytest.importorskip("modal")
 
 from modal_app.pipeline import (  # noqa: E402
     _build_diagnostics_upload_script,
+    _run_required_promotion_subprocess,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
 from modal_app.step_manifests.store import (  # noqa: E402
@@ -226,3 +227,27 @@ def test_diagnostics_upload_script_is_valid_python(monkeypatch, capsys):
         }
     ]
     assert capsys.readouterr().out == f"Uploaded {entries[0][1]}\n"
+
+
+def test_required_promotion_subprocess_raises_on_failure(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="missing staged files",
+        )
+
+    monkeypatch.setattr("modal_app.pipeline.subprocess.run", fake_run)
+
+    with pytest.raises(
+        RuntimeError,
+        match="Base dataset promotion failed: missing staged files",
+    ):
+        _run_required_promotion_subprocess("Base dataset promotion", "print('x')")
+
+    assert captured["cmd"][-1] == "print('x')"
+    assert captured["kwargs"]["capture_output"] is True

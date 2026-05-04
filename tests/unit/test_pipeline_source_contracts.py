@@ -35,7 +35,7 @@ def test_promote_run_passes_version_to_national_promotion() -> None:
     assert {"branch", "version", "run_id"}.issubset(keyword_names)
 
 
-def test_run_pipeline_stage_1_builds_without_publishing() -> None:
+def test_run_pipeline_stage_1_stages_datasets_without_promoting() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     run_pipeline = _function_def(tree, "run_pipeline")
 
@@ -50,9 +50,32 @@ def test_run_pipeline_stage_1_builds_without_publishing() -> None:
     ]
 
     assert len(build_calls) == 1
-    upload_keywords = [
-        keyword for keyword in build_calls[0].keywords if keyword.arg == "upload"
-    ]
-    assert len(upload_keywords) == 1
-    assert isinstance(upload_keywords[0].value, ast.Constant)
-    assert upload_keywords[0].value.value is False
+    keywords = {keyword.arg: keyword.value for keyword in build_calls[0].keywords}
+    assert isinstance(keywords["upload"], ast.Constant)
+    assert keywords["upload"].value is True
+    assert isinstance(keywords["stage_only"], ast.Constant)
+    assert keywords["stage_only"].value is True
+
+
+def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    promote_run = _function_def(tree, "promote_run")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+
+    assert "_fail_step_manifest(promote_manifest, exc, pipeline_volume)" in source
+    assert "WARNING: Base dataset promotion" not in source
+    assert "WARNING: Regional promote" not in source
+    assert "WARNING: National promote" not in source
+    assert "WARNING: Version registration failed" not in source
+
+
+def test_promote_run_uses_canonical_dataset_promote_only_path() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    promote_run = _function_def(tree, "promote_run")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+
+    assert "policyengine_us_data.storage.upload_completed_datasets" in source
+    assert "upload_datasets(" in source
+    assert "promote_only=True" in source
+    assert "promote_staging_to_production_hf" not in source
+    assert "base_files = [" not in source

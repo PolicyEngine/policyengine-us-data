@@ -53,6 +53,10 @@ def test_resolve_run_id_ignores_raw_github_actions_identity() -> None:
     assert resolve_run_id(env=env) == ""
 
 
+def test_resolve_run_id_ignores_generic_run_id_alias() -> None:
+    assert resolve_run_id(env={"RUN_ID": "alias-run"}) == ""
+
+
 def test_run_context_from_env_records_cross_system_identity() -> None:
     run_id = build_run_id(
         github_run_id="123456789",
@@ -100,7 +104,6 @@ def test_run_context_export_env_includes_modal_and_hf_values() -> None:
     exported = context.export_env()
 
     assert exported["US_DATA_RUN_ID"] == "run-123"
-    assert exported["RUN_ID"] == "run-123"
     assert exported["MODAL_APP_NAME"] == "policyengine-us-data-pub-run-123"
     assert exported["MODAL_ENVIRONMENT"] == "main"
     assert exported["US_DATA_HF_STAGING_PREFIX"] == "staging/run-123"

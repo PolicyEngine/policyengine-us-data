@@ -72,6 +72,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_policyengine = ModuleType("policyengine_us_data")
         fake_calibration = ModuleType("policyengine_us_data.calibration")
         fake_local_h5 = ModuleType("policyengine_us_data.calibration.local_h5")
+        fake_utils = ModuleType("policyengine_us_data.utils")
+        fake_run_context = ModuleType("policyengine_us_data.utils.run_context")
         fake_partitioning = ModuleType(
             "policyengine_us_data.calibration.local_h5.partitioning"
         )
@@ -81,6 +83,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_policyengine.__path__ = []
         fake_calibration.__path__ = []
         fake_local_h5.__path__ = []
+        fake_utils.__path__ = []
+        fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
         fake_fingerprinting.PublishingInputBundle = object
 
@@ -97,6 +101,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                 "policyengine_us_data": fake_policyengine,
                 "policyengine_us_data.calibration": fake_calibration,
                 "policyengine_us_data.calibration.local_h5": fake_local_h5,
+                "policyengine_us_data.utils": fake_utils,
+                "policyengine_us_data.utils.run_context": fake_run_context,
                 "policyengine_us_data.calibration.local_h5.fingerprinting": (
                     fake_fingerprinting
                 ),

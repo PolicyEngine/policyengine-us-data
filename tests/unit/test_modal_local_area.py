@@ -17,6 +17,8 @@ def test_build_promote_national_publish_script_imports_version_manifest_helpers(
     assert "HFVersionInfo" in script
     assert "build_manifest" in script
     assert "upload_manifest" in script
+    assert 'os.environ["US_DATA_RUN_ID"] = run_id' in script
+    assert 'os.environ["RUN_ID"]' not in script
 
 
 def test_build_promote_publish_script_finalizes_complete_release():
@@ -31,6 +33,8 @@ def test_build_promote_publish_script_finalizes_complete_release():
     assert "should_finalize_local_area_release" in script
     assert "create_tag=should_finalize" in script
     assert "upload_manifest(" in script
+    assert 'os.environ["US_DATA_RUN_ID"] = run_id' in script
+    assert 'os.environ["RUN_ID"]' not in script
 
 
 def test_promote_publish_falls_back_to_package_version_for_new_run_ids(

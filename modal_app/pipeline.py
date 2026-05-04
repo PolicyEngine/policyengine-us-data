@@ -58,7 +58,6 @@ from modal_app.step_manifests.specs import (  # noqa: E402
     BUILD_OUTPUTS,
     LOCAL_AREA_H5_NATIONAL,
     LOCAL_AREA_H5_REGIONAL,
-    STAGE_BASE_DATASETS,
     UPLOAD_DIAGNOSTICS,
     VALIDATE_AND_PROMOTE_RELEASE,
     WEIGHT_FITTING_NATIONAL,
@@ -218,84 +217,12 @@ from modal_app.local_area import (  # noqa: E402
 app.include(_local_area_app)
 
 
-# ── Stage base datasets ─────────────────────────────────────────
+# ── Upload helpers ──────────────────────────────────────────────
 
 
 def _setup_repo() -> None:
     """Change to the pre-baked repo directory."""
     os.chdir("/root/policyengine-us-data")
-
-
-def stage_base_datasets(
-    run_id: str,
-    version: str,
-    branch: str,
-) -> None:
-    """Upload source_imputed + policy_data.db from pipeline
-    volume to HF staging/.
-
-    Clones the repo and shells out to upload_to_staging_hf()
-    via subprocess, consistent with other Modal apps.
-
-    Args:
-        run_id: The current run ID (for logging).
-        version: Package version string for the commit.
-        branch: Git branch for repo clone.
-    """
-    artifacts = Path(artifacts_dir_for_run(run_id))
-
-    files_with_paths = []
-
-    # Stage all intermediate H5 datasets for lineage tracing
-    # source_imputed* goes to calibration/ (promote expects that path)
-    for h5_file in sorted(artifacts.glob("*.h5")):
-        if h5_file.name.startswith("source_imputed"):
-            repo_path = f"calibration/{h5_file.name}"
-        else:
-            repo_path = f"datasets/{h5_file.name}"
-        files_with_paths.append((str(h5_file), repo_path))
-        print(f"  {h5_file.name} -> {repo_path}: {h5_file.stat().st_size:,} bytes")
-
-    policy_db = artifacts / "policy_data.db"
-    if policy_db.exists():
-        files_with_paths.append((str(policy_db), "calibration/policy_data.db"))
-        print(f"  policy_data.db: {policy_db.stat().st_size:,} bytes")
-    else:
-        print("  WARNING: policy_data.db not found, skipping")
-
-    if not files_with_paths:
-        print("  No base datasets to stage")
-        return
-
-    _setup_repo()
-
-    # Build the upload script as a Python snippet
-    import json as _json
-
-    pairs_json = _json.dumps(files_with_paths)
-    result = subprocess.run(
-        _python_cmd(
-            "-c",
-            f"""
-import json
-from policyengine_us_data.utils.data_upload import (
-    upload_to_staging_hf,
-)
-
-pairs = json.loads('''{pairs_json}''')
-files_with_paths = [(p, r) for p, r in pairs]
-count = upload_to_staging_hf(files_with_paths, "{version}", run_id="{run_id}")
-print(f"Staged {{count}} base dataset(s) to HF")
-""",
-        ),
-        cwd="/root/policyengine-us-data",
-        text=True,
-        capture_output=True,
-        env=os.environ.copy(),
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Base dataset staging failed: {result.stderr}")
-    print(f"  {result.stdout.strip()}")
 
 
 def upload_run_diagnostics(
@@ -373,6 +300,21 @@ for local_path, repo_path in entries:
     )
     print(f"Uploaded {{repo_path}}")
 """
+
+
+def _run_required_promotion_subprocess(label: str, script: str) -> str:
+    """Run a promotion subprocess and fail the release step on error."""
+    result = subprocess.run(
+        _python_cmd("-c", script),
+        cwd="/root/policyengine-us-data",
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"{label} failed: {detail}")
+    return result.stdout.strip()
 
 
 @app.function(
@@ -865,7 +807,8 @@ def run_pipeline(
         # ── Step 1: Build datasets ──
         build_dataset_inputs = {"source": {"branch": branch, "sha": sha}}
         build_dataset_parameters = {
-            "upload": False,
+            "upload": True,
+            "stage_only": True,
             "sequential": False,
             "clear_checkpoints": clear_checkpoints,
             "skip_tests": False,
@@ -897,20 +840,20 @@ def run_pipeline(
             )
 
             build_datasets.remote(
-                upload=False,
+                upload=True,
                 branch=branch,
                 sequential=False,
                 clear_checkpoints=clear_checkpoints,
                 skip_tests=False,
                 skip_enhanced_cps=False,
+                stage_only=True,
                 run_id=run_id,
             )
 
-            # The build_datasets step produces files in its
-            # own volume. Key outputs (source_imputed,
-            # policy_data.db) are staged to HF in step 4.
-            # TODO(#617): When pipeline_artifacts.py lands,
-            # call mirror_to_pipeline() here for audit trail.
+            # Stage 1 uses the existing dataset upload machinery to validate
+            # and write canonical dataset paths under staging/{run_id}/.
+            # It also copies artifacts to the pipeline volume for downstream
+            # calibration, H5 building, and manifest traceability.
             dataset_outputs = collect_directory_artifacts(
                 _artifacts_dir(run_id),
                 role="output",
@@ -1229,13 +1172,12 @@ def run_pipeline(
             active_step_manifest = None
             print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
-        # ── Step 4: Build H5s + stage + diagnostics (parallel) ──
+        # ── Step 4: Build H5s + diagnostics (parallel) ──
         #   4a. coordinate_publish (regional H5s)
         #   4b. coordinate_national_publish (national H5)
-        #   4c. stage_base_datasets (datasets → HF staging)
-        #   4d. upload_run_diagnostics (calibration diagnostics → HF)
-        #   4e. _write_validation_diagnostics (after H5 builds)
-        #   4f. upload_run_diagnostics (validation diagnostics → HF)
+        #   4c. upload_run_diagnostics (calibration diagnostics → HF)
+        #   4d. _write_validation_diagnostics (after H5 builds)
+        #   4e. upload_run_diagnostics (validation diagnostics → HF)
         regional_h5_inputs = _artifact_identities(
             {
                 "weights": _artifacts_dir(run_id) / "calibration_weights.npy",
@@ -1272,18 +1214,6 @@ def run_pipeline(
             "skip_upload": False,
             "skip_national": skip_national,
         }
-        stage_base_inputs = _artifact_identities(
-            {
-                "policy_data_db": _artifacts_dir(run_id) / "policy_data.db",
-                "source_imputed": _artifacts_dir(run_id)
-                / "source_imputed_stratified_extended_cps.h5",
-            }
-        )
-        stage_base_parameters = {
-            "version": version,
-            "branch": branch,
-            "run_id": run_id,
-        }
         regional_h5_reuse = _step_reusable(
             meta,
             LOCAL_AREA_H5_REGIONAL,
@@ -1300,16 +1230,8 @@ def run_pipeline(
             if not skip_national
             else None
         )
-        stage_base_reuse = _step_reusable(
-            meta,
-            STAGE_BASE_DATASETS,
-            expected_input_identities=stage_base_inputs,
-            expected_parameters=stage_base_parameters,
-        )
-        publish_reusable = (
-            regional_h5_reuse.reusable
-            and (skip_national or national_h5_reuse.reusable)
-            and stage_base_reuse.reusable
+        publish_reusable = regional_h5_reuse.reusable and (
+            skip_national or national_h5_reuse.reusable
         )
         if publish_reusable:
             _mark_step_reused(
@@ -1325,17 +1247,11 @@ def run_pipeline(
                     national_h5_reuse,
                     vol=pipeline_volume,
                 )
-            _mark_step_reused(
-                meta,
-                STAGE_BASE_DATASETS,
-                stage_base_reuse,
-                vol=pipeline_volume,
-            )
             print(f"\n[Step 4/5] {BUILD_OUTPUTS.title} (skipped - manifests valid)")
         else:
             print(
                 f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
-                "building H5s, staging datasets, uploading diagnostics "
+                "building H5s and uploading diagnostics "
                 "(parallel)..."
             )
             step_start = time.time()
@@ -1388,35 +1304,7 @@ def run_pipeline(
                     vol=pipeline_volume,
                 )
 
-            # While H5 builds run, stage base datasets in this container
             pipeline_volume.reload()
-
-            print("  Staging base datasets to HF...")
-            stage_base_manifest = _start_step_manifest(
-                meta,
-                STAGE_BASE_DATASETS,
-                parameters=stage_base_parameters,
-                input_identities=stage_base_inputs,
-                vol=pipeline_volume,
-            )
-            active_step_manifest = stage_base_manifest
-            stage_base_datasets(run_id, version, branch)
-            base_stage_outputs = collect_directory_artifacts(
-                _artifacts_dir(run_id),
-                patterns=("*.h5", "*.db"),
-                role="output",
-            )
-            _complete_step_manifest(
-                stage_base_manifest,
-                outputs=base_stage_outputs,
-                reuse_decision="computed",
-                reuse_measurement=ReuseMeasurement(
-                    expected_outputs=len(base_stage_outputs),
-                    recomputed_outputs=len(base_stage_outputs),
-                ),
-                vol=pipeline_volume,
-            )
-            active_step_manifest = regional_h5_manifest
 
             # Now wait for H5 builds to finish
             print("  Waiting for regional H5 build...")
@@ -1655,9 +1543,9 @@ def promote_run(
             for artifact in completed_validated_outputs(
                 _run_dir(run_id),
                 step_ids=[
+                    BUILD_DATASETS.id,
                     LOCAL_AREA_H5_REGIONAL.id,
                     LOCAL_AREA_H5_NATIONAL.id,
-                    STAGE_BASE_DATASETS.id,
                 ],
             )
         ]
@@ -1690,66 +1578,48 @@ def promote_run(
     # Clone repo for subprocess calls
     _setup_repo()
 
-    # Promote base datasets from staging → production
-    print("\nPromoting base datasets (staging → production)...")
     try:
-        result = subprocess.run(
-            _python_cmd(
-                "-c",
-                f"""
-from policyengine_us_data.utils.data_upload import (
-    promote_staging_to_production_hf,
+        # Promote base datasets from staging → production
+        print("\nPromoting base datasets (staging → production)...")
+        base_stdout = _run_required_promotion_subprocess(
+            "Base dataset promotion",
+            f"""
+from policyengine_us_data.storage.upload_completed_datasets import (
+    upload_datasets,
 )
 
-base_files = [
-    "calibration/source_imputed_stratified_extended_cps.h5",
-    "calibration/policy_data.db",
-]
-count = promote_staging_to_production_hf(base_files, "{version}", run_id="{run_id}")
-print(f"Promoted {{count}} base dataset(s)")
+upload_datasets(
+    promote_only=True,
+    version="{version}",
+    run_id="{run_id}",
+)
+print("Promoted staged base datasets")
 """,
-            ),
-            cwd="/root/policyengine-us-data",
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-        print(f"  {result.stdout.strip()}")
-    except Exception as e:
-        print(f"  WARNING: Base dataset promotion: {e}")
+        print(f"  {base_stdout}")
 
-    # Promote H5s via existing functions
-    print("\nPromoting regional H5s...")
-    try:
+        # Promote H5s via existing functions
+        print("\nPromoting regional H5s...")
         regional_result = promote_publish.remote(
             branch=meta.branch,
             version=version,
             run_id=run_id,
         )
         print(f"  {regional_result}")
-    except Exception as e:
-        print(f"  WARNING: Regional promote: {e}")
 
-    print("\nPromoting national H5...")
-    try:
+        print("\nPromoting national H5...")
         national_result = promote_national_publish.remote(
             branch=meta.branch,
             version=version,
             run_id=run_id,
         )
         print(f"  {national_result}")
-    except Exception as e:
-        print(f"  WARNING: National promote: {e}")
 
-    # Register version in manifest
-    print("\nRegistering version in manifest...")
-    try:
-        result = subprocess.run(
-            _python_cmd(
-                "-c",
-                f"""
+        # Register version in manifest
+        print("\nRegistering version in manifest...")
+        version_stdout = _run_required_promotion_subprocess(
+            "Version registration",
+            f"""
 from policyengine_us_data.utils.version_manifest import (
     build_manifest,
     upload_manifest,
@@ -1769,31 +1639,24 @@ manifest.diagnostics_path = "calibration/runs/{run_id}/diagnostics/"
 upload_manifest(manifest)
 print("Registered version {version} in version_manifest.json")
 """,
-            ),
-            cwd="/root/policyengine-us-data",
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-        print(f"  {result.stdout.strip()}")
-    except Exception as e:
-        print(f"  WARNING: Version registration failed: {e}")
-        print("  This can be done manually later via version_manifest.py")
+        print(f"  {version_stdout}")
 
-    # Update run status
-    meta.status = "promoted"
-    _complete_step_manifest(
-        promote_manifest,
-        outputs=[
-            ArtifactReference.from_dict(artifact)
-            for artifact in promote_inputs["validated_step_outputs"]
-        ],
-        reuse_decision="computed",
-        vol=pipeline_volume,
-    )
-    write_run_meta(meta, pipeline_volume)
+        # Update run status only after all required promotion work succeeds.
+        meta.status = "promoted"
+        _complete_step_manifest(
+            promote_manifest,
+            outputs=[
+                ArtifactReference.from_dict(artifact)
+                for artifact in promote_inputs["validated_step_outputs"]
+            ],
+            reuse_decision="computed",
+            vol=pipeline_volume,
+        )
+        write_run_meta(meta, pipeline_volume)
+    except Exception as exc:
+        _fail_step_manifest(promote_manifest, exc, pipeline_volume)
+        raise
 
     print("\n" + "=" * 60)
     print("PROMOTION COMPLETE")

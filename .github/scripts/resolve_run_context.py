@@ -42,7 +42,7 @@ def _github_actions_run_id(env: Mapping[str, str]) -> str:
 def main() -> None:
     env = os.environ
     app_prefix = env.get("US_DATA_MODAL_APP_PREFIX", DEFAULT_MODAL_APP_PREFIX)
-    run_id = env.get(RUN_ID_ENV, "") or env.get("RUN_ID", "")
+    run_id = env.get(RUN_ID_ENV, "")
     context = RunContext.from_env(
         run_id=run_id or _github_actions_run_id(env),
         modal_app_prefix=app_prefix,

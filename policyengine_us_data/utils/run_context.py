@@ -93,11 +93,11 @@ def resolve_run_id(
     """Resolve the canonical run ID from an explicit value or publication env.
 
     Raw GitHub Actions IDs are intentionally not publication run IDs. GitHub
-    workflow scripts translate them once, then export US_DATA_RUN_ID/RUN_ID for
+    workflow scripts translate them once, then export US_DATA_RUN_ID for
     library code and Modal entrypoints.
     """
     env = env or os.environ
-    candidate = explicit or env.get(RUN_ID_ENV, "") or env.get("RUN_ID", "")
+    candidate = explicit or env.get(RUN_ID_ENV, "")
     if candidate:
         return sanitize_run_id(candidate)
     return ""
@@ -213,7 +213,6 @@ class RunContext:
         """Return environment variables representing this context."""
         values = {
             RUN_ID_ENV: self.run_id,
-            "RUN_ID": self.run_id,
             MODAL_APP_NAME_ENV: self.modal_app_name,
             "MODAL_APP_NAME": self.modal_app_name,
             MODAL_ENVIRONMENT_ENV: self.modal_environment,

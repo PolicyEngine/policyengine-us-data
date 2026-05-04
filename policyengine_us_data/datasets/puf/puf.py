@@ -779,6 +779,17 @@ class PUF(Dataset):
             return np.asarray(file_handle[key])
         return np.zeros(length)
 
+    def _mark_current_qbi_simulation(self) -> None:
+        try:
+            with h5py.File(self.file_path, "r+") as file_handle:
+                file_handle.attrs[QBI_SIMULATION_VERSION_ATTR] = QBI_SIMULATION_VERSION
+        except OSError:
+            pass
+
+    def _save_current_qbi_dataset(self, arrays) -> None:
+        self.save_dataset(arrays)
+        self._mark_current_qbi_simulation()
+
     def _sstb_split_overrides(self) -> dict[str, np.ndarray]:
         if not self.file_path.exists():
             return {}
@@ -871,9 +882,18 @@ class PUF(Dataset):
 
             length = None
             for key in (
+                *QBI_SOURCE_NAMES,
+                "sstb_self_employment_income",
+                "business_is_sstb",
+                "w2_wages_from_qualified_business",
+                "unadjusted_basis_qualified_property",
+                "sstb_w2_wages_from_qualified_business",
+                "sstb_unadjusted_basis_qualified_property",
+                "qualified_reit_and_ptp_income",
+                "qualified_bdc_income",
+                "person_id",
+                "person_household_id",
                 "household_id",
-                "self_employment_income",
-                "partnership_s_corp_income",
             ):
                 if key in file_handle:
                     length = len(file_handle[key])
@@ -1163,7 +1183,7 @@ class PUF(Dataset):
                     ]
                     growth = current_index / start_index
                     arrays[variable] = arrays[variable] * growth
-            self.save_dataset(arrays)
+            self._save_current_qbi_dataset(arrays)
             return
 
         puf = disaggregate_aggregate_records(puf)  # 4 rows → ~120 weighted
@@ -1261,7 +1281,7 @@ class PUF(Dataset):
         self.holder = {
             variable: values[self.time_period] for variable, values in holder_tp.items()
         }
-        self.save_dataset(self.holder)
+        self._save_current_qbi_dataset(self.holder)
 
     def add_tax_unit(self, row, tax_unit_id):
         self.holder["tax_unit_id"].append(tax_unit_id)

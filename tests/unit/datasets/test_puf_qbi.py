@@ -299,6 +299,65 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
     assert np.all(arrays["unadjusted_basis_qualified_property"] > 0)
 
 
+def test_puf_load_dataset_repairs_qbi_with_person_level_length(tmp_path, monkeypatch):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    def mutate(params):
+        for source in params["qbi_qualification_probabilities"]:
+            params["qbi_qualification_probabilities"][source] = 1.0
+        for source in params["sstb_prob_map_by_source_name"]:
+            params["sstb_prob_map_by_source_name"][source] = 0.0
+
+    _set_qbi_params(monkeypatch, mutate)
+    with h5py.File(DummyPUF.file_path, "w") as file_handle:
+        file_handle.create_dataset("household_id", data=np.array([1]))
+        file_handle.create_dataset("person_id", data=np.array([101, 102]))
+        file_handle.create_dataset(
+            "self_employment_income", data=np.array([10_000.0, 0.0])
+        )
+        for source in set(puf_module.QBI_SOURCE_NAMES) - {"self_employment_income"}:
+            file_handle.create_dataset(source, data=np.zeros(2))
+
+    arrays = DummyPUF().load_dataset()
+
+    assert len(arrays["self_employment_income_would_be_qualified"]) == 2
+    assert len(arrays["business_is_sstb"]) == 2
+    np.testing.assert_array_equal(
+        arrays["self_employment_income_would_be_qualified"],
+        np.array([True, True]),
+    )
+
+
+def test_puf_save_current_qbi_dataset_marks_version(tmp_path):
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+        def save_dataset(self, arrays):
+            with h5py.File(self.file_path, "w") as file_handle:
+                for key, values in arrays.items():
+                    file_handle.create_dataset(key, data=values)
+
+    DummyPUF()._save_current_qbi_dataset(
+        {
+            "person_id": np.array([101]),
+            "self_employment_income": np.array([10_000.0]),
+        }
+    )
+
+    with h5py.File(DummyPUF.file_path, "r") as file_handle:
+        assert (
+            file_handle.attrs[puf_module.QBI_SIMULATION_VERSION_ATTR]
+            == puf_module.QBI_SIMULATION_VERSION
+        )
+
+
 def test_puf_load_dataset_repairs_partially_migrated_qbi_outputs(tmp_path, monkeypatch):
     class DummyPUF(PUF):
         label = "Dummy PUF"

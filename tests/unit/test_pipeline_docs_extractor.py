@@ -87,6 +87,8 @@ def test_pipeline_map_manifest_validates():
 
     bundle = merge_map(manifest, objects)
 
-    assert bundle["metadata"]["stage_count"] == 5
+    assert bundle["metadata"]["stage_count"] == 10
     assert bundle["metadata"]["decorated_object_count"] >= 70
-    assert bundle["metadata"]["mapped_decorated_node_count"] >= 15
+    assert bundle["metadata"]["mapped_decorated_node_count"] >= 45
+    assert sum(len(stage["nodes"]) for stage in bundle["stages"]) >= 160
+    assert sum(len(stage["edges"]) for stage in bundle["stages"]) >= 170

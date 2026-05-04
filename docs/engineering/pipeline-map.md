@@ -2,239 +2,476 @@
 
 Generated from `docs/pipeline_map.yaml` and `@pipeline_node` decorators.
 
-## Data Build And Source-Imputed Dataset
+## Stage 0: Raw Data Download
 
-Build base CPS/PUF artifacts and the source-imputed stratified CPS input.
+Download raw survey data from Census, IRS, Federal Reserve, and HuggingFace
 
-- Status: `transitional`
+- Status: `current`
 - Stability: `moving`
 
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
-| `raw_sources` Raw survey and administrative sources | `external` | `current` | `moving` |  |
-| `source_imputed_h5` source_imputed_stratified_extended_cps*.h5 | `artifact` | `current` | `moving` |  |
-| `build_datasets` Build Datasets On Modal | `entrypoint` | `current` | `moving` | `modal_app.data_build.build_datasets` |
-| `create_stratified` Create Stratified CPS Dataset | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.create_stratified_cps.create_stratified_cps_dataset` |
-| `source_impute` Source-Impute Stratified CPS | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.source_impute.impute_source_variables` |
+| `cps_url` Census CPS ASEC | `artifact` | `unknown` | `unknown` |  |
+| `acs_url` Census ACS PUMS | `artifact` | `unknown` | `unknown` |  |
+| `scf_url` Federal Reserve SCF | `artifact` | `unknown` | `unknown` |  |
+| `hf_private` HuggingFace Private Repo | `external` | `unknown` | `unknown` |  |
+| `hf_public` HuggingFace Public Repo | `external` | `unknown` | `unknown` |  |
+| `download_http` HTTP Download + ZIP Extract | `process` | `unknown` | `unknown` |  |
+| `download_hf` HuggingFace Hub Download | `process` | `unknown` | `unknown` |  |
+| `csv_parse` CSV/Stata Parsing | `process` | `unknown` | `unknown` |  |
+| `out_cps_raw` census_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_acs_raw` census_acs_2022.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_puf_raw` irs_puf_2015.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_soi` soi.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_scf` SCF raw data | `artifact` | `unknown` | `unknown` |  |
+| `out_sipp` pu2023_slim.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_block` block_cd_distributions.csv.gz | `artifact` | `unknown` | `unknown` |  |
+| `out_pop` np2023_d5_mid.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_calibration_db` policy_data.db | `artifact` | `unknown` | `unknown` |  |
+| `util_storage` STORAGE_FOLDER | `utility` | `unknown` | `unknown` |  |
 
 ### Edges
 
-- `raw_sources` -> `build_datasets` `external_source`
-- `build_datasets` -> `create_stratified` `data_flow`
-- `create_stratified` -> `source_impute` `data_flow`
-- `source_impute` -> `source_imputed_h5` `produces_artifact`
+- `cps_url` -> `download_http` `external_source` (CPS ASEC ZIP)
+- `acs_url` -> `download_http` `external_source` (ACS PUMS CSV)
+- `scf_url` -> `download_http` `external_source` (SCF .dta)
+- `hf_private` -> `download_hf` `external_source` (PUF, demographics, SOI, pop)
+- `hf_public` -> `download_hf` `external_source` (SIPP, block, policy_data.db)
+- `download_http` -> `csv_parse` `data_flow` (raw files)
+- `download_hf` -> `csv_parse` `data_flow` (raw files)
+- `csv_parse` -> `out_cps_raw` `produces_artifact` (census_cps_2024.h5)
+- `csv_parse` -> `out_acs_raw` `produces_artifact` (census_acs_2022.h5)
+- `csv_parse` -> `out_puf_raw` `produces_artifact` (irs_puf_2015.h5)
+- `csv_parse` -> `out_soi` `produces_artifact` (soi.csv)
+- `download_http` -> `out_scf` `produces_artifact` (SCF raw data)
+- `download_hf` -> `out_sipp` `produces_artifact` (pu2023_slim.csv)
+- `download_hf` -> `out_block` `produces_artifact` (block_cd_distributions.csv.gz)
+- `download_hf` -> `out_pop` `produces_artifact` (np2023_d5_mid.csv)
+- `download_hf` -> `out_calibration_db` `produces_artifact` (policy_data.db)
 
-## Calibration Matrix And Package Build
+## Stage 1: Base Dataset Construction
 
-Resolve targets, assign geography, compute simulated values, and assemble the sparse matrix package.
+Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imputations, and retirement contribution inference
 
-- Status: `transitional`
+- Status: `current`
 - Stability: `moving`
 
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
-| `policy_data_db` policy_data.db | `artifact` | `current` | `moving` |  |
-| `calibration_package` calibration_package.pkl | `artifact` | `current` | `moving` |  |
-| `source_imputed_h5` source_imputed_stratified_extended_cps*.h5 | `artifact` | `current` | `moving` |  |
-| `run_calibration` Run Unified Calibration | `entrypoint` | `transitional` | `moving` | `policyengine_us_data.calibration.unified_calibration.run_calibration` |
+| `in_census_cps` census_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_census_cps_prev` census_cps_2023.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_acs` ACS 2022 | `artifact` | `unknown` | `unknown` |  |
+| `in_sipp` SIPP 2023 | `artifact` | `unknown` | `unknown` |  |
+| `in_scf` SCF 2022 | `artifact` | `unknown` | `unknown` |  |
+| `in_org` CPS Basic ORG 2024 | `external` | `unknown` | `unknown` |  |
+| `in_uprating` uprating_factors.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_cps` cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_puf` puf_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_irs_puf` irs_puf_2015.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_demographics` demographics_2015.csv | `artifact` | `unknown` | `unknown` |  |
+| `in_cps_pension` CPS_2024 / CPS_2021 | `artifact` | `unknown` | `unknown` |  |
+| `util_seeded_rng` seeded_rng() | `utility` | `unknown` | `unknown` |  |
+| `util_qrf` microimpute QRF | `utility` | `unknown` | `unknown` |  |
+| `util_retirement_limits` get_retirement_limits() | `utility` | `unknown` | `unknown` |  |
+| `add_id_variables` Add ID Variables | `library` | `current` | `stable` | `policyengine_us_data.datasets.cps.cps.add_id_variables` |
+| `add_personal_variables` Add Personal Variables | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_personal_variables` |
+| `add_personal_income_variables` Add Income Variables | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_personal_income_variables` |
+| `add_previous_year_income` Previous-Year Income | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_previous_year_income` |
+| `add_ssn_card_type` Add SSN Card Type | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_ssn_card_type` |
+| `add_spm_variables` Add SPM Variables | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_spm_variables` |
+| `add_household_variables` Add Household Variables | `library` | `current` | `stable` | `policyengine_us_data.datasets.cps.cps.add_household_variables` |
+| `add_rent` Rent Imputation | `library` | `legacy` | `moving` | `policyengine_us_data.datasets.cps.cps.add_rent` |
+| `add_tips` Tips And Asset Imputation | `library` | `legacy` | `moving` | `policyengine_us_data.datasets.cps.cps.add_tips` |
+| `add_org_inputs` ORG Labor-Market Inputs | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs` |
+| `add_auto_loan` Auto Loan And Net Worth Imputation | `library` | `legacy` | `moving` | `policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth` |
+| `add_takeup` Benefit Takeup | `library` | `current` | `moving` | `policyengine_us_data.datasets.cps.cps.add_takeup` |
+| `downsample` Downsample CPS | `library` | `current` | `stable` | `policyengine_us_data.datasets.cps.cps.CPS.downsample` |
+| `preprocess_puf` Preprocess PUF | `library` | `current` | `moving` | `policyengine_us_data.datasets.puf.puf.preprocess_puf` |
+| `simulate_qbi` QBI Simulation | `library` | `current` | `moving` | `policyengine_us_data.datasets.puf.puf.simulate_w2_and_ubia_from_puf` |
+| `impute_puf_demographics` Impute PUF Demographics | `library` | `current` | `moving` | `policyengine_us_data.datasets.puf.puf.impute_missing_demographics` |
+| `impute_puf_pension` Impute PUF Pension Contributions | `library` | `current` | `moving` | `policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf` |
+| `mortgage_convert` Structural Mortgage Conversion | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs` |
+
+### Edges
+
+- `in_census_cps` -> `add_id_variables` `data_flow` (raw CPS tables)
+- `add_id_variables` -> `add_personal_variables` `data_flow`
+- `add_personal_variables` -> `add_personal_income_variables` `data_flow`
+- `add_personal_income_variables` -> `add_previous_year_income` `data_flow`
+- `in_census_cps_prev` -> `add_previous_year_income` `data_flow` (prior year PERIDNUM)
+- `add_previous_year_income` -> `add_ssn_card_type` `data_flow`
+- `add_ssn_card_type` -> `add_spm_variables` `data_flow`
+- `add_spm_variables` -> `add_household_variables` `data_flow`
+- `add_household_variables` -> `add_rent` `data_flow`
+- `in_acs` -> `add_rent` `external_source` (ACS training data)
+- `add_rent` -> `add_tips` `data_flow`
+- `in_sipp` -> `add_tips` `external_source` (SIPP training data)
+- `add_tips` -> `add_org_inputs` `data_flow`
+- `in_org` -> `add_org_inputs` `external_source` (ORG donor data)
+- `add_org_inputs` -> `add_auto_loan` `data_flow`
+- `in_scf` -> `add_auto_loan` `external_source` (SCF training data)
+- `add_auto_loan` -> `add_takeup` `data_flow`
+- `add_takeup` -> `downsample` `data_flow`
+- `downsample` -> `out_cps` `produces_artifact` (cps_2024.h5)
+- `in_irs_puf` -> `preprocess_puf` `data_flow` (raw PUF records)
+- `preprocess_puf` -> `simulate_qbi` `data_flow`
+- `simulate_qbi` -> `impute_puf_demographics` `data_flow`
+- `in_demographics` -> `impute_puf_demographics` `data_flow` (demographics_2015.csv)
+- `impute_puf_demographics` -> `impute_puf_pension` `data_flow`
+- `in_cps_pension` -> `impute_puf_pension` `data_flow` (CPS donor sample)
+- `impute_puf_pension` -> `mortgage_convert` `data_flow`
+- `mortgage_convert` -> `out_puf` `produces_artifact` (puf_2024.h5)
+- `in_uprating` -> `out_puf` `data_flow` (SOI growth rates)
+- `util_seeded_rng` -> `add_takeup` `uses_utility`
+- `util_qrf` -> `add_rent` `uses_utility`
+- `util_qrf` -> `add_tips` `uses_utility`
+- `util_qrf` -> `add_org_inputs` `uses_utility`
+- `util_qrf` -> `add_auto_loan` `uses_utility`
+- `util_retirement_limits` -> `add_personal_income_variables` `uses_utility`
+- `util_qrf` -> `impute_puf_demographics` `uses_utility`
+- `util_qrf` -> `impute_puf_pension` `uses_utility`
+
+## Stage 2: Extended CPS (PUF Clone)
+
+Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-only vars, then finalize Extended CPS inputs
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_cps_s2` CPS_2024_Full | `artifact` | `unknown` | `unknown` |  |
+| `in_puf_s2` PUF_2024 | `artifact` | `unknown` | `unknown` |  |
+| `in_blocks_s2` block_cd_distributions.csv.gz | `artifact` | `unknown` | `unknown` |  |
+| `in_scf_s2` SCF_2022 | `artifact` | `unknown` | `unknown` |  |
+| `geo_assign_s2` Geography Assignment | `process` | `unknown` | `unknown` |  |
+| `out_ext` extended_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `util_qrf_s2` microimpute QRF | `utility` | `unknown` | `unknown` |  |
+| `util_knn_s2` sklearn NearestNeighbors | `utility` | `unknown` | `unknown` |  |
+| `record_double` PUF Clone Dataset | `library` | `current` | `moving` | `policyengine_us_data.calibration.puf_impute.puf_clone_dataset` |
+| `puf_qrf_pass` PUF QRF Imputation Pass | `library` | `current` | `moving` | `policyengine_us_data.calibration.puf_impute._run_qrf_imputation` |
+| `retire_impute` Retirement Contribution Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.puf_impute._impute_retirement_contributions` |
+| `weeks_impute` Weeks Unemployed Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed` |
+| `ss_reconcile` Social Security Subcomponent Reconciliation | `library` | `current` | `moving` | `policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents` |
+| `clone_features` Splice Clone Features | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions` |
+| `cps_only` Impute CPS-Only Variables | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables` |
+| `qrf_pass2` Splice CPS-Only Predictions | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions` |
+| `mortgage_hints` Mortgage Balance Hint Imputation | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.impute_tax_unit_mortgage_balance_hints` |
+| `mortgage_convert` Structural Mortgage Conversion | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs` |
+| `formula_drop` Drop Formula Variables | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables` |
+
+### Edges
+
+- `in_cps_s2` -> `geo_assign_s2` `data_flow` (CPS records)
+- `in_blocks_s2` -> `geo_assign_s2` `data_flow` (block populations)
+- `in_puf_s2` -> `record_double` `data_flow` (PUF records)
+- `in_cps_s2` -> `record_double` `data_flow` (CPS records)
+- `geo_assign_s2` -> `record_double` `data_flow`
+- `record_double` -> `puf_qrf_pass` `data_flow`
+- `puf_qrf_pass` -> `retire_impute` `data_flow`
+- `puf_qrf_pass` -> `weeks_impute` `data_flow`
+- `retire_impute` -> `ss_reconcile` `data_flow`
+- `weeks_impute` -> `ss_reconcile` `data_flow`
+- `ss_reconcile` -> `clone_features` `data_flow`
+- `clone_features` -> `cps_only` `data_flow`
+- `cps_only` -> `qrf_pass2` `data_flow`
+- `qrf_pass2` -> `mortgage_hints` `data_flow`
+- `in_scf_s2` -> `mortgage_hints` `data_flow` (SCF donor sample)
+- `mortgage_hints` -> `mortgage_convert` `data_flow`
+- `mortgage_convert` -> `formula_drop` `data_flow`
+- `formula_drop` -> `out_ext` `produces_artifact`
+- `util_qrf_s2` -> `puf_qrf_pass` `uses_utility`
+- `util_qrf_s2` -> `cps_only` `uses_utility`
+- `util_qrf_s2` -> `mortgage_hints` `uses_utility`
+- `util_knn_s2` -> `clone_features` `uses_utility`
+
+## Stage 3a: Enhanced CPS Reweighting
+
+Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2025 ACA post-calibration override (deprecated ECPS pathway)
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_ext_half` ExtendedCPS_2024_Half | `artifact` | `unknown` | `unknown` |  |
+| `build_loss` build_loss_matrix() | `process` | `unknown` | `unknown` |  |
+| `t_soi` IRS SOI | `external` | `unknown` | `unknown` |  |
+| `t_census` Census Population | `external` | `unknown` | `unknown` |  |
+| `t_cbo` CBO Budget | `external` | `unknown` | `unknown` |  |
+| `t_state` State Targets | `process` | `unknown` | `unknown` |  |
+| `t_jct` JCT Tax Expenditures | `external` | `unknown` | `unknown` |  |
+| `weight_validate` Weight Validation | `process` | `unknown` | `unknown` |  |
+| `out_enhanced` enhanced_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `util_loss` build_loss_matrix() | `utility` | `unknown` | `unknown` |  |
+| `util_l0_s3` HardConcrete L0 | `utility` | `unknown` | `unknown` |  |
+| `reweight` Enhanced CPS Reweighting | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.enhanced_cps.reweight` |
+| `aca_2025_override` ACA 2025 Take-Up Override | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override` |
+
+### Edges
+
+- `in_ext_half` -> `build_loss` `data_flow`
+- `t_soi` -> `build_loss` `external_source`
+- `t_census` -> `build_loss` `external_source`
+- `t_cbo` -> `build_loss` `external_source`
+- `t_jct` -> `build_loss` `external_source`
+- `t_state` -> `build_loss` `external_source`
+- `build_loss` -> `reweight` `data_flow` ((matrix, targets))
+- `reweight` -> `weight_validate` `data_flow`
+- `weight_validate` -> `aca_2025_override` `data_flow`
+- `aca_2025_override` -> `out_enhanced` `produces_artifact`
+- `util_loss` -> `build_loss` `uses_utility`
+- `util_l0_s3` -> `reweight` `uses_utility`
+
+## Stage 3b: Stratified CPS
+
+Stratify Extended CPS by income - keep top 1%, sample remaining 99%
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_ext_cps` extended_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `calc_agi` Calculate AGI | `process` | `unknown` | `unknown` |  |
+| `strat_top` Retain Top 1% by AGI | `process` | `unknown` | `unknown` |  |
+| `strat_sample` Uniform Sample Remaining 99% | `process` | `unknown` | `unknown` |  |
+| `out_strat` stratified_extended_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+
+### Edges
+
+- `in_ext_cps` -> `calc_agi` `data_flow`
+- `calc_agi` -> `strat_top` `data_flow`
+- `strat_top` -> `strat_sample` `data_flow`
+- `strat_top` -> `out_strat` `data_flow` (top 1%)
+- `strat_sample` -> `out_strat` `data_flow` (sampled 99%)
+
+## Stage 4: Source Imputation (ACS + SIPP + SCF)
+
+Impute wealth/assets from external surveys onto stratified CPS via QRF
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_strat_s4` stratified_extended_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_acs_s4` ACS_2022 | `artifact` | `unknown` | `unknown` |  |
+| `in_sipp_s4` SIPP 2023 | `external` | `unknown` | `unknown` |  |
+| `in_scf_s4` SCF_2022 | `artifact` | `unknown` | `unknown` |  |
+| `sipp_assets_qrf` SIPP Assets QRF | `process` | `unknown` | `unknown` |  |
+| `out_imputed` source_imputed_stratified_extended_cps.h5 | `artifact` | `unknown` | `unknown` |  |
+| `util_clone_assign` clone_and_assign.py | `utility` | `unknown` | `unknown` |  |
+| `util_qrf_s4` microimpute QRF | `utility` | `unknown` | `unknown` |  |
+| `geo_assign` Assign Random Geography | `library` | `current` | `moving` | `policyengine_us_data.calibration.clone_and_assign.assign_random_geography` |
+| `acs_qrf` ACS QRF Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.source_impute._impute_acs` |
+| `sipp_qrf` SIPP QRF Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.source_impute._impute_sipp` |
+| `scf_qrf` SCF QRF Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.source_impute._impute_scf` |
+
+### Edges
+
+- `in_strat_s4` -> `geo_assign` `data_flow`
+- `geo_assign` -> `acs_qrf` `data_flow` (state_fips)
+- `in_acs_s4` -> `acs_qrf` `data_flow`
+- `in_sipp_s4` -> `sipp_qrf` `external_source`
+- `in_sipp_s4` -> `sipp_assets_qrf` `external_source`
+- `in_scf_s4` -> `scf_qrf` `external_source`
+- `acs_qrf` -> `sipp_qrf` `data_flow` (chain)
+- `sipp_qrf` -> `sipp_assets_qrf` `data_flow` (chain)
+- `sipp_assets_qrf` -> `scf_qrf` `data_flow` (chain)
+- `scf_qrf` -> `out_imputed` `produces_artifact`
+- `util_clone_assign` -> `geo_assign` `uses_utility`
+- `util_qrf_s4` -> `acs_qrf` `uses_utility`
+- `util_qrf_s4` -> `sipp_qrf` `uses_utility`
+- `util_qrf_s4` -> `sipp_assets_qrf` `uses_utility`
+- `util_qrf_s4` -> `scf_qrf` `uses_utility`
+
+## Stage 5: Matrix Build (Calibration Target Construction)
+
+Build sparse calibration matrix (targets x households x clones)
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_cps_s5` source_imputed_stratified_extended_cps.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_db_s5` policy_data.db | `external` | `unknown` | `unknown` |  |
+| `in_config_s5` target_config.yaml | `artifact` | `unknown` | `unknown` |  |
+| `in_blocks_s5` block_cd_distributions.csv.gz | `artifact` | `unknown` | `unknown` |  |
+| `target_resolve` Target Resolution | `process` | `unknown` | `unknown` |  |
+| `target_uprate` Target Uprating | `process` | `unknown` | `unknown` |  |
+| `geo_build` Geography Index Build | `process` | `unknown` | `unknown` |  |
+| `constraint_resolve` Constraint Resolution | `process` | `unknown` | `unknown` |  |
+| `takeup_rerand` Block-Level Takeup Re-randomization | `process` | `unknown` | `unknown` |  |
+| `sparse_build` Sparse Matrix Construction | `process` | `unknown` | `unknown` |  |
+| `out_pkg` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
+| `util_sql` sqlalchemy | `utility` | `unknown` | `unknown` |  |
+| `util_pool` ProcessPoolExecutor | `utility` | `unknown` | `unknown` |  |
+| `util_takeup_s5` compute_block_takeup_for_entities() | `utility` | `unknown` | `unknown` |  |
+| `util_scipy` scipy.sparse | `utility` | `unknown` | `unknown` |  |
 | `state_precomp` Per-State Simulation Precomputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._compute_single_state` |
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
 
 ### Edges
 
-- `source_imputed_h5` -> `run_calibration` `data_flow`
-- `policy_data_db` -> `run_calibration` `external_source`
-- `run_calibration` -> `state_precomp` `uses_library`
+- `in_cps_s5` -> `target_resolve` `data_flow`
+- `in_db_s5` -> `target_resolve` `external_source` (SQL targets)
+- `in_config_s5` -> `target_resolve` `data_flow` (include list)
+- `target_resolve` -> `target_uprate` `data_flow`
+- `target_uprate` -> `geo_build` `data_flow`
+- `geo_build` -> `constraint_resolve` `data_flow`
+- `constraint_resolve` -> `state_precomp` `data_flow`
+- `in_cps_s5` -> `state_precomp` `data_flow` (household data)
 - `state_precomp` -> `clone_assembly` `data_flow`
-- `clone_assembly` -> `calibration_package` `produces_artifact`
+- `in_blocks_s5` -> `clone_assembly` `data_flow` (block populations)
+- `clone_assembly` -> `takeup_rerand` `data_flow`
+- `takeup_rerand` -> `sparse_build` `data_flow`
+- `sparse_build` -> `out_pkg` `produces_artifact`
+- `util_sql` -> `target_resolve` `uses_utility`
+- `util_pool` -> `state_precomp` `uses_utility`
+- `util_takeup_s5` -> `takeup_rerand` `uses_utility`
+- `util_scipy` -> `sparse_build` `uses_utility`
 
-## Sparse Weight Fitting
+## Stage 6: Weight Fitting (L0 Calibration)
 
-Fit L0-sparse calibration weights and write diagnostics.
+Fit log-weights using L0 HardConcrete gates on GPU
 
 - Status: `current`
 - Stability: `moving`
 
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
-| `calibration_weights` calibration_weights.npy | `artifact` | `current` | `moving` |  |
-| `diagnostics` diagnostics | `artifact` | `current` | `moving` |  |
-| `calibration_package` calibration_package.pkl | `artifact` | `current` | `moving` |  |
+| `in_pkg_s6` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
+| `modal_gpu` Modal GPU Container | `external` | `unknown` | `unknown` |  |
+| `create_model` Create SparseCalibrationWeights | `process` | `unknown` | `unknown` |  |
+| `extract_weights` Extract Weights | `process` | `unknown` | `unknown` |  |
+| `out_weights` calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
+| `out_geo_s6` geography.npz | `artifact` | `unknown` | `unknown` |  |
+| `out_diag` unified_diagnostics.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_config_s6` unified_run_config.json | `artifact` | `unknown` | `unknown` |  |
+| `util_l0` l0-python | `utility` | `unknown` | `unknown` |  |
+| `util_pytorch` PyTorch | `utility` | `unknown` | `unknown` |  |
 | `init_weights` Compute Initial Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_initial_weights` |
 | `fit_model` Fit L0 Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
 
 ### Edges
 
-- `calibration_package` -> `init_weights` `data_flow`
-- `init_weights` -> `fit_model` `data_flow`
-- `fit_model` -> `calibration_weights` `produces_artifact`
-- `fit_model` -> `diagnostics` `produces_artifact`
+- `in_pkg_s6` -> `init_weights` `data_flow`
+- `init_weights` -> `create_model` `data_flow`
+- `create_model` -> `fit_model` `data_flow`
+- `modal_gpu` -> `fit_model` `runs_on_infra` (runs on)
+- `fit_model` -> `extract_weights` `data_flow`
+- `extract_weights` -> `out_weights` `produces_artifact`
+- `extract_weights` -> `out_geo_s6` `produces_artifact`
+- `fit_model` -> `out_diag` `produces_artifact`
+- `fit_model` -> `out_config_s6` `produces_artifact`
+- `util_l0` -> `create_model` `uses_utility`
+- `util_pytorch` -> `fit_model` `uses_utility`
 
-## Local Area H5 Build And Staging
+## Stage 7: Local Area H5 Build
 
-Partition area work, resolve traceability, build H5s, validate, stage, and promote.
-
-- Status: `transitional`
-- Stability: `moving`
-
-| Node | Type | Status | Stability | API refs |
-| --- | --- | --- | --- | --- |
-| `staged_h5s` staged local-area H5 files | `artifact` | `current` | `moving` |  |
-| `calibration_weights` calibration_weights.npy | `artifact` | `current` | `moving` |  |
-| `load_calibration_geography` Load Calibration Geography | `library` | `legacy` | `moving` | `policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader`, `policyengine_us_data.calibration.publish_local_area.load_calibration_geography` |
-| `local_h5_traceability` FingerprintingService | `library` | `current` | `moving` | `policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService` |
-| `local_h5_partition` Partition Local H5 Work | `library` | `current` | `stable` | `policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items` |
-| `build_h5` Build Local Area H5 | `library` | `transitional` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_h5` |
-| `validate_staging` Validate Staged H5 Files | `validation` | `current` | `moving` | `modal_app.local_area.validate_staging` |
-| `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
-| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
-
-### Edges
-
-- `calibration_weights` -> `load_calibration_geography` `data_flow`
-- `load_calibration_geography` -> `local_h5_traceability` `data_flow`
-- `local_h5_traceability` -> `local_h5_partition` `data_flow`
-- `local_h5_partition` -> `build_h5` `data_flow`
-- `build_h5` -> `staged_h5s` `produces_artifact`
-- `staged_h5s` -> `validate_staging` `validates`
-- `validate_staging` -> `staging_upload` `data_flow`
-- `staging_upload` -> `atomic_promote` `data_flow`
-
-## Modal Pipeline Orchestration
-
-The Modal run controller that ties Stage 1-5 artifacts together with resume and promotion state.
+Build 51 state + 435 district + 1 city H5 files on Modal workers
 
 - Status: `current`
 - Stability: `moving`
 
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
-| `pipeline_run` pipeline run metadata | `artifact` | `current` | `moving` |  |
-| `run_modal_pipeline` Run Modal Pipeline | `entrypoint` | `current` | `moving` | `modal_app.pipeline.run_pipeline` |
-| `build_datasets` Build Datasets On Modal | `entrypoint` | `current` | `moving` | `modal_app.data_build.build_datasets` |
-| `run_calibration` Run Unified Calibration | `entrypoint` | `transitional` | `moving` | `policyengine_us_data.calibration.unified_calibration.run_calibration` |
-| `coordinate_publish` Coordinate Local H5 Publish | `entrypoint` | `current` | `moving` | `modal_app.local_area.coordinate_publish` |
+| `in_weights_s7` calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
+| `in_dataset_s7` source_imputed_stratified_extended_cps.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_db_s7` policy_data.db | `external` | `unknown` | `unknown` |  |
+| `modal_coord` Modal Coordinator | `external` | `unknown` | `unknown` |  |
+| `partition` Partition Work | `process` | `unknown` | `unknown` |  |
+| `worker_s7` Modal Worker Container | `external` | `unknown` | `unknown` |  |
+| `spm_recalc` SPM Threshold Recalculation | `process` | `unknown` | `unknown` |  |
+| `takeup_apply` Takeup Re-application | `process` | `unknown` | `unknown` |  |
+| `out_states` states/*.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_districts` districts/*.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_cities` cities/*.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_manifest` manifest.json | `artifact` | `unknown` | `unknown` |  |
+| `util_build_h5` publish_local_area.build_h5() | `utility` | `unknown` | `unknown` |  |
+| `util_takeup_s7` apply_block_takeup_to_arrays() | `utility` | `unknown` | `unknown` |  |
+| `build_states` Build State H5 Files | `library` | `current` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_states` |
+| `build_districts` Build District H5 Files | `library` | `current` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_districts` |
+| `build_cities` Build City H5 Files | `library` | `current` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_cities` |
+| `build_h5` Build Local Area H5 | `library` | `transitional` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_h5` |
+| `geo_derive` Derive Geography From Blocks | `library` | `current` | `moving` | `policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks` |
 
 ### Edges
 
-- `run_modal_pipeline` -> `build_datasets` `data_flow`
-- `run_modal_pipeline` -> `run_calibration` `data_flow`
-- `run_modal_pipeline` -> `coordinate_publish` `data_flow`
-- `run_modal_pipeline` -> `pipeline_run` `produces_artifact`
+- `in_weights_s7` -> `partition` `data_flow`
+- `in_dataset_s7` -> `partition` `data_flow`
+- `in_db_s7` -> `partition` `external_source` (CD list)
+- `partition` -> `build_states` `data_flow`
+- `build_states` -> `build_districts` `data_flow`
+- `build_districts` -> `build_cities` `data_flow`
+- `build_states` -> `build_h5` `data_flow` (calls)
+- `build_districts` -> `build_h5` `data_flow` (calls)
+- `build_cities` -> `build_h5` `data_flow` (calls)
+- `build_h5` -> `geo_derive` `data_flow`
+- `geo_derive` -> `spm_recalc` `data_flow`
+- `spm_recalc` -> `takeup_apply` `data_flow`
+- `modal_coord` -> `worker_s7` `runs_on_infra` (orchestrates)
+- `worker_s7` -> `build_h5` `runs_on_infra` (runs)
+- `build_states` -> `out_states` `produces_artifact`
+- `build_districts` -> `out_districts` `produces_artifact`
+- `build_cities` -> `out_cities` `produces_artifact`
+- `build_h5` -> `out_manifest` `produces_artifact`
+- `util_build_h5` -> `build_h5` `uses_utility`
+- `util_takeup_s7` -> `takeup_apply` `uses_utility`
+
+## Stage 8: Validation & Promotion
+
+7-layer validation, staging upload, atomic promotion to production
+
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_h5s` 51 state + 435 district + 1 city H5s | `artifact` | `unknown` | `unknown` |  |
+| `in_db_s8` policy_data.db | `external` | `unknown` | `unknown` |  |
+| `v1` Layer 1: Manifest Verification | `process` | `unknown` | `unknown` |  |
+| `v4` Layer 4: Smoke Test | `process` | `unknown` | `unknown` |  |
+| `v5` Layer 5: National H5 Validation | `process` | `unknown` | `unknown` |  |
+| `v6` Layer 6: Pre-Upload Validation | `process` | `unknown` | `unknown` |  |
+| `v7` Layer 7: Package Validation | `process` | `unknown` | `unknown` |  |
+| `gcs_upload` GCS Parallel Upload | `external` | `unknown` | `unknown` |  |
+| `staging_cleanup` Staging Cleanup | `process` | `unknown` | `unknown` |  |
+| `out_hf_prod` HuggingFace Production | `external` | `unknown` | `unknown` |  |
+| `out_gcs` Google Cloud Storage | `external` | `unknown` | `unknown` |  |
+| `util_manifest_s8` manifest.py | `utility` | `unknown` | `unknown` |  |
+| `util_sanity` sanity_checks.py | `utility` | `unknown` | `unknown` |  |
+| `util_validate` validate_staging.py | `utility` | `unknown` | `unknown` |  |
+| `util_upload` data_upload.py | `utility` | `unknown` | `unknown` |  |
+| `target_validation` Validate Area Against Targets | `validation` | `current` | `moving` | `policyengine_us_data.calibration.validate_staging.validate_area` |
+| `sanity_checks` Run H5 Sanity Checks | `validation` | `current` | `moving` | `policyengine_us_data.calibration.sanity_checks.run_sanity_checks` |
+| `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
+| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
+
+### Edges
+
+- `in_h5s` -> `v1` `data_flow`
+- `in_db_s8` -> `target_validation` `external_source` (targets)
+- `v1` -> `sanity_checks` `data_flow`
+- `sanity_checks` -> `target_validation` `data_flow`
+- `target_validation` -> `v4` `data_flow`
+- `v4` -> `v5` `data_flow`
+- `v5` -> `v6` `data_flow`
+- `v6` -> `v7` `data_flow`
+- `v7` -> `staging_upload` `data_flow` (all pass)
+- `staging_upload` -> `atomic_promote` `data_flow`
+- `atomic_promote` -> `gcs_upload` `data_flow`
+- `gcs_upload` -> `staging_cleanup` `data_flow`
+- `atomic_promote` -> `out_hf_prod` `produces_artifact`
+- `gcs_upload` -> `out_gcs` `produces_artifact`
+- `util_manifest_s8` -> `v1` `uses_utility`
+- `util_sanity` -> `sanity_checks` `uses_utility`
+- `util_validate` -> `target_validation` `uses_utility`
+- `util_upload` -> `staging_upload` `uses_utility`
 
 ## Pydoc API Surface
-
-### `policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override`
-
-```python
-def create_aca_2025_takeup_override(base_takeup: np.ndarray, person_enrolled_if_takeup: np.ndarray, person_weights: np.ndarray, person_tax_unit_ids: np.ndarray, tax_unit_ids: np.ndarray, target_people: float = ACA_POST_CALIBRATION_PERSON_TARGETS[2025]) -> np.ndarray
-```
-
-Add 2025 ACA takers until weighted APTC enrollment hits target.
-
-### `policyengine_us_data.calibration.source_impute._impute_acs`
-
-```python
-def _impute_acs(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, time_period: int, dataset_path: Optional[str] = None) -> Dict[str, Dict[int, np.ndarray]]
-```
-
-Impute rent and real_estate_taxes from ACS with state.
-
-### `policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth`
-
-```python
-def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None
-```
-
-"Add auto loan balance, interest and net_worth variable.
-
-### `policyengine_us_data.datasets.cps.cps.add_household_variables`
-
-```python
-def add_household_variables(cps: h5py.File, household: DataFrame) -> None
-```
-
-Populate household geography variables including state, county, and NYC flag.
-
-### `policyengine_us_data.datasets.cps.cps.add_id_variables`
-
-```python
-def add_id_variables(cps: h5py.File, person: DataFrame, tax_unit: DataFrame, family: DataFrame, spm_unit: DataFrame, household: DataFrame) -> None
-```
-
-Add basic ID and weight variables.
-
-### `policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs`
-
-```python
-def add_org_labor_market_inputs(cps: h5py.File) -> None
-```
-
-Impute ORG-derived wage and union inputs onto CPS persons.
-
-### `policyengine_us_data.datasets.cps.cps.add_personal_income_variables`
-
-```python
-def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int)
-```
-
-Add income variables.
-
-### `policyengine_us_data.datasets.cps.cps.add_personal_variables`
-
-```python
-def add_personal_variables(cps: h5py.File, person: DataFrame) -> None
-```
-
-Add personal demographic variables.
-
-### `policyengine_us_data.datasets.cps.cps.add_previous_year_income`
-
-```python
-def add_previous_year_income(self, cps: h5py.File) -> None
-```
-
-Link CPS records across adjacent years and populate prior-year income inputs.
-
-### `policyengine_us_data.datasets.cps.cps.add_rent`
-
-```python
-def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame)
-```
-
-Impute rent and real estate taxes using ACS donor data.
-
-### `policyengine_us_data.datasets.cps.cps.add_spm_variables`
-
-```python
-def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None
-```
-
-Populate CPS supplemental poverty measure variables and thresholds.
-
-### `policyengine_us_data.datasets.cps.cps.add_ssn_card_type`
-
-```python
-def add_ssn_card_type(cps: h5py.File, person: pd.DataFrame, spm_unit: pd.DataFrame, time_period: int, undocumented_target: float = 13000000.0, undocumented_workers_target: float = 8300000.0, undocumented_students_target: float = 0.21 * 1900000.0) -> np.ndarray
-```
-
-Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.
-
-### `policyengine_us_data.datasets.cps.cps.add_takeup`
-
-```python
-def add_takeup(self)
-```
-
-Apply stochastic takeup and reported-anchor alignment for benefit programs.
-
-### `policyengine_us_data.datasets.cps.cps.add_tips`
-
-```python
-def add_tips(self, cps: h5py.File)
-```
-
-Impute tip income and household asset inputs from SIPP donor data.
 
 ### `modal_app.local_area.build_areas_worker`
 
@@ -244,21 +481,13 @@ def build_areas_worker(branch: str, run_id: str, work_items: List[Dict], calibra
 
 Worker function that builds a subset of H5 files.
 
-### `policyengine_us_data.calibration.publish_local_area.build_cities`
+### `modal_app.data_build.build_datasets`
 
 ```python
-def build_cities(weights_path: Path, dataset_path: Path, geography, output_dir: Path, completed_cities: set, hf_batch_size: int = 10, takeup_filter: List[str] = None, upload: bool = False)
+def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, stage_only: bool = False, run_id: str = '')
 ```
 
-Build city H5 files with checkpointing, optionally uploading.
-
-### `policyengine_us_data.calibration.publish_local_area.build_districts`
-
-```python
-def build_districts(weights_path: Path, dataset_path: Path, geography, output_dir: Path, completed_districts: set, hf_batch_size: int = 10, takeup_filter: List[str] = None, upload: bool = False)
-```
-
-Build district H5 files with checkpointing, optionally uploading.
+Build all datasets with preemption-resilient checkpointing.
 
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix`
 
@@ -284,14 +513,6 @@ def _build_publishing_input_bundle(*, weights_path: Path, dataset_path: Path, db
 
 Build the normalized coordinator input bundle for one publish scope.
 
-### `policyengine_us_data.calibration.publish_local_area.build_states`
-
-```python
-def build_states(weights_path: Path, dataset_path: Path, geography, output_dir: Path, completed_states: set, hf_batch_size: int = 10, takeup_filter: List[str] = None, upload: bool = False, state_filter: str = None)
-```
-
-Build state H5 files with checkpointing, optionally uploading.
-
 ### `policyengine_us_data.calibration.unified_calibration.compute_diagnostics`
 
 ```python
@@ -308,13 +529,13 @@ class CalibrationGeographyLoader
 
 Resolve, load, and checksum exact geography artifacts.
 
-### `policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions`
+### `modal_app.local_area.coordinate_publish`
 
 ```python
-def _splice_clone_feature_predictions(data: dict, predictions: pd.DataFrame, time_period: int) -> dict
+def coordinate_publish(branch: str = 'main', num_workers: int = 50, skip_upload: bool = False, n_clones: int = 430, validate: bool = True, run_id: str = '', expected_fingerprint: str = '', work_items_override: List[Dict] | None = None) -> Dict
 ```
 
-Replace clone-half person-level feature variables with donor matches.
+Coordinate the full publishing workflow.
 
 ### `modal_app.local_area.partition_work`
 
@@ -324,14 +545,6 @@ def partition_work(work_items: List[Dict], num_workers: int, completed: set) -> 
 
 Compatibility wrapper over the extracted pure partitioning seam.
 
-### `policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables`
-
-```python
-def _impute_cps_only_variables(data: dict, time_period: int, dataset_path: str) -> pd.DataFrame
-```
-
-Second-stage QRF: train on CPS, predict for PUF clones.
-
 ### `modal_app.data_build.run_cps_then_puf_phase`
 
 ```python
@@ -340,53 +553,21 @@ def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_
 
 Build CPS before PUF because PUF pension imputation loads CPS_2024.
 
-### `policyengine_us_data.datasets.cps.cps.CPS.downsample`
+### `policyengine_us_data.calibration.create_stratified_cps.create_stratified_cps_dataset`
 
 ```python
-def downsample(self, frac: float)
+def create_stratified_cps_dataset(target_households = 30000, oversample_poor = False, seed = None, base_dataset = None, output_path = None, high_agi_brackets = None)
 ```
 
-Subsample CPS arrays for released CPS vintages while full variants skip this step.
+Create a stratified sample of CPS data preserving high-income households
 
-### `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables`
+### `policyengine_us_data.calibration.publish_local_area.load_calibration_geography`
 
 ```python
-def _drop_formula_variables(cls, data)
+def load_calibration_geography(weights_path: Path, n_records: int, n_clones: Optional[int] = None, geography_path: Optional[Path] = None, blocks_path: Optional[Path] = None, calibration_package_path: Optional[Path] = None)
 ```
 
-Remove variables that are computed by policyengine-us.
-
-### `policyengine_us_data.calibration.clone_and_assign.assign_random_geography`
-
-```python
-def assign_random_geography(n_records: int, n_clones: int = 10, seed: int = 42, household_agi: np.ndarray = None, cd_agi_targets: dict = None, agi_threshold_pctile: float = 90.0) -> GeographyAssignment
-```
-
-Assign random census block geography to cloned
-
-### `policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks`
-
-```python
-def derive_geography_from_blocks(block_geoids: np.ndarray) -> Dict[str, np.ndarray]
-```
-
-Derive all geography from pre-assigned block GEOIDs.
-
-### `policyengine_us_data.datasets.puf.puf.impute_missing_demographics`
-
-```python
-def impute_missing_demographics(puf: pd.DataFrame, demographics: pd.DataFrame) -> pd.DataFrame
-```
-
-Impute missing PUF demographics from demographic donor records.
-
-### `policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf`
-
-```python
-def impute_pension_contributions_to_puf(puf_df)
-```
-
-Impute pre-tax retirement contributions onto PUF tax units from CPS donors.
+Resolve exact geography from saved bundles, package metadata, or legacy block artifacts.
 
 ### `policyengine_us_data.calibration.local_h5.area_catalog.USAreaCatalog`
 
@@ -428,6 +609,14 @@ def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: 
 
 Compute a scope fingerprint for local H5 checkpoint and resume decisions.
 
+### `policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items`
+
+```python
+def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks
+```
+
+Partition remaining H5 work across worker chunks.
+
 ### `policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle`
 
 ```python
@@ -443,6 +632,14 @@ class ResolvedGeographySource
 ```
 
 Resolved physical source used to recover calibration geography.
+
+### `policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService`
+
+```python
+class FingerprintingService
+```
+
+Build traceability bundles and derive deterministic scope fingerprints.
 
 ### `policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle`
 
@@ -460,30 +657,6 @@ def stage(files: list, version: str, run_id: str = '')
 
 Upload locally built H5 files into Hugging Face staging paths.
 
-### `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs`
-
-```python
-def convert_mortgage_interest_to_structural_inputs(data: Dict[str, Dict[int, np.ndarray]], time_period: int) -> Dict[str, Dict[int, np.ndarray]]
-```
-
-Replace formula-level mortgage inputs with structural mortgage data.
-
-### `policyengine_us_data.utils.mortgage_interest.impute_tax_unit_mortgage_balance_hints`
-
-```python
-def impute_tax_unit_mortgage_balance_hints(data: Dict[str, Dict[int, np.ndarray]], time_period: int) -> Dict[str, Dict[int, np.ndarray]]
-```
-
-Impute tax-unit mortgage balance hints from SCF data.
-
-### `policyengine_us_data.datasets.puf.puf.preprocess_puf`
-
-```python
-def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame
-```
-
-Rename IRS variables and derive PolicyEngine-ready PUF tax inputs.
-
 ### `modal_app.pipeline.promote_run`
 
 ```python
@@ -491,30 +664,6 @@ def promote_run(run_id: str, version: str = None) -> str
 ```
 
 Promote a completed pipeline run to production.
-
-### `policyengine_us_data.calibration.puf_impute._run_qrf_imputation`
-
-```python
-def _run_qrf_imputation(data: Dict[str, Dict[int, np.ndarray]], time_period: int, puf_dataset, dataset_path: Optional[str] = None) -> tuple
-```
-
-Run QRF imputation for PUF variables.
-
-### `policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions`
-
-```python
-def _splice_cps_only_predictions(data: dict, predictions: pd.DataFrame, time_period: int, dataset_path: str) -> dict
-```
-
-Replace PUF clone half of CPS-only variables with QRF predictions.
-
-### `policyengine_us_data.calibration.puf_impute.puf_clone_dataset`
-
-```python
-def puf_clone_dataset(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, time_period: int = 2024, puf_dataset = None, skip_qrf: bool = False, dataset_path: Optional[str] = None) -> Dict[str, Dict[int, np.ndarray]]
-```
-
-Clone CPS data 2x and impute PUF variables on one half.
 
 ### `modal_app.local_area._resolve_scope_fingerprint`
 
@@ -524,21 +673,13 @@ def _resolve_scope_fingerprint(*, inputs: PublishingInputBundle, scope: str, exp
 
 Compute the scope fingerprint while preserving pinned resume values.
 
-### `policyengine_us_data.calibration.puf_impute._impute_retirement_contributions`
+### `policyengine_us_data.calibration.unified_calibration.run_calibration`
 
 ```python
-def _impute_retirement_contributions(data: Dict[str, Dict[int, np.ndarray]], puf_imputations: Dict[str, np.ndarray], time_period: int, dataset_path: str) -> Dict[str, np.ndarray]
+def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False)
 ```
 
-Impute retirement contributions for the PUF half using QRF.
-
-### `policyengine_us_data.datasets.cps.enhanced_cps.reweight`
-
-```python
-def reweight(original_weights, loss_matrix, targets_array, log_path = 'calibration_log.csv', epochs = 500, l0_lambda = 2.6445e-07, init_mean = 0.999, temperature = 0.25, seed = 1456)
-```
-
-Fits enhanced CPS weights against calibration targets with the hard-concrete loss machinery.
+Run unified calibration pipeline.
 
 ### `modal_app.local_area.run_phase`
 
@@ -548,45 +689,21 @@ def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, complet
 
 Run a single build phase, spawning workers and collecting results.
 
-### `policyengine_us_data.calibration.sanity_checks.run_sanity_checks`
+### `modal_app.pipeline.run_pipeline`
 
 ```python
-def run_sanity_checks(h5_path: str, period: int = 2024) -> List[dict]
+def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '') -> str
 ```
 
-Run structural integrity checks on an H5 file.
+Run the full pipeline end-to-end.
 
-### `policyengine_us_data.calibration.source_impute._impute_scf`
+### `policyengine_us_data.calibration.source_impute.impute_source_variables`
 
 ```python
-def _impute_scf(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, time_period: int, dataset_path: Optional[str] = None) -> Dict[str, Dict[int, np.ndarray]]
+def impute_source_variables(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, time_period: int = 2024, dataset_path: Optional[str] = None, skip_acs: bool = False, skip_sipp: bool = False, skip_org: bool = False, skip_scf: bool = False) -> Dict[str, Dict[int, np.ndarray]]
 ```
 
-Impute net_worth and auto_loan from SCF.
-
-### `policyengine_us_data.datasets.puf.puf.simulate_w2_and_ubia_from_puf`
-
-```python
-def simulate_w2_and_ubia_from_puf(puf, *, seed = None, diagnostics = True)
-```
-
-Simulate two Section 199A guard-rail quantities for every record
-
-### `policyengine_us_data.calibration.source_impute._impute_sipp`
-
-```python
-def _impute_sipp(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, time_period: int, dataset_path: Optional[str] = None) -> Dict[str, Dict[int, np.ndarray]]
-```
-
-Impute tip_income, liquid assets, and vehicle signals from SIPP.
-
-### `policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents`
-
-```python
-def reconcile_ss_subcomponents(data: Dict[str, Dict[int, np.ndarray]], n_cps: int, time_period: int) -> None
-```
-
-Predict SS sub-components for PUF half from demographics.
+Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.
 
 ### `modal_app.pipeline.stage_base_datasets`
 
@@ -596,14 +713,6 @@ def stage_base_datasets(run_id: str, version: str, branch: str) -> None
 
 Upload source_imputed + policy_data.db from pipeline
 
-### `policyengine_us_data.calibration.validate_staging.validate_area`
-
-```python
-def validate_area(sim, targets_df: pd.DataFrame, engine, area_type: str, area_id: str, display_id: str, dataset_path: str, period: int, training_mask: np.ndarray, variable_entity_map: dict, constraints_map: Optional[dict] = None) -> list
-```
-
-Run microsimulation target comparisons for one staged area.
-
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder`
 
 ```python
@@ -612,6 +721,14 @@ class UnifiedMatrixBuilder
 
 Build sparse calibration matrix for cloned CPS records.
 
+### `modal_app.local_area.validate_staging`
+
+```python
+def validate_staging(branch: str, run_id: str, version: str = '') -> Dict
+```
+
+Validate all expected files and generate manifest.
+
 ### `modal_app.pipeline.verify_runtime_seams`
 
 ```python
@@ -619,11 +736,3 @@ def verify_runtime_seams() -> dict
 ```
 
 Verify deployed-image imports and subprocess seams.
-
-### `policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed`
-
-```python
-def _impute_weeks_unemployed(data: Dict[str, Dict[int, np.ndarray]], puf_imputations: Dict[str, np.ndarray], time_period: int, dataset_path: str) -> np.ndarray
-```
-
-Impute weeks_unemployed for the PUF half using QRF.

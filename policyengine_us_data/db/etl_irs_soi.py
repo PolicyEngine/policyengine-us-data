@@ -174,6 +174,7 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 #     figure into a slot the district targets treat as net, creating a
 #     +40.7% / +26.1% / +3.1% definitional mismatch at 2023 values.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
+    "charitable_deduction": "charitable_contributions_deductions",
     "dividend_income": "ordinary_dividends",
     "income_tax_before_credits": "income_tax_before_credits",
     "qualified_dividend_income": "qualified_dividends",
@@ -192,6 +193,7 @@ NATIONAL_GEOGRAPHY_AGI_DOMAIN_TARGET_VARIABLES = (
     "net_capital_gains",
     "dividend_income",
     "qualified_dividend_income",
+    "tax_exempt_interest_income",
     "taxable_interest_income",
 )
 

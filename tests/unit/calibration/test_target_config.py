@@ -222,6 +222,7 @@ class TestLoadTargetConfig:
             "net_capital_gains",
             "dividend_income",
             "qualified_dividend_income",
+            "tax_exempt_interest_income",
             "taxable_interest_income",
         ]
         for variable in variables:
@@ -257,6 +258,30 @@ class TestLoadTargetConfig:
             "variable": "tax_unit_count",
             "geo_level": "national",
             "domain_variable": "qualified_business_income_deduction",
+        } in include_rules
+
+    def test_training_config_includes_national_charitable_deduction_targets(
+        self,
+    ):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "charitable_deduction",
+            "geo_level": "national",
+            "domain_variable": "charitable_deduction",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "charitable_deduction",
         } in include_rules
 
     def test_training_config_includes_medicare_part_b_target(self):

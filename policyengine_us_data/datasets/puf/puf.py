@@ -995,9 +995,20 @@ class PUF(Dataset):
                     probability_map=QBI_PARAMS["sstb_prob_map_by_source_name"],
                 )
             )
-            investment_qbi = simulate_investment_qbi_income_from_puf(
+            simulated_investment_qbi = simulate_investment_qbi_income_from_puf(
                 qbi_frame, rng=np.random.default_rng(QBI_INVESTMENT_SEED)
             )
+            investment_qbi = {
+                variable: (
+                    self._values_from_file_or_overrides(
+                        file_handle, variable, existing_overrides, length
+                    ).astype(float)
+                    if is_current_qbi_simulation
+                    and (variable in file_handle or variable in existing_overrides)
+                    else simulated_values
+                )
+                for variable, simulated_values in simulated_investment_qbi.items()
+            }
             legacy_self_employment_income = source_arrays["self_employment_income"]
             self_employment_would_be_qualified = qualification_flags[
                 "self_employment_income"

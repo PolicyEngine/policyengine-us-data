@@ -385,7 +385,7 @@ def test_puf_load_dataset_preserves_existing_qbi_qualification_flags(tmp_path):
             "sstb_unadjusted_basis_qualified_property", data=np.array([5.0, 0.0])
         )
         file_handle.create_dataset(
-            "qualified_reit_and_ptp_income", data=np.array([0.0, 0.0])
+            "qualified_reit_and_ptp_income", data=np.array([123.0, 456.0])
         )
         file_handle.attrs[puf_module.QBI_SIMULATION_VERSION_ATTR] = (
             puf_module.QBI_SIMULATION_VERSION
@@ -394,6 +394,9 @@ def test_puf_load_dataset_preserves_existing_qbi_qualification_flags(tmp_path):
     arrays = DummyPUF().load_dataset()
 
     assert "qualified_bdc_income" in arrays
+    np.testing.assert_array_equal(
+        arrays["qualified_reit_and_ptp_income"], np.array([123.0, 456.0])
+    )
     for flag, values in stored_flags.items():
         np.testing.assert_array_equal(arrays[flag], values)
 

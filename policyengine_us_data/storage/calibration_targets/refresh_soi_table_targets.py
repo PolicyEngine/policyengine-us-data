@@ -43,6 +43,7 @@ TABLE_1_4_COLUMNS = {
     "income_tax_before_credits": {True: ("ER",), False: ("ES",)},
     "ira_distributions": {True: ("AT",), False: ("AU",)},
     "ordinary_dividends": {True: ("X",), False: ("Y",)},
+    "other_income": {True: ("CN",), False: ("CO",)},
     "partnership_and_s_corp_income": {
         True: ("BP", "BT"),
         False: ("BQ", "BU"),

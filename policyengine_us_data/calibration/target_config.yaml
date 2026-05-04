@@ -253,6 +253,12 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: adjusted_gross_income,tax_exempt_interest_income
+  - variable: miscellaneous_income
+    geo_level: national
+    domain_variable: miscellaneous_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: miscellaneous_income
   - variable: refundable_ctc
     geo_level: national
     domain_variable: refundable_ctc

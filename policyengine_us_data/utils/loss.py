@@ -140,6 +140,42 @@ LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
     "taxable_interest_income",
 }
 
+AGI_LEVEL_TARGETED_VARIABLES = (
+    "adjusted_gross_income",
+    "count",
+    "employment_income",
+    "business_net_profits",
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "partnership_and_s_corp_income",
+    "qualified_dividends",
+    "taxable_interest_income",
+    "total_pension_income",
+    "total_social_security",
+)
+
+AGGREGATE_LEVEL_TARGETED_VARIABLES = (
+    "business_net_losses",
+    "capital_gains_distributions",
+    "capital_gains_losses",
+    "estate_income",
+    "estate_losses",
+    "exempt_interest",
+    "ira_distributions",
+    "partnership_and_s_corp_losses",
+    "rent_and_royalty_net_income",
+    "rent_and_royalty_net_losses",
+    # The current SOI source only exposes taxable-only aggregate targets for
+    # mortgage-interest deductions, not the AGI-bin detail used above.
+    "mortgage_interest_deductions",
+    # Keep the legacy loss matrix aligned with the national QBI amount and
+    # claimant-count controls used by the target-config calibration path.
+    "qualified_business_income_deduction",
+    "taxable_pension_income",
+    "taxable_social_security",
+    "unemployment_compensation",
+)
+
 
 def fmt(x):
     if x == -np.inf:
@@ -543,44 +579,13 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
-    agi_level_targeted_variables = [
-        "adjusted_gross_income",
-        "count",
-        "employment_income",
-        "business_net_profits",
-        "capital_gains_gross",
-        "ordinary_dividends",
-        "partnership_and_s_corp_income",
-        "qualified_dividends",
-        "taxable_interest_income",
-        "total_pension_income",
-        "total_social_security",
-    ]
-    aggregate_level_targeted_variables = [
-        "business_net_losses",
-        "capital_gains_distributions",
-        "capital_gains_losses",
-        "estate_income",
-        "estate_losses",
-        "exempt_interest",
-        "ira_distributions",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_income",
-        "rent_and_royalty_net_losses",
-        # The current SOI source only exposes taxable-only aggregate targets for
-        # mortgage-interest deductions, not the AGI-bin detail used above.
-        "mortgage_interest_deductions",
-        "taxable_pension_income",
-        "taxable_social_security",
-        "unemployment_compensation",
-    ]
     aggregate_level_targeted_variables = [
         variable
-        for variable in aggregate_level_targeted_variables
+        for variable in AGGREGATE_LEVEL_TARGETED_VARIABLES
         if variable in df.columns
     ]
     soi_subset = soi_subset[
-        soi_subset.Variable.isin(agi_level_targeted_variables)
+        soi_subset.Variable.isin(AGI_LEVEL_TARGETED_VARIABLES)
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)

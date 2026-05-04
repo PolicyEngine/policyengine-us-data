@@ -159,6 +159,7 @@ class TestPufCloneDataset:
     def test_sstb_qbi_split_variables_imputed(self):
         expected = {
             "sstb_self_employment_income",
+            "sstb_self_employment_income_would_be_qualified",
             "sstb_w2_wages_from_qualified_business",
             "sstb_unadjusted_basis_qualified_property",
         }

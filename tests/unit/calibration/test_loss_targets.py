@@ -3,6 +3,8 @@ import pandas as pd
 import pytest
 
 from policyengine_us_data.utils.loss import (
+    AGGREGATE_LEVEL_TARGETED_VARIABLES,
+    AGI_LEVEL_TARGETED_VARIABLES,
     _get_aca_national_targets,
     _add_ctc_targets,
     _get_medicaid_national_targets,
@@ -12,6 +14,11 @@ from policyengine_us_data.utils.loss import (
     _should_skip_soi_taxability_row,
     HARD_CODED_TOTALS,
 )
+
+
+def test_legacy_loss_targets_include_aggregate_qbi_deduction():
+    assert "qualified_business_income_deduction" in AGGREGATE_LEVEL_TARGETED_VARIABLES
+    assert "qualified_business_income_deduction" not in AGI_LEVEL_TARGETED_VARIABLES
 
 
 def test_aca_targets_roll_forward_to_2025():
@@ -154,6 +161,12 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     ordinary_taxable_row = pd.Series(
         {"Variable": "employment_income", "Taxable only": True}
     )
+    qbi_taxable_row = pd.Series(
+        {
+            "Variable": "qualified_business_income_deduction",
+            "Taxable only": True,
+        }
+    )
     capital_income_taxable_row = pd.Series(
         {"Variable": "capital_gains_gross", "Taxable only": True}
     )
@@ -161,6 +174,7 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     assert _should_skip_soi_taxability_row(ordinary_all_return_row)
     assert not _should_skip_soi_taxability_row(capital_income_all_return_row)
     assert not _should_skip_soi_taxability_row(ordinary_taxable_row)
+    assert not _should_skip_soi_taxability_row(qbi_taxable_row)
     assert _should_skip_soi_taxability_row(capital_income_taxable_row)
 
 

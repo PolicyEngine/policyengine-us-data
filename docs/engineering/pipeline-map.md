@@ -2,10 +2,28 @@
 
 Generated from `docs/pipeline_map.yaml` and `@pipeline_node` decorators.
 
-## Stage 0: Raw Data Download
+## Canonical Stages
+
+| Stage | Title | Manifest steps |
+| --- | --- | --- |
+| `1_build_datasets` Stage 1 | Build Datasets | `01_build_datasets` |
+| `2_build_calibration_package` Stage 2 | Build Calibration Package | `02_build_package` |
+| `3_fit_weights` Stage 3 | Fit Weights | `03_fit_weights_regional`, `03_fit_weights_national` |
+| `4_build_outputs` Stage 4 | Build Outputs | `04_build_h5_regional`, `04_build_h5_national`, `04_stage_base_datasets`, `04_upload_diagnostics` |
+| `5_validate_and_promote_release` Stage 5 | Validate and Promote Release | `05_promote_release` |
+
+## Stage 1: Build Datasets
+
+Produce raw, base, extended, enhanced, stratified, and source-imputed datasets.
+
+### Substage 1a: Raw Data Download
 
 Download raw survey data from Census, IRS, Federal Reserve, and HuggingFace
 
+- Substage ID: `1a_raw_data_download`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `0`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -30,7 +48,7 @@ Download raw survey data from Census, IRS, Federal Reserve, and HuggingFace
 | `out_calibration_db` policy_data.db | `artifact` | `unknown` | `unknown` |  |
 | `util_storage` STORAGE_FOLDER | `utility` | `unknown` | `unknown` |  |
 
-### Edges
+#### Edges
 
 - `cps_url` -> `download_http` `external_source` (CPS ASEC ZIP)
 - `acs_url` -> `download_http` `external_source` (ACS PUMS CSV)
@@ -49,10 +67,14 @@ Download raw survey data from Census, IRS, Federal Reserve, and HuggingFace
 - `download_hf` -> `out_pop` `produces_artifact` (np2023_d5_mid.csv)
 - `download_hf` -> `out_calibration_db` `produces_artifact` (policy_data.db)
 
-## Stage 1: Base Dataset Construction
+### Substage 1b: Base Dataset Construction
 
 Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imputations, and retirement contribution inference
 
+- Substage ID: `1b_base_dataset_construction`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `1`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -92,7 +114,7 @@ Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imput
 | `impute_puf_pension` Impute PUF Pension Contributions | `library` | `current` | `moving` | `policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf` |
 | `mortgage_convert` Structural Mortgage Conversion | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs` |
 
-### Edges
+#### Edges
 
 - `in_census_cps` -> `add_id_variables` `data_flow` (raw CPS tables)
 - `add_id_variables` -> `add_personal_variables` `data_flow`
@@ -131,10 +153,14 @@ Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imput
 - `util_qrf` -> `impute_puf_demographics` `uses_utility`
 - `util_qrf` -> `impute_puf_pension` `uses_utility`
 
-## Stage 2: Extended CPS (PUF Clone)
+### Substage 1c: Extended CPS (PUF Clone)
 
 Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-only vars, then finalize Extended CPS inputs
 
+- Substage ID: `1c_extended_cps_puf_clone`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `2`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -160,7 +186,7 @@ Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-
 | `mortgage_convert` Structural Mortgage Conversion | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs` |
 | `formula_drop` Drop Formula Variables | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables` |
 
-### Edges
+#### Edges
 
 - `in_cps_s2` -> `geo_assign_s2` `data_flow` (CPS records)
 - `in_blocks_s2` -> `geo_assign_s2` `data_flow` (block populations)
@@ -185,10 +211,14 @@ Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-
 - `util_qrf_s2` -> `mortgage_hints` `uses_utility`
 - `util_knn_s2` -> `clone_features` `uses_utility`
 
-## Stage 3a: Enhanced CPS Reweighting
+### Substage 1d: Enhanced CPS Reweighting
 
 Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2025 ACA post-calibration override (deprecated ECPS pathway)
 
+- Substage ID: `1d_enhanced_cps_reweighting`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `3a`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -208,7 +238,7 @@ Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2
 | `reweight` Enhanced CPS Reweighting | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.enhanced_cps.reweight` |
 | `aca_2025_override` ACA 2025 Take-Up Override | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override` |
 
-### Edges
+#### Edges
 
 - `in_ext_half` -> `build_loss` `data_flow`
 - `t_soi` -> `build_loss` `external_source`
@@ -223,10 +253,14 @@ Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2
 - `util_loss` -> `build_loss` `uses_utility`
 - `util_l0_s3` -> `reweight` `uses_utility`
 
-## Stage 3b: Stratified CPS
+### Substage 1e: Stratified CPS
 
 Stratify Extended CPS by income - keep top 1%, sample remaining 99%
 
+- Substage ID: `1e_stratified_cps`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `3b`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -238,7 +272,7 @@ Stratify Extended CPS by income - keep top 1%, sample remaining 99%
 | `strat_sample` Uniform Sample Remaining 99% | `process` | `unknown` | `unknown` |  |
 | `out_strat` stratified_extended_cps_2024.h5 | `artifact` | `unknown` | `unknown` |  |
 
-### Edges
+#### Edges
 
 - `in_ext_cps` -> `calc_agi` `data_flow`
 - `calc_agi` -> `strat_top` `data_flow`
@@ -246,10 +280,14 @@ Stratify Extended CPS by income - keep top 1%, sample remaining 99%
 - `strat_top` -> `out_strat` `data_flow` (top 1%)
 - `strat_sample` -> `out_strat` `data_flow` (sampled 99%)
 
-## Stage 4: Source Imputation (ACS + SIPP + SCF)
+### Substage 1f: Source Imputation (ACS + SIPP + SCF)
 
 Impute wealth/assets from external surveys onto stratified CPS via QRF
 
+- Substage ID: `1f_source_imputation`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `4`
+- Manifest steps: `01_build_datasets`
 - Status: `current`
 - Stability: `moving`
 
@@ -268,7 +306,7 @@ Impute wealth/assets from external surveys onto stratified CPS via QRF
 | `sipp_qrf` SIPP QRF Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.source_impute._impute_sipp` |
 | `scf_qrf` SCF QRF Imputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.source_impute._impute_scf` |
 
-### Edges
+#### Edges
 
 - `in_strat_s4` -> `geo_assign` `data_flow`
 - `geo_assign` -> `acs_qrf` `data_flow` (state_fips)
@@ -286,10 +324,18 @@ Impute wealth/assets from external surveys onto stratified CPS via QRF
 - `util_qrf_s4` -> `sipp_assets_qrf` `uses_utility`
 - `util_qrf_s4` -> `scf_qrf` `uses_utility`
 
-## Stage 5: Matrix Build (Calibration Target Construction)
+## Stage 2: Build Calibration Package
+
+Build the calibration target package, geography tables, constraints, sparse matrices, and supporting metadata.
+
+### Substage 2a: Matrix Build (Calibration Target Construction)
 
 Build sparse calibration matrix (targets x households x clones)
 
+- Substage ID: `2a_matrix_build_calibration_target_construction`
+- Canonical stage: `2_build_calibration_package`
+- Legacy stage: `5`
+- Manifest steps: `02_build_package`
 - Status: `current`
 - Stability: `moving`
 
@@ -313,7 +359,7 @@ Build sparse calibration matrix (targets x households x clones)
 | `state_precomp` Per-State Simulation Precomputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._compute_single_state` |
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
 
-### Edges
+#### Edges
 
 - `in_cps_s5` -> `target_resolve` `data_flow`
 - `in_db_s5` -> `target_resolve` `external_source` (SQL targets)
@@ -333,10 +379,18 @@ Build sparse calibration matrix (targets x households x clones)
 - `util_takeup_s5` -> `takeup_rerand` `uses_utility`
 - `util_scipy` -> `sparse_build` `uses_utility`
 
-## Stage 6: Weight Fitting (L0 Calibration)
+## Stage 3: Fit Weights
 
-Fit log-weights using L0 HardConcrete gates on GPU
+Fit calibration weights for regional and national output builds.
 
+### Substage 3a: Weight Fitting - Regional
+
+Fit regional log-weights using L0 HardConcrete gates on GPU
+
+- Substage ID: `3a_weight_fitting_regional`
+- Canonical stage: `3_fit_weights`
+- Legacy stage: `6`
+- Manifest steps: `03_fit_weights_regional`
 - Status: `current`
 - Stability: `moving`
 
@@ -355,7 +409,7 @@ Fit log-weights using L0 HardConcrete gates on GPU
 | `init_weights` Compute Initial Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_initial_weights` |
 | `fit_model` Fit L0 Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
 
-### Edges
+#### Edges
 
 - `in_pkg_s6` -> `init_weights` `data_flow`
 - `init_weights` -> `create_model` `data_flow`
@@ -369,10 +423,58 @@ Fit log-weights using L0 HardConcrete gates on GPU
 - `util_l0` -> `create_model` `uses_utility`
 - `util_pytorch` -> `fit_model` `uses_utility`
 
-## Stage 7: Local Area H5 Build
+### Substage 3b: Weight Fitting - National
+
+Fit national log-weights for the national H5 output using the same L0 calibration machinery
+
+- Substage ID: `3b_weight_fitting_national`
+- Canonical stage: `3_fit_weights`
+- Legacy stage: `6`
+- Manifest steps: `03_fit_weights_national`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_pkg_national_s6` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
+| `modal_gpu_national` Modal GPU Container | `external` | `unknown` | `unknown` |  |
+| `create_model_national` Create National SparseCalibrationWeights | `process` | `unknown` | `unknown` |  |
+| `extract_national_weights` Extract National Weights | `process` | `unknown` | `unknown` |  |
+| `out_national_weights` national_calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
+| `out_national_geo_s6` national_geography_assignment.npz | `artifact` | `unknown` | `unknown` |  |
+| `out_national_diag` national_unified_diagnostics.csv | `artifact` | `unknown` | `unknown` |  |
+| `out_national_config_s6` national_unified_run_config.json | `artifact` | `unknown` | `unknown` |  |
+| `util_l0_national` l0-python | `utility` | `unknown` | `unknown` |  |
+| `util_pytorch_national` PyTorch | `utility` | `unknown` | `unknown` |  |
+| `init_weights` Compute Initial Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_initial_weights` |
+| `fit_model` Fit L0 Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
+
+#### Edges
+
+- `in_pkg_national_s6` -> `init_weights` `data_flow`
+- `init_weights` -> `create_model_national` `data_flow`
+- `create_model_national` -> `fit_model` `data_flow`
+- `modal_gpu_national` -> `fit_model` `runs_on_infra` (runs on)
+- `fit_model` -> `extract_national_weights` `data_flow`
+- `extract_national_weights` -> `out_national_weights` `produces_artifact`
+- `extract_national_weights` -> `out_national_geo_s6` `produces_artifact`
+- `fit_model` -> `out_national_diag` `produces_artifact`
+- `fit_model` -> `out_national_config_s6` `produces_artifact`
+- `util_l0_national` -> `create_model_national` `uses_utility`
+- `util_pytorch_national` -> `fit_model` `uses_utility`
+
+## Stage 4: Build Outputs
+
+Build local-area and national H5 outputs, stage base datasets, and upload diagnostics.
+
+### Substage 4a: Local Area H5 - Regional
 
 Build 51 state + 435 district + 1 city H5 files on Modal workers
 
+- Substage ID: `4a_local_area_h5_regional`
+- Canonical stage: `4_build_outputs`
+- Legacy stage: `7`
+- Manifest steps: `04_build_h5_regional`
 - Status: `current`
 - Stability: `moving`
 
@@ -398,7 +500,7 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 | `build_h5` Build Local Area H5 | `library` | `transitional` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_h5` |
 | `geo_derive` Derive Geography From Blocks | `library` | `current` | `moving` | `policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks` |
 
-### Edges
+#### Edges
 
 - `in_weights_s7` -> `partition` `data_flow`
 - `in_dataset_s7` -> `partition` `data_flow`
@@ -421,10 +523,110 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 - `util_build_h5` -> `build_h5` `uses_utility`
 - `util_takeup_s7` -> `takeup_apply` `uses_utility`
 
-## Stage 8: Validation & Promotion
+### Substage 4b: Local Area H5 - National
 
-7-layer validation, staging upload, atomic promotion to production
+Build the national US.h5 output from national weights and national geography artifacts
 
+- Substage ID: `4b_local_area_h5_national`
+- Canonical stage: `4_build_outputs`
+- Legacy stage: `7`
+- Manifest steps: `04_build_h5_national`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_national_weights_s4b` national_calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
+| `in_national_dataset_s4b` source_imputed_stratified_extended_cps.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_national_geo_s4b` national_geography_assignment.npz | `artifact` | `unknown` | `unknown` |  |
+| `in_national_config_s4b` national_unified_run_config.json | `artifact` | `unknown` | `unknown` |  |
+| `national_h5_coord` National H5 Coordinator | `process` | `unknown` | `unknown` |  |
+| `national_worker` National Modal Worker | `external` | `unknown` | `unknown` |  |
+| `national_request` AreaBuildRequest(type=national) | `process` | `unknown` | `unknown` |  |
+| `national_validation` National H5 Validation | `process` | `unknown` | `unknown` |  |
+| `out_national_h5` national/US.h5 | `artifact` | `unknown` | `unknown` |  |
+| `out_national_validation` national_validation.txt | `artifact` | `unknown` | `unknown` |  |
+| `util_build_h5_national` publish_local_area.build_h5() | `utility` | `unknown` | `unknown` |  |
+| `build_h5` Build Local Area H5 | `library` | `transitional` | `moving` | `policyengine_us_data.calibration.publish_local_area.build_h5` |
+
+#### Edges
+
+- `in_national_weights_s4b` -> `national_request` `data_flow`
+- `in_national_dataset_s4b` -> `national_request` `data_flow`
+- `in_national_geo_s4b` -> `national_request` `data_flow`
+- `in_national_config_s4b` -> `national_request` `data_flow`
+- `national_request` -> `build_h5` `data_flow`
+- `national_h5_coord` -> `national_worker` `runs_on_infra` (spawns)
+- `national_worker` -> `build_h5` `runs_on_infra` (runs)
+- `build_h5` -> `out_national_h5` `produces_artifact`
+- `out_national_h5` -> `national_validation` `data_flow`
+- `national_validation` -> `out_national_validation` `produces_artifact`
+- `util_build_h5_national` -> `build_h5` `uses_utility`
+
+### Substage 4c: Stage Base Datasets
+
+Stage base source-imputed datasets and policy database artifacts for the run
+
+- Substage ID: `4c_stage_base_datasets`
+- Canonical stage: `4_build_outputs`
+- Legacy stage: `7`
+- Manifest steps: `04_stage_base_datasets`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_source_imputed_s4c` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_policy_db_s4c` policy_data.db | `artifact` | `unknown` | `unknown` |  |
+| `hf_staging_base_s4c` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `out_staged_base_s4c` staged base datasets | `artifact` | `unknown` | `unknown` |  |
+| `stage_base_datasets` Stage Base Datasets | `entrypoint` | `current` | `moving` | `modal_app.pipeline.stage_base_datasets` |
+
+#### Edges
+
+- `in_source_imputed_s4c` -> `stage_base_datasets` `data_flow`
+- `in_policy_db_s4c` -> `stage_base_datasets` `data_flow`
+- `stage_base_datasets` -> `out_staged_base_s4c` `produces_artifact`
+- `out_staged_base_s4c` -> `hf_staging_base_s4c` `data_flow` (uploaded to)
+
+### Substage 4d: Upload Diagnostics
+
+Collect calibration and validation diagnostics and upload them to run-scoped archival paths
+
+- Substage ID: `4d_upload_diagnostics`
+- Canonical stage: `4_build_outputs`
+- Legacy stage: `7`
+- Manifest steps: `04_upload_diagnostics`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_calibration_diag_s4d` unified_diagnostics.csv | `artifact` | `unknown` | `unknown` |  |
+| `in_validation_diag_s4d` validation_results.csv / national_validation.txt | `artifact` | `unknown` | `unknown` |  |
+| `upload_diagnostics_s4d` Upload Run Diagnostics | `process` | `unknown` | `unknown` |  |
+| `out_hf_diagnostics_s4d` calibration/runs/{run_id}/diagnostics/ | `external` | `unknown` | `unknown` |  |
+| `calibration_diagnostics` Compute Calibration Diagnostics | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_diagnostics` |
+
+#### Edges
+
+- `in_calibration_diag_s4d` -> `upload_diagnostics_s4d` `data_flow`
+- `in_validation_diag_s4d` -> `upload_diagnostics_s4d` `data_flow`
+- `calibration_diagnostics` -> `in_calibration_diag_s4d` `produces_artifact`
+- `upload_diagnostics_s4d` -> `out_hf_diagnostics_s4d` `produces_artifact`
+
+## Stage 5: Validate and Promote Release
+
+Validate staged artifacts, promote release outputs, and finalize publication manifests.
+
+### Substage 5a: Validate Outputs
+
+Validate staged H5 and base artifacts before any production promotion
+
+- Substage ID: `5a_validate_outputs`
+- Canonical stage: `5_validate_and_promote_release`
+- Legacy stage: `8`
+- Manifest steps: `05_promote_release`
 - Status: `current`
 - Stability: `moving`
 
@@ -437,20 +639,14 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 | `v5` Layer 5: National H5 Validation | `process` | `unknown` | `unknown` |  |
 | `v6` Layer 6: Pre-Upload Validation | `process` | `unknown` | `unknown` |  |
 | `v7` Layer 7: Package Validation | `process` | `unknown` | `unknown` |  |
-| `gcs_upload` GCS Parallel Upload | `external` | `unknown` | `unknown` |  |
-| `staging_cleanup` Staging Cleanup | `process` | `unknown` | `unknown` |  |
-| `out_hf_prod` HuggingFace Production | `external` | `unknown` | `unknown` |  |
-| `out_gcs` Google Cloud Storage | `external` | `unknown` | `unknown` |  |
+| `out_validated_candidates_s5a` validated release candidates | `artifact` | `unknown` | `unknown` |  |
 | `util_manifest_s8` manifest.py | `utility` | `unknown` | `unknown` |  |
 | `util_sanity` sanity_checks.py | `utility` | `unknown` | `unknown` |  |
 | `util_validate` validate_staging.py | `utility` | `unknown` | `unknown` |  |
-| `util_upload` data_upload.py | `utility` | `unknown` | `unknown` |  |
 | `target_validation` Validate Area Against Targets | `validation` | `current` | `moving` | `policyengine_us_data.calibration.validate_staging.validate_area` |
 | `sanity_checks` Run H5 Sanity Checks | `validation` | `current` | `moving` | `policyengine_us_data.calibration.sanity_checks.run_sanity_checks` |
-| `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
-| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
 
-### Edges
+#### Edges
 
 - `in_h5s` -> `v1` `data_flow`
 - `in_db_s8` -> `target_validation` `external_source` (targets)
@@ -460,16 +656,97 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 - `v4` -> `v5` `data_flow`
 - `v5` -> `v6` `data_flow`
 - `v6` -> `v7` `data_flow`
-- `v7` -> `staging_upload` `data_flow` (all pass)
-- `staging_upload` -> `atomic_promote` `data_flow`
-- `atomic_promote` -> `gcs_upload` `data_flow`
-- `gcs_upload` -> `staging_cleanup` `data_flow`
-- `atomic_promote` -> `out_hf_prod` `produces_artifact`
-- `gcs_upload` -> `out_gcs` `produces_artifact`
+- `v7` -> `out_validated_candidates_s5a` `produces_artifact` (all pass)
 - `util_manifest_s8` -> `v1` `uses_utility`
 - `util_sanity` -> `sanity_checks` `uses_utility`
 - `util_validate` -> `target_validation` `uses_utility`
-- `util_upload` -> `staging_upload` `uses_utility`
+
+### Substage 5b: Promote HuggingFace
+
+Promote validated staged artifacts to HuggingFace production paths
+
+- Substage ID: `5b_promote_huggingface`
+- Canonical stage: `5_validate_and_promote_release`
+- Legacy stage: `8`
+- Manifest steps: `05_promote_release`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_validated_candidates_s5b` validated release candidates | `artifact` | `unknown` | `unknown` |  |
+| `hf_staging_s5b` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `out_hf_prod` HuggingFace Production | `external` | `unknown` | `unknown` |  |
+| `util_upload_s5b` data_upload.py | `utility` | `unknown` | `unknown` |  |
+| `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
+| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
+| `promote_pipeline_run` Promote Pipeline Run | `entrypoint` | `current` | `moving` | `modal_app.pipeline.promote_run` |
+
+#### Edges
+
+- `in_validated_candidates_s5b` -> `staging_upload` `data_flow`
+- `hf_staging_s5b` -> `atomic_promote` `external_source`
+- `staging_upload` -> `atomic_promote` `data_flow`
+- `promote_pipeline_run` -> `atomic_promote` `data_flow` (orchestrates)
+- `atomic_promote` -> `out_hf_prod` `produces_artifact`
+- `util_upload_s5b` -> `staging_upload` `uses_utility`
+- `util_upload_s5b` -> `atomic_promote` `uses_utility`
+
+### Substage 5c: Promote GCS
+
+Upload promoted datasets to Google Cloud Storage with version metadata
+
+- Substage ID: `5c_promote_gcs`
+- Canonical stage: `5_validate_and_promote_release`
+- Legacy stage: `8`
+- Manifest steps: `05_promote_release`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_hf_prod_s5c` HuggingFace production release | `external` | `unknown` | `unknown` |  |
+| `gcs_upload` GCS Parallel Upload | `process` | `unknown` | `unknown` |  |
+| `out_gcs` Google Cloud Storage | `external` | `unknown` | `unknown` |  |
+| `util_upload_gcs_s5c` data_upload.py | `utility` | `unknown` | `unknown` |  |
+| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
+
+#### Edges
+
+- `in_hf_prod_s5c` -> `gcs_upload` `data_flow`
+- `atomic_promote` -> `gcs_upload` `data_flow` (release files)
+- `gcs_upload` -> `out_gcs` `produces_artifact`
+- `util_upload_gcs_s5c` -> `gcs_upload` `uses_utility`
+
+### Substage 5d: Write Version Manifest
+
+Finalize release manifests, record run diagnostics paths, and clean staging state
+
+- Substage ID: `5d_write_version_manifest`
+- Canonical stage: `5_validate_and_promote_release`
+- Legacy stage: `8`
+- Manifest steps: `05_promote_release`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_release_outputs_s5d` promoted release outputs | `artifact` | `unknown` | `unknown` |  |
+| `version_manifest_write` version_manifest.json update | `process` | `unknown` | `unknown` |  |
+| `staging_cleanup` Staging Cleanup | `process` | `unknown` | `unknown` |  |
+| `out_version_manifest` version_manifest.json | `artifact` | `unknown` | `unknown` |  |
+| `out_release_finalized` finalized release | `artifact` | `unknown` | `unknown` |  |
+| `util_manifest_s5d` version_manifest.py / release_manifest.py | `utility` | `unknown` | `unknown` |  |
+| `atomic_promote` Atomic Promote Local H5 Files | `entrypoint` | `current` | `moving` | `policyengine_us_data.calibration.promote_local_h5s.promote` |
+
+#### Edges
+
+- `in_release_outputs_s5d` -> `version_manifest_write` `data_flow`
+- `atomic_promote` -> `version_manifest_write` `data_flow` (release manifest inputs)
+- `version_manifest_write` -> `out_version_manifest` `produces_artifact`
+- `version_manifest_write` -> `staging_cleanup` `data_flow`
+- `staging_cleanup` -> `out_release_finalized` `produces_artifact`
+- `util_manifest_s5d` -> `version_manifest_write` `uses_utility`
 
 ## Pydoc API Surface
 
@@ -512,14 +789,6 @@ def _build_publishing_input_bundle(*, weights_path: Path, dataset_path: Path, db
 ```
 
 Build the normalized coordinator input bundle for one publish scope.
-
-### `policyengine_us_data.calibration.unified_calibration.compute_diagnostics`
-
-```python
-def compute_diagnostics(weights: np.ndarray, X_sparse, targets_df, target_names: list) -> 'pd.DataFrame'
-```
-
-Compare fitted weighted sums to calibration targets and summarize error.
 
 ### `policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader`
 
@@ -657,14 +926,6 @@ def stage(files: list, version: str, run_id: str = '')
 
 Upload locally built H5 files into Hugging Face staging paths.
 
-### `modal_app.pipeline.promote_run`
-
-```python
-def promote_run(run_id: str, version: str = None) -> str
-```
-
-Promote a completed pipeline run to production.
-
 ### `modal_app.local_area._resolve_scope_fingerprint`
 
 ```python
@@ -704,14 +965,6 @@ def impute_source_variables(data: Dict[str, Dict[int, np.ndarray]], state_fips: 
 ```
 
 Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.
-
-### `modal_app.pipeline.stage_base_datasets`
-
-```python
-def stage_base_datasets(run_id: str, version: str, branch: str) -> None
-```
-
-Upload source_imputed + policy_data.db from pipeline
 
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder`
 

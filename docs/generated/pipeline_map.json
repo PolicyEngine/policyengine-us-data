@@ -111,27 +111,6 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
-      ],
-      "artifacts_out": [
-        "unified_diagnostics.csv"
-      ],
-      "description": "Compare fitted weighted sums to calibration targets and summarize error.",
-      "id": "calibration_diagnostics",
-      "label": "Compute Calibration Diagnostics",
-      "node_type": "library",
-      "pathways": [
-        "weight_fit"
-      ],
-      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_unified_calibration.py"
-      ]
-    },
-    {
-      "api_refs": [
         "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
       ],
       "description": "Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
@@ -460,32 +439,6 @@
     },
     {
       "api_refs": [
-        "modal_app.pipeline.promote_run"
-      ],
-      "artifacts_in": [
-        "staged H5 files",
-        "run metadata"
-      ],
-      "artifacts_out": [
-        "production H5 release"
-      ],
-      "description": "Promote a completed staged pipeline run without re-running computation.",
-      "id": "promote_pipeline_run",
-      "label": "Promote Pipeline Run",
-      "node_type": "entrypoint",
-      "pathways": [
-        "orchestration",
-        "local_h5"
-      ],
-      "source_file": "modal_app/pipeline.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/test_pipeline.py"
-      ]
-    },
-    {
-      "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
         "modal_app.local_area._resolve_scope_fingerprint"
       ],
@@ -605,29 +558,6 @@
     },
     {
       "api_refs": [
-        "modal_app.pipeline.stage_base_datasets"
-      ],
-      "artifacts_out": [
-        "source_imputed_*.h5",
-        "policy_data.db"
-      ],
-      "description": "Run Modal data build, collect source-imputed H5s, and stage base artifacts for the pipeline run.",
-      "id": "stage_base_datasets",
-      "label": "Stage Base Datasets",
-      "node_type": "entrypoint",
-      "pathways": [
-        "orchestration",
-        "data_build"
-      ],
-      "source_file": "modal_app/pipeline.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/test_pipeline.py"
-      ]
-    },
-    {
-      "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder"
       ],
       "description": "Database-backed sparse matrix builder for national and local-area calibration.",
@@ -681,14 +611,69 @@
       ]
     }
   ],
+  "canonical_stages": [
+    {
+      "description": "Produce raw, base, extended, enhanced, stratified, and source-imputed datasets.",
+      "id": "1_build_datasets",
+      "label": "Stage 1",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
+      "title": "Build Datasets"
+    },
+    {
+      "description": "Build the calibration target package, geography tables, constraints, sparse matrices, and supporting metadata.",
+      "id": "2_build_calibration_package",
+      "label": "Stage 2",
+      "manifest_step_ids": [
+        "02_build_package"
+      ],
+      "title": "Build Calibration Package"
+    },
+    {
+      "description": "Fit calibration weights for regional and national output builds.",
+      "id": "3_fit_weights",
+      "label": "Stage 3",
+      "manifest_step_ids": [
+        "03_fit_weights_regional",
+        "03_fit_weights_national"
+      ],
+      "title": "Fit Weights"
+    },
+    {
+      "description": "Build local-area and national H5 outputs, stage base datasets, and upload diagnostics.",
+      "id": "4_build_outputs",
+      "label": "Stage 4",
+      "manifest_step_ids": [
+        "04_build_h5_regional",
+        "04_build_h5_national",
+        "04_stage_base_datasets",
+        "04_upload_diagnostics"
+      ],
+      "title": "Build Outputs"
+    },
+    {
+      "description": "Validate staged artifacts, promote release outputs, and finalize publication manifests.",
+      "id": "5_validate_and_promote_release",
+      "label": "Stage 5",
+      "manifest_step_ids": [
+        "05_promote_release"
+      ],
+      "title": "Validate and Promote Release"
+    }
+  ],
   "metadata": {
-    "api_node_count": 33,
+    "api_node_count": 30,
+    "canonical_stage_count": 5,
     "decorated_object_count": 80,
-    "mapped_decorated_node_count": 47,
-    "stage_count": 10
+    "mapped_decorated_node_count": 50,
+    "stage_count": 17,
+    "substage_count": 17
   },
   "stages": [
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Download raw survey data from Census, IRS, Federal Reserve, and HuggingFace",
       "edges": [
         {
@@ -789,8 +774,12 @@
         }
       ],
       "groups": [],
-      "id": "0",
-      "label": "Stage 0",
+      "id": "1a_raw_data_download",
+      "label": "1a",
+      "legacy_stage_id": "0",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
           "description": "ZIP with CSV files from www2.census.gov",
@@ -903,9 +892,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 0: Raw Data Download"
+      "title": "Substage 1a: Raw Data Download"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Build CPS 2024 and PUF 2024 from raw survey data, donor-based labor-market imputations, and retirement contribution inference",
       "edges": [
         {
@@ -1102,11 +1093,15 @@
         }
       ],
       "groups": [],
-      "id": "1",
-      "label": "Stage 1",
+      "id": "1b_base_dataset_construction",
+      "label": "1b",
+      "legacy_stage_id": "1",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
-          "description": "Raw CPS ASEC from Stage 0",
+          "description": "Raw CPS ASEC from substage 1a",
           "id": "in_census_cps",
           "label": "census_cps_2024.h5",
           "node_type": "artifact"
@@ -1160,7 +1155,7 @@
           "node_type": "artifact"
         },
         {
-          "description": "Raw IRS PUF from Stage 0",
+          "description": "Raw IRS PUF from substage 1a",
           "id": "in_irs_puf",
           "label": "irs_puf_2015.h5",
           "node_type": "artifact"
@@ -1522,9 +1517,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 1: Base Dataset Construction"
+      "title": "Substage 1b: Base Dataset Construction"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-only vars, then finalize Extended CPS inputs",
       "edges": [
         {
@@ -1644,8 +1641,12 @@
         }
       ],
       "groups": [],
-      "id": "2",
-      "label": "Stage 2",
+      "id": "1c_extended_cps_puf_clone",
+      "label": "1c",
+      "legacy_stage_id": "2",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
           "description": "From Stage 1 (full sample)",
@@ -1666,7 +1667,7 @@
           "node_type": "artifact"
         },
         {
-          "description": "From Stage 0 (mortgage-balance donor sample)",
+          "description": "From substage 1a (mortgage-balance donor sample)",
           "id": "in_scf_s2",
           "label": "SCF_2022",
           "node_type": "artifact"
@@ -1917,9 +1918,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 2: Extended CPS (PUF Clone)"
+      "title": "Substage 1c: Extended CPS (PUF Clone)"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Reweight Extended CPS to match national IRS/Census/CBO targets, then apply the 2025 ACA post-calibration override (deprecated ECPS pathway)",
       "edges": [
         {
@@ -1985,8 +1988,12 @@
         }
       ],
       "groups": [],
-      "id": "3a",
-      "label": "Stage 3a",
+      "id": "1d_enhanced_cps_reweighting",
+      "label": "1d",
+      "legacy_stage_id": "3a",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
           "description": "Half-sample from Stage 2",
@@ -2102,9 +2109,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 3a: Enhanced CPS Reweighting"
+      "title": "Substage 1d: Enhanced CPS Reweighting"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Stratify Extended CPS by income - keep top 1%, sample remaining 99%",
       "edges": [
         {
@@ -2148,8 +2157,12 @@
           ]
         }
       ],
-      "id": "3b",
-      "label": "Stage 3b",
+      "id": "1e_stratified_cps",
+      "label": "1e",
+      "legacy_stage_id": "3b",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
           "description": "From Stage 2 (~260K HH)",
@@ -2184,9 +2197,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 3b: Stratified CPS"
+      "title": "Substage 1e: Stratified CPS"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
       "description": "Impute wealth/assets from external surveys onto stratified CPS via QRF",
       "edges": [
         {
@@ -2270,8 +2285,12 @@
         }
       ],
       "groups": [],
-      "id": "4",
-      "label": "Stage 4",
+      "id": "1f_source_imputation",
+      "label": "1f",
+      "legacy_stage_id": "4",
+      "manifest_step_ids": [
+        "01_build_datasets"
+      ],
       "nodes": [
         {
           "description": "From Stage 3 (~12K HH)",
@@ -2400,9 +2419,11 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 4: Source Imputation (ACS + SIPP + SCF)"
+      "title": "Substage 1f: Source Imputation (ACS + SIPP + SCF)"
     },
     {
+      "canonical_stage_id": "2_build_calibration_package",
+      "canonical_stage_title": "Build Calibration Package",
       "description": "Build sparse calibration matrix (targets x households x clones)",
       "edges": [
         {
@@ -2513,8 +2534,12 @@
           ]
         }
       ],
-      "id": "5",
-      "label": "Stage 5",
+      "id": "2a_matrix_build_calibration_target_construction",
+      "label": "2a",
+      "legacy_stage_id": "5",
+      "manifest_step_ids": [
+        "02_build_package"
+      ],
       "nodes": [
         {
           "description": "From Stage 4 (~12K HH)",
@@ -2649,10 +2674,12 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 5: Matrix Build (Calibration Target Construction)"
+      "title": "Substage 2a: Matrix Build (Calibration Target Construction)"
     },
     {
-      "description": "Fit log-weights using L0 HardConcrete gates on GPU",
+      "canonical_stage_id": "3_fit_weights",
+      "canonical_stage_title": "Fit Weights",
+      "description": "Fit regional log-weights using L0 HardConcrete gates on GPU",
       "edges": [
         {
           "edge_type": "data_flow",
@@ -2728,8 +2755,12 @@
           ]
         }
       ],
-      "id": "6",
-      "label": "Stage 6",
+      "id": "3a_weight_fitting_regional",
+      "label": "3a",
+      "legacy_stage_id": "6",
+      "manifest_step_ids": [
+        "03_fit_weights_regional"
+      ],
       "nodes": [
         {
           "description": "From Stage 5 - X_sparse, targets_df, initial_weights",
@@ -2840,9 +2871,208 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 6: Weight Fitting (L0 Calibration)"
+      "title": "Substage 3a: Weight Fitting - Regional"
     },
     {
+      "canonical_stage_id": "3_fit_weights",
+      "canonical_stage_title": "Fit Weights",
+      "description": "Fit national log-weights for the national H5 output using the same L0 calibration machinery",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_pkg_national_s6",
+          "target": "init_weights"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "init_weights",
+          "target": "create_model_national"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "create_model_national",
+          "target": "fit_model"
+        },
+        {
+          "edge_type": "runs_on_infra",
+          "label": "runs on",
+          "source": "modal_gpu_national",
+          "target": "fit_model"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "fit_model",
+          "target": "extract_national_weights"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "extract_national_weights",
+          "target": "out_national_weights"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "extract_national_weights",
+          "target": "out_national_geo_s6"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_model",
+          "target": "out_national_diag"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_model",
+          "target": "out_national_config_s6"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_l0_national",
+          "target": "create_model_national"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_pytorch_national",
+          "target": "fit_model"
+        }
+      ],
+      "groups": [
+        {
+          "description": "National fit phase: initialize national weights, optimize sparse calibration weights, and emit national artifacts plus diagnostics",
+          "id": "run_calibration_fit_national",
+          "label": "run_calibration() national",
+          "node_ids": [
+            "init_weights",
+            "create_model_national",
+            "fit_model",
+            "extract_national_weights",
+            "out_national_weights",
+            "out_national_geo_s6",
+            "out_national_diag",
+            "out_national_config_s6"
+          ]
+        }
+      ],
+      "id": "3b_weight_fitting_national",
+      "label": "3b",
+      "legacy_stage_id": "6",
+      "manifest_step_ids": [
+        "03_fit_weights_national"
+      ],
+      "nodes": [
+        {
+          "description": "From substage 2a - X_sparse, targets_df, initial_weights",
+          "id": "in_pkg_national_s6",
+          "label": "calibration_package.pkl",
+          "node_type": "artifact"
+        },
+        {
+          "description": "T4 / A10 / A100 / H100 for national calibration",
+          "id": "modal_gpu_national",
+          "label": "Modal GPU Container",
+          "node_type": "external"
+        },
+        {
+          "description": "National target scope with L0 HardConcrete gates",
+          "id": "create_model_national",
+          "label": "Create National SparseCalibrationWeights",
+          "node_type": "process"
+        },
+        {
+          "description": "Deterministic gate threshold for national output weights",
+          "id": "extract_national_weights",
+          "label": "Extract National Weights",
+          "node_type": "process"
+        },
+        {
+          "description": "National weights used for US.h5",
+          "id": "out_national_weights",
+          "label": "national_calibration_weights.npy",
+          "node_type": "artifact"
+        },
+        {
+          "description": "National geography assignment artifact",
+          "id": "out_national_geo_s6",
+          "label": "national_geography_assignment.npz",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Per-target national error analysis",
+          "id": "out_national_diag",
+          "label": "national_unified_diagnostics.csv",
+          "node_type": "artifact"
+        },
+        {
+          "description": "National hyperparameters + SHA256 checksums",
+          "id": "out_national_config_s6",
+          "label": "national_unified_run_config.json",
+          "node_type": "artifact"
+        },
+        {
+          "description": "SparseCalibrationWeights - HardConcrete gates",
+          "id": "util_l0_national",
+          "label": "l0-python",
+          "node_type": "utility"
+        },
+        {
+          "description": "Adam optimizer, autograd, CUDA",
+          "id": "util_pytorch_national",
+          "label": "PyTorch",
+          "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
+          ],
+          "artifacts_in": [
+            "calibration_package.pkl"
+          ],
+          "description": "Build population-proportional initial weights from geography and targets.",
+          "id": "init_weights",
+          "label": "Compute Initial Weights",
+          "node_type": "library",
+          "pathways": [
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
+          ],
+          "artifacts_in": [
+            "calibration_package.pkl"
+          ],
+          "artifacts_out": [
+            "calibration_weights.npy",
+            "unified_diagnostics.csv"
+          ],
+          "description": "Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+          "id": "fit_model",
+          "label": "Fit L0 Calibration Weights",
+          "node_type": "library",
+          "pathways": [
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 3b: Weight Fitting - National"
+    },
+    {
+      "canonical_stage_id": "4_build_outputs",
+      "canonical_stage_title": "Build Outputs",
       "description": "Build 51 state + 435 district + 1 city H5 files on Modal workers",
       "edges": [
         {
@@ -2953,8 +3183,12 @@
         }
       ],
       "groups": [],
-      "id": "7",
-      "label": "Stage 7",
+      "id": "4a_local_area_h5_regional",
+      "label": "4a",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_build_h5_regional"
+      ],
       "nodes": [
         {
           "description": "From Stage 6",
@@ -3146,10 +3380,355 @@
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 7: Local Area H5 Build"
+      "title": "Substage 4a: Local Area H5 - Regional"
     },
     {
-      "description": "7-layer validation, staging upload, atomic promotion to production",
+      "canonical_stage_id": "4_build_outputs",
+      "canonical_stage_title": "Build Outputs",
+      "description": "Build the national US.h5 output from national weights and national geography artifacts",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_national_weights_s4b",
+          "target": "national_request"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_national_dataset_s4b",
+          "target": "national_request"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_national_geo_s4b",
+          "target": "national_request"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_national_config_s4b",
+          "target": "national_request"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "national_request",
+          "target": "build_h5"
+        },
+        {
+          "edge_type": "runs_on_infra",
+          "label": "spawns",
+          "source": "national_h5_coord",
+          "target": "national_worker"
+        },
+        {
+          "edge_type": "runs_on_infra",
+          "label": "runs",
+          "source": "national_worker",
+          "target": "build_h5"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "build_h5",
+          "target": "out_national_h5"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "out_national_h5",
+          "target": "national_validation"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "national_validation",
+          "target": "out_national_validation"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_build_h5_national",
+          "target": "build_h5"
+        }
+      ],
+      "groups": [],
+      "id": "4b_local_area_h5_national",
+      "label": "4b",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_build_h5_national"
+      ],
+      "nodes": [
+        {
+          "description": "From substage 3b",
+          "id": "in_national_weights_s4b",
+          "label": "national_calibration_weights.npy",
+          "node_type": "artifact"
+        },
+        {
+          "description": "From substage 1f",
+          "id": "in_national_dataset_s4b",
+          "label": "source_imputed_stratified_extended_cps.h5",
+          "node_type": "artifact"
+        },
+        {
+          "description": "From substage 3b",
+          "id": "in_national_geo_s4b",
+          "label": "national_geography_assignment.npz",
+          "node_type": "artifact"
+        },
+        {
+          "description": "From substage 3b",
+          "id": "in_national_config_s4b",
+          "label": "national_unified_run_config.json",
+          "node_type": "artifact"
+        },
+        {
+          "description": "coordinate_national_publish() prepares the US request and worker inputs",
+          "id": "national_h5_coord",
+          "label": "National H5 Coordinator",
+          "node_type": "process"
+        },
+        {
+          "description": "Single worker build for national/US.h5",
+          "id": "national_worker",
+          "label": "National Modal Worker",
+          "node_type": "external"
+        },
+        {
+          "description": "Typed request for the national US.h5 output",
+          "id": "national_request",
+          "label": "AreaBuildRequest(type=national)",
+          "node_type": "process"
+        },
+        {
+          "description": "validate_national_h5.py structural and reference-value checks",
+          "id": "national_validation",
+          "label": "National H5 Validation",
+          "node_type": "process"
+        },
+        {
+          "description": "National H5 artifact staged under the run ID",
+          "id": "out_national_h5",
+          "label": "national/US.h5",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Captured national validation output",
+          "id": "out_national_validation",
+          "label": "national_validation.txt",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Shared H5 writer used by regional and national outputs",
+          "id": "util_build_h5_national",
+          "label": "publish_local_area.build_h5()",
+          "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.publish_local_area.build_h5"
+          ],
+          "artifacts_in": [
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5"
+          ],
+          "artifacts_out": [
+            "states/*.h5",
+            "districts/*.h5",
+            "cities/*.h5",
+            "US.h5"
+          ],
+          "description": "Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+          "details": "This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
+          "id": "build_h5",
+          "label": "Build Local Area H5",
+          "node_type": "library",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/publish_local_area.py",
+          "stability": "moving",
+          "status": "transitional",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_publish_local_area.py",
+            "uv run pytest tests/integration/test_tiny_h5_pipeline.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 4b: Local Area H5 - National"
+    },
+    {
+      "canonical_stage_id": "4_build_outputs",
+      "canonical_stage_title": "Build Outputs",
+      "description": "Stage base source-imputed datasets and policy database artifacts for the run",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_source_imputed_s4c",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_policy_db_s4c",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "stage_base_datasets",
+          "target": "out_staged_base_s4c"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "uploaded to",
+          "source": "out_staged_base_s4c",
+          "target": "hf_staging_base_s4c"
+        }
+      ],
+      "groups": [],
+      "id": "4c_stage_base_datasets",
+      "label": "4c",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_stage_base_datasets"
+      ],
+      "nodes": [
+        {
+          "description": "Base dataset artifacts copied into the pipeline volume",
+          "id": "in_source_imputed_s4c",
+          "label": "source_imputed_*.h5",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Policy target database copied into the pipeline volume",
+          "id": "in_policy_db_s4c",
+          "label": "policy_data.db",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Run-scoped staging prefix for base datasets",
+          "id": "hf_staging_base_s4c",
+          "label": "HuggingFace staging/{run_id}",
+          "node_type": "external"
+        },
+        {
+          "description": "Base artifacts uploaded to staging paths for later promotion",
+          "id": "out_staged_base_s4c",
+          "label": "staged base datasets",
+          "node_type": "artifact"
+        },
+        {
+          "api_refs": [
+            "modal_app.pipeline.stage_base_datasets"
+          ],
+          "artifacts_out": [
+            "source_imputed_*.h5",
+            "policy_data.db"
+          ],
+          "description": "Run Modal data build, collect source-imputed H5s, and stage base artifacts for the pipeline run.",
+          "id": "stage_base_datasets",
+          "label": "Stage Base Datasets",
+          "node_type": "entrypoint",
+          "pathways": [
+            "orchestration",
+            "data_build"
+          ],
+          "source_file": "modal_app/pipeline.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_pipeline.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 4c: Stage Base Datasets"
+    },
+    {
+      "canonical_stage_id": "4_build_outputs",
+      "canonical_stage_title": "Build Outputs",
+      "description": "Collect calibration and validation diagnostics and upload them to run-scoped archival paths",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_calibration_diag_s4d",
+          "target": "upload_diagnostics_s4d"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_validation_diag_s4d",
+          "target": "upload_diagnostics_s4d"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "calibration_diagnostics",
+          "target": "in_calibration_diag_s4d"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "upload_diagnostics_s4d",
+          "target": "out_hf_diagnostics_s4d"
+        }
+      ],
+      "groups": [],
+      "id": "4d_upload_diagnostics",
+      "label": "4d",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_upload_diagnostics"
+      ],
+      "nodes": [
+        {
+          "description": "Calibration diagnostics emitted by substage 3a/3b",
+          "id": "in_calibration_diag_s4d",
+          "label": "unified_diagnostics.csv",
+          "node_type": "artifact"
+        },
+        {
+          "description": "H5 validation diagnostics emitted by substage 4a/4b",
+          "id": "in_validation_diag_s4d",
+          "label": "validation_results.csv / national_validation.txt",
+          "node_type": "artifact"
+        },
+        {
+          "description": "upload_run_diagnostics() writes diagnostics to HuggingFace archival paths",
+          "id": "upload_diagnostics_s4d",
+          "label": "Upload Run Diagnostics",
+          "node_type": "process"
+        },
+        {
+          "description": "Run-scoped diagnostics archive",
+          "id": "out_hf_diagnostics_s4d",
+          "label": "calibration/runs/{run_id}/diagnostics/",
+          "node_type": "external"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
+          ],
+          "artifacts_out": [
+            "unified_diagnostics.csv"
+          ],
+          "description": "Compare fitted weighted sums to calibration targets and summarize error.",
+          "id": "calibration_diagnostics",
+          "label": "Compute Calibration Diagnostics",
+          "node_type": "library",
+          "pathways": [
+            "weight_fit"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 4d: Upload Diagnostics"
+    },
+    {
+      "canonical_stage_id": "5_validate_and_promote_release",
+      "canonical_stage_title": "Validate and Promote Release",
+      "description": "Validate staged H5 and base artifacts before any production promotion",
       "edges": [
         {
           "edge_type": "data_flow",
@@ -3193,35 +3772,10 @@
           "target": "v7"
         },
         {
-          "edge_type": "data_flow",
+          "edge_type": "produces_artifact",
           "label": "all pass",
           "source": "v7",
-          "target": "staging_upload"
-        },
-        {
-          "edge_type": "data_flow",
-          "source": "staging_upload",
-          "target": "atomic_promote"
-        },
-        {
-          "edge_type": "data_flow",
-          "source": "atomic_promote",
-          "target": "gcs_upload"
-        },
-        {
-          "edge_type": "data_flow",
-          "source": "gcs_upload",
-          "target": "staging_cleanup"
-        },
-        {
-          "edge_type": "produces_artifact",
-          "source": "atomic_promote",
-          "target": "out_hf_prod"
-        },
-        {
-          "edge_type": "produces_artifact",
-          "source": "gcs_upload",
-          "target": "out_gcs"
+          "target": "out_validated_candidates_s5a"
         },
         {
           "edge_type": "uses_utility",
@@ -3237,16 +3791,15 @@
           "edge_type": "uses_utility",
           "source": "util_validate",
           "target": "target_validation"
-        },
-        {
-          "edge_type": "uses_utility",
-          "source": "util_upload",
-          "target": "staging_upload"
         }
       ],
       "groups": [],
-      "id": "8",
-      "label": "Stage 8",
+      "id": "5a_validate_outputs",
+      "label": "5a",
+      "legacy_stage_id": "8",
+      "manifest_step_ids": [
+        "05_promote_release"
+      ],
       "nodes": [
         {
           "description": "From Stage 7 (Modal volume)",
@@ -3291,28 +3844,10 @@
           "node_type": "process"
         },
         {
-          "description": "gs://policyengine-us-data/ - version metadata on each blob",
-          "id": "gcs_upload",
-          "label": "GCS Parallel Upload",
-          "node_type": "external"
-        },
-        {
-          "description": "cleanup_staging_hf() - removes staging/ files",
-          "id": "staging_cleanup",
-          "label": "Staging Cleanup",
-          "node_type": "process"
-        },
-        {
-          "description": "policyengine/policyengine-us-data - final published datasets",
-          "id": "out_hf_prod",
-          "label": "HuggingFace Production",
-          "node_type": "external"
-        },
-        {
-          "description": "gs://policyengine-us-data/ - CDN/backup",
-          "id": "out_gcs",
-          "label": "Google Cloud Storage",
-          "node_type": "external"
+          "description": "Manifest-backed artifacts that passed validation and are eligible for promotion",
+          "id": "out_validated_candidates_s5a",
+          "label": "validated release candidates",
+          "node_type": "artifact"
         },
         {
           "description": "generate_manifest(), verify_manifest()",
@@ -3330,12 +3865,6 @@
           "description": "Full target comparison",
           "id": "util_validate",
           "label": "validate_staging.py",
-          "node_type": "utility"
-        },
-        {
-          "description": "staging/promote/cleanup",
-          "id": "util_upload",
-          "label": "data_upload.py",
           "node_type": "utility"
         },
         {
@@ -3373,6 +3902,85 @@
           "validation_commands": [
             "uv run pytest tests/unit/calibration/test_validate_staging.py"
           ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 5a: Validate Outputs"
+    },
+    {
+      "canonical_stage_id": "5_validate_and_promote_release",
+      "canonical_stage_title": "Validate and Promote Release",
+      "description": "Promote validated staged artifacts to HuggingFace production paths",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_validated_candidates_s5b",
+          "target": "staging_upload"
+        },
+        {
+          "edge_type": "external_source",
+          "source": "hf_staging_s5b",
+          "target": "atomic_promote"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "staging_upload",
+          "target": "atomic_promote"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "orchestrates",
+          "source": "promote_pipeline_run",
+          "target": "atomic_promote"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "atomic_promote",
+          "target": "out_hf_prod"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_upload_s5b",
+          "target": "staging_upload"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_upload_s5b",
+          "target": "atomic_promote"
+        }
+      ],
+      "groups": [],
+      "id": "5b_promote_huggingface",
+      "label": "5b",
+      "legacy_stage_id": "8",
+      "manifest_step_ids": [
+        "05_promote_release"
+      ],
+      "nodes": [
+        {
+          "description": "Output set from substage 5a",
+          "id": "in_validated_candidates_s5b",
+          "label": "validated release candidates",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Run-scoped staging prefix containing validated artifacts",
+          "id": "hf_staging_s5b",
+          "label": "HuggingFace staging/{run_id}",
+          "node_type": "external"
+        },
+        {
+          "description": "policyengine/policyengine-us-data - final published datasets",
+          "id": "out_hf_prod",
+          "label": "HuggingFace Production",
+          "node_type": "external"
+        },
+        {
+          "description": "staging/promote helpers",
+          "id": "util_upload_s5b",
+          "label": "data_upload.py",
+          "node_type": "utility"
         },
         {
           "api_refs": [
@@ -3416,11 +4024,231 @@
           "validation_commands": [
             "uv run pytest tests/unit/test_promote_local_h5s.py"
           ]
+        },
+        {
+          "api_refs": [
+            "modal_app.pipeline.promote_run"
+          ],
+          "artifacts_in": [
+            "staged H5 files",
+            "run metadata"
+          ],
+          "artifacts_out": [
+            "production H5 release"
+          ],
+          "description": "Promote a completed staged pipeline run without re-running computation.",
+          "id": "promote_pipeline_run",
+          "label": "Promote Pipeline Run",
+          "node_type": "entrypoint",
+          "pathways": [
+            "orchestration",
+            "local_h5"
+          ],
+          "source_file": "modal_app/pipeline.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_pipeline.py"
+          ]
         }
       ],
       "stability": "moving",
       "status": "current",
-      "title": "Stage 8: Validation & Promotion"
+      "title": "Substage 5b: Promote HuggingFace"
+    },
+    {
+      "canonical_stage_id": "5_validate_and_promote_release",
+      "canonical_stage_title": "Validate and Promote Release",
+      "description": "Upload promoted datasets to Google Cloud Storage with version metadata",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_hf_prod_s5c",
+          "target": "gcs_upload"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "release files",
+          "source": "atomic_promote",
+          "target": "gcs_upload"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "gcs_upload",
+          "target": "out_gcs"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_upload_gcs_s5c",
+          "target": "gcs_upload"
+        }
+      ],
+      "groups": [],
+      "id": "5c_promote_gcs",
+      "label": "5c",
+      "legacy_stage_id": "8",
+      "manifest_step_ids": [
+        "05_promote_release"
+      ],
+      "nodes": [
+        {
+          "description": "Production artifacts promoted in substage 5b",
+          "id": "in_hf_prod_s5c",
+          "label": "HuggingFace production release",
+          "node_type": "external"
+        },
+        {
+          "description": "gs://policyengine-us-data/ - version metadata on each blob",
+          "id": "gcs_upload",
+          "label": "GCS Parallel Upload",
+          "node_type": "process"
+        },
+        {
+          "description": "gs://policyengine-us-data/ - CDN/backup",
+          "id": "out_gcs",
+          "label": "Google Cloud Storage",
+          "node_type": "external"
+        },
+        {
+          "description": "upload_from_hf_staging_to_gcs() and related GCS helpers",
+          "id": "util_upload_gcs_s5c",
+          "label": "data_upload.py",
+          "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.promote_local_h5s.promote"
+          ],
+          "artifacts_out": [
+            "production H5 release",
+            "release manifest"
+          ],
+          "description": "Promote staged H5 files to production storage and publish release manifests.",
+          "id": "atomic_promote",
+          "label": "Atomic Promote Local H5 Files",
+          "node_type": "entrypoint",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/promote_local_h5s.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_promote_local_h5s.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 5c: Promote GCS"
+    },
+    {
+      "canonical_stage_id": "5_validate_and_promote_release",
+      "canonical_stage_title": "Validate and Promote Release",
+      "description": "Finalize release manifests, record run diagnostics paths, and clean staging state",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_release_outputs_s5d",
+          "target": "version_manifest_write"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "release manifest inputs",
+          "source": "atomic_promote",
+          "target": "version_manifest_write"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "version_manifest_write",
+          "target": "out_version_manifest"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "version_manifest_write",
+          "target": "staging_cleanup"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "staging_cleanup",
+          "target": "out_release_finalized"
+        },
+        {
+          "edge_type": "uses_utility",
+          "source": "util_manifest_s5d",
+          "target": "version_manifest_write"
+        }
+      ],
+      "groups": [],
+      "id": "5d_write_version_manifest",
+      "label": "5d",
+      "legacy_stage_id": "8",
+      "manifest_step_ids": [
+        "05_promote_release"
+      ],
+      "nodes": [
+        {
+          "description": "HuggingFace and GCS artifacts from substages 5b and 5c",
+          "id": "in_release_outputs_s5d",
+          "label": "promoted release outputs",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Register the version, run ID, release artifacts, and diagnostics path",
+          "id": "version_manifest_write",
+          "label": "version_manifest.json update",
+          "node_type": "process"
+        },
+        {
+          "description": "cleanup_staging_hf() - removes run-scoped staging files when release is finalized",
+          "id": "staging_cleanup",
+          "label": "Staging Cleanup",
+          "node_type": "process"
+        },
+        {
+          "description": "Durable release registry for legacy consumers",
+          "id": "out_version_manifest",
+          "label": "version_manifest.json",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Release has production artifacts, manifest identity, and cleaned staging state",
+          "id": "out_release_finalized",
+          "label": "finalized release",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Version and release manifest construction helpers",
+          "id": "util_manifest_s5d",
+          "label": "version_manifest.py / release_manifest.py",
+          "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.promote_local_h5s.promote"
+          ],
+          "artifacts_out": [
+            "production H5 release",
+            "release manifest"
+          ],
+          "description": "Promote staged H5 files to production storage and publish release manifests.",
+          "id": "atomic_promote",
+          "label": "Atomic Promote Local H5 Files",
+          "node_type": "entrypoint",
+          "pathways": [
+            "local_h5"
+          ],
+          "source_file": "policyengine_us_data/calibration/promote_local_h5s.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_promote_local_h5s.py"
+          ]
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 5d: Write Version Manifest"
     }
   ]
 }

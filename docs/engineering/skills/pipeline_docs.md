@@ -8,8 +8,8 @@ those flows.
 
 - `@pipeline_node` attaches object-level metadata. It is a no-op runtime
   decorator and is extracted statically.
-- `docs/pipeline_map.yaml` defines the stage-level pathway, cross-stage
-  artifacts, and edges.
+- `docs/pipeline_map.yaml` defines the five canonical stages, the detailed
+  `1a_`/`1b_` substage pathway, cross-stage artifacts, and edges.
 - `scripts/extract_pipeline_docs.py` merges both sources and writes:
   - `docs/generated/pipeline_map.json`
   - `docs/generated/pipeline_api.json`
@@ -31,10 +31,16 @@ For modules intended as standard pydoc/autodoc targets, declare `__all__` with
 the supported public classes, functions, and type aliases. Keep private helpers
 undocumented unless they are deliberately promoted into that public surface.
 
-Use stable snake_case `id` values. If a function moves during refactors, keep the
-ID unless the semantic waypoint changes. If a waypoint is being migrated, set
-`status="transitional"` and use `migration_target` or `notes` instead of
-renaming IDs prematurely.
+Use stable snake_case `id` values. Pipeline map substages should use the
+canonical-stage prefix plus a letter, for example `1a_raw_data_download` or
+`4a_local_area_h5_regional`, and should declare `canonical_stage_id`,
+`legacy_stage_id`, and any PR-855-style `manifest_step_ids`. Keep execution-ledger
+substage boundaries explicit for regional/national fitting, regional/national
+H5 builds, base-data staging, diagnostics upload, validation, HuggingFace
+promotion, GCS promotion, and version-manifest finalization. If a function moves
+during refactors, keep the ID unless the semantic waypoint changes. If a
+waypoint is being migrated, set `status="transitional"` and use
+`migration_target` or `notes` instead of renaming IDs prematurely.
 
 ## Update Workflow
 

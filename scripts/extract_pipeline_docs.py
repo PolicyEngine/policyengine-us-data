@@ -237,11 +237,30 @@ def merge_map(
         for stage_def in manifest.get("stages", [])
         for node in stage_def.get("extra_nodes", [])
     }
+    canonical_stages = manifest.get("canonical_stages", [])
+    canonical_stage_by_id = {
+        canonical_stage["id"]: canonical_stage
+        for canonical_stage in canonical_stages
+    }
     used_node_ids: set[str] = set()
     stages: list[dict[str, Any]] = []
     errors = 0
 
     for stage_def in manifest.get("stages", []):
+        canonical_stage_id = stage_def.get("canonical_stage_id")
+        canonical_stage = (
+            canonical_stage_by_id.get(canonical_stage_id)
+            if canonical_stage_id
+            else None
+        )
+        if canonical_stage_id and canonical_stage is None:
+            print(
+                f"ERROR: stage {stage_def.get('id')} references unknown "
+                f"canonical stage {canonical_stage_id!r}",
+                file=sys.stderr,
+            )
+            errors += 1
+
         nodes: list[dict[str, Any]] = []
         node_ids: set[str] = set()
         for node in stage_def.get("extra_nodes", []):
@@ -274,6 +293,12 @@ def merge_map(
                 "label": stage_def["label"],
                 "title": stage_def["title"],
                 "description": stage_def.get("description", ""),
+                "canonical_stage_id": canonical_stage_id,
+                "canonical_stage_title": (
+                    canonical_stage.get("title") if canonical_stage else None
+                ),
+                "legacy_stage_id": stage_def.get("legacy_stage_id"),
+                "manifest_step_ids": stage_def.get("manifest_step_ids", []),
                 "status": stage_def.get("status", "unknown"),
                 "stability": stage_def.get("stability", "unknown"),
                 "groups": stage_def.get("groups", []),
@@ -292,10 +317,13 @@ def merge_map(
         raise SystemExit(f"{errors} pipeline map validation error(s)")
 
     return {
+        "canonical_stages": canonical_stages,
         "stages": stages,
         "api_nodes": api_nodes,
         "metadata": {
+            "canonical_stage_count": len(canonical_stages),
             "stage_count": len(stages),
+            "substage_count": len(stages),
             "decorated_object_count": len(objects),
             "mapped_decorated_node_count": len(used_node_ids),
             "api_node_count": len(api_nodes),
@@ -312,13 +340,54 @@ def render_markdown(
         "Generated from `docs/pipeline_map.yaml` and `@pipeline_node` decorators.",
         "",
     ]
-    for stage in bundle["stages"]:
+    canonical_stages = bundle.get("canonical_stages", [])
+    if canonical_stages:
         lines.extend(
             [
-                f"## {stage['title']}",
+                "## Canonical Stages",
+                "",
+                "| Stage | Title | Manifest steps |",
+                "| --- | --- | --- |",
+            ]
+        )
+        for canonical_stage in canonical_stages:
+            manifest_steps = ", ".join(
+                f"`{step_id}`"
+                for step_id in canonical_stage.get("manifest_step_ids", [])
+            )
+            lines.append(
+                f"| `{canonical_stage['id']}` "
+                f"{canonical_stage.get('label', '')} | "
+                f"{canonical_stage.get('title', '')} | "
+                f"{manifest_steps} |"
+            )
+        lines.append("")
+
+    stages_by_canonical_id: dict[str | None, list[dict[str, Any]]] = {}
+    for stage in bundle["stages"]:
+        stages_by_canonical_id.setdefault(stage.get("canonical_stage_id"), []).append(
+            stage
+        )
+
+    def render_stage(stage: dict[str, Any], *, heading: str = "###") -> None:
+        lines.extend(
+            [
+                f"{heading} {stage['title']}",
                 "",
                 stage.get("description", ""),
                 "",
+                f"- Substage ID: `{stage['id']}`",
+                f"- Canonical stage: "
+                f"`{stage.get('canonical_stage_id') or 'unknown'}`",
+                f"- Legacy stage: `{stage.get('legacy_stage_id', 'none')}`",
+                "- Manifest steps: "
+                + (
+                    ", ".join(
+                        f"`{step_id}`"
+                        for step_id in stage.get("manifest_step_ids", [])
+                    )
+                    or "`none`"
+                ),
                 f"- Status: `{stage.get('status', 'unknown')}`",
                 f"- Stability: `{stage.get('stability', 'unknown')}`",
                 "",
@@ -334,7 +403,8 @@ def render_markdown(
                 f"`{node.get('status', 'unknown')}` | "
                 f"`{node.get('stability', 'unknown')}` | {refs} |"
             )
-        lines.extend(["", "### Edges", ""])
+        edge_heading = "#" * (len(heading) + 1)
+        lines.extend(["", f"{edge_heading} Edges", ""])
         for edge in stage["edges"]:
             label = f" ({edge['label']})" if edge.get("label") else ""
             lines.append(
@@ -342,6 +412,25 @@ def render_markdown(
                 f"`{edge.get('edge_type', 'data_flow')}`{label}"
             )
         lines.append("")
+
+    if canonical_stages:
+        for canonical_stage in canonical_stages:
+            lines.extend(
+                [
+                    f"## {canonical_stage.get('label', canonical_stage['id'])}: "
+                    f"{canonical_stage.get('title', '')}",
+                    "",
+                    canonical_stage.get("description", ""),
+                    "",
+                ]
+            )
+            for stage in stages_by_canonical_id.get(canonical_stage["id"], []):
+                render_stage(stage)
+        for stage in stages_by_canonical_id.get(None, []):
+            render_stage(stage)
+    else:
+        for stage in bundle["stages"]:
+            render_stage(stage, heading="##")
 
     if bundle["api_nodes"]:
         lines.extend(["## Pydoc API Surface", ""])

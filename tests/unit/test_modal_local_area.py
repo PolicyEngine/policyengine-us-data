@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from tests.support.modal_local_area import load_local_area_module
 
@@ -30,6 +31,65 @@ def test_build_promote_publish_script_finalizes_complete_release():
     assert "should_finalize_local_area_release" in script
     assert "create_tag=should_finalize" in script
     assert "upload_manifest(" in script
+
+
+def test_promote_publish_falls_back_to_package_version_for_new_run_ids(
+    monkeypatch, tmp_path
+):
+    local_area = load_local_area_module()
+    run_id = "usdata-gha123-a1-abcdef12"
+    run_dir = tmp_path / run_id
+    run_dir.mkdir()
+    (run_dir / "manifest.json").write_text(
+        '{"files": {"states/NC.h5": {"sha256": "abc"}}}'
+    )
+    captured = {}
+
+    monkeypatch.setattr(local_area, "VOLUME_MOUNT", str(tmp_path))
+    monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+    monkeypatch.setattr(local_area, "get_version", lambda: "1.92.0")
+    monkeypatch.setattr(
+        local_area,
+        "staging_volume",
+        SimpleNamespace(reload=lambda: None),
+    )
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(local_area.subprocess, "run", fake_run)
+
+    local_area.promote_publish(branch="main", run_id=run_id)
+
+    script = captured["cmd"][-1]
+    assert 'version = "1.92.0"' in script
+    assert f'version = "{run_id}"' not in script
+
+
+def test_promote_national_publish_falls_back_to_package_version_for_new_run_ids(
+    monkeypatch,
+):
+    local_area = load_local_area_module()
+    run_id = "usdata-gha123-a1-abcdef12"
+    captured = {}
+
+    monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+    monkeypatch.setattr(local_area, "get_version", lambda: "1.92.0")
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(local_area.subprocess, "run", fake_run)
+
+    local_area.promote_national_publish(branch="main", run_id=run_id)
+
+    script = captured["cmd"][-1]
+    assert 'version = "1.92.0"' in script
+    assert f'version = "{run_id}"' not in script
 
 
 def test_build_publishing_input_bundle_preserves_traceability_inputs():

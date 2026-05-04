@@ -771,7 +771,7 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
 
     staging_dir = Path(VOLUME_MOUNT)
     staging_volume.reload()
@@ -1369,7 +1369,7 @@ def promote_national_publish(
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
     rel_paths = ["national/US.h5"]
 
     result = subprocess.run(

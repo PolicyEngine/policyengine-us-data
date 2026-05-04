@@ -379,10 +379,14 @@ def verify_runtime_seams() -> dict:
         "modal_app/worker_script.py",
         "modal_app/local_area.py",
         "modal_app/h5_test_harness.py",
+        "modal_app/step_manifests/state.py",
+        "modal_app/step_manifests/store.py",
         "modal_app/fixtures/h5_cases.py",
         "tests/integration/test_fixture_50hh.h5",
         "policyengine_us_data/calibration/target_config.yaml",
         "policyengine_us_data/calibration/target_config_full.yaml",
+        "policyengine_us_data/utils/run_context.py",
+        "policyengine_us_data/utils/step_manifest.py",
     )
     result = {
         "interpreter": {
@@ -415,11 +419,15 @@ def verify_runtime_seams() -> dict:
         "modal_app.h5_test_harness",
         "modal_app.local_area",
         "modal_app.remote_calibration_runner",
+        "modal_app.step_manifests.state",
+        "modal_app.step_manifests.store",
         "modal_app.worker_script",
         "numpy",
         "pandas",
         "policyengine_us",
         "policyengine_us_data",
+        "policyengine_us_data.utils.run_context",
+        "policyengine_us_data.utils.step_manifest",
         "spm_calculator",
         "sqlalchemy",
     ):
@@ -1742,6 +1750,7 @@ print(f"Promoted {{count}} base dataset(s)")
     try:
         national_result = promote_national_publish.remote(
             branch=meta.branch,
+            version=version,
             run_id=run_id,
         )
         print(f"  {national_result}")

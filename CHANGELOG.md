@@ -1,3 +1,15 @@
+## [1.95.0] - 2026-05-04
+
+### Fixed
+
+- Map CPS farm self-employment income to farm operations income.
+- Impute unavailable CPS prior-year wage and self-employment income instead of emitting sentinel values.
+
+### Removed
+
+- Remove tracked Beads metadata from the repository.
+
+
 ## [1.94.0] - 2026-05-04
 
 ### Added

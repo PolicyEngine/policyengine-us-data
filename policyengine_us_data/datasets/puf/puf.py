@@ -940,7 +940,7 @@ class PUF(Dataset):
                                 length,
                             ).astype(bool)
                         )
-                    if len(split_flags) == 2:
+                    if len(split_flags) == 2 and has_existing_sstb:
                         qualification_flags[source] = split_flags[0] | split_flags[1]
                     else:
                         qualification_flags[source] = qualified

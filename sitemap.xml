@@ -17,6 +17,9 @@
     <loc>http://localhost:3000/methodology</loc>
   </url>
   <url>
+    <loc>http://localhost:3000/qbi-simulation</loc>
+  </url>
+  <url>
     <loc>http://localhost:3000/long-term-projections</loc>
   </url>
   <url>

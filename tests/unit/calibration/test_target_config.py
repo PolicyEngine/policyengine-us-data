@@ -222,6 +222,7 @@ class TestLoadTargetConfig:
             "net_capital_gains",
             "dividend_income",
             "qualified_dividend_income",
+            "tax_exempt_interest_income",
             "taxable_interest_income",
         ]
         for variable in variables:

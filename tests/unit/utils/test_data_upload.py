@@ -405,13 +405,15 @@ def test_promote_full_release_orders_full_release_operations(
     monkeypatch.setattr(
         data_upload,
         "publish_release_manifest_to_hf",
-        lambda files_with_paths, **kwargs: calls.append("release_manifest")
-        or {
-            "artifacts": {
-                Path(repo_path).with_suffix("").as_posix(): {"path": repo_path}
-                for _, repo_path in files_with_paths
+        lambda files_with_paths, **kwargs: (
+            calls.append("release_manifest")
+            or {
+                "artifacts": {
+                    Path(repo_path).with_suffix("").as_posix(): {"path": repo_path}
+                    for _, repo_path in files_with_paths
+                }
             }
-        },
+        ),
     )
     monkeypatch.setattr(
         data_upload,

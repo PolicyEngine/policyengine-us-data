@@ -798,6 +798,11 @@ class PUF(Dataset):
             if "business_is_sstb" not in file_handle:
                 return {}
             keys = set(file_handle.keys())
+            if (
+                file_handle.attrs.get(QBI_SIMULATION_VERSION_ATTR)
+                != QBI_SIMULATION_VERSION
+            ):
+                return {}
             is_sstb = np.asarray(file_handle["business_is_sstb"]).astype(bool)
             overrides = {}
             if "self_employment_income" in keys:

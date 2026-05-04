@@ -22,6 +22,16 @@ TRUSTEES_CORE_THRESHOLD_ASSUMPTION = {
     ],
 }
 
+try:
+    from policyengine_us.reforms.ssa.trustees_core_thresholds import (
+        TRUSTEES_CORE_THRESHOLD_ASSUMPTION as _PE_TRUSTEES_CORE_THRESHOLD_ASSUMPTION,
+        create_trustees_core_thresholds_reform as _pe_create_trustees_core_thresholds_reform,
+    )
+except ImportError:
+    _pe_create_trustees_core_thresholds_reform = None
+else:
+    TRUSTEES_CORE_THRESHOLD_ASSUMPTION = dict(_PE_TRUSTEES_CORE_THRESHOLD_ASSUMPTION)
+
 
 def round_amount(amount: float, rounding: dict | None) -> float:
     if not rounding:
@@ -96,6 +106,12 @@ def create_wage_indexed_core_thresholds_reform(
     start_year: int = 2035,
     end_year: int = 2100,
 ):
+    if _pe_create_trustees_core_thresholds_reform is not None:
+        return _pe_create_trustees_core_thresholds_reform(
+            start_year=start_year,
+            end_year=end_year,
+        )
+
     from policyengine_us.model_api import Reform
 
     def modify_parameters(parameters):

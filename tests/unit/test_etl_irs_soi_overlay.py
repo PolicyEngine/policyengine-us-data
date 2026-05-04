@@ -14,6 +14,7 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.db.etl_irs_soi import (
     GEOGRAPHY_FILE_TARGET_SPECS,
+    WORKBOOK_NATIONAL_DOMAIN_TARGETS,
     get_geography_soi_year,
     get_national_geography_soi_agi_targets,
     get_national_geography_soi_target,
@@ -191,6 +192,13 @@ def test_workbook_overlay_wins_best_period_selection(monkeypatch, tmp_path):
     assert len(count_rows) == 1
     assert int(count_rows.iloc[0]["period"]) == 2023
     assert float(count_rows.iloc[0]["value"]) == 50.0
+
+
+def test_workbook_domain_targets_include_charitable_deduction():
+    assert (
+        WORKBOOK_NATIONAL_DOMAIN_TARGETS["charitable_deduction"]
+        == "charitable_contributions_deductions"
+    )
 
 
 def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
@@ -470,6 +478,7 @@ def test_load_national_geography_ctc_agi_targets_creates_capital_income_domains(
         "net_capital_gains",
         "dividend_income",
         "qualified_dividend_income",
+        "tax_exempt_interest_income",
         "taxable_interest_income",
     ]
     domains = [f"adjusted_gross_income,{variable}" for variable in variables]

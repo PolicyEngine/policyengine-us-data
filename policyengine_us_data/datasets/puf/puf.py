@@ -45,6 +45,8 @@ QBI_QUALIFICATION_SEED = 41
 QBI_W2_UBIA_SEED = 42
 QBI_INVESTMENT_SEED = 43
 QBI_SSTB_SEED = 64
+QBI_SIMULATION_VERSION = 1
+QBI_SIMULATION_VERSION_ATTR = "qbi_simulation_version"
 QBI_SIMULATION_REQUIRED_VARIABLES = frozenset(
     (
         *QBI_QUALIFICATION_FLAG_BY_SOURCE.values(),
@@ -857,7 +859,14 @@ class PUF(Dataset):
 
         with h5py.File(self.file_path, "r") as file_handle:
             keys = set(file_handle.keys())
-            if QBI_SIMULATION_REQUIRED_VARIABLES.issubset(keys):
+            is_current_qbi_simulation = (
+                file_handle.attrs.get(QBI_SIMULATION_VERSION_ATTR)
+                == QBI_SIMULATION_VERSION
+            )
+            if (
+                QBI_SIMULATION_REQUIRED_VARIABLES.issubset(keys)
+                and is_current_qbi_simulation
+            ):
                 return {}
 
             length = None
@@ -875,7 +884,7 @@ class PUF(Dataset):
             raw_qualification_flags = draw_qbi_qualification_flags(
                 length, seed=QBI_QUALIFICATION_SEED
             )
-            has_existing_sstb = (
+            has_existing_sstb = is_current_qbi_simulation and (
                 "business_is_sstb" in file_handle
                 or "business_is_sstb" in existing_overrides
             )
@@ -956,7 +965,8 @@ class PUF(Dataset):
                     existing_overrides,
                     length,
                 ).astype(float)
-                if (
+                if is_current_qbi_simulation
+                and (
                     "w2_wages_from_qualified_business" in file_handle
                     or "w2_wages_from_qualified_business" in existing_overrides
                 )
@@ -969,7 +979,8 @@ class PUF(Dataset):
                     existing_overrides,
                     length,
                 ).astype(float)
-                if (
+                if is_current_qbi_simulation
+                and (
                     "unadjusted_basis_qualified_property" in file_handle
                     or "unadjusted_basis_qualified_property" in existing_overrides
                 )
@@ -1030,8 +1041,9 @@ class PUF(Dataset):
         return overrides
 
     def _ensure_sstb_split_inputs(self) -> dict[str, np.ndarray]:
-        overrides = self._sstb_split_overrides()
-        overrides.update(self._qbi_simulation_overrides(overrides))
+        sstb_overrides = self._sstb_split_overrides()
+        qbi_overrides = self._qbi_simulation_overrides(sstb_overrides)
+        overrides = {**sstb_overrides, **qbi_overrides}
         if not overrides:
             return {}
 
@@ -1039,6 +1051,10 @@ class PUF(Dataset):
             with h5py.File(self.file_path, "r+") as file_handle:
                 for key, values in overrides.items():
                     self._replace_array(file_handle, key, values)
+                if qbi_overrides:
+                    file_handle.attrs[QBI_SIMULATION_VERSION_ATTR] = (
+                        QBI_SIMULATION_VERSION
+                    )
         except OSError:
             pass
 

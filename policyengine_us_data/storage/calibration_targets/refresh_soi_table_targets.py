@@ -24,6 +24,7 @@ TABLE_FILE_SUFFIX = {
     "Table 1.1": "in11si.xls",
     "Table 1.2": "in12ms.xls",
     "Table 1.4": "in14ar.xls",
+    "Table 1.4A": "in14acg.xls",
     "Table 2.1": "in21id.xls",
     "Table 4.3": "in43ts.xls",
 }

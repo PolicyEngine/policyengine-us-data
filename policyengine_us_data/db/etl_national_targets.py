@@ -41,6 +41,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         - tax_expenditure_targets: Variables targeted via repeal-based tax expenditures
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
+        - irs_soi_targets: List of IRS SOI aggregate targets
         - treasury_targets: List of Treasury/JCT targets
         - time_period: The target year
     """
@@ -413,6 +414,26 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
                 f"{variable_name} (param: {param_name}): {e}"
             )
 
+    # IRS SOI aggregate targets - use time_period derived from dataset.
+    irs_soi_targets = []
+    try:
+        value = tax_benefit_system.parameters(
+            time_period
+        ).calibration.gov.irs.soi._children["long_term_capital_gains"]
+        irs_soi_targets.append(
+            {
+                "variable": "long_term_capital_gains",
+                "value": float(value),
+                "source": "IRS SOI",
+                "notes": (
+                    "IRS SOI total long-term capital gains, uprated by policyengine-us"
+                ),
+                "year": time_period,
+            }
+        )
+    except (KeyError, AttributeError) as e:
+        print(f"Warning: Could not extract IRS SOI LTCG parameter: {e}")
+
     # Treasury/JCT targets (EITC) - use time_period derived from dataset
     try:
         eitc_value = tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
@@ -437,6 +458,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "tax_expenditure_targets": tax_expenditure_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
+        "irs_soi_targets": irs_soi_targets,
         "treasury_targets": treasury_targets,
         "time_period": time_period,
     }
@@ -471,7 +493,11 @@ def transform_national_targets(raw_targets):
         t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax_positive"
     ]
 
-    all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax
+    all_direct_targets = (
+        raw_targets["direct_sum_targets"]
+        + cbo_non_tax
+        + raw_targets.get("irs_soi_targets", [])
+    )
 
     # Tax-related targets that need filer constraint
     all_tax_filer_targets = (

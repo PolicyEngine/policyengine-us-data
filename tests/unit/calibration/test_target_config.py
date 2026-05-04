@@ -236,6 +236,28 @@ class TestLoadTargetConfig:
                 "domain_variable": domain_variable,
             } in include_rules
 
+    def test_training_config_includes_national_qbi_deduction_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "qualified_business_income_deduction",
+            "geo_level": "national",
+            "domain_variable": "qualified_business_income_deduction",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "qualified_business_income_deduction",
+        } in include_rules
+
     def test_training_config_includes_medicare_part_b_target(self):
         config = load_target_config(
             str(

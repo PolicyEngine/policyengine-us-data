@@ -298,6 +298,9 @@ include:
   - variable: qualified_business_income_deduction
     geo_level: national
     domain_variable: qualified_business_income_deduction
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: qualified_business_income_deduction
 
   # === NATIONAL — JCT tax expenditure targets (reform_id=1..5) ===
   - variable: salt_deduction

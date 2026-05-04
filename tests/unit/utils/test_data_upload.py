@@ -221,6 +221,31 @@ def test_cleanup_staging_hf_deletes_run_scoped_staging_paths(monkeypatch):
     ]
 
 
+def test_cleanup_staging_hf_skips_missing_staged_paths(monkeypatch):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(list_repo_files=lambda **kwargs: [])
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+    monkeypatch.setattr(
+        data_upload, "CommitOperationDelete", _FakeCommitOperationDelete
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "hf_create_commit_with_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("cleanup should not create an empty commit")
+        ),
+    )
+
+    deleted = data_upload.cleanup_staging_hf(
+        ["states/AL.h5"],
+        version="1.73.0",
+        run_id="run-123",
+    )
+
+    assert deleted == 0
+
+
 def test_upload_from_hf_staging_to_gcs_uses_run_scoped_hf_source_only(
     monkeypatch,
 ):

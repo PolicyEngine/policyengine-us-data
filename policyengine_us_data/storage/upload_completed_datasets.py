@@ -331,6 +331,7 @@ def promote_datasets(
     version: str | None = None,
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
+    cleanup_staging: bool = True,
 ) -> list[str]:
     run_id = _resolve_run_id(run_id)
     version = version or DATA_PACKAGE_VERSION
@@ -398,13 +399,16 @@ def promote_datasets(
         )
     else:
         print("Deferring version_manifest.json update until the release is finalized.")
-    cleanup_staging_hf(
-        rel_paths,
-        version=version,
-        hf_repo_name=HF_REPO_NAME,
-        hf_repo_type=HF_REPO_TYPE,
-        run_id=run_id,
-    )
+    if cleanup_staging:
+        cleanup_staging_hf(
+            rel_paths,
+            version=version,
+            hf_repo_name=HF_REPO_NAME,
+            hf_repo_type=HF_REPO_TYPE,
+            run_id=run_id,
+        )
+    else:
+        print("Deferring staged dataset cleanup until full release promotion succeeds.")
     return rel_paths
 
 
@@ -415,6 +419,7 @@ def upload_datasets(
     promote_only: bool = False,
     run_id: str = "",
     version: str | None = None,
+    cleanup_staging: bool = True,
 ):
     run_id = _resolve_run_id(run_id)
     if stage_only and promote_only:
@@ -423,12 +428,12 @@ def upload_datasets(
     version = version or DATA_PACKAGE_VERSION
 
     if promote_only:
-        promote_datasets(
+        return promote_datasets(
             require_enhanced_cps=require_enhanced_cps,
             version=version,
             run_id=run_id,
+            cleanup_staging=cleanup_staging,
         )
-        return
 
     files_with_repo_paths = stage_datasets(
         require_enhanced_cps=require_enhanced_cps,
@@ -436,13 +441,14 @@ def upload_datasets(
         run_id=run_id,
     )
     if stage_only:
-        return
+        return [repo_path for _, repo_path in files_with_repo_paths]
 
-    promote_datasets(
+    return promote_datasets(
         require_enhanced_cps=require_enhanced_cps,
         version=version,
         run_id=run_id,
         files_with_repo_paths=files_with_repo_paths,
+        cleanup_staging=cleanup_staging,
     )
 
 

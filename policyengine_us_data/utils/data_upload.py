@@ -977,12 +977,33 @@ def cleanup_staging_hf(
     run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
+    existing_repo_files = None
+    try:
+        existing_repo_files = set(
+            api.list_repo_files(
+                repo_id=hf_repo_name,
+                repo_type=hf_repo_type,
+                token=token,
+            )
+        )
+    except Exception as exc:
+        logging.warning(
+            "Could not list staged files before cleanup; attempting requested deletes: %s",
+            exc,
+        )
+
     operations = []
     for rel_path in files:
         staging_path = f"{staging_prefix}/{rel_path}"
+        if existing_repo_files is not None and staging_path not in existing_repo_files:
+            logging.info(
+                "Skipping missing staged file during cleanup: %s", staging_path
+            )
+            continue
         operations.append(CommitOperationDelete(path_in_repo=staging_path))
 
     if not operations:
+        logging.info("No staged files found to clean up.")
         return 0
 
     head_before = api.repo_info(

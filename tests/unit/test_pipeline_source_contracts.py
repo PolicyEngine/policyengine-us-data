@@ -90,3 +90,18 @@ def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> Non
 
     assert "H5 outputs skipped - manifests valid; refreshing diagnostics" in source
     assert "Upload validation diagnostics even when H5 outputs are reused." in source
+
+
+def test_promote_run_defers_component_staging_cleanup_until_all_promotions_succeed():
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    promote_run = _function_def(tree, "promote_run")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+
+    assert source.count("cleanup_staging=False") == 3
+    assert source.index("upload_datasets(") < source.index("promote_publish.remote(")
+    assert source.index("promote_publish.remote(") < source.index(
+        "promote_national_publish.remote("
+    )
+    assert source.index("promote_national_publish.remote(") < source.index(
+        "_cleanup_promoted_staging_artifacts"
+    )

@@ -318,6 +318,51 @@ def _run_required_promotion_subprocess(label: str, script: str) -> str:
     return result.stdout.strip()
 
 
+BASE_DATASET_STAGING_REL_PATHS = (
+    "cps_2024.h5",
+    "policy_data.db",
+    "enhanced_cps_2024.h5",
+    "small_enhanced_cps_2024.h5",
+)
+
+
+def _regional_h5_staging_rel_paths(run_id: str) -> list[str]:
+    """Read regional H5 staged paths from the Modal staging manifest."""
+    manifest_path = Path(STAGING_MOUNT) / run_id / "manifest.json"
+    if not manifest_path.exists():
+        return []
+    manifest = json.loads(manifest_path.read_text())
+    return list(manifest.get("files", {}).keys())
+
+
+def _cleanup_promoted_staging_artifacts(run_id: str, version: str) -> str:
+    """Clean all staged files only after the full promotion succeeds."""
+    rel_paths = sorted(
+        {
+            *BASE_DATASET_STAGING_REL_PATHS,
+            *_regional_h5_staging_rel_paths(run_id),
+            "national/US.h5",
+            "_run_context.json",
+        }
+    )
+    rel_paths_json = json.dumps(rel_paths)
+    return _run_required_promotion_subprocess(
+        "Staging cleanup",
+        f"""
+import json
+from policyengine_us_data.utils.data_upload import cleanup_staging_hf
+
+rel_paths = json.loads({rel_paths_json!r})
+cleaned = cleanup_staging_hf(
+    rel_paths,
+    version="{version}",
+    run_id="{run_id}",
+)
+print(f"Cleaned {{cleaned}} staged release artifact(s)")
+""",
+    )
+
+
 @app.function(
     image=image,
     timeout=300,
@@ -1625,6 +1670,7 @@ upload_datasets(
     promote_only=True,
     version="{version}",
     run_id="{run_id}",
+    cleanup_staging=False,
 )
 print("Promoted staged base datasets")
 """,
@@ -1637,6 +1683,7 @@ print("Promoted staged base datasets")
             branch=meta.branch,
             version=version,
             run_id=run_id,
+            cleanup_staging=False,
         )
         print(f"  {regional_result}")
 
@@ -1645,8 +1692,19 @@ print("Promoted staged base datasets")
             branch=meta.branch,
             version=version,
             run_id=run_id,
+            cleanup_staging=False,
         )
         print(f"  {national_result}")
+
+        print("\nCleaning up staged release artifacts...")
+        try:
+            cleanup_stdout = _cleanup_promoted_staging_artifacts(run_id, version)
+            print(f"  {cleanup_stdout}")
+        except Exception as cleanup_exc:
+            print(
+                "WARNING: Release promotion succeeded, but staged artifact "
+                f"cleanup failed: {cleanup_exc}"
+            )
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"

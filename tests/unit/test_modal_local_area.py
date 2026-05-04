@@ -37,6 +37,28 @@ def test_build_promote_publish_script_finalizes_complete_release():
     assert 'os.environ["RUN_ID"]' not in script
 
 
+def test_promote_scripts_can_defer_staging_cleanup_for_pipeline_promotion():
+    local_area = load_local_area_module()
+
+    regional_script = local_area._build_promote_publish_script(
+        version="1.73.0",
+        run_id="usdata-gha123-a1-abcdef12",
+        rel_paths=["states/AL.h5"],
+        cleanup_staging=False,
+    )
+    national_script = local_area._build_promote_national_publish_script(
+        version="1.73.0",
+        run_id="usdata-gha123-a1-abcdef12",
+        rel_paths=["national/US.h5"],
+        cleanup_staging=False,
+    )
+
+    assert "cleanup_staging = json.loads('''false''')" in regional_script
+    assert "Deferring staged regional cleanup" in regional_script
+    assert "cleanup_staging = json.loads('''false''')" in national_script
+    assert "Deferring staged national cleanup" in national_script
+
+
 def test_promote_publish_falls_back_to_package_version_for_new_run_ids(
     monkeypatch, tmp_path
 ):

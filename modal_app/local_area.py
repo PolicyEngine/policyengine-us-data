@@ -89,8 +89,10 @@ def _build_promote_national_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
 import os
@@ -112,6 +114,7 @@ version = "{version}"
 run_id = "{run_id}"
 os.environ["US_DATA_RUN_ID"] = run_id
 rel_paths = json.loads('''{rel_paths_json}''')
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
@@ -158,9 +161,12 @@ else:
         f"missing prefixes: {{', '.join(missing_prefixes)}}"
     )
 
-print("Cleaning up staging...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging")
+if cleanup_staging:
+    print("Cleaning up staging...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging")
+else:
+    print("Deferring staged national cleanup until full release promotion succeeds")
 print(f"Successfully promoted national H5 for version {{version}}")
 """
 
@@ -170,8 +176,10 @@ def _build_promote_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
 import os
@@ -193,6 +201,7 @@ rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
 run_id = "{run_id}"
 os.environ["US_DATA_RUN_ID"] = run_id
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
@@ -244,9 +253,12 @@ else:
     )
     print("Deferring version_manifest.json update until release finalization")
 
-print("Cleaning up staging/...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging/")
+if cleanup_staging:
+    print("Cleaning up staging/...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging/")
+else:
+    print("Deferring staged regional cleanup until full release promotion succeeds")
 
 print(f"Successfully published version {{version}}")
 """
@@ -761,7 +773,12 @@ print(f"Staged version {{version}} for promotion")
     timeout=3600,
     nonpreemptible=True,
 )
-def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -> str:
+def promote_publish(
+    branch: str = "main",
+    version: str = "",
+    run_id: str = "",
+    cleanup_staging: bool = True,
+) -> str:
     """
     Promote staged files from HF staging/ to production paths,
     upload to GCS, then cleanup HF staging.
@@ -796,6 +813,7 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
                 version=version,
                 run_id=run_id,
                 rel_paths=list(manifest["files"].keys()),
+                cleanup_staging=cleanup_staging,
             ),
         ),
         text=True,
@@ -1365,6 +1383,7 @@ def promote_national_publish(
     branch: str = "main",
     version: str = "",
     run_id: str = "",
+    cleanup_staging: bool = True,
 ) -> str:
     """Promote national US.h5 from HF staging to production + GCS."""
     setup_gcp_credentials()
@@ -1383,6 +1402,7 @@ def promote_national_publish(
                 version=version,
                 run_id=run_id,
                 rel_paths=rel_paths,
+                cleanup_staging=cleanup_staging,
             ),
         ),
         text=True,

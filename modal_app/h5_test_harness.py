@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -20,7 +21,10 @@ from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.local_area import VOLUME_MOUNT, pipeline_volume, staging_volume  # noqa: E402
 
 
-app = modal.App("policyengine-us-data-h5-test-harness")
+app = modal.App(
+    os.environ.get("US_DATA_H5_HARNESS_APP_NAME")
+    or "policyengine-us-data-h5-test-harness"
+)
 
 
 def _sha256(path: Path) -> str:

@@ -134,6 +134,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
                     repo="policyengine/policyengine-us-data",
                     commit=version,
                 ),
+                run_id=run_id or None,
             )
         )
     else:

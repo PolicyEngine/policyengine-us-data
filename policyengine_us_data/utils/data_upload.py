@@ -30,6 +30,15 @@ from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
 )
+from policyengine_us_data.utils.release_promotion import (
+    FullReleasePromotionConfig,
+    FullReleasePromotionDependencies,
+    promote_full_release,
+)
+from policyengine_us_data.utils.run_context import (
+    RunContext,
+    resolve_run_id,
+)
 from policyengine_us_data.utils.trace_tro import (
     TRACE_TRO_FILENAME,
     build_trace_tro_from_release_manifest,
@@ -52,6 +61,29 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
     "districts/": 435,
     "cities/": 1,
 }
+
+
+def _resolve_staging_run_id(run_id: str = "") -> str:
+    return run_id or resolve_run_id()
+
+
+def _run_context_for_release() -> dict | None:
+    run_id = resolve_run_id()
+    if not run_id:
+        return None
+    return RunContext.from_env(run_id=run_id).to_dict()
+
+
+def _apply_run_context_for_release(
+    run_id: str,
+    run_context: Optional[Dict] = None,
+) -> dict | None:
+    if not run_id and not run_context:
+        return None
+    context = RunContext.from_mapping(run_context, run_id=run_id)
+    for key, value in context.export_env().items():
+        os.environ[key] = value
+    return context.to_dict()
 
 
 def _get_model_package_version(
@@ -275,6 +307,7 @@ def create_release_manifest_commit_operations(
     model_package_version: Optional[str] = None,
     model_package_git_sha: Optional[str] = None,
     model_package_data_build_fingerprint: Optional[str] = None,
+    run_context: Optional[Dict] = None,
     existing_manifest: Optional[Dict] = None,
 ) -> Tuple[Dict, List[CommitOperationAdd]]:
     manifest = build_release_manifest(
@@ -285,6 +318,7 @@ def create_release_manifest_commit_operations(
         model_package_version=model_package_version,
         model_package_git_sha=model_package_git_sha,
         model_package_data_build_fingerprint=model_package_data_build_fingerprint,
+        run_context=run_context,
         existing_manifest=existing_manifest,
     )
     manifest_payload = serialize_release_manifest(manifest)
@@ -489,6 +523,7 @@ def upload_files_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        run_context=_run_context_for_release(),
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -691,6 +726,7 @@ def publish_release_manifest_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        run_context=_run_context_for_release(),
         existing_manifest=existing_manifest,
     )
     parent_commit = get_repo_head_revision(
@@ -789,12 +825,28 @@ def upload_to_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
-    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    context_payload = None
+    if run_id:
+        context_payload = RunContext.from_env(run_id=run_id).to_dict()
+        context_payload["hf_staging_prefix"] = staging_prefix
 
     total_uploaded = 0
     for i in range(0, len(files_with_paths), batch_size):
         batch = files_with_paths[i : i + batch_size]
         operations = []
+        if i == 0 and context_payload is not None:
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"{staging_prefix}/_run_context.json",
+                    path_or_fileobj=BytesIO(
+                        (
+                            json.dumps(context_payload, indent=2, sort_keys=True) + "\n"
+                        ).encode("utf-8")
+                    ),
+                )
+            )
         for local_path, rel_path in batch:
             local_path = Path(local_path)
             if not local_path.exists():
@@ -816,11 +868,18 @@ def upload_to_staging_hf(
             repo_id=hf_repo_name,
             repo_type=hf_repo_type,
             token=token,
-            commit_message=f"Upload batch {i // batch_size + 1} to staging for version {version}",
+            commit_message=(
+                f"Upload batch {i // batch_size + 1} to staging "
+                f"for version {version}" + (f" ({run_id})" if run_id else "")
+            ),
         )
-        total_uploaded += len(operations)
+        uploaded_files = len(operations) - (
+            1 if i == 0 and context_payload is not None else 0
+        )
+        total_uploaded += uploaded_files
         logging.info(
-            f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
+            f"Uploaded batch {i // batch_size + 1}: "
+            f"{uploaded_files} files to {staging_prefix}/"
         )
 
     logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
@@ -828,7 +887,68 @@ def upload_to_staging_hf(
 
 
 def _staging_prefix(run_id: str = "") -> str:
+    run_id = _resolve_staging_run_id(run_id)
     return f"staging/{run_id}" if run_id else "staging"
+
+
+def _dedupe_preserving_order(paths: Sequence[str]) -> list[str]:
+    seen = set()
+    deduped = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def list_missing_staged_artifacts(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[str]:
+    """Return staged HF paths that are missing for this run."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    repo_files = set(
+        api.list_repo_files(
+            repo_id=hf_repo_name,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+    )
+    return [
+        f"{staging_prefix}/{rel_path}"
+        for rel_path in _dedupe_preserving_order(rel_paths)
+        if f"{staging_prefix}/{rel_path}" not in repo_files
+    ]
+
+
+def download_staged_artifacts_for_manifest(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[tuple[Path, str]]:
+    """Download staged HF artifacts for release-manifest checksums."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    files_with_paths = []
+    for rel_path in _dedupe_preserving_order(rel_paths):
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=f"{staging_prefix}/{rel_path}",
+            repo_type=hf_repo_type,
+            token=token,
+        )
+        files_with_paths.append((Path(local_path), rel_path))
+    return files_with_paths
 
 
 def promote_staging_to_production_hf(
@@ -837,6 +957,7 @@ def promote_staging_to_production_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
+    allow_noop: bool = False,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -850,6 +971,9 @@ def promote_staging_to_production_hf(
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
+        allow_noop: Treat an unchanged HF HEAD as success. This is useful
+            when retrying a full-release promotion after the single HF copy
+            commit already succeeded but later backends failed.
 
     Returns:
         Number of files promoted
@@ -859,6 +983,7 @@ def promote_staging_to_production_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     operations = []
@@ -887,10 +1012,20 @@ def promote_staging_to_production_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Promote {len(files)} files from staging to production for version {version}",
+        commit_message=(
+            f"Promote {len(files)} files from staging to production "
+            f"for version {version}" + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
+        if allow_noop:
+            logging.warning(
+                "Promote commit was a no-op: HEAD stayed at %s. "
+                "Treating as success for idempotent release retry.",
+                head_before,
+            )
+            return len(files)
         raise RuntimeError(
             f"Promote commit was a no-op: HEAD stayed at {head_before}. "
             f"Staging files may be identical to production."
@@ -927,14 +1062,36 @@ def cleanup_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
+
+    existing_repo_files = None
+    try:
+        existing_repo_files = set(
+            api.list_repo_files(
+                repo_id=hf_repo_name,
+                repo_type=hf_repo_type,
+                token=token,
+            )
+        )
+    except Exception as exc:
+        logging.warning(
+            "Could not list staged files before cleanup; attempting requested deletes: %s",
+            exc,
+        )
 
     operations = []
     for rel_path in files:
         staging_path = f"{staging_prefix}/{rel_path}"
+        if existing_repo_files is not None and staging_path not in existing_repo_files:
+            logging.info(
+                "Skipping missing staged file during cleanup: %s", staging_path
+            )
+            continue
         operations.append(CommitOperationDelete(path_in_repo=staging_path))
 
     if not operations:
+        logging.info("No staged files found to clean up.")
         return 0
 
     head_before = api.repo_info(
@@ -949,7 +1106,10 @@ def cleanup_staging_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Clean up staging after version {version} promotion",
+        commit_message=(
+            f"Clean up staging after version {version} promotion"
+            + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
@@ -958,8 +1118,8 @@ def cleanup_staging_hf(
             f"Staging files may not exist."
         )
 
-    logging.info(f"Cleaned up {len(files)} files from staging/")
-    return len(files)
+    logging.info(f"Cleaned up {len(operations)} files from staging/")
+    return len(operations)
 
 
 def upload_from_hf_staging_to_gcs(
@@ -984,6 +1144,7 @@ def upload_from_hf_staging_to_gcs(
         Number of files uploaded
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     credentials, project_id = google.auth.default()
@@ -1009,3 +1170,80 @@ def upload_from_hf_staging_to_gcs(
 
     logging.info(f"Total: uploaded {uploaded} files from HF staging to GCS")
     return uploaded
+
+
+def upload_final_version_manifest(
+    *,
+    version: str,
+    released_paths: Sequence[str],
+    run_id: str = "",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+) -> None:
+    """Update version_manifest.json after a release is finalized."""
+    from policyengine_us_data.utils.version_manifest import (
+        HFVersionInfo,
+        build_manifest,
+        upload_manifest,
+    )
+
+    upload_manifest(
+        build_manifest(
+            version=version,
+            blob_names=sorted(released_paths),
+            hf_info=HFVersionInfo(repo=hf_repo_name, commit=version),
+            run_id=run_id or None,
+        )
+    )
+
+
+def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
+    return FullReleasePromotionDependencies(
+        dedupe_preserving_order=_dedupe_preserving_order,
+        download_staged_artifacts_for_manifest=download_staged_artifacts_for_manifest,
+        get_matching_finalized_release_manifest=get_matching_finalized_release_manifest,
+        list_missing_staged_artifacts=list_missing_staged_artifacts,
+        preflight_release_manifest_publish=preflight_release_manifest_publish,
+        promote_staging_to_production_hf=promote_staging_to_production_hf,
+        upload_from_hf_staging_to_gcs=upload_from_hf_staging_to_gcs,
+        publish_release_manifest_to_hf=publish_release_manifest_to_hf,
+        upload_final_version_manifest=upload_final_version_manifest,
+        cleanup_staging_hf=cleanup_staging_hf,
+    )
+
+
+def promote_full_release_from_staging(
+    *,
+    rel_paths: Sequence[str],
+    version: str,
+    run_id: str = "",
+    run_context: Optional[Dict] = None,
+    files_with_paths: Optional[Sequence[Tuple[Path | str, str]]] = None,
+    extra_cleanup_paths: Sequence[str] = (),
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    cleanup_staging: bool = True,
+) -> dict:
+    """Promote one complete run-scoped staged release."""
+    run_id = _resolve_staging_run_id(run_id)
+    if not run_id:
+        raise ValueError("run_id is required for full release promotion.")
+    if not version:
+        raise ValueError("version is required for full release promotion.")
+
+    _apply_run_context_for_release(run_id, run_context)
+
+    return promote_full_release(
+        FullReleasePromotionConfig(
+            rel_paths=rel_paths,
+            version=version,
+            run_id=run_id,
+            files_with_paths=files_with_paths,
+            extra_cleanup_paths=extra_cleanup_paths,
+            gcs_bucket_name=gcs_bucket_name,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+            cleanup_staging=cleanup_staging,
+        ),
+        deps=_full_release_promotion_dependencies(),
+    )

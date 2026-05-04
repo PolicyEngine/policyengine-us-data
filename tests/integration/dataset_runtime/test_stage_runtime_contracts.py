@@ -62,7 +62,7 @@ def test_phase_3_extended_cps_preserves_entity_spine_and_runtime_values(
     assert_runtime_core_variables(workspace.extended_cps)
     assert_runtime_matches_h5(
         workspace.extended_cps,
-        "snap",
+        "state_fips",
         map_to="household",
     )
 

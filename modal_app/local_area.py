@@ -36,19 +36,22 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: 
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
+from policyengine_us_data.utils.run_context import resolve_run_id  # noqa: E402
 
-app = modal.App("policyengine-us-data-local-area")
+app = modal.App(
+    os.environ.get("US_DATA_LOCAL_AREA_APP_NAME") or "policyengine-us-data-local-area"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
 staging_volume = modal.Volume.from_name(
-    "local-area-staging",
+    os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
     create_if_missing=True,
 )
 
 pipeline_volume = modal.Volume.from_name(
-    "pipeline-artifacts",
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
 )
 
@@ -86,10 +89,13 @@ def _build_promote_national_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -106,7 +112,9 @@ from policyengine_us_data.utils.version_manifest import (
 
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
 rel_paths = json.loads('''{rel_paths_json}''')
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
@@ -144,6 +152,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")
@@ -153,9 +162,12 @@ else:
         f"missing prefixes: {{', '.join(missing_prefixes)}}"
     )
 
-print("Cleaning up staging...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging")
+if cleanup_staging:
+    print("Cleaning up staging...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging")
+else:
+    print("Deferring staged national cleanup until full release promotion succeeds")
 print(f"Successfully promoted national H5 for version {{version}}")
 """
 
@@ -165,10 +177,13 @@ def _build_promote_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -186,6 +201,8 @@ from policyengine_us_data.utils.version_manifest import (
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
@@ -227,6 +244,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")
@@ -237,9 +255,12 @@ else:
     )
     print("Deferring version_manifest.json update until release finalization")
 
-print("Cleaning up staging/...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging/")
+if cleanup_staging:
+    print("Cleaning up staging/...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging/")
+else:
+    print("Deferring staged regional cleanup until full release promotion succeeds")
 
 print(f"Successfully published version {{version}}")
 """
@@ -754,7 +775,12 @@ print(f"Staged version {{version}} for promotion")
     timeout=3600,
     nonpreemptible=True,
 )
-def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -> str:
+def promote_publish(
+    branch: str = "main",
+    version: str = "",
+    run_id: str = "",
+    cleanup_staging: bool = True,
+) -> str:
     """
     Promote staged files from HF staging/ to production paths,
     upload to GCS, then cleanup HF staging.
@@ -768,7 +794,7 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
 
     staging_dir = Path(VOLUME_MOUNT)
     staging_volume.reload()
@@ -789,6 +815,7 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
                 version=version,
                 run_id=run_id,
                 rel_paths=list(manifest["files"].keys()),
+                cleanup_staging=cleanup_staging,
             ),
         ),
         text=True,
@@ -830,11 +857,12 @@ def coordinate_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. Local-area publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")
@@ -982,6 +1010,7 @@ def coordinate_publish(
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
+    initially_completed = set(completed)
     print(f"Found {len(completed)} already-completed items on volume")
 
     phase_args = dict(
@@ -1033,12 +1062,22 @@ def coordinate_publish(
             f"Volume preserved for retry."
         )
 
+    reused_outputs = initially_completed & completed
+    recomputed_outputs = completed - initially_completed
+    reuse_measurement = {
+        "expected_outputs": expected_total,
+        "valid_reused_outputs": len(reused_outputs),
+        "recomputed_outputs": len(recomputed_outputs),
+        "invalid_outputs": max(expected_total - len(completed), 0),
+    }
+
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
         return {
             "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
             "fingerprint": fingerprint,
+            "reuse_measurement": reuse_measurement,
         }
 
     print("\nValidating staging...")
@@ -1075,6 +1114,7 @@ def coordinate_publish(
         "run_id": run_id,
         "validation_rows": accumulated_validation_rows,
         "fingerprint": fingerprint,
+        "reuse_measurement": reuse_measurement,
     }
 
 
@@ -1124,11 +1164,12 @@ def coordinate_national_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. National publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")
@@ -1194,6 +1235,7 @@ def coordinate_national_publish(
     )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    national_h5 = run_dir / "national" / "US.h5"
 
     work_items = [{"type": "national", "id": "US"}]
     print("Spawning worker for national H5 build...")
@@ -1262,6 +1304,12 @@ def coordinate_national_publish(
             "run_id": run_id,
             "fingerprint": fingerprint,
             "national_validation": national_validation_output,
+            "reuse_measurement": {
+                "expected_outputs": 1,
+                "valid_reused_outputs": 0,
+                "recomputed_outputs": 1,
+                "invalid_outputs": 0,
+            },
         }
 
     print(f"Uploading {national_h5} to HF staging...")
@@ -1304,6 +1352,12 @@ print("Done")
         "run_id": run_id,
         "fingerprint": fingerprint,
         "national_validation": national_validation_output,
+        "reuse_measurement": {
+            "expected_outputs": 1,
+            "valid_reused_outputs": 0,
+            "recomputed_outputs": 1,
+            "invalid_outputs": 0,
+        },
     }
 
 
@@ -1331,6 +1385,7 @@ def promote_national_publish(
     branch: str = "main",
     version: str = "",
     run_id: str = "",
+    cleanup_staging: bool = True,
 ) -> str:
     """Promote national US.h5 from HF staging to production + GCS."""
     setup_gcp_credentials()
@@ -1339,7 +1394,7 @@ def promote_national_publish(
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
     rel_paths = ["national/US.h5"]
 
     result = subprocess.run(
@@ -1349,6 +1404,7 @@ def promote_national_publish(
                 version=version,
                 run_id=run_id,
                 rel_paths=rel_paths,
+                cleanup_staging=cleanup_staging,
             ),
         ),
         text=True,

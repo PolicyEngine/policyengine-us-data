@@ -153,14 +153,12 @@ class TestVersionManifestSerialization:
         assert result.special_operation is None
         assert result.roll_back_version is None
 
-    def test_pipeline_run_id_omitted_by_default(self, sample_manifest):
+    def test_run_id_omitted_by_default(self, sample_manifest):
         data = sample_manifest.to_dict()
-        assert "pipeline_run_id" not in data
+        assert "run_id" not in data
         assert "diagnostics_path" not in data
 
-    def test_pipeline_run_id_included_when_set(
-        self, sample_generations, sample_hf_info
-    ):
+    def test_run_id_included_when_set(self, sample_generations, sample_hf_info):
         manifest = VersionManifest(
             version="1.73.0",
             created_at="2026-03-10T15:00:00Z",
@@ -169,14 +167,14 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            pipeline_run_id="1.73.0_abc12345_20260310",
+            run_id="usdata-gha123-a1-abc12345",
             diagnostics_path=("calibration/runs/1.73.0_abc12345_20260310/diagnostics/"),
         )
         data = manifest.to_dict()
-        assert data["pipeline_run_id"] == ("1.73.0_abc12345_20260310")
+        assert data["run_id"] == "usdata-gha123-a1-abc12345"
         assert "diagnostics/" in data["diagnostics_path"]
 
-    def test_pipeline_run_id_roundtrip(self, sample_generations, sample_hf_info):
+    def test_run_id_roundtrip(self, sample_generations, sample_hf_info):
         manifest = VersionManifest(
             version="1.73.0",
             created_at="2026-03-10T15:00:00Z",
@@ -185,11 +183,11 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            pipeline_run_id="1.73.0_abc12345_20260310",
+            run_id="usdata-gha123-a1-abc12345",
             diagnostics_path="calibration/runs/x/diag/",
         )
         roundtripped = VersionManifest.from_dict(manifest.to_dict())
-        assert roundtripped.pipeline_run_id == ("1.73.0_abc12345_20260310")
+        assert roundtripped.run_id == "usdata-gha123-a1-abc12345"
         assert roundtripped.diagnostics_path == ("calibration/runs/x/diag/")
 
 
@@ -325,11 +323,13 @@ class TestBuildManifest:
             "1.72.3",
             ["file.h5"],
             hf_info=sample_hf_info,
+            run_id="usdata-gha123-a1-abcdef12",
         )
 
         assert result.hf is not None
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
+        assert result.run_id == "usdata-gha123-a1-abcdef12"
         assert result.policyengine_us == sample_policyengine_us_info
 
     @patch(f"{_MOD}.get_policyengine_us_build_info")
@@ -457,6 +457,63 @@ class TestUploadManifest:
         assert len(registry_data["versions"]) == 2
         assert registry_data["versions"][0]["version"] == "1.72.3"
         assert registry_data["versions"][1]["version"] == "1.72.2"
+
+    @patch(f"{_MOD}._upload_registry_to_hf")
+    @patch(f"{_MOD}._get_gcs_bucket")
+    def test_replaces_existing_version_entry(
+        self,
+        mock_get_bucket,
+        mock_hf,
+        mock_bucket,
+        sample_manifest,
+    ):
+        mock_get_bucket.return_value = mock_bucket
+        stale = VersionManifest(
+            version="1.72.3",
+            created_at="2026-03-09T10:00:00Z",
+            hf=None,
+            gcs=GCSVersionInfo(
+                bucket="policyengine-us-data",
+                generations={"stale.h5": 111},
+            ),
+        )
+        older = VersionManifest(
+            version="1.72.2",
+            created_at="2026-03-08T10:00:00Z",
+            hf=None,
+            gcs=GCSVersionInfo(
+                bucket="policyengine-us-data",
+                generations={"old.h5": 222},
+            ),
+        )
+        existing_registry = VersionRegistry(
+            current="1.72.3",
+            versions=[stale, older],
+        )
+        existing_json = json.dumps(existing_registry.to_dict())
+        written = {}
+
+        def mock_blob(name):
+            b = MagicMock()
+            b.name = name
+            b.download_as_text.return_value = existing_json
+            written[name] = b
+            return b
+
+        mock_bucket.blob.side_effect = mock_blob
+
+        upload_manifest(sample_manifest)
+
+        blob = written["version_manifest.json"]
+        written_json = blob.upload_from_string.call_args[0][0]
+        registry_data = json.loads(written_json)
+
+        assert registry_data["current"] == "1.72.3"
+        assert [v["version"] for v in registry_data["versions"]] == [
+            "1.72.3",
+            "1.72.2",
+        ]
+        assert "stale.h5" not in registry_data["versions"][0]["gcs"]["generations"]
 
     @patch(f"{_MOD}.os")
     @patch(f"{_MOD}.HfApi")

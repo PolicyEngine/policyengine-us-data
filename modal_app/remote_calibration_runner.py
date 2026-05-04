@@ -13,10 +13,15 @@ for _p in (_baked, _local):
 
 from modal_app.images import gpu_image as image  # noqa: E402
 
-app = modal.App("policyengine-us-data-fit-weights")
+app = modal.App(
+    os.environ.get("US_DATA_FIT_WEIGHTS_APP_NAME") or "policyengine-us-data-fit-weights"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
-pipeline_vol = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
+pipeline_vol = modal.Volume.from_name(
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
+    create_if_missing=True,
+)
 
 PIPELINE_MOUNT = "/pipeline"
 

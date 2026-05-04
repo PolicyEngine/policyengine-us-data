@@ -171,7 +171,7 @@ class StepReuseDecision:
 
 @dataclass
 class StepManifest:
-    """Execution manifest for one meaningful pipeline step."""
+    """Execution manifest for one meaningful pipeline step or sub-step."""
 
     run_id: str
     step_id: str
@@ -186,6 +186,7 @@ class StepManifest:
     modal_app_name: str | None = None
     modal_environment: str | None = None
     hf_staging_prefix: str | None = None
+    parent_step_id: str | None = None
     scope: str | None = None
     modal_app_id: str | None = None
     modal_call_id: str | None = None
@@ -235,6 +236,7 @@ class StepManifest:
             modal_app_name=self.modal_app_name,
             modal_environment=self.modal_environment,
             hf_staging_prefix=self.hf_staging_prefix,
+            parent_step_id=self.parent_step_id,
             scope=self.scope,
             modal_app_id=self.modal_app_id,
             modal_call_id=self.modal_call_id,
@@ -273,6 +275,7 @@ class StepManifest:
             modal_app_name=self.modal_app_name,
             modal_environment=self.modal_environment,
             hf_staging_prefix=self.hf_staging_prefix,
+            parent_step_id=self.parent_step_id,
             scope=self.scope,
             modal_app_id=self.modal_app_id,
             modal_call_id=self.modal_call_id,
@@ -307,6 +310,7 @@ class StepManifest:
             "modal_app_name": self.modal_app_name,
             "modal_environment": self.modal_environment,
             "hf_staging_prefix": self.hf_staging_prefix,
+            "parent_step_id": self.parent_step_id,
             "modal_app_id": self.modal_app_id,
             "modal_call_id": self.modal_call_id,
             "parameters": self.parameters,
@@ -340,6 +344,7 @@ class StepManifest:
             modal_app_name=data.get("modal_app_name"),
             modal_environment=data.get("modal_environment"),
             hf_staging_prefix=data.get("hf_staging_prefix"),
+            parent_step_id=data.get("parent_step_id"),
             modal_app_id=data.get("modal_app_id"),
             modal_call_id=data.get("modal_call_id"),
             parameters=dict(data.get("parameters", {})),

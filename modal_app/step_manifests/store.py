@@ -19,7 +19,13 @@ from policyengine_us_data.utils.step_manifest import (
     write_step_manifest,
 )
 
-from modal_app.step_manifests.state import RUN_STEP_IDS, RunMetadata, run_dir
+from modal_app.step_manifests.specs import (
+    RUN_MANIFEST_STEP_IDS,
+    PipelineStepRef,
+    parent_step_id,
+    step_id,
+)
+from modal_app.step_manifests.state import RunMetadata, run_dir
 
 
 def build_run_manifest(meta: RunMetadata) -> RunManifest:
@@ -39,7 +45,7 @@ def build_run_manifest(meta: RunMetadata) -> RunManifest:
         completed_at=utc_now()
         if meta.status in {"completed", "failed", "promoted"}
         else None,
-        known_step_ids=RUN_STEP_IDS,
+        known_step_ids=list(RUN_MANIFEST_STEP_IDS),
         resume_history=meta.resume_history,
         error=meta.error,
     )
@@ -102,7 +108,7 @@ def _next_step_attempt(run_id: str, step_id: str) -> int:
 
 def start_step_manifest(
     meta: RunMetadata,
-    step_id: str,
+    step: PipelineStepRef,
     *,
     parameters: dict | None = None,
     input_identities: dict | None = None,
@@ -110,12 +116,14 @@ def start_step_manifest(
     modal_call_id: str | None = None,
     vol: Any | None = None,
 ) -> StepManifest:
+    manifest_step_id = step_id(step)
     manifest = StepManifest(
         run_id=meta.run_id,
-        step_id=step_id,
+        step_id=manifest_step_id,
+        parent_step_id=parent_step_id(step),
         scope=scope,
         status="running",
-        attempt=_next_step_attempt(meta.run_id, step_id),
+        attempt=_next_step_attempt(meta.run_id, manifest_step_id),
         started_at=utc_now(),
         branch=meta.branch,
         sha=meta.sha,
@@ -127,7 +135,9 @@ def start_step_manifest(
         parameters=parameters or {},
         input_identities=input_identities or {},
     )
-    write_step_manifest(step_manifest_path(run_dir(meta.run_id), step_id), manifest)
+    write_step_manifest(
+        step_manifest_path(run_dir(meta.run_id), manifest_step_id), manifest
+    )
     if vol is not None:
         vol.commit()
     return manifest
@@ -177,17 +187,19 @@ def fail_step_manifest(
 
 def mark_step_reused(
     meta: RunMetadata,
-    step_id: str,
+    step: PipelineStepRef,
     decision,
     *,
     vol: Any,
 ) -> StepManifest:
+    manifest_step_id = step_id(step)
     previous = decision.manifest
     if previous is None:
-        raise RuntimeError(f"Cannot reuse {step_id}: missing prior manifest")
+        raise RuntimeError(f"Cannot reuse {manifest_step_id}: missing prior manifest")
     reused = StepManifest(
         run_id=meta.run_id,
-        step_id=step_id,
+        step_id=manifest_step_id,
+        parent_step_id=parent_step_id(step) or previous.parent_step_id,
         scope=previous.scope,
         status="reused",
         attempt=previous.attempt + 1,
@@ -215,20 +227,23 @@ def mark_step_reused(
             invalid_outputs=0,
         ),
     )
-    write_step_manifest(step_manifest_path(run_dir(meta.run_id), step_id), reused)
+    write_step_manifest(
+        step_manifest_path(run_dir(meta.run_id), manifest_step_id), reused
+    )
     write_run_meta(meta, vol)
     return reused
 
 
 def step_reusable(
     meta: RunMetadata,
-    step_id: str,
+    step: PipelineStepRef,
     *,
     expected_input_identities: dict | None = None,
     expected_parameters: dict | None = None,
 ) -> object:
+    manifest_step_id = step_id(step)
     return evaluate_step_reuse(
-        step_manifest_path(run_dir(meta.run_id), step_id),
+        step_manifest_path(run_dir(meta.run_id), manifest_step_id),
         expected_input_identities=expected_input_identities,
         expected_parameters=expected_parameters,
     )

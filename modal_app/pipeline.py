@@ -52,6 +52,18 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import ensure_resume_sha_compatible  # noqa: E402
+from modal_app.step_manifests.specs import (  # noqa: E402
+    BUILD_CALIBRATION_PACKAGE,
+    BUILD_DATASETS,
+    BUILD_OUTPUTS,
+    LOCAL_AREA_H5_NATIONAL,
+    LOCAL_AREA_H5_REGIONAL,
+    STAGE_BASE_DATASETS,
+    UPLOAD_DIAGNOSTICS,
+    VALIDATE_AND_PROMOTE_RELEASE,
+    WEIGHT_FITTING_NATIONAL,
+    WEIGHT_FITTING_REGIONAL,
+)
 from modal_app.step_manifests.state import (  # noqa: E402
     PIPELINE_MOUNT,
     RUNS_DIR,
@@ -378,6 +390,7 @@ def verify_runtime_seams() -> dict:
         "modal_app/worker_script.py",
         "modal_app/local_area.py",
         "modal_app/h5_test_harness.py",
+        "modal_app/step_manifests/specs.py",
         "modal_app/step_manifests/state.py",
         "modal_app/step_manifests/store.py",
         "modal_app/fixtures/h5_cases.py",
@@ -418,6 +431,7 @@ def verify_runtime_seams() -> dict:
         "modal_app.h5_test_harness",
         "modal_app.local_area",
         "modal_app.remote_calibration_runner",
+        "modal_app.step_manifests.specs",
         "modal_app.step_manifests.state",
         "modal_app.step_manifests.store",
         "modal_app.worker_script",
@@ -860,23 +874,23 @@ def run_pipeline(
         }
         build_dataset_reuse = _step_reusable(
             meta,
-            "01_build_datasets",
+            BUILD_DATASETS,
             expected_input_identities=build_dataset_inputs,
             expected_parameters=build_dataset_parameters,
         )
         if build_dataset_reuse.reusable:
             _mark_step_reused(
                 meta,
-                "01_build_datasets",
+                BUILD_DATASETS,
                 build_dataset_reuse,
                 vol=pipeline_volume,
             )
-            print("\n[Step 1/5] Build datasets (skipped - manifest valid)")
+            print(f"\n[Step 1/5] {BUILD_DATASETS.title} (skipped - manifest valid)")
         else:
-            print("\n[Step 1/5] Building datasets...")
+            print(f"\n[Step 1/5] {BUILD_DATASETS.title}...")
             active_step_manifest = _start_step_manifest(
                 meta,
-                "01_build_datasets",
+                BUILD_DATASETS,
                 parameters=build_dataset_parameters,
                 input_identities=build_dataset_inputs,
                 vol=pipeline_volume,
@@ -945,23 +959,26 @@ def run_pipeline(
         }
         package_reuse = _step_reusable(
             meta,
-            "02_build_package",
+            BUILD_CALIBRATION_PACKAGE,
             expected_input_identities=package_inputs,
             expected_parameters=package_parameters,
         )
         if package_reuse.reusable:
             _mark_step_reused(
                 meta,
-                "02_build_package",
+                BUILD_CALIBRATION_PACKAGE,
                 package_reuse,
                 vol=pipeline_volume,
             )
-            print("\n[Step 2/5] Build package (skipped - manifest valid)")
+            print(
+                f"\n[Step 2/5] {BUILD_CALIBRATION_PACKAGE.title} "
+                "(skipped - manifest valid)"
+            )
         else:
-            print("\n[Step 2/5] Building calibration package...")
+            print(f"\n[Step 2/5] {BUILD_CALIBRATION_PACKAGE.title}...")
             active_step_manifest = _start_step_manifest(
                 meta,
-                "02_build_package",
+                BUILD_CALIBRATION_PACKAGE,
                 parameters=package_parameters,
                 input_identities=package_inputs,
                 vol=pipeline_volume,
@@ -1014,14 +1031,14 @@ def run_pipeline(
         }
         regional_fit_reuse = _step_reusable(
             meta,
-            "03_fit_weights_regional",
+            WEIGHT_FITTING_REGIONAL,
             expected_input_identities=fit_inputs,
             expected_parameters=regional_fit_parameters,
         )
         national_fit_reuse = (
             _step_reusable(
                 meta,
-                "03_fit_weights_national",
+                WEIGHT_FITTING_NATIONAL,
                 expected_input_identities=fit_inputs,
                 expected_parameters=national_fit_parameters,
             )
@@ -1034,14 +1051,14 @@ def run_pipeline(
         if fit_reusable:
             _mark_step_reused(
                 meta,
-                "03_fit_weights_regional",
+                WEIGHT_FITTING_REGIONAL,
                 regional_fit_reuse,
                 vol=pipeline_volume,
             )
             if national_fit_reuse is not None:
                 _mark_step_reused(
                     meta,
-                    "03_fit_weights_national",
+                    WEIGHT_FITTING_NATIONAL,
                     national_fit_reuse,
                     vol=pipeline_volume,
                 )
@@ -1069,7 +1086,7 @@ def run_pipeline(
             print(f"    → regional fit fc: {regional_handle.object_id}")
             regional_fit_manifest = _start_step_manifest(
                 meta,
-                "03_fit_weights_regional",
+                WEIGHT_FITTING_REGIONAL,
                 scope="regional",
                 parameters=regional_fit_parameters,
                 input_identities=fit_inputs,
@@ -1101,7 +1118,7 @@ def run_pipeline(
                 print(f"    → national fit fc: {national_handle.object_id}")
                 national_fit_manifest = _start_step_manifest(
                     meta,
-                    "03_fit_weights_national",
+                    WEIGHT_FITTING_NATIONAL,
                     scope="national",
                     parameters=national_fit_parameters,
                     input_identities=fit_inputs,
@@ -1269,14 +1286,14 @@ def run_pipeline(
         }
         regional_h5_reuse = _step_reusable(
             meta,
-            "04_build_h5_regional",
+            LOCAL_AREA_H5_REGIONAL,
             expected_input_identities=regional_h5_inputs,
             expected_parameters=regional_h5_parameters,
         )
         national_h5_reuse = (
             _step_reusable(
                 meta,
-                "04_build_h5_national",
+                LOCAL_AREA_H5_NATIONAL,
                 expected_input_identities=national_h5_inputs,
                 expected_parameters=national_h5_parameters,
             )
@@ -1285,7 +1302,7 @@ def run_pipeline(
         )
         stage_base_reuse = _step_reusable(
             meta,
-            "04_stage_base_datasets",
+            STAGE_BASE_DATASETS,
             expected_input_identities=stage_base_inputs,
             expected_parameters=stage_base_parameters,
         )
@@ -1297,28 +1314,29 @@ def run_pipeline(
         if publish_reusable:
             _mark_step_reused(
                 meta,
-                "04_build_h5_regional",
+                LOCAL_AREA_H5_REGIONAL,
                 regional_h5_reuse,
                 vol=pipeline_volume,
             )
             if national_h5_reuse is not None:
                 _mark_step_reused(
                     meta,
-                    "04_build_h5_national",
+                    LOCAL_AREA_H5_NATIONAL,
                     national_h5_reuse,
                     vol=pipeline_volume,
                 )
             _mark_step_reused(
                 meta,
-                "04_stage_base_datasets",
+                STAGE_BASE_DATASETS,
                 stage_base_reuse,
                 vol=pipeline_volume,
             )
-            print("\n[Step 4/5] Publish + stage (skipped - manifests valid)")
+            print(f"\n[Step 4/5] {BUILD_OUTPUTS.title} (skipped - manifests valid)")
         else:
             print(
-                "\n[Step 4/5] Building H5s, staging datasets, "
-                "uploading diagnostics (parallel)..."
+                f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
+                "building H5s, staging datasets, uploading diagnostics "
+                "(parallel)..."
             )
             step_start = time.time()
 
@@ -1338,7 +1356,7 @@ def run_pipeline(
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
             regional_h5_manifest = _start_step_manifest(
                 meta,
-                "04_build_h5_regional",
+                LOCAL_AREA_H5_REGIONAL,
                 scope="regional",
                 parameters=regional_h5_parameters,
                 input_identities=regional_h5_inputs,
@@ -1362,7 +1380,7 @@ def run_pipeline(
                 )
                 national_h5_manifest = _start_step_manifest(
                     meta,
-                    "04_build_h5_national",
+                    LOCAL_AREA_H5_NATIONAL,
                     scope="national",
                     parameters=national_h5_parameters,
                     input_identities=national_h5_inputs,
@@ -1376,7 +1394,7 @@ def run_pipeline(
             print("  Staging base datasets to HF...")
             stage_base_manifest = _start_step_manifest(
                 meta,
-                "04_stage_base_datasets",
+                STAGE_BASE_DATASETS,
                 parameters=stage_base_parameters,
                 input_identities=stage_base_inputs,
                 vol=pipeline_volume,
@@ -1485,7 +1503,7 @@ def run_pipeline(
             print("  Uploading validation diagnostics...")
             diagnostics_manifest = _start_step_manifest(
                 meta,
-                "04_upload_diagnostics",
+                UPLOAD_DIAGNOSTICS,
                 parameters={"branch": branch, "run_id": run_id},
                 input_identities={
                     "diagnostics": [
@@ -1637,9 +1655,9 @@ def promote_run(
             for artifact in completed_validated_outputs(
                 _run_dir(run_id),
                 step_ids=[
-                    "04_build_h5_regional",
-                    "04_build_h5_national",
-                    "04_stage_base_datasets",
+                    LOCAL_AREA_H5_REGIONAL.id,
+                    LOCAL_AREA_H5_NATIONAL.id,
+                    STAGE_BASE_DATASETS.id,
                 ],
             )
         ]
@@ -1654,7 +1672,7 @@ def promote_run(
         )
     promote_manifest = _start_step_manifest(
         meta,
-        "05_promote_release",
+        VALIDATE_AND_PROMOTE_RELEASE,
         parameters={"version": version, "run_id": run_id},
         input_identities=promote_inputs,
         vol=pipeline_volume,

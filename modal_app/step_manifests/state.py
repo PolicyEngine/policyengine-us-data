@@ -19,18 +19,6 @@ STAGING_MOUNT = "/staging"
 ARTIFACTS_BASE = f"{PIPELINE_MOUNT}/artifacts"
 RUNS_DIR = f"{PIPELINE_MOUNT}/runs"
 
-RUN_STEP_IDS = [
-    "01_build_datasets",
-    "02_build_package",
-    "03_fit_weights_regional",
-    "03_fit_weights_national",
-    "04_build_h5_regional",
-    "04_build_h5_national",
-    "04_stage_base_datasets",
-    "04_upload_diagnostics",
-    "05_promote_release",
-]
-
 
 def artifacts_dir_for_run(run_id: str) -> str:
     """Return the run-scoped artifacts directory."""

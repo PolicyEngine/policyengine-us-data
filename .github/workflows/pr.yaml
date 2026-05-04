@@ -90,9 +90,9 @@ jobs:
           -v
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
-          file: coverage.xml
+          files: coverage.xml
           flags: unit
           fail_ci_if_error: false
         env:

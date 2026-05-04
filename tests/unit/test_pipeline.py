@@ -13,11 +13,10 @@ modal = pytest.importorskip("modal")
 from modal_app.pipeline import (  # noqa: E402
     _build_diagnostics_upload_script,
 )
-from modal_app.step_manifests.runtime import (  # noqa: E402
-    RunMetadata,
+from modal_app.step_manifests.state import RunMetadata, step_completed  # noqa: E402
+from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
     record_step,
-    step_completed,
     write_run_meta,
 )
 
@@ -228,8 +227,8 @@ class TestRecordStep:
         start = time.time() - 5.0
 
         with (
-            patch("modal_app.step_manifests.runtime.RUNS_DIR", str(tmp_path / "runs")),
-            patch("modal_app.step_manifests.runtime.write_run_meta"),
+            patch("modal_app.step_manifests.state.RUNS_DIR", str(tmp_path / "runs")),
+            patch("modal_app.step_manifests.store.write_run_meta"),
         ):
             record_step(meta, "build_datasets", start, mock_vol)
 
@@ -252,8 +251,8 @@ class TestRecordStep:
         mock_vol = MagicMock()
 
         with (
-            patch("modal_app.step_manifests.runtime.RUNS_DIR", str(tmp_path / "runs")),
-            patch("modal_app.step_manifests.runtime.write_run_meta"),
+            patch("modal_app.step_manifests.state.RUNS_DIR", str(tmp_path / "runs")),
+            patch("modal_app.step_manifests.store.write_run_meta"),
         ):
             record_step(
                 meta,
@@ -284,7 +283,7 @@ class TestRunMetaIO:
         runs_dir = tmp_path / "runs"
 
         with patch(
-            "modal_app.step_manifests.runtime.RUNS_DIR",
+            "modal_app.step_manifests.state.RUNS_DIR",
             str(runs_dir),
         ):
             write_run_meta(meta, mock_vol)
@@ -303,7 +302,7 @@ class TestRunMetaIO:
         mock_vol = MagicMock()
 
         with patch(
-            "modal_app.step_manifests.runtime.RUNS_DIR",
+            "modal_app.step_manifests.state.RUNS_DIR",
             "/nonexistent",
         ):
             with pytest.raises(FileNotFoundError):

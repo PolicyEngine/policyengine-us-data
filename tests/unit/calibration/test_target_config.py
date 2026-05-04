@@ -206,6 +206,36 @@ class TestLoadTargetConfig:
             "domain_variable": "adjusted_gross_income,non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_national_capital_income_agi_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        variables = [
+            "net_capital_gains",
+            "dividend_income",
+            "qualified_dividend_income",
+            "taxable_interest_income",
+        ]
+        for variable in variables:
+            domain_variable = f"adjusted_gross_income,{variable}"
+            assert {
+                "variable": variable,
+                "geo_level": "national",
+                "domain_variable": domain_variable,
+            } in include_rules
+            assert {
+                "variable": "tax_unit_count",
+                "geo_level": "national",
+                "domain_variable": domain_variable,
+            } in include_rules
+
     def test_training_config_includes_medicare_part_b_target(self):
         config = load_target_config(
             str(

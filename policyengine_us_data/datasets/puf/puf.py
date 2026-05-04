@@ -882,6 +882,7 @@ class PUF(Dataset):
             if (
                 QBI_SIMULATION_REQUIRED_VARIABLES.issubset(keys)
                 and is_current_qbi_simulation
+                and not existing_overrides
             ):
                 return {}
 
@@ -913,6 +914,13 @@ class PUF(Dataset):
                 "business_is_sstb" in file_handle
                 or "business_is_sstb" in existing_overrides
             )
+            has_self_employment_split_overrides = (
+                "self_employment_income" in existing_overrides
+                or "sstb_self_employment_income" in existing_overrides
+            )
+            preserve_self_employment_split_flags = (
+                has_existing_sstb and not has_self_employment_split_overrides
+            )
             is_sstb_existing = self._values_from_file_or_overrides(
                 file_handle, "business_is_sstb", existing_overrides, length
             ).astype(bool)
@@ -940,7 +948,7 @@ class PUF(Dataset):
                                 length,
                             ).astype(bool)
                         )
-                    if len(split_flags) == 2 and has_existing_sstb:
+                    if len(split_flags) == 2 and preserve_self_employment_split_flags:
                         qualification_flags[source] = split_flags[0] | split_flags[1]
                     else:
                         qualification_flags[source] = qualified
@@ -1056,7 +1064,7 @@ class PUF(Dataset):
             for source, qualified in qualification_flags.items():
                 flag = QBI_QUALIFICATION_FLAG_BY_SOURCE[source]
                 if source == "self_employment_income":
-                    if has_existing_sstb and (
+                    if preserve_self_employment_split_flags and (
                         flag in file_handle or flag in existing_overrides
                     ):
                         continue
@@ -1066,7 +1074,7 @@ class PUF(Dataset):
                     flag_overrides[flag] = np.where(is_sstb, False, qualified)
                 else:
                     flag_overrides[flag] = qualified
-            if not has_existing_sstb or (
+            if not preserve_self_employment_split_flags or (
                 SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in file_handle
                 and SSTB_SELF_EMPLOYMENT_QUALIFICATION_FLAG not in existing_overrides
             ):

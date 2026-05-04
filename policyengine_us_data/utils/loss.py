@@ -133,6 +133,13 @@ MEDICAID_ENROLLMENT_TARGETS = {
     2024: 72_429_055,
 }
 
+LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "qualified_dividends",
+    "taxable_interest_income",
+}
+
 
 def fmt(x):
     if x == -np.inf:
@@ -514,6 +521,20 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _should_skip_soi_agi_row(row) -> bool:
+    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    if row["AGI upper bound"] > 10_000:
+        return False
+    return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+
+def _should_skip_soi_taxability_row(row) -> bool:
+    """Use all-return SOI rows only for investment-income controls."""
+    if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
+        return row["Taxable only"]
+    return not row["Taxable only"]
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -567,10 +588,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if not row["Taxable only"]:
-            continue  # exclude non "taxable returns" statistics
+        if _should_skip_soi_taxability_row(row):
+            continue  # exclude non "taxable returns" statistics by default
 
-        if row["AGI upper bound"] <= 10_000:
+        if _should_skip_soi_agi_row(row):
             continue
 
         mask = (
@@ -683,6 +704,41 @@ def build_loss_matrix(dataset: type, time_period):
                 time_period
             ).calibration.gov.cbo._children[param_name]
         )
+
+    # CBO income-by-source aggregate targets.
+    # Without these, the per-AGI-bracket SOI targets fail to constrain the
+    # *aggregate* (the optimizer can satisfy bracket-level totals while
+    # concentrating weight on a few records and blowing up the national sum).
+    # See issues #555 and #866 — single records with $60M+ raw LTCG were
+    # ending up with calibration weights of 50k-70k, inflating the national
+    # net_capital_gains aggregate to 12x the CBO target.
+    #
+    # Each entry maps a PolicyEngine variable (or sum of variables) to the
+    # corresponding CBO `income_by_source` parameter.
+    CBO_INCOME_BY_SOURCE_TARGETS = [
+        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
+        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
+        (
+            "qualified_dividend_income",
+            ["qualified_dividend_income"],
+            "qualified_dividend_income",
+        ),
+        (
+            "taxable_interest_and_ordinary_dividends",
+            ["taxable_interest_income", "non_qualified_dividend_income"],
+            "taxable_interest_and_ordinary_dividends",
+        ),
+    ]
+
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+
+    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
+        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
+        loss_matrix[label] = values
+        targets_array.append(income_by_source._children[cbo_param_name])
 
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (

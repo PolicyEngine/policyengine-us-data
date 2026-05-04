@@ -218,6 +218,7 @@ class TestLoadTargetConfig:
 
         include_rules = config["include"]
         variables = [
+            "long_term_capital_gains",
             "net_capital_gains",
             "dividend_income",
             "qualified_dividend_income",
@@ -270,6 +271,21 @@ class TestLoadTargetConfig:
 
         assert {
             "variable": "medicare_part_b_premium",
+            "geo_level": "national",
+        } in config["include"]
+
+    def test_training_config_includes_soi_ltcg_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "long_term_capital_gains",
             "geo_level": "national",
         } in config["include"]
 

@@ -176,6 +176,12 @@ AGGREGATE_LEVEL_TARGETED_VARIABLES = (
     "unemployment_compensation",
 )
 
+IRS_SOI_AGGREGATE_TARGETS = [
+    # This complements the net capital gains target with the source-specific
+    # control used by downstream preferential-rate reforms.
+    ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
+]
+
 
 def fmt(x):
     if x == -np.inf:
@@ -557,6 +563,26 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _sum_household_variables(sim, variable_names):
+    return sum(
+        sim.calculate(variable_name, map_to="household").values
+        for variable_name in variable_names
+    )
+
+
+def _add_irs_soi_aggregate_targets(loss_matrix, targets_list, sim, time_period):
+    soi = sim.tax_benefit_system.parameters(time_period).calibration.gov.irs.soi
+
+    for label_suffix, pe_variables, soi_param_name in IRS_SOI_AGGREGATE_TARGETS:
+        label = f"nation/irs/soi/{label_suffix}"
+        loss_matrix[label] = _sum_household_variables(sim, pe_variables)
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(soi._children[soi_param_name])
+
+    return targets_list, loss_matrix
+
+
 def _should_skip_soi_agi_row(row) -> bool:
     """Skip fragile low-AGI SOI rows except for investment-income controls."""
     if row["AGI upper bound"] > 10_000:
@@ -744,6 +770,16 @@ def build_loss_matrix(dataset: type, time_period):
         values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
         loss_matrix[label] = values
         targets_array.append(income_by_source._children[cbo_param_name])
+
+    # IRS SOI aggregate capital-gains targets. This adds a long-term gains
+    # control on top of the CBO net capital gains aggregate, which is important
+    # for reforms that change preferential LTCG rates.
+    targets_array, loss_matrix = _add_irs_soi_aggregate_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (

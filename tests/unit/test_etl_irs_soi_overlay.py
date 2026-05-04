@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sqlalchemy import text
 from sqlmodel import Session, select
 
@@ -22,6 +23,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     _upsert_target,
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
+    load_national_ltcg_agi_targets,
     load_national_workbook_soi_targets,
 )
 
@@ -490,3 +492,50 @@ def test_load_national_geography_ctc_agi_targets_creates_capital_income_domains(
     assert actual_pairs == expected_pairs
     assert set(rows["geo_level"]) == {"national"}
     assert set(rows["geographic_id"]) == {"US"}
+
+
+def test_load_national_ltcg_agi_targets_creates_table_14a_domain_targets(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    workbook = pd.DataFrame(np.zeros((12, 63)))
+    workbook.iat[10, 61] = 123.0
+    workbook.iat[10, 62] = 456.0
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.TABLE_1_4A_LTCG_AGI_BRACKETS",
+        {11: (float("-inf"), 1.0)},
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi._load_workbook",
+        lambda table_name, year: workbook,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_ltcg_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2023,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count", "long_term_capital_gains"],
+            "domain_variables": ["adjusted_gross_income,long_term_capital_gains"],
+        }
+    )
+
+    assert set(rows["variable"]) == {
+        "tax_unit_count",
+        "long_term_capital_gains",
+    }
+    assert set(rows["domain_variable"]) == {
+        "adjusted_gross_income,long_term_capital_gains"
+    }
+    assert rows.set_index("variable").loc["tax_unit_count", "value"] == 123.0
+    assert (
+        rows.set_index("variable").loc["long_term_capital_gains", "value"] == 456_000.0
+    )

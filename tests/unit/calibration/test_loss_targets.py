@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -5,8 +7,9 @@ import pytest
 from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
-    _get_aca_national_targets,
+    _add_irs_soi_aggregate_targets,
     _add_ctc_targets,
+    _get_aca_national_targets,
     _get_medicaid_national_targets,
     _load_aca_spending_and_enrollment_targets,
     _load_medicaid_enrollment_targets,
@@ -99,6 +102,36 @@ class _FakeSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeCapitalGainsSimulation:
+    def __init__(self):
+        self.calculate_calls = []
+        self.tax_benefit_system = SimpleNamespace(
+            parameters=lambda period: SimpleNamespace(
+                calibration=SimpleNamespace(
+                    gov=SimpleNamespace(
+                        irs=SimpleNamespace(
+                            soi=SimpleNamespace(
+                                _children={
+                                    "long_term_capital_gains": 1_650.0,
+                                }
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+    def calculate(self, variable, map_to=None, period=None):
+        self.calculate_calls.append((variable, map_to, period))
+        values = {
+            "long_term_capital_gains": [100.0, 0.0, 50.0],
+        }
+        if variable not in values:
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        assert map_to == "household"
+        return _FakeArrayResult(values[variable])
+
+
 def test_add_ctc_targets(monkeypatch):
     monkeypatch.setattr(
         "policyengine_us_data.utils.loss.get_national_geography_soi_target",
@@ -133,6 +166,26 @@ def test_add_ctc_targets(monkeypatch):
         loss_matrix["nation/irs/non_refundable_ctc_count"],
         np.array([1.0, 1.0, 0.0], dtype=np.float32),
     )
+
+
+def test_add_irs_soi_capital_gains_targets():
+    sim = _FakeCapitalGainsSimulation()
+
+    targets, loss_matrix = _add_irs_soi_aggregate_targets(
+        pd.DataFrame(),
+        [],
+        sim,
+        2026,
+    )
+
+    assert targets == [1_650.0]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/soi/long_term_capital_gains"],
+        np.array([100.0, 0.0, 50.0], dtype=np.float32),
+    )
+    assert sim.calculate_calls == [
+        ("long_term_capital_gains", "household", None),
+    ]
 
 
 def test_low_agi_soi_skip_keeps_investment_income_targets():

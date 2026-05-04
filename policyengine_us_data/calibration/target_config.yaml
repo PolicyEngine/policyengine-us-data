@@ -120,6 +120,8 @@ include:
     geo_level: national
   - variable: health_insurance_premiums_without_medicare_part_b
     geo_level: national
+  - variable: long_term_capital_gains
+    geo_level: national
   - variable: medicaid
     geo_level: national
   - variable: medicare_part_b_premium
@@ -194,6 +196,12 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: adjusted_gross_income,net_capital_gains
+  - variable: long_term_capital_gains
+    geo_level: national
+    domain_variable: adjusted_gross_income,long_term_capital_gains
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,long_term_capital_gains
   # Re-include dividend / interest aggregates that were previously dropped
   # for "high error or tension". 30% rel-error on a soft target is still
   # vastly better than the 5-15x inflation we get with no constraint.

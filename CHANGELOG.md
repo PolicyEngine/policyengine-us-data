@@ -1,3 +1,10 @@
+## [1.99.1] - 2026-05-05
+
+### Fixed
+
+- Assign legacy extended CPS households to Census blocks within their state and county when available, and derive SPM thresholds from the assigned geography.
+
+
 ## [1.99.0] - 2026-05-05
 
 ### Added

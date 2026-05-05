@@ -56,6 +56,27 @@ jobs:
       - name: Run quality guards
         run: uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
 
+  pipeline-docs-build:
+    name: Pipeline docs build
+    runs-on: ubuntu-latest
+    needs: check-fork
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: Build generated pipeline docs
+        run: |
+          out_dir="$(mktemp -d)"
+          uv run --no-sync --with pyyaml python scripts/extract_pipeline_docs.py \
+            --json "$out_dir/pipeline_map.json" \
+            --api-json "$out_dir/pipeline_api.json" \
+            --markdown "$out_dir/pipeline-map.md"
+          python -m json.tool "$out_dir/pipeline_map.json" >/dev/null
+          python -m json.tool "$out_dir/pipeline_api.json" >/dev/null
+          test -s "$out_dir/pipeline-map.md"
+
   check-changelog:
     runs-on: ubuntu-latest
     needs: check-fork

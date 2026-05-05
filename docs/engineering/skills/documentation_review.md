@@ -44,9 +44,11 @@ Check that changed pipeline behavior has a durable documentation surface:
 - Edges describe real data, artifact, validation, or orchestration relationships.
 - `status` and `stability` values are honest for transitional code.
 - `validation_commands` are focused and point to existing tests or scripts.
-- Generated docs are refreshed when decorator, Pydoc, or map source changes.
+- Generated docs build when decorator, Pydoc, or map source changes. PRs do not
+  need to refresh checked-in generated artifacts manually; the push workflow
+  publishes those artifacts from automation.
 - Stale architecture names, folder names, and artifact names are not preserved in
-  generated Markdown or JSON.
+  durable documentation sources or generated output.
 
 ## Pydoc Checks
 
@@ -67,6 +69,17 @@ review:
 ```bash
 uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
 uv run --no-sync --with pyyaml --with pytest pytest tests/unit/test_pipeline_docs_extractor.py tests/unit/test_pipeline_doc_guards.py
+```
+
+If reviewing generated pipeline-doc build behavior, run the extractor against a
+temporary output directory:
+
+```bash
+out_dir="$(mktemp -d)"
+uv run --no-sync --with pyyaml python scripts/extract_pipeline_docs.py \
+  --json "$out_dir/pipeline_map.json" \
+  --api-json "$out_dir/pipeline_api.json" \
+  --markdown "$out_dir/pipeline-map.md"
 ```
 
 If reviewing documentation build behavior, also run:

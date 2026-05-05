@@ -48,6 +48,8 @@ jobs:
           node-version: "24"
       - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
+      - name: Generate pipeline documentation artifacts
+        run: uv run python scripts/extract_pipeline_docs.py
       - name: Build documentation
         run: uv run make documentation
         env:
@@ -87,6 +89,8 @@ jobs:
         run: |
           python .github/bump_version.py
           towncrier build --yes --version "$(python .github/fetch_version.py)"
+      - name: Generate pipeline documentation artifacts
+        run: uv run --no-sync --with pyyaml python scripts/extract_pipeline_docs.py
       - name: Update lockfile
         run: uv lock
       - name: Update changelog

@@ -1379,6 +1379,7 @@ def _add_agi_metric_columns(
     soi_targets = pd.read_csv(CALIBRATION_FOLDER / "agi_state.csv")
 
     agi = sim.calculate("adjusted_gross_income").values
+    is_filer = sim.calculate("tax_unit_is_filer").values > 0
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(state, "person", "tax_unit", how="value_from_first_person")
 
@@ -1391,11 +1392,12 @@ def _add_agi_metric_columns(
         # loop in build_loss_matrix() (the SOI targets use half-open bands
         # starting at the lower bound).
         in_band = (agi >= lower) & (agi < upper)
+        in_scope = in_state & in_band & is_filer
 
         if r.IS_COUNT:
-            metric = (in_state & in_band & (agi > 0)).astype(float)
+            metric = in_scope.astype(float)
         else:
-            metric = np.where(in_state & in_band, agi, 0.0)
+            metric = np.where(in_scope, agi, 0.0)
 
         metric = sim.map_result(metric, "tax_unit", "household")
 

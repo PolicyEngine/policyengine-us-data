@@ -850,6 +850,40 @@ def load_state_fine_agi_targets(
         )
 
 
+def _get_eitc_recipient_constraints(geo_info: dict) -> list[StratumConstraint]:
+    constraints = [
+        StratumConstraint(
+            constraint_variable="tax_unit_is_filer",
+            operation="==",
+            value="1",
+        ),
+        StratumConstraint(
+            constraint_variable="eitc",
+            operation=">",
+            value="0",
+        ),
+    ]
+
+    if geo_info["type"] == "state":
+        constraints.append(
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value=str(geo_info["state_fips"]),
+            )
+        )
+    elif geo_info["type"] == "district":
+        constraints.append(
+            StratumConstraint(
+                constraint_variable="congressional_district_geoid",
+                operation="==",
+                value=str(geo_info["congressional_district_geoid"]),
+            )
+        )
+
+    return constraints
+
+
 def load_national_fine_agi_targets(
     session: Session, national_filer_stratum_id: int, target_year: int
 ) -> None:
@@ -1199,46 +1233,17 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             # Determine parent stratum based on geographic level - use filer strata not geo strata
             if geo_info["type"] == "national":
                 parent_stratum_id = filer_strata["national"]
-                note = f"National EITC received with {n_children} children (filers)"
-                constraints = [
-                    StratumConstraint(
-                        constraint_variable="tax_unit_is_filer",
-                        operation="==",
-                        value="1",
-                    )
-                ]
+                note = f"National EITC received with {n_children} children (recipients)"
             elif geo_info["type"] == "state":
                 parent_stratum_id = filer_strata["state"][geo_info["state_fips"]]
-                note = f"State FIPS {geo_info['state_fips']} EITC received with {n_children} children (filers)"
-                constraints = [
-                    StratumConstraint(
-                        constraint_variable="tax_unit_is_filer",
-                        operation="==",
-                        value="1",
-                    ),
-                    StratumConstraint(
-                        constraint_variable="state_fips",
-                        operation="==",
-                        value=str(geo_info["state_fips"]),
-                    ),
-                ]
+                note = f"State FIPS {geo_info['state_fips']} EITC received with {n_children} children (recipients)"
             elif geo_info["type"] == "district":
                 parent_stratum_id = filer_strata["district"][
                     geo_info["congressional_district_geoid"]
                 ]
-                note = f"Congressional District {geo_info['congressional_district_geoid']} EITC received with {n_children} children (filers)"
-                constraints = [
-                    StratumConstraint(
-                        constraint_variable="tax_unit_is_filer",
-                        operation="==",
-                        value="1",
-                    ),
-                    StratumConstraint(
-                        constraint_variable="congressional_district_geoid",
-                        operation="==",
-                        value=str(geo_info["congressional_district_geoid"]),
-                    ),
-                ]
+                note = f"Congressional District {geo_info['congressional_district_geoid']} EITC received with {n_children} children (recipients)"
+
+            constraints = _get_eitc_recipient_constraints(geo_info)
 
             # Check if stratum already exists
             existing_stratum = session.exec(

@@ -6,7 +6,12 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.cps.cps import (
+    CPS,
+    CPS_2024,
+    CPS_2024_Full,
+    ESI_POLICYHOLDER_VARIABLE,
+)
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
@@ -147,6 +152,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
+    "employer_sponsored_insurance_premiums",
     "health_insurance_premiums_without_medicare_part_b",
     "other_health_insurance_premiums",
     "over_the_counter_health_expenses",
@@ -172,6 +178,7 @@ _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
 CPS_STAGE2_DEMOGRAPHIC_PREDICTORS = [
     "age",
     "is_male",
+    "has_esi",
     "tax_unit_is_joint",
     "tax_unit_count_dependents",
 ]
@@ -737,6 +744,16 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         )
         for col in org_cols:
             predictions[col] = constrained[col]
+
+    if "employer_sponsored_insurance_premiums" in predictions.columns:
+        policyholder = _clone_half_person_values(
+            data, ESI_POLICYHOLDER_VARIABLE, time_period
+        )
+        if policyholder is not None:
+            predictions.loc[
+                ~np.asarray(policyholder, dtype=bool),
+                "employer_sponsored_insurance_premiums",
+            ] = 0
 
     return predictions
 

@@ -1,3 +1,10 @@
+## [1.98.3] - 2026-05-05
+
+### Changed
+
+- Extended US data release manifests with bundle-compatible model/core/build metadata and added contract validation against policyengine-bundles.
+
+
 ## [1.98.2] - 2026-05-05
 
 ### Changed

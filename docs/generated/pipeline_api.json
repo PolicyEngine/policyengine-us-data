@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 623,
+    "line": 639,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 357,
+    "line": 373,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle",
@@ -810,7 +810,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 970,
+    "line": 986,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -845,7 +845,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 446,
+    "line": 462,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
@@ -1735,7 +1735,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 404,
+    "line": 420,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
@@ -1861,7 +1861,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 495,
+    "line": 511,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -2093,7 +2093,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 812,
+    "line": 828,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -2204,7 +2204,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 736,
+    "line": 752,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"

@@ -98,6 +98,82 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
     ),
 }
 
+ESI_POLICYHOLDER_VARIABLE = (
+    "reported_owns_employer_sponsored_health_insurance_at_interview"
+)
+ESI_SOURCE_COLUMNS = {"NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"}
+
+
+_ESI_PLAN_PRIORS_2024 = {
+    # AHRQ MEPS-IC Table IV.A.1 (private sector, 2024). These plan-type
+    # averages seed CPS policyholder records; national calibration later
+    # aligns the aggregate to the BEA full-economy employer premium total.
+    "family": {
+        "total_premium": 21_207.52589669509,
+        "employee_contribution": 6_490.205059544782,
+    },
+    "self_only": {
+        "total_premium": 8_389.275834815255,
+        "employee_contribution": 1_909.5781466113417,
+    },
+}
+_HAS_CURRENT_OWN_ESI = 1
+_EMPLOYER_PAYS_ALL = 1
+_EMPLOYER_PAYS_SOME = 2
+_ESI_FAMILY_PLAN = 1
+_ESI_SELF_ONLY_PLAN = 2
+
+
+def _person_column(person: DataFrame, column: str, default=0) -> np.ndarray:
+    if column in person:
+        return person[column].to_numpy()
+    return np.full(len(person), default)
+
+
+def impute_employer_sponsored_insurance_premiums(person: DataFrame) -> np.ndarray:
+    """Impute annual employer-paid ESI premiums for CPS policyholders."""
+
+    own_esi = _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    premium_status = _person_column(person, "NOW_HIPAID").astype(int)
+    plan_type = _person_column(person, "NOW_GRPFTYP").astype(int)
+    employee_paid = np.clip(person.PHIP_VAL.to_numpy(dtype=float), 0, None)
+
+    total_premium = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["total_premium"],
+        _ESI_PLAN_PRIORS_2024["family"]["total_premium"],
+    )
+    average_employee_contribution = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["employee_contribution"],
+        _ESI_PLAN_PRIORS_2024["family"]["employee_contribution"],
+    )
+    employee_share = np.where(
+        employee_paid > 0,
+        employee_paid,
+        average_employee_contribution,
+    )
+    employer_paid_when_some = np.clip(
+        total_premium - employee_share,
+        0,
+        total_premium,
+    )
+
+    employer_paid = np.where(
+        premium_status == _EMPLOYER_PAYS_ALL,
+        total_premium,
+        np.where(
+            premium_status == _EMPLOYER_PAYS_SOME,
+            employer_paid_when_some,
+            0,
+        ),
+    )
+    valid_owner_with_plan = own_esi & np.isin(
+        plan_type,
+        [_ESI_FAMILY_PLAN, _ESI_SELF_ONLY_PLAN],
+    )
+    return np.where(valid_owner_with_plan, employer_paid, 0)
+
 
 @contextmanager
 def _open_dataset_read_only(dataset_source):
@@ -262,6 +338,19 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     ]
     IMPUTATIONS = ["rent", "real_estate_taxes"]
     train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS, map_to="person")
+    # TODO(PolicyEngine/policyengine-core#482): policyengine-core 3.24.0+
+    # silently drops user-supplied ETERNITY inputs on dataset reload because
+    # _user_input_keys records the user-supplied period instead of the
+    # canonicalized ETERNITY key. is_household_head therefore comes back as
+    # all False from calculate_dataframe and the household-head filter below
+    # produces an empty frame. For ACS we read it directly from the source
+    # H5; for CPS we use the in-memory dict (already populated upstream in
+    # add_id_variables). Remove both overrides once pyproject.toml's
+    # policyengine-core upper bound is lifted.
+    with h5py.File(ACS_2022.file_path, "r") as acs_h5:
+        train_df["is_household_head"] = np.asarray(
+            acs_h5["is_household_head"], dtype=bool
+        )
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
@@ -270,6 +359,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
     inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
+    inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 
@@ -694,6 +784,7 @@ def _validate_raw_cps_schema(
 ) -> None:
     required_person_columns = {
         "CENSUS_TAX_ID",
+        *ESI_SOURCE_COLUMNS,
     }
     required_tax_unit_columns = set()
 
@@ -913,7 +1004,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         1 - p["taxable_interest_fraction"]
     )
     cps["self_employment_income"] = person.SEMP_VAL
-    cps["farm_income"] = person.FRSE_VAL
+    cps["farm_operations_income"] = person.FRSE_VAL
     cps["qualified_dividend_income"] = (
         person.DIV_VAL * (p["qualified_dividend_fraction"])
     )
@@ -1122,6 +1213,12 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # "What is the annual amount of child support paid?"
     cps["child_support_expense"] = person.CHSP_VAL
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
+    cps[ESI_POLICYHOLDER_VARIABLE] = (
+        _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    )
+    cps["employer_sponsored_insurance_premiums"] = (
+        impute_employer_sponsored_insurance_premiums(person)
+    )
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
     cps["medicare_enrolled"] = person.MCARE == 1
@@ -1218,6 +1315,8 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
         )
         return
 
+    prior_year_income_sentinels = {-1, -9999}
+
     with (
         _open_dataset_read_only(self.raw_cps) as cps_current_year_data,
         _open_dataset_read_only(self.previous_year_raw_cps) as cps_previous_year_data,
@@ -1247,19 +1346,48 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
         joined_data = cps_current_year.join(previous_year_data)[
             [
+                "WSAL_VAL",
+                "SEMP_VAL",
                 "employment_income_last_year",
                 "self_employment_income_last_year",
-                "I_ERNVAL",
-                "I_SEVAL",
             ]
-        ]
+        ].rename(
+            {
+                "WSAL_VAL": "current_year_employment_income",
+                "SEMP_VAL": "current_year_self_employment_income",
+            },
+            axis=1,
+        )
+
+    invalid_previous_year_income = joined_data.employment_income_last_year.isin(
+        prior_year_income_sentinels
+    ) | joined_data.self_employment_income_last_year.isin(prior_year_income_sentinels)
+    joined_data.loc[
+        invalid_previous_year_income,
+        ["employment_income_last_year", "self_employment_income_last_year"],
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_employment_income.isin(prior_year_income_sentinels),
+        "current_year_employment_income",
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_self_employment_income.isin(
+            prior_year_income_sentinels
+        ),
+        "current_year_self_employment_income",
+    ] = np.nan
+
     joined_data["previous_year_income_available"] = (
         ~joined_data.employment_income_last_year.isna()
         & ~joined_data.self_employment_income_last_year.isna()
-        & (joined_data.I_ERNVAL == 0)
-        & (joined_data.I_SEVAL == 0)
     )
-    joined_data = joined_data.fillna(-1).drop(["I_ERNVAL", "I_SEVAL"], axis=1)
+    joined_data["employment_income_last_year"] = joined_data[
+        "employment_income_last_year"
+    ].fillna(joined_data["current_year_employment_income"])
+    joined_data["self_employment_income_last_year"] = joined_data[
+        "self_employment_income_last_year"
+    ].fillna(joined_data["current_year_self_employment_income"])
+    joined_data = joined_data.fillna(0)
 
     # CPS already ordered by PERIDNUM, so the join wouldn't change the order.
     cps["employment_income_last_year"] = joined_data[

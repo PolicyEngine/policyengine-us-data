@@ -84,9 +84,12 @@ def test_get_soi_includes_mortgage_interest_deduction_targets():
     soi_module = load_soi_module()
     soi = soi_module.get_soi(2024)
     mortgage_interest = soi[soi.Variable == "mortgage_interest_deductions"]
+    other_income = soi[soi.Variable == "other_income"]
 
     assert not mortgage_interest.empty
     assert mortgage_interest["Value"].gt(0).all()
+    assert not other_income.empty
+    assert other_income["Value"].gt(0).all()
 
 
 def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
@@ -102,6 +105,7 @@ def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
             values = {
                 "self_employment_income": np.array([100.0, -10.0]),
                 "sstb_self_employment_income": np.array([50.0, -25.0]),
+                "miscellaneous_income": np.array([12.0, -5.0]),
                 "filing_status": np.array(["SINGLE", "SINGLE"]),
                 "tax_unit_weight": np.ones(n),
                 "household_id": np.arange(1, n + 1),
@@ -120,6 +124,7 @@ def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
     np.testing.assert_array_equal(
         soi["business_net_losses"].to_numpy(), np.array([0.0, 35.0])
     )
+    np.testing.assert_array_equal(soi["other_income"].to_numpy(), np.array([12.0, 0.0]))
 
 
 def test_get_soi_uses_best_available_year_per_variable(monkeypatch):

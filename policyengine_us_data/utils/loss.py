@@ -31,6 +31,7 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
+    "employer_sponsored_insurance_premiums": 1_002.9e9,
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
     MEDICARE_PART_B_PREMIUM_VARIABLE: (
@@ -144,6 +145,55 @@ MEDICAID_SPENDING_TARGETS = {
 MEDICAID_ENROLLMENT_TARGETS = {
     2024: 72_429_055,
 }
+
+LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "qualified_dividends",
+    "taxable_interest_income",
+}
+
+AGI_LEVEL_TARGETED_VARIABLES = (
+    "adjusted_gross_income",
+    "count",
+    "employment_income",
+    "business_net_profits",
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "partnership_and_s_corp_income",
+    "qualified_dividends",
+    "taxable_interest_income",
+    "total_pension_income",
+    "total_social_security",
+)
+
+AGGREGATE_LEVEL_TARGETED_VARIABLES = (
+    "business_net_losses",
+    "capital_gains_distributions",
+    "capital_gains_losses",
+    "estate_income",
+    "estate_losses",
+    "exempt_interest",
+    "ira_distributions",
+    "partnership_and_s_corp_losses",
+    "rent_and_royalty_net_income",
+    "rent_and_royalty_net_losses",
+    # The current SOI source only exposes taxable-only aggregate targets for
+    # mortgage-interest deductions, not the AGI-bin detail used above.
+    "mortgage_interest_deductions",
+    # Keep the legacy loss matrix aligned with the national QBI amount and
+    # claimant-count controls used by the target-config calibration path.
+    "qualified_business_income_deduction",
+    "taxable_pension_income",
+    "taxable_social_security",
+    "unemployment_compensation",
+)
+
+IRS_SOI_AGGREGATE_TARGETS = [
+    # This complements the net capital gains target with the source-specific
+    # control used by downstream preferential-rate reforms.
+    ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
+]
 
 
 def fmt(x):
@@ -526,6 +576,40 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _sum_household_variables(sim, variable_names):
+    return sum(
+        sim.calculate(variable_name, map_to="household").values
+        for variable_name in variable_names
+    )
+
+
+def _add_irs_soi_aggregate_targets(loss_matrix, targets_list, sim, time_period):
+    soi = sim.tax_benefit_system.parameters(time_period).calibration.gov.irs.soi
+
+    for label_suffix, pe_variables, soi_param_name in IRS_SOI_AGGREGATE_TARGETS:
+        label = f"nation/irs/soi/{label_suffix}"
+        loss_matrix[label] = _sum_household_variables(sim, pe_variables)
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(soi._children[soi_param_name])
+
+    return targets_list, loss_matrix
+
+
+def _should_skip_soi_agi_row(row) -> bool:
+    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    if row["AGI upper bound"] > 10_000:
+        return False
+    return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+
+def _should_skip_soi_taxability_row(row) -> bool:
+    """Use all-return SOI rows only for investment-income controls."""
+    if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
+        return row["Taxable only"]
+    return not row["Taxable only"]
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -534,44 +618,13 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
-    agi_level_targeted_variables = [
-        "adjusted_gross_income",
-        "count",
-        "employment_income",
-        "business_net_profits",
-        "capital_gains_gross",
-        "ordinary_dividends",
-        "partnership_and_s_corp_income",
-        "qualified_dividends",
-        "taxable_interest_income",
-        "total_pension_income",
-        "total_social_security",
-    ]
-    aggregate_level_targeted_variables = [
-        "business_net_losses",
-        "capital_gains_distributions",
-        "capital_gains_losses",
-        "estate_income",
-        "estate_losses",
-        "exempt_interest",
-        "ira_distributions",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_income",
-        "rent_and_royalty_net_losses",
-        # The current SOI source only exposes taxable-only aggregate targets for
-        # mortgage-interest deductions, not the AGI-bin detail used above.
-        "mortgage_interest_deductions",
-        "taxable_pension_income",
-        "taxable_social_security",
-        "unemployment_compensation",
-    ]
     aggregate_level_targeted_variables = [
         variable
-        for variable in aggregate_level_targeted_variables
+        for variable in AGGREGATE_LEVEL_TARGETED_VARIABLES
         if variable in df.columns
     ]
     soi_subset = soi_subset[
-        soi_subset.Variable.isin(agi_level_targeted_variables)
+        soi_subset.Variable.isin(AGI_LEVEL_TARGETED_VARIABLES)
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)
@@ -579,10 +632,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if not row["Taxable only"]:
-            continue  # exclude non "taxable returns" statistics
+        if _should_skip_soi_taxability_row(row):
+            continue  # exclude non "taxable returns" statistics by default
 
-        if row["AGI upper bound"] <= 10_000:
+        if _should_skip_soi_agi_row(row):
             continue
 
         mask = (
@@ -695,6 +748,51 @@ def build_loss_matrix(dataset: type, time_period):
                 time_period
             ).calibration.gov.cbo._children[param_name]
         )
+
+    # CBO income-by-source aggregate targets.
+    # Without these, the per-AGI-bracket SOI targets fail to constrain the
+    # *aggregate* (the optimizer can satisfy bracket-level totals while
+    # concentrating weight on a few records and blowing up the national sum).
+    # See issues #555 and #866 — single records with $60M+ raw LTCG were
+    # ending up with calibration weights of 50k-70k, inflating the national
+    # net_capital_gains aggregate to 12x the CBO target.
+    #
+    # Each entry maps a PolicyEngine variable (or sum of variables) to the
+    # corresponding CBO `income_by_source` parameter.
+    CBO_INCOME_BY_SOURCE_TARGETS = [
+        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
+        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
+        (
+            "qualified_dividend_income",
+            ["qualified_dividend_income"],
+            "qualified_dividend_income",
+        ),
+        (
+            "taxable_interest_and_ordinary_dividends",
+            ["taxable_interest_income", "non_qualified_dividend_income"],
+            "taxable_interest_and_ordinary_dividends",
+        ),
+    ]
+
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+
+    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
+        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
+        loss_matrix[label] = values
+        targets_array.append(income_by_source._children[cbo_param_name])
+
+    # IRS SOI aggregate capital-gains targets. This adds a long-term gains
+    # control on top of the CBO net capital gains aggregate, which is important
+    # for reforms that change preferential LTCG rates.
+    targets_array, loss_matrix = _add_irs_soi_aggregate_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (

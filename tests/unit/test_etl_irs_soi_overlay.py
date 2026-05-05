@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from sqlalchemy import text
 from sqlmodel import Session, select
 
@@ -13,6 +14,7 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.db.etl_irs_soi import (
     GEOGRAPHY_FILE_TARGET_SPECS,
+    WORKBOOK_NATIONAL_DOMAIN_TARGETS,
     get_geography_soi_year,
     get_national_geography_soi_agi_targets,
     get_national_geography_soi_target,
@@ -22,6 +24,7 @@ from policyengine_us_data.db.etl_irs_soi import (
     _upsert_target,
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
+    load_national_ltcg_agi_targets,
     load_national_workbook_soi_targets,
 )
 
@@ -189,6 +192,17 @@ def test_workbook_overlay_wins_best_period_selection(monkeypatch, tmp_path):
     assert len(count_rows) == 1
     assert int(count_rows.iloc[0]["period"]) == 2023
     assert float(count_rows.iloc[0]["value"]) == 50.0
+
+
+def test_workbook_domain_targets_include_charitable_deduction():
+    assert (
+        WORKBOOK_NATIONAL_DOMAIN_TARGETS["charitable_deduction"]
+        == "charitable_contributions_deductions"
+    )
+
+
+def test_workbook_domain_targets_include_miscellaneous_income():
+    assert WORKBOOK_NATIONAL_DOMAIN_TARGETS["miscellaneous_income"] == "other_income"
 
 
 def test_skip_coarse_state_agi_person_count_target_only_for_state_stub_9():
@@ -433,3 +447,108 @@ def test_load_national_geography_ctc_agi_targets_creates_agi_domain_strata(
 
     assert overview_rows
     assert all(row.geographic_id == "US" for row in overview_rows)
+
+
+def test_load_national_geography_ctc_agi_targets_creates_capital_income_domains(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi._get_national_geography_soi_agi_targets_from_year",
+        lambda variable, geography_year: [
+            {
+                "variable": variable,
+                "source_year": geography_year,
+                "agi_stub": 9,
+                "agi_lower_bound": 500_000.0,
+                "agi_upper_bound": float("inf"),
+                "count": 12.0,
+                "amount": 34_000.0,
+            }
+        ],
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_geography_ctc_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2022,
+        )
+        session.commit()
+
+    variables = [
+        "net_capital_gains",
+        "dividend_income",
+        "qualified_dividend_income",
+        "tax_exempt_interest_income",
+        "taxable_interest_income",
+    ]
+    domains = [f"adjusted_gross_income,{variable}" for variable in variables]
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count", *variables],
+            "domain_variables": domains,
+        }
+    )
+
+    expected_pairs = {
+        (f"adjusted_gross_income,{variable}", variable) for variable in variables
+    } | {
+        (f"adjusted_gross_income,{variable}", "tax_unit_count")
+        for variable in variables
+    }
+    actual_pairs = set(zip(rows["domain_variable"], rows["variable"]))
+
+    assert actual_pairs == expected_pairs
+    assert set(rows["geo_level"]) == {"national"}
+    assert set(rows["geographic_id"]) == {"US"}
+
+
+def test_load_national_ltcg_agi_targets_creates_table_14a_domain_targets(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    workbook = pd.DataFrame(np.zeros((12, 63)))
+    workbook.iat[10, 61] = 123.0
+    workbook.iat[10, 62] = 456.0
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.TABLE_1_4A_LTCG_AGI_BRACKETS",
+        {11: (float("-inf"), 1.0)},
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi._load_workbook",
+        lambda table_name, year: workbook,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_ltcg_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            2023,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count", "long_term_capital_gains"],
+            "domain_variables": ["adjusted_gross_income,long_term_capital_gains"],
+        }
+    )
+
+    assert set(rows["variable"]) == {
+        "tax_unit_count",
+        "long_term_capital_gains",
+    }
+    assert set(rows["domain_variable"]) == {
+        "adjusted_gross_income,long_term_capital_gains"
+    }
+    assert rows.set_index("variable").loc["tax_unit_count", "value"] == 123.0
+    assert (
+        rows.set_index("variable").loc["long_term_capital_gains", "value"] == 456_000.0
+    )

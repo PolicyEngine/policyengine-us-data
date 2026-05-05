@@ -250,15 +250,19 @@ check-sanity:
 		--sanity-only --area-type states --areas NC \
 		$(if $(RUN_ID),--run-id $(RUN_ID))
 
-build-data-modal:
-	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests
+require-run-id:
+	@test -n "$(RUN_ID)" || (echo "RUN_ID is required; use the GitHub-created US data run ID." >&2; exit 1)
 
-pipeline:
+build-data-modal: require-run-id
+	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --run-id $(RUN_ID)
+
+pipeline: require-run-id
 	modal run --detach modal_app.pipeline::main \
 		--action run --branch $(BRANCH) --gpu $(GPU) \
 		--epochs $(EPOCHS) --national-gpu $(NATIONAL_GPU) \
 		--national-epochs $(NATIONAL_EPOCHS) \
-		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES)
+		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES) \
+		--run-id $(RUN_ID)
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

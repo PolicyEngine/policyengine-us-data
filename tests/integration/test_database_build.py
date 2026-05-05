@@ -115,10 +115,35 @@ def test_national_targets_loaded(built_db):
     conn.close()
 
     variables = {r[0] for r in rows}
-    for expected in ["snap", "social_security", "ssi"]:
+    for expected in [
+        "long_term_capital_gains",
+        "snap",
+        "social_security",
+        "ssi",
+    ]:
         assert expected in variables, (
             f"National target '{expected}' missing. Found: {sorted(variables)}"
         )
+
+
+def test_national_ltcg_agi_targets_loaded(built_db):
+    """National Table 1.4A LTCG AGI-bin targets should be present."""
+    conn = sqlite3.connect(str(built_db))
+    rows = conn.execute("""
+        SELECT variable, COUNT(*)
+        FROM target_overview
+        WHERE geo_level = 'national'
+          AND domain_variable = 'adjusted_gross_income,long_term_capital_gains'
+          AND variable IN ('long_term_capital_gains', 'tax_unit_count')
+        GROUP BY variable
+        """).fetchall()
+    conn.close()
+
+    counts = dict(rows)
+    assert counts == {
+        "long_term_capital_gains": 19,
+        "tax_unit_count": 19,
+    }
 
 
 def test_jct_mortgage_tax_expenditure_uses_mortgage_specific_variable(built_db):

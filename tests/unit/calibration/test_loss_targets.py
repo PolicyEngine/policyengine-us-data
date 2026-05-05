@@ -1,16 +1,28 @@
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from policyengine_us_data.utils.loss import (
+    AGGREGATE_LEVEL_TARGETED_VARIABLES,
+    AGI_LEVEL_TARGETED_VARIABLES,
+    HARD_CODED_TOTALS,
+    _add_ctc_targets,
+    _add_irs_soi_aggregate_targets,
     _add_medicare_enrollment_target,
     _get_aca_national_targets,
-    _add_ctc_targets,
     _get_medicaid_national_targets,
     _load_aca_spending_and_enrollment_targets,
     _load_medicaid_enrollment_targets,
-    HARD_CODED_TOTALS,
+    _should_skip_soi_agi_row,
+    _should_skip_soi_taxability_row,
 )
+
+
+def test_legacy_loss_targets_include_aggregate_qbi_deduction():
+    assert "qualified_business_income_deduction" in AGGREGATE_LEVEL_TARGETED_VARIABLES
+    assert "qualified_business_income_deduction" not in AGI_LEVEL_TARGETED_VARIABLES
 
 
 def test_aca_targets_roll_forward_to_2025():
@@ -23,7 +35,7 @@ def test_aca_targets_roll_forward_to_2025():
 
 def test_aca_targets_use_latest_available_year():
     _, data_year = _load_aca_spending_and_enrollment_targets(2026)
-    assert data_year == 2025
+    assert data_year == 2026
 
 
 def test_aca_targets_fall_back_to_earliest_available_year():
@@ -39,12 +51,28 @@ def test_aca_national_targets_annualize_2025_state_file():
     assert spending == pytest.approx(143_951_057_388.72)
 
 
+def test_aca_national_targets_annualize_2026_state_file():
+    spending, enrollment, data_year = _get_aca_national_targets(2026)
+
+    assert data_year == 2026
+    assert enrollment == 20_035_756
+    assert spending == pytest.approx(156_175_881_600.0)
+
+
 def test_medicaid_targets_roll_forward_to_2025():
     targets, data_year = _load_medicaid_enrollment_targets(2025)
 
     assert data_year == 2025
     assert len(targets) == 51
     assert int(targets["enrollment"].sum()) == 69_185_225
+
+
+def test_medicaid_targets_roll_forward_to_2026():
+    targets, data_year = _load_medicaid_enrollment_targets(2026)
+
+    assert data_year == 2026
+    assert len(targets) == 51
+    assert int(targets["enrollment"].sum()) == 68_022_529
 
 
 def test_medicaid_targets_fall_back_to_earliest_available_year():
@@ -57,6 +85,14 @@ def test_medicaid_national_targets_use_2025_values():
 
     assert data_year == 2025
     assert enrollment == 69_185_225
+    assert spending == pytest.approx(1_000_645_800_000.0001)
+
+
+def test_medicaid_national_targets_use_2026_enrollment():
+    spending, enrollment, data_year = _get_medicaid_national_targets(2026)
+
+    assert data_year == 2026
+    assert enrollment == 68_022_529
     assert spending == pytest.approx(1_000_645_800_000.0001)
 
 
@@ -111,6 +147,36 @@ class _FakeMedicareEnrollmentSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeCapitalGainsSimulation:
+    def __init__(self):
+        self.calculate_calls = []
+        self.tax_benefit_system = SimpleNamespace(
+            parameters=lambda period: SimpleNamespace(
+                calibration=SimpleNamespace(
+                    gov=SimpleNamespace(
+                        irs=SimpleNamespace(
+                            soi=SimpleNamespace(
+                                _children={
+                                    "long_term_capital_gains": 1_650.0,
+                                }
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+    def calculate(self, variable, map_to=None, period=None):
+        self.calculate_calls.append((variable, map_to, period))
+        values = {
+            "long_term_capital_gains": [100.0, 0.0, 50.0],
+        }
+        if variable not in values:
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        assert map_to == "household"
+        return _FakeArrayResult(values[variable])
+
+
 def test_add_ctc_targets(monkeypatch):
     monkeypatch.setattr(
         "policyengine_us_data.utils.loss.get_national_geography_soi_target",
@@ -145,6 +211,69 @@ def test_add_ctc_targets(monkeypatch):
         loss_matrix["nation/irs/non_refundable_ctc_count"],
         np.array([1.0, 1.0, 0.0], dtype=np.float32),
     )
+
+
+def test_add_irs_soi_capital_gains_targets():
+    sim = _FakeCapitalGainsSimulation()
+
+    targets, loss_matrix = _add_irs_soi_aggregate_targets(
+        pd.DataFrame(),
+        [],
+        sim,
+        2026,
+    )
+
+    assert targets == [1_650.0]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/soi/long_term_capital_gains"],
+        np.array([100.0, 0.0, 50.0], dtype=np.float32),
+    )
+    assert sim.calculate_calls == [
+        ("long_term_capital_gains", "household", None),
+    ]
+
+
+def test_low_agi_soi_skip_keeps_investment_income_targets():
+    ordinary_low_agi_row = pd.Series(
+        {"Variable": "employment_income", "AGI upper bound": 10_000.0}
+    )
+    capital_income_low_agi_row = pd.Series(
+        {"Variable": "capital_gains_gross", "AGI upper bound": 10_000.0}
+    )
+    ordinary_higher_agi_row = pd.Series(
+        {"Variable": "employment_income", "AGI upper bound": 25_000.0}
+    )
+
+    assert _should_skip_soi_agi_row(ordinary_low_agi_row)
+    assert not _should_skip_soi_agi_row(capital_income_low_agi_row)
+    assert not _should_skip_soi_agi_row(ordinary_higher_agi_row)
+
+
+def test_all_return_soi_skip_keeps_investment_income_targets():
+    ordinary_all_return_row = pd.Series(
+        {"Variable": "employment_income", "Taxable only": False}
+    )
+    capital_income_all_return_row = pd.Series(
+        {"Variable": "capital_gains_gross", "Taxable only": False}
+    )
+    ordinary_taxable_row = pd.Series(
+        {"Variable": "employment_income", "Taxable only": True}
+    )
+    qbi_taxable_row = pd.Series(
+        {
+            "Variable": "qualified_business_income_deduction",
+            "Taxable only": True,
+        }
+    )
+    capital_income_taxable_row = pd.Series(
+        {"Variable": "capital_gains_gross", "Taxable only": True}
+    )
+
+    assert _should_skip_soi_taxability_row(ordinary_all_return_row)
+    assert not _should_skip_soi_taxability_row(capital_income_all_return_row)
+    assert not _should_skip_soi_taxability_row(ordinary_taxable_row)
+    assert not _should_skip_soi_taxability_row(qbi_taxable_row)
+    assert _should_skip_soi_taxability_row(capital_income_taxable_row)
 
 
 def test_tanf_hardcoded_target_uses_fy2024_basic_assistance_total():

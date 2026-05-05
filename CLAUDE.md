@@ -7,25 +7,33 @@
 
 ## Testing
 
+Canonical testing guidance lives in `docs/engineering/skills/testing.md`. If
+this file conflicts with that skill, follow the skill and update this adapter.
+
 ### Running Tests
 - `make test-unit` - Run unit tests only (fast, no data dependencies)
 - `make test-integration` - Run integration tests (requires built H5 datasets)
 - `make test` - Run all tests
 - `pytest tests/unit/ -v` - Unit tests directly
 - `pytest tests/integration/test_cps.py -v` - Specific integration test
+- `python scripts/run_quality_guards.py` - Run layout/import quality guards
 
 ### Test Organization
-Tests are in the top-level `tests/` directory, split into two sub-directories:
+Tests are in the top-level `tests/` directory, split into these sub-directories:
 
 - **`tests/unit/`** — Self-contained tests that use synthetic data, mocks, patches, or checked-in fixtures. Run in seconds with no external dependencies.
   - `unit/datasets/` — unit tests for dataset code
   - `unit/calibration/` — unit tests for calibration code
 
 - **`tests/integration/`** — Tests that require built H5 datasets, HuggingFace downloads, Microsimulation objects, or database ETL. Named after the dataset they test.
+- **`tests/optimized/`** — Tests that exercise deployed Modal/staging seams.
 
 ### Test Placement Rules
+- **NEVER** put pytest files under `policyengine_us_data/tests/`; CI does not collect that tree
 - **NEVER** put tests that require H5 files or Microsimulation in `unit/`
 - **NEVER** put tests that use only synthetic data or mocks in `integration/`
+- **NEVER** import from `tests.conftest`; fixtures are discovered automatically and helper functions belong in local support modules
+- **NEVER** import helpers across test lanes, such as `tests.unit` from an integration test
 - Integration test files are named after their dataset dependency: `test_cps.py` tests `cps_2024.h5`
 - Sanity checks (value ranges, population counts) belong in the per-dataset integration test file, not in a separate sanity file
 - When adding a new integration test, add it to the existing per-dataset file if one exists

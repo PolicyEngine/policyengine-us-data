@@ -1,0 +1,1 @@
+"""Version manifest unit tests."""

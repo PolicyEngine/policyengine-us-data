@@ -123,6 +123,30 @@ NATIONAL_FINE_AGI_BRACKETS = {
     28: (10_000_000, np.inf),  # row 28
 }
 
+TABLE_1_4A_LTCG_AGI_BRACKETS = {
+    11: (-np.inf, 1),  # No adjusted gross income (includes deficits)
+    12: (1, 5_000),
+    13: (5_000, 10_000),
+    14: (10_000, 15_000),
+    15: (15_000, 20_000),
+    16: (20_000, 25_000),
+    17: (25_000, 30_000),
+    18: (30_000, 40_000),
+    19: (40_000, 50_000),
+    20: (50_000, 75_000),
+    21: (75_000, 100_000),
+    22: (100_000, 200_000),
+    23: (200_000, 500_000),
+    24: (500_000, 1_000_000),
+    25: (1_000_000, 1_500_000),
+    26: (1_500_000, 2_000_000),
+    27: (2_000_000, 5_000_000),
+    28: (5_000_000, 10_000_000),
+    29: (10_000_000, np.inf),
+}
+TABLE_1_4A_LTCG_COUNT_COLUMN = "BJ"
+TABLE_1_4A_LTCG_AMOUNT_COLUMN = "BK"
+
 
 def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> bool:
     """Skip the coarse state 500k+ count target when fine state bins are loaded.
@@ -150,8 +174,10 @@ def _skip_coarse_state_agi_person_count_target(geo_type: str, agi_stub: int) -> 
 #     figure into a slot the district targets treat as net, creating a
 #     +40.7% / +26.1% / +3.1% definitional mismatch at 2023 values.
 WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
+    "charitable_deduction": "charitable_contributions_deductions",
     "dividend_income": "ordinary_dividends",
     "income_tax_before_credits": "income_tax_before_credits",
+    "miscellaneous_income": "other_income",
     "qualified_dividend_income": "qualified_dividends",
     "rental_income": "rent_and_royalty_net_income",
     "tax_exempt_interest_income": "exempt_interest",
@@ -163,6 +189,14 @@ WORKBOOK_NATIONAL_DOMAIN_TARGETS = {
 }
 
 CTC_GEOGRAPHY_TARGET_VARIABLES = ("refundable_ctc", "non_refundable_ctc")
+NATIONAL_GEOGRAPHY_AGI_DOMAIN_TARGET_VARIABLES = (
+    *CTC_GEOGRAPHY_TARGET_VARIABLES,
+    "net_capital_gains",
+    "dividend_income",
+    "qualified_dividend_income",
+    "tax_exempt_interest_income",
+    "taxable_interest_income",
+)
 
 
 def create_records(df, breakdown_variable, target_variable):
@@ -628,8 +662,8 @@ def load_national_geography_ctc_agi_targets(
     national_filer_stratum_id: int,
     geography_year: int,
 ) -> None:
-    """Create national AGI-split CTC targets from the IRS geography file."""
-    for variable in CTC_GEOGRAPHY_TARGET_VARIABLES:
+    """Create national AGI-split domain targets from the IRS geography file."""
+    for variable in NATIONAL_GEOGRAPHY_AGI_DOMAIN_TARGET_VARIABLES:
         for target in _get_national_geography_soi_agi_targets_from_year(
             variable, geography_year
         ):
@@ -886,6 +920,55 @@ def load_national_fine_agi_targets(
         )
 
 
+def load_national_ltcg_agi_targets(
+    session: Session, national_filer_stratum_id: int, target_year: int
+) -> None:
+    """Create national LTCG-by-AGI targets from Table 1.4A."""
+    workbook = _load_workbook("Table 1.4A", target_year)
+
+    for excel_row, (lower, upper) in TABLE_1_4A_LTCG_AGI_BRACKETS.items():
+        stratum = _get_or_create_national_agi_domain_stratum(
+            session,
+            national_filer_stratum_id,
+            "long_term_capital_gains",
+            lower,
+            upper,
+        )
+
+        count_value = _scaled_cell(
+            workbook,
+            excel_row,
+            TABLE_1_4A_LTCG_COUNT_COLUMN,
+            is_count=True,
+        )
+        amount_value = _scaled_cell(
+            workbook,
+            excel_row,
+            TABLE_1_4A_LTCG_AMOUNT_COLUMN,
+            is_count=False,
+        )
+        notes = f"Publication 1304 Table 1.4A row {excel_row} LTCG AGI bracket"
+
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=target_year,
+            value=count_value,
+            source="IRS SOI",
+            notes=notes,
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="long_term_capital_gains",
+            period=target_year,
+            value=amount_value,
+            source="IRS SOI",
+            notes=notes,
+        )
+
+
 def transform_soi_data(raw_df):
     # National ---------------
     national_df = raw_df.copy().loc[(raw_df.STATE == "US")]
@@ -1093,6 +1176,7 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             national_year,
         )
         load_national_fine_agi_targets(session, filer_strata["national"], national_year)
+        load_national_ltcg_agi_targets(session, filer_strata["national"], national_year)
 
     load_state_fine_agi_targets(session, filer_strata, year)
     session.commit()

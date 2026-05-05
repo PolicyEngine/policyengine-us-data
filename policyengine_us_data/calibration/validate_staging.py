@@ -389,10 +389,13 @@ def validate_area(
             n_households=n_households,
             hh_vars=hh_vars_cache,
             reform_hh_vars=reform_hh_cache,
+            target_entity_vars={},
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
+            entity_hh_idx_map={},
+            person_to_entity_idx_map={},
             reform_id=reform_id,
         )
 
@@ -691,10 +694,13 @@ def _compute_district_contributions(
             n_households=n_households,
             hh_vars=hh_vars_cache,
             reform_hh_vars=reform_hh_cache,
+            target_entity_vars={},
             person_vars=person_vars_cache,
             entity_rel=entity_rel,
             household_ids=household_ids,
             variable_entity_map=variable_entity_map,
+            entity_hh_idx_map={},
+            person_to_entity_idx_map={},
             reform_id=reform_id,
         )
 

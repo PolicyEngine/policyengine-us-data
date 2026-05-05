@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from huggingface_hub import CommitOperationAdd
+import pytest
 
 from policyengine_us_data.utils.data_upload import (
     load_release_manifest_from_hf,
@@ -28,8 +29,17 @@ def _sha256(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
+EXPECTED_MODEL_PACKAGE_VERSION = "9.8.6"
 EXPECTED_COMPATIBLE_MODEL_PACKAGES = [
-    {"name": "policyengine-us", "specifier": "==1.634.4"}
+    {"name": "policyengine-us", "specifier": f"=={EXPECTED_MODEL_PACKAGE_VERSION}"}
+]
+EXPECTED_CORE_PACKAGE_VERSION = "9.8.7"
+EXPECTED_CORE_PACKAGE = {
+    "name": "policyengine-core",
+    "version": EXPECTED_CORE_PACKAGE_VERSION,
+}
+EXPECTED_COMPATIBLE_CORE_PACKAGES = [
+    {"name": "policyengine-core", "specifier": f"=={EXPECTED_CORE_PACKAGE_VERSION}"}
 ]
 
 
@@ -65,9 +75,12 @@ def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
         ],
         version="1.73.0",
         repo_id="policyengine/policyengine-us-data",
-        model_package_version="1.634.4",
+        model_package_version=EXPECTED_MODEL_PACKAGE_VERSION,
         model_package_git_sha="deadbeef",
         model_package_data_build_fingerprint="sha256:fingerprint",
+        core_package_metadata=EXPECTED_CORE_PACKAGE,
+        pipeline_run_id="run-123",
+        data_package_git_sha="cafebabe",
         created_at="2026-04-10T12:00:00Z",
     )
 
@@ -77,15 +90,22 @@ def test_build_release_manifest_tracks_uploaded_artifacts(tmp_path):
     }
     assert manifest["schema_version"] == RELEASE_MANIFEST_SCHEMA_VERSION
     assert manifest["compatible_model_packages"] == EXPECTED_COMPATIBLE_MODEL_PACKAGES
+    assert manifest["compatible_core_packages"] == EXPECTED_COMPATIBLE_CORE_PACKAGES
     assert manifest["build"] == {
         "build_id": "policyengine-us-data-1.73.0",
         "built_at": "2026-04-10T12:00:00Z",
+        "metadata": {
+            "pipeline_run_id": "run-123",
+            "data_package_git_sha": "cafebabe",
+        },
         "built_with_model_package": {
             "name": "policyengine-us",
-            "version": "1.634.4",
+            "version": EXPECTED_MODEL_PACKAGE_VERSION,
             "git_sha": "deadbeef",
             "data_build_fingerprint": "sha256:fingerprint",
+            "core": EXPECTED_CORE_PACKAGE,
         },
+        "built_with_core_package": EXPECTED_CORE_PACKAGE,
     }
     assert manifest["default_datasets"] == {"national": "enhanced_cps_2024"}
 
@@ -157,7 +177,7 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
         files_with_repo_paths=[(district_path, "districts/NC-01.h5")],
         version="1.73.0",
         repo_id="policyengine/policyengine-us-data",
-        model_package_version="1.634.4",
+        model_package_version=EXPECTED_MODEL_PACKAGE_VERSION,
         model_package_git_sha="deadbeef",
         model_package_data_build_fingerprint="sha256:fingerprint",
         existing_manifest=existing_manifest,
@@ -166,13 +186,13 @@ def test_build_release_manifest_merges_existing_release_same_version(tmp_path):
 
     assert set(manifest["artifacts"]) == {"enhanced_cps_2024", "districts/NC-01"}
     assert manifest["default_datasets"] == {"national": "enhanced_cps_2024"}
-    assert manifest["created_at"] == "2026-04-10T12:00:00Z"
+    assert "created_at" not in manifest
     assert manifest["build"] == {
         "build_id": "policyengine-us-data-1.73.0",
         "built_at": "2026-04-10T12:00:00Z",
         "built_with_model_package": {
             "name": "policyengine-us",
-            "version": "1.634.4",
+            "version": EXPECTED_MODEL_PACKAGE_VERSION,
             "git_sha": "deadbeef",
             "data_build_fingerprint": "sha256:fingerprint",
         },
@@ -198,11 +218,39 @@ def test_build_release_manifest_records_run_context(tmp_path):
         created_at="2026-04-10T12:00:00Z",
     )
 
-    assert manifest["build"]["run"] == {
+    assert manifest["build"]["metadata"]["run_context"] == {
         "run_id": "usdata-gha123-a1-abcdef12",
         "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
         "hf_staging_prefix": "staging/usdata-gha123-a1-abcdef12",
     }
+
+
+def test_build_release_manifest_validates_against_bundle_contract(tmp_path):
+    policyengine_bundles = pytest.importorskip("policyengine_bundles")
+    dataset_path = _write_file(
+        tmp_path / "enhanced_cps_2024.h5",
+        b"national-dataset",
+    )
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[(dataset_path, "enhanced_cps_2024.h5")],
+        version="1.73.0",
+        repo_id="policyengine/policyengine-us-data",
+        run_context={
+            "run_id": "usdata-gha123-a1-abcdef12",
+            "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
+            "hf_staging_prefix": "staging/usdata-gha123-a1-abcdef12",
+        },
+        model_package_version=EXPECTED_MODEL_PACKAGE_VERSION,
+        model_package_git_sha="deadbeef",
+        model_package_data_build_fingerprint="sha256:fingerprint",
+        core_package_metadata=EXPECTED_CORE_PACKAGE,
+        pipeline_run_id="run-123",
+        data_package_git_sha="cafebabe",
+        created_at="2026-04-10T12:00:00Z",
+    )
+
+    policyengine_bundles.DataReleaseManifest.model_validate(manifest)
 
 
 def test_load_release_manifest_from_hf_uses_explicit_revision_when_requested(tmp_path):
@@ -224,6 +272,15 @@ def test_load_release_manifest_from_hf_uses_explicit_revision_when_requested(tmp
     assert mock_download.call_args.kwargs["revision"] == "1.73.0"
 
 
+def test_load_release_manifest_from_hf_raises_non_missing_download_errors():
+    with patch(
+        "policyengine_us_data.utils.data_upload.hf_hub_download",
+        side_effect=RuntimeError("temporary Hugging Face failure"),
+    ):
+        with pytest.raises(RuntimeError, match="temporary Hugging Face failure"):
+            load_release_manifest_from_hf(version="1.73.0", revision="1.73.0")
+
+
 def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):
     dataset_path = _write_file(
         tmp_path / "enhanced_cps_2024.h5",
@@ -242,10 +299,14 @@ def test_upload_files_to_hf_adds_release_manifest_operations(tmp_path):
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
             return_value={
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_data_package_git_sha",
+            return_value=None,
         ),
         patch.dict(
             "policyengine_us_data.utils.data_upload.os.environ",
@@ -294,10 +355,14 @@ def test_upload_files_to_hf_does_not_tag_until_finalize(tmp_path):
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
             return_value={
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_data_package_git_sha",
+            return_value=None,
         ),
         patch.dict(
             "policyengine_us_data.utils.data_upload.os.environ",
@@ -336,7 +401,7 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
             "built_at": "2026-04-10T12:00:00Z",
             "built_with_model_package": {
                 "name": "policyengine-us",
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
@@ -364,10 +429,14 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
             return_value={
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_data_package_git_sha",
+            return_value=None,
         ),
         patch.dict(
             "policyengine_us_data.utils.data_upload.os.environ",
@@ -387,11 +456,62 @@ def test_publish_release_manifest_to_hf_can_finalize_and_tag(tmp_path):
         "built_at": "2026-04-10T12:00:00Z",
         "built_with_model_package": {
             "name": "policyengine-us",
-            "version": "1.634.4",
+            "version": EXPECTED_MODEL_PACKAGE_VERSION,
             "git_sha": "deadbeef",
             "data_build_fingerprint": "sha256:fingerprint",
         },
     }
+
+
+def test_publish_release_manifest_records_bundle_build_metadata(tmp_path):
+    dataset_path = _write_file(
+        tmp_path / "enhanced_cps_2024.h5",
+        b"national-dataset",
+    )
+
+    mock_api = MagicMock()
+    mock_api.create_commit.return_value = MagicMock(oid="commit-sha")
+
+    with (
+        patch("policyengine_us_data.utils.data_upload.HfApi", return_value=mock_api),
+        patch(
+            "policyengine_us_data.utils.data_upload.load_release_manifest_from_hf",
+            return_value=None,
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
+            return_value={
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
+                "git_sha": "deadbeef",
+                "data_build_fingerprint": "sha256:fingerprint",
+                "core": EXPECTED_CORE_PACKAGE,
+            },
+        ),
+        patch(
+            "policyengine_us_data.utils.data_upload._get_data_package_git_sha",
+            return_value="cafebabe",
+        ),
+        patch.dict(
+            "policyengine_us_data.utils.data_upload.os.environ",
+            {"HUGGING_FACE_TOKEN": "token"},
+            clear=False,
+        ),
+    ):
+        manifest = publish_release_manifest_to_hf(
+            [(dataset_path, "enhanced_cps_2024.h5")],
+            version="1.73.0",
+            pipeline_run_id="run-123",
+        )
+
+    assert manifest["compatible_core_packages"] == EXPECTED_COMPATIBLE_CORE_PACKAGES
+    assert manifest["build"]["metadata"] == {
+        "pipeline_run_id": "run-123",
+        "data_package_git_sha": "cafebabe",
+    }
+    assert manifest["build"]["built_with_core_package"] == EXPECTED_CORE_PACKAGE
+    assert (
+        manifest["build"]["built_with_model_package"]["core"] == EXPECTED_CORE_PACKAGE
+    )
 
 
 def test_missing_release_prefixes_requires_full_local_area_bundle():
@@ -483,7 +603,7 @@ def test_publish_release_manifest_to_hf_rejects_finalized_release(tmp_path):
             "built_at": "2026-04-10T12:00:00Z",
             "built_with_model_package": {
                 "name": "policyengine-us",
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
@@ -509,12 +629,12 @@ def test_publish_release_manifest_to_hf_rejects_finalized_release(tmp_path):
         ),
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_version",
-            return_value="1.634.4",
+            return_value=EXPECTED_MODEL_PACKAGE_VERSION,
         ),
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
             return_value={
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
@@ -548,7 +668,7 @@ def test_publish_release_manifest_to_hf_rejects_mutating_finalized_release(tmp_p
             "built_at": "2026-04-10T12:00:00Z",
             "built_with_model_package": {
                 "name": "policyengine-us",
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },
@@ -574,12 +694,12 @@ def test_publish_release_manifest_to_hf_rejects_mutating_finalized_release(tmp_p
         ),
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_version",
-            return_value="1.634.4",
+            return_value=EXPECTED_MODEL_PACKAGE_VERSION,
         ),
         patch(
             "policyengine_us_data.utils.data_upload._get_model_package_build_metadata",
             return_value={
-                "version": "1.634.4",
+                "version": EXPECTED_MODEL_PACKAGE_VERSION,
                 "git_sha": "deadbeef",
                 "data_build_fingerprint": "sha256:fingerprint",
             },

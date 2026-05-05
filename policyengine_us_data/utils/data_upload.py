@@ -1,5 +1,6 @@
 from io import BytesIO
-from typing import Dict, List, Optional, Sequence, Tuple
+from copy import deepcopy
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from huggingface_hub import (
     HfApi,
     CommitOperationAdd,
@@ -7,7 +8,7 @@ from huggingface_hub import (
     CommitOperationDelete,
     hf_hub_download,
 )
-from huggingface_hub.errors import RevisionNotFoundError
+from huggingface_hub.errors import EntryNotFoundError, RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
@@ -16,6 +17,7 @@ import httpx
 import json
 import logging
 import os
+import subprocess
 
 from tenacity import (
     retry,
@@ -45,6 +47,7 @@ from policyengine_us_data.utils.trace_tro import (
     serialize_trace_tro,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HF_TIMEOUT = 300
 MAX_RETRIES = 5
 RETRY_BASE_WAIT = 30
@@ -86,6 +89,19 @@ def _apply_run_context_for_release(
     return context.to_dict()
 
 
+def _pipeline_run_id_for_manifest(
+    pipeline_run_id: str = "",
+    run_context: Optional[Mapping[str, Any]] = None,
+) -> str | None:
+    if pipeline_run_id:
+        return pipeline_run_id
+    if run_context:
+        run_id = run_context.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            return run_id
+    return None
+
+
 def _get_model_package_version(
     package_name: str = "policyengine-us",
 ) -> Optional[str]:
@@ -99,25 +115,90 @@ def _get_model_package_version(
         return None
 
 
+def _get_data_package_git_sha() -> Optional[str]:
+    github_sha = os.environ.get("GITHUB_SHA")
+    if github_sha:
+        return github_sha
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _get_core_package_runtime_metadata(
+    package_name: str = "policyengine-core",
+) -> Optional[Dict[str, Any]]:
+    module_name = package_name.replace("-", "_")
+    try:
+        runtime_metadata_module = __import__(
+            module_name,
+            fromlist=["get_runtime_metadata"],
+        )
+        get_runtime_metadata = getattr(
+            runtime_metadata_module,
+            "get_runtime_metadata",
+            None,
+        )
+        if callable(get_runtime_metadata):
+            runtime_metadata = get_runtime_metadata()
+            if isinstance(runtime_metadata, Mapping):
+                return dict(runtime_metadata)
+    except Exception:
+        logging.warning(
+            "Could not load runtime metadata from %s.",
+            package_name,
+            exc_info=True,
+        )
+
+    version = _get_model_package_version(package_name)
+    if version is None:
+        return None
+    return {
+        "name": package_name,
+        "version": version,
+    }
+
+
 def _get_model_package_build_metadata(
     package_name: str = "policyengine-us",
-) -> Dict[str, Optional[str]]:
-    metadata_payload: Dict[str, Optional[str]] = {
+) -> Dict[str, Any]:
+    metadata_payload: Dict[str, Any] = {
+        "name": package_name,
         "version": _get_model_package_version(package_name),
         "git_sha": None,
         "data_build_fingerprint": None,
+        "core": _get_core_package_runtime_metadata(),
     }
     module_name = package_name.replace("-", "_")
     try:
         build_metadata_module = __import__(
             f"{module_name}.build_metadata",
-            fromlist=["get_data_build_metadata"],
+            fromlist=["get_runtime_metadata", "get_data_build_metadata"],
+        )
+        get_runtime_metadata = getattr(
+            build_metadata_module,
+            "get_runtime_metadata",
+            None,
         )
         get_data_build_metadata = getattr(
             build_metadata_module, "get_data_build_metadata", None
         )
-        if callable(get_data_build_metadata):
-            package_metadata = get_data_build_metadata()
+        metadata_getter = (
+            get_runtime_metadata
+            if callable(get_runtime_metadata)
+            else get_data_build_metadata
+        )
+        if callable(metadata_getter):
+            package_metadata = metadata_getter()
+            if not isinstance(package_metadata, Mapping):
+                return metadata_payload
+            metadata_payload["name"] = package_metadata.get(
+                "name", metadata_payload["name"]
+            )
             metadata_payload["version"] = (
                 package_metadata.get("version") or metadata_payload["version"]
             )
@@ -125,6 +206,9 @@ def _get_model_package_build_metadata(
             metadata_payload["data_build_fingerprint"] = package_metadata.get(
                 "data_build_fingerprint"
             )
+            metadata_payload["core"] = package_metadata.get(
+                "core"
+            ) or metadata_payload.get("core")
     except Exception:
         logging.warning(
             "Could not load build metadata from %s while building release manifest.",
@@ -157,7 +241,7 @@ def load_release_manifest_from_hf(
             )
         except RevisionNotFoundError:
             return None
-        except Exception:
+        except EntryNotFoundError:
             continue
 
         with open(manifest_path) as f:
@@ -264,6 +348,8 @@ def preflight_release_manifest_publish(
     hf_repo_type: str = "model",
     model_package_name: str = "policyengine-us",
     model_package_version: Optional[str] = None,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> tuple[bool, list[str]]:
     should_finalize, missing_prefixes = should_finalize_local_area_release(
         version=version,
@@ -281,6 +367,7 @@ def preflight_release_manifest_publish(
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
+    resolved_run_context = run_context or _run_context_for_release()
     model_build_metadata = _get_model_package_build_metadata(model_package_name)
     create_release_manifest_commit_operations(
         files_with_repo_paths=[
@@ -294,6 +381,12 @@ def preflight_release_manifest_publish(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        core_package_metadata=model_build_metadata.get("core"),
+        run_context=resolved_run_context,
+        pipeline_run_id=_pipeline_run_id_for_manifest(
+            pipeline_run_id, resolved_run_context
+        ),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     return should_finalize, missing_prefixes
@@ -308,6 +401,9 @@ def create_release_manifest_commit_operations(
     model_package_git_sha: Optional[str] = None,
     model_package_data_build_fingerprint: Optional[str] = None,
     run_context: Optional[Dict] = None,
+    core_package_metadata: Optional[Mapping[str, Any]] = None,
+    pipeline_run_id: Optional[str] = None,
+    data_package_git_sha: Optional[str] = None,
     existing_manifest: Optional[Dict] = None,
 ) -> Tuple[Dict, List[CommitOperationAdd]]:
     manifest = build_release_manifest(
@@ -319,6 +415,9 @@ def create_release_manifest_commit_operations(
         model_package_git_sha=model_package_git_sha,
         model_package_data_build_fingerprint=model_package_data_build_fingerprint,
         run_context=run_context,
+        core_package_metadata=core_package_metadata,
+        pipeline_run_id=pipeline_run_id,
+        data_package_git_sha=data_package_git_sha,
         existing_manifest=existing_manifest,
     )
     manifest_payload = serialize_release_manifest(manifest)
@@ -406,6 +505,8 @@ def get_matching_finalized_release_manifest(
     hf_repo_type: str,
     model_package_name: str,
     model_package_version: Optional[str] = None,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> Optional[Dict]:
     finalized_manifest = load_release_manifest_from_hf(
         version=version,
@@ -417,6 +518,24 @@ def get_matching_finalized_release_manifest(
         return None
 
     model_build_metadata = _get_model_package_build_metadata(model_package_name)
+    finalized_build = finalized_manifest.get("build")
+    finalized_build = finalized_build if isinstance(finalized_build, dict) else {}
+    finalized_build_metadata = finalized_build.get("metadata")
+    finalized_build_metadata = (
+        finalized_build_metadata if isinstance(finalized_build_metadata, dict) else {}
+    )
+    finalized_run_context = finalized_build_metadata.get(
+        "run_context"
+    ) or finalized_build.get("run")
+    finalized_run_context = (
+        finalized_run_context if isinstance(finalized_run_context, Mapping) else None
+    )
+    finalized_core_metadata = finalized_build.get("built_with_core_package")
+    finalized_core_metadata = (
+        finalized_core_metadata
+        if isinstance(finalized_core_metadata, Mapping)
+        else None
+    )
     candidate_manifest, _ = create_release_manifest_commit_operations(
         files_with_repo_paths=[
             (Path(path), repo_path) for path, repo_path in files_with_paths
@@ -429,17 +548,34 @@ def get_matching_finalized_release_manifest(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        core_package_metadata=finalized_core_metadata,
+        run_context=finalized_run_context,
+        pipeline_run_id=finalized_build_metadata.get("pipeline_run_id"),
+        data_package_git_sha=finalized_build_metadata.get("data_package_git_sha"),
         existing_manifest=finalized_manifest,
     )
-    if "created_at" in finalized_manifest:
-        candidate_manifest["created_at"] = finalized_manifest["created_at"]
-    finalized_build = finalized_manifest.get("build")
-    if isinstance(finalized_build, dict):
-        candidate_build = candidate_manifest.setdefault("build", {})
-        for field in ("build_id", "built_at"):
-            if field in finalized_build:
-                candidate_build[field] = finalized_build[field]
-    if candidate_manifest != finalized_manifest:
+    candidate_build = candidate_manifest.setdefault("build", {})
+    for field in ("build_id", "built_at"):
+        if field in finalized_build:
+            candidate_build[field] = finalized_build[field]
+
+    comparable_finalized_manifest = deepcopy(finalized_manifest)
+    legacy_created_at = comparable_finalized_manifest.pop("created_at", None)
+    if legacy_created_at is not None and "built_at" not in finalized_build:
+        candidate_build["built_at"] = legacy_created_at
+    if legacy_created_at is not None:
+        comparable_finalized_manifest.setdefault("build", {}).setdefault(
+            "built_at", legacy_created_at
+        )
+    comparable_build = comparable_finalized_manifest.get("build")
+    if isinstance(comparable_build, dict):
+        legacy_run = comparable_build.pop("run", None)
+        if legacy_run:
+            comparable_build.setdefault("metadata", {}).setdefault(
+                "run_context", legacy_run
+            )
+    comparable_finalized_manifest.setdefault("compatible_core_packages", [])
+    if candidate_manifest != comparable_finalized_manifest:
         raise RuntimeError(
             f"Release {version} is already finalized on {hf_repo_name}. "
             "Refusing to mutate the tagged release manifest."
@@ -514,6 +650,7 @@ def upload_files_to_hf(
         hf_repo_type=hf_repo_type,
     )
     model_build_metadata = _get_model_package_build_metadata()
+    run_context = _run_context_for_release()
     _, manifest_operations = create_release_manifest_commit_operations(
         files_with_repo_paths=files_with_repo_paths,
         version=version,
@@ -523,7 +660,10 @@ def upload_files_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
-        run_context=_run_context_for_release(),
+        run_context=run_context,
+        core_package_metadata=model_build_metadata.get("core"),
+        pipeline_run_id=_pipeline_run_id_for_manifest(run_context=run_context),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -689,9 +829,12 @@ def publish_release_manifest_to_hf(
     model_package_name: str = "policyengine-us",
     model_package_version: Optional[str] = None,
     create_tag: bool = False,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> Dict:
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    resolved_run_context = run_context or _run_context_for_release()
     finalized_manifest = get_matching_finalized_release_manifest(
         files_with_paths=files_with_paths,
         version=version,
@@ -699,6 +842,8 @@ def publish_release_manifest_to_hf(
         hf_repo_type=hf_repo_type,
         model_package_name=model_package_name,
         model_package_version=model_package_version,
+        pipeline_run_id=pipeline_run_id,
+        run_context=resolved_run_context,
     )
     if finalized_manifest is not None:
         return finalized_manifest
@@ -726,7 +871,12 @@ def publish_release_manifest_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
-        run_context=_run_context_for_release(),
+        run_context=resolved_run_context,
+        core_package_metadata=model_build_metadata.get("core"),
+        pipeline_run_id=_pipeline_run_id_for_manifest(
+            pipeline_run_id, resolved_run_context
+        ),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     parent_commit = get_repo_head_revision(

@@ -74,6 +74,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_local_h5 = ModuleType("policyengine_us_data.calibration.local_h5")
         fake_utils = ModuleType("policyengine_us_data.utils")
         fake_run_context = ModuleType("policyengine_us_data.utils.run_context")
+        fake_pipeline_metadata = ModuleType("policyengine_us_data.pipeline_metadata")
+        fake_pipeline_schema = ModuleType("policyengine_us_data.pipeline_schema")
         fake_partitioning = ModuleType(
             "policyengine_us_data.calibration.local_h5.partitioning"
         )
@@ -85,6 +87,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_local_h5.__path__ = []
         fake_utils.__path__ = []
         fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
+        fake_pipeline_metadata.pipeline_node = lambda *args, **kwargs: lambda func: func
+        fake_pipeline_schema.PipelineNode = SimpleNamespace
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
         fake_fingerprinting.PublishingInputBundle = object
 
@@ -109,6 +113,8 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                 "policyengine_us_data.calibration.local_h5.partitioning": (
                     fake_partitioning
                 ),
+                "policyengine_us_data.pipeline_metadata": fake_pipeline_metadata,
+                "policyengine_us_data.pipeline_schema": fake_pipeline_schema,
             }
         )
 

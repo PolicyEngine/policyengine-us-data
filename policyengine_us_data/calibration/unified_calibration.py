@@ -40,6 +40,9 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
+from policyengine_us_data.calibration.calibration_utils import (
+    create_target_groups,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
@@ -739,6 +742,7 @@ def fit_l0_weights(
     initial_weights: np.ndarray = None,
     targets_df: "pd.DataFrame" = None,
     achievable: np.ndarray = None,
+    target_groups: Optional[np.ndarray] = None,
     resume_from: str = None,
     checkpoint_path: str = None,
 ) -> np.ndarray:
@@ -762,6 +766,7 @@ def fit_l0_weights(
             computed from targets_df age targets.
         targets_df: Targets DataFrame, used to compute
             initial_weights when not provided.
+        target_groups: Optional group ID per target row for balanced loss.
         resume_from: Path to a `.checkpoint.pt` file or `.npy`
             weights file to continue fitting from.
         checkpoint_path: Where to save resumable fit checkpoints.
@@ -792,6 +797,7 @@ def fit_l0_weights(
         beta=beta,
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
+        target_groups=target_groups,
     )
     checkpoint_state_dict = None
     start_epoch = 0
@@ -921,7 +927,7 @@ def fit_l0_weights(
                 model.fit(
                     M=X_sparse,
                     y=targets,
-                    target_groups=None,
+                    target_groups=target_groups,
                     lambda_l0=lambda_l0,
                     lambda_l2=lambda_l2,
                     lr=learning_rate,
@@ -1020,7 +1026,7 @@ def fit_l0_weights(
             model.fit(
                 M=X_sparse,
                 y=targets,
-                target_groups=None,
+                target_groups=target_groups,
                 lambda_l0=lambda_l0,
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
@@ -1217,6 +1223,7 @@ def run_calibration(
 
         initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
+        target_groups, _ = create_target_groups(targets_df)
         row_sums = np.array(X_sparse.sum(axis=1)).flatten()
         pkg_achievable = row_sums > 0
         weights = fit_l0_weights(
@@ -1234,6 +1241,7 @@ def run_calibration(
             initial_weights=initial_weights,
             targets_df=targets_df,
             achievable=pkg_achievable,
+            target_groups=target_groups,
             resume_from=resume_from,
             checkpoint_path=checkpoint_path,
         )
@@ -1500,6 +1508,7 @@ def run_calibration(
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
+    target_groups, _ = create_target_groups(targets_df)
 
     row_sums = np.array(X_sparse.sum(axis=1)).flatten()
     achievable = row_sums > 0
@@ -1524,6 +1533,7 @@ def run_calibration(
         initial_weights=initial_weights,
         targets_df=targets_df,
         achievable=achievable,
+        target_groups=target_groups,
         resume_from=resume_from,
         checkpoint_path=checkpoint_path,
     )

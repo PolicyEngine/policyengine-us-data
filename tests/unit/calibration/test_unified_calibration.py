@@ -517,6 +517,8 @@ class TestParseArgsNewFlags:
 
 
 class FakeSparseCalibrationWeights:
+    fit_calls = []
+
     def __init__(
         self,
         n_features,
@@ -555,6 +557,7 @@ class FakeSparseCalibrationWeights:
         verbose_freq=1,
         target_groups=None,
     ):
+        type(self).fit_calls.append({"target_groups": target_groups})
         increment = float(epochs) + (self.alpha / 10.0)
         self.weights = self.weights + increment
         self.alpha = self.alpha + (10.0 * float(epochs))
@@ -578,6 +581,38 @@ class FakeSparseCalibrationWeights:
     def load_state_dict(self, state_dict):
         self.weights = state_dict["weights"].clone()
         self.alpha = state_dict["alpha"].clone()
+
+
+class TestFitTargetGroups:
+    def test_passes_target_groups_to_l0_model(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            fit_l0_weights,
+        )
+
+        target_groups = np.array([0, 1], dtype=np.int64)
+        FakeSparseCalibrationWeights.fit_calls = []
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            weights = fit_l0_weights(
+                X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+                targets=np.array([1.0, 2.0], dtype=np.float64),
+                lambda_l0=1e-4,
+                epochs=1,
+                device="cpu",
+                target_names=["target_a", "target_b"],
+                initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+                log_path=str(tmp_path / "calibration_log.csv"),
+                target_groups=target_groups,
+            )
+
+        np.testing.assert_allclose(weights, np.array([2.0, 3.0]))
+        np.testing.assert_array_equal(
+            FakeSparseCalibrationWeights.fit_calls[-1]["target_groups"],
+            target_groups,
+        )
 
 
 class TestFitResume:

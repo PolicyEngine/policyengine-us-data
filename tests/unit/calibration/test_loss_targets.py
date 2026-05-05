@@ -8,8 +8,11 @@ from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
     HARD_CODED_TOTALS,
+    _add_agi_metric_columns,
+    _add_aca_enrollment_target,
     _add_ctc_targets,
     _add_irs_soi_aggregate_targets,
+    _add_medicaid_enrollment_target,
     _add_medicare_enrollment_target,
     _get_aca_national_targets,
     _get_medicaid_national_targets,
@@ -147,6 +150,31 @@ class _FakeMedicareEnrollmentSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeNationalEnrollmentSimulation:
+    def __init__(self):
+        self.calculate_calls = []
+        self.map_result_calls = []
+
+    def calculate(self, variable, map_to=None, period=None):
+        self.calculate_calls.append((variable, map_to, period))
+        values = {
+            "medicaid_enrolled": np.array([True, True, False, True]),
+            "is_medicaid_eligible": np.array([True, False, True, True]),
+            "aca_ptc": np.array([100.0, 100.0, 0.0, 50.0]),
+            "is_aca_ptc_eligible": np.array([True, False, True, True]),
+        }
+        if variable not in values:
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        assert map_to == "person"
+        return SimpleNamespace(values=values[variable])
+
+    def map_result(self, values, source_entity, target_entity, how=None):
+        self.map_result_calls.append((source_entity, target_entity, how))
+        assert source_entity == "person"
+        assert target_entity == "household"
+        return np.asarray(values, dtype=np.float32)
+
+
 class _FakeCapitalGainsSimulation:
     def __init__(self):
         self.calculate_calls = []
@@ -175,6 +203,73 @@ class _FakeCapitalGainsSimulation:
             raise AssertionError(f"Unexpected variable {variable!r}")
         assert map_to == "household"
         return _FakeArrayResult(values[variable])
+
+
+class _FakeStateAgiSimulation:
+    def calculate(self, variable, map_to=None, period=None):
+        values = {
+            "adjusted_gross_income": [-100.0, -50.0, 5_000.0, 7_000.0],
+            "tax_unit_is_filer": [1.0, 0.0, 1.0, 1.0],
+            "state_code": ["CA", "CA", "CA", "NY"],
+        }
+        if variable not in values:
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        if variable == "state_code":
+            assert map_to == "person"
+            return SimpleNamespace(values=np.asarray(values[variable], dtype=object))
+        else:
+            assert map_to is None
+        return _FakeArrayResult(values[variable])
+
+    def map_result(self, values, source_entity, target_entity, how=None):
+        if source_entity == "person":
+            assert target_entity == "tax_unit"
+            assert how == "value_from_first_person"
+            return np.asarray(values)
+        assert source_entity == "tax_unit"
+        assert target_entity == "household"
+        return np.asarray(values)
+
+
+def test_state_agi_targets_are_limited_to_filers(tmp_path, monkeypatch):
+    calibration_folder = tmp_path
+    (calibration_folder / "agi_state.csv").write_text(
+        "\n".join(
+            [
+                "GEO_ID,GEO_NAME,AGI_LOWER_BOUND,AGI_UPPER_BOUND,VALUE,IS_COUNT,VARIABLE",
+                "0400000US06,CA,-inf,1.0,1,1,adjusted_gross_income/count",
+                "0400000US06,CA,-inf,1.0,-100,0,adjusted_gross_income/amount",
+                "0400000US06,CA,1.0,10000.0,1,1,adjusted_gross_income/count",
+                "0400000US06,CA,1.0,10000.0,5000,0,adjusted_gross_income/amount",
+            ]
+        )
+    )
+
+    from policyengine_us_data.utils import loss as loss_module
+
+    monkeypatch.setattr(loss_module, "CALIBRATION_FOLDER", calibration_folder)
+
+    loss_matrix = _add_agi_metric_columns(
+        pd.DataFrame(),
+        _FakeStateAgiSimulation(),
+    )
+
+    np.testing.assert_array_equal(
+        loss_matrix["state/CA/adjusted_gross_income/count/-inf_1"],
+        np.array([1.0, 0.0, 0.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["state/CA/adjusted_gross_income/amount/-inf_1"],
+        np.array([-100.0, 0.0, 0.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["state/CA/adjusted_gross_income/count/1_10000"],
+        np.array([0.0, 0.0, 1.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["state/CA/adjusted_gross_income/amount/1_10000"],
+        np.array([0.0, 0.0, 5_000.0, 0.0]),
+    )
 
 
 def test_add_ctc_targets(monkeypatch):
@@ -299,4 +394,48 @@ def test_add_medicare_enrollment_target(monkeypatch):
     np.testing.assert_array_equal(
         loss_matrix["nation/cms/medicare_enrollment"],
         np.array([1.0, 0.0, 1.0], dtype=np.float32),
+    )
+
+
+def test_add_medicaid_enrollment_target_uses_enrollment_and_eligibility():
+    sim = _FakeNationalEnrollmentSimulation()
+
+    targets, loss_matrix = _add_medicaid_enrollment_target(
+        pd.DataFrame(),
+        [],
+        sim,
+        2024,
+        72_429_055,
+    )
+
+    assert targets == [72_429_055]
+    assert sim.calculate_calls == [
+        ("medicaid_enrolled", "person", 2024),
+        ("is_medicaid_eligible", "person", 2024),
+    ]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/hhs/medicaid_enrollment"],
+        np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float32),
+    )
+
+
+def test_add_aca_enrollment_target_uses_positive_ptc_and_person_eligibility():
+    sim = _FakeNationalEnrollmentSimulation()
+
+    targets, loss_matrix = _add_aca_enrollment_target(
+        pd.DataFrame(),
+        [],
+        sim,
+        2024,
+        19_743_689,
+    )
+
+    assert targets == [19_743_689]
+    assert sim.calculate_calls == [
+        ("aca_ptc", "person", 2024),
+        ("is_aca_ptc_eligible", "person", 2024),
+    ]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/gov/aca_enrollment"],
+        np.array([1.0, 0.0, 0.0, 1.0], dtype=np.float32),
     )

@@ -201,6 +201,132 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         assert liheap_target.value == 5_876_646
 
 
+def test_load_national_targets_scopes_aca_enrollment_to_eligible_ptc_recipients(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=[
+            {
+                "constraint_variable": "aca_ptc",
+                "person_count": 19_743_689,
+                "source": "CMS marketplace data",
+                "notes": "ACA Premium Tax Credit recipients",
+                "year": 2024,
+            }
+        ],
+    )
+
+    with Session(engine) as session:
+        aca_stratum = session.exec(
+            select(Stratum).where(
+                Stratum.notes == "National ACA Premium Tax Credit Recipients"
+            )
+        ).first()
+        assert aca_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in aca_stratum.constraints_rel
+        }
+        assert constraints == {
+            ("aca_ptc", ">", "0"),
+            ("is_aca_ptc_eligible", "==", "True"),
+        }
+
+        aca_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == aca_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert aca_target is not None
+        assert aca_target.value == 19_743_689
+
+
+def test_load_national_targets_scopes_medicaid_enrollment_to_enrolled_people(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=[
+            {
+                "constraint_variable": "medicaid_enrolled",
+                "person_count": 72_429_055,
+                "source": "CMS/HHS administrative data",
+                "notes": "Medicaid enrollment count",
+                "year": 2024,
+            }
+        ],
+    )
+
+    with Session(engine) as session:
+        medicaid_stratum = session.exec(
+            select(Stratum).where(Stratum.notes == "National Medicaid Enrollment")
+        ).first()
+        assert medicaid_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in medicaid_stratum.constraints_rel
+        }
+        assert constraints == {
+            ("medicaid_enrolled", "==", "True"),
+            ("is_medicaid_eligible", "==", "True"),
+        }
+
+        medicaid_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == medicaid_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert medicaid_target is not None
+        assert medicaid_target.value == 72_429_055
+
+
 def test_load_national_targets_supports_medicare_enrollment_counts(
     tmp_path, monkeypatch
 ):

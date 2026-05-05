@@ -129,6 +129,58 @@ def _add_medicare_enrollment_target(loss_matrix, targets_array, sim, time_period
     return targets_array, loss_matrix
 
 
+def _add_medicaid_enrollment_target(
+    loss_matrix,
+    targets_array,
+    sim,
+    time_period,
+    target,
+):
+    label = "nation/hhs/medicaid_enrollment"
+    enrolled = sim.calculate(
+        "medicaid_enrolled",
+        map_to="person",
+        period=time_period,
+    ).values
+    eligible = sim.calculate(
+        "is_medicaid_eligible",
+        map_to="person",
+        period=time_period,
+    ).values
+    loss_matrix[label] = sim.map_result(
+        (enrolled & eligible).astype(float),
+        "person",
+        "household",
+    )
+    targets_array.append(target)
+    return targets_array, loss_matrix
+
+
+def _add_aca_enrollment_target(
+    loss_matrix,
+    targets_array,
+    sim,
+    time_period,
+    target,
+):
+    label = "nation/gov/aca_enrollment"
+    in_tax_unit_with_aca = (
+        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
+    )
+    eligible = sim.calculate(
+        "is_aca_ptc_eligible",
+        map_to="person",
+        period=time_period,
+    ).values
+    loss_matrix[label] = sim.map_result(
+        (in_tax_unit_with_aca & eligible).astype(float),
+        "person",
+        "household",
+    )
+    targets_array.append(target)
+    return targets_array, loss_matrix
+
+
 ACA_SPENDING_TARGETS = {
     2024: 98e9,
 }
@@ -863,18 +915,13 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix[label] = sim.calculate("medicaid", map_to="household").values
     targets_array.append(medicaid_spending_target)
 
-    # 2. Medicaid Enrollment
-    label = "nation/hhs/medicaid_enrollment"
-    on_medicaid = (
-        sim.calculate(
-            "medicaid",  # or your enrollee flag
-            map_to="person",
-            period=time_period,
-        ).values
-        > 0
-    ).astype(int)
-    loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
-    targets_array.append(medicaid_enrollment_target)
+    targets_array, loss_matrix = _add_medicaid_enrollment_target(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+        medicaid_enrollment_target,
+    )
 
     # National ACA Spending
     aca_spending_target, aca_enrollment_target, _ = _get_aca_national_targets(
@@ -887,14 +934,13 @@ def build_loss_matrix(dataset: type, time_period):
     ).values
     targets_array.append(aca_spending_target)
 
-    # National ACA Enrollment (people receiving a PTC)
-    label = "nation/gov/aca_enrollment"
-    on_ptc = (
-        sim.calculate("aca_ptc", map_to="person", period=time_period).values > 0
-    ).astype(int)
-    loss_matrix[label] = sim.map_result(on_ptc, "person", "household")
-
-    targets_array.append(aca_enrollment_target)
+    targets_array, loss_matrix = _add_aca_enrollment_target(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+        aca_enrollment_target,
+    )
 
     targets_array, loss_matrix = _add_medicare_enrollment_target(
         loss_matrix,
@@ -1379,6 +1425,7 @@ def _add_agi_metric_columns(
     soi_targets = pd.read_csv(CALIBRATION_FOLDER / "agi_state.csv")
 
     agi = sim.calculate("adjusted_gross_income").values
+    is_filer = sim.calculate("tax_unit_is_filer").values > 0
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(state, "person", "tax_unit", how="value_from_first_person")
 
@@ -1391,11 +1438,12 @@ def _add_agi_metric_columns(
         # loop in build_loss_matrix() (the SOI targets use half-open bands
         # starting at the lower bound).
         in_band = (agi >= lower) & (agi < upper)
+        in_scope = in_state & in_band & is_filer
 
         if r.IS_COUNT:
-            metric = (in_state & in_band & (agi > 0)).astype(float)
+            metric = in_scope.astype(float)
         else:
-            metric = np.where(in_state & in_band, agi, 0.0)
+            metric = np.where(in_scope, agi, 0.0)
 
         metric = sim.map_result(metric, "tax_unit", "household")
 

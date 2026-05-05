@@ -314,7 +314,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     # Store with actual source year
     conditional_count_targets = [
         {
-            "constraint_variable": "medicaid",
+            "constraint_variable": "medicaid_enrolled",
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
@@ -539,6 +539,90 @@ def transform_national_targets(raw_targets):
     conditional_targets = raw_targets["conditional_count_targets"]
 
     return direct_df, tax_filer_df, tax_expenditure_df, conditional_targets
+
+
+def _conditional_count_stratum_details(
+    cond_target: dict,
+) -> tuple[str, list[StratumConstraint]]:
+    constraint_var = cond_target["constraint_variable"]
+
+    if constraint_var == "medicaid_enrolled":
+        return (
+            "National Medicaid Enrollment",
+            [
+                StratumConstraint(
+                    constraint_variable="medicaid_enrolled",
+                    operation="==",
+                    value="True",
+                ),
+                StratumConstraint(
+                    constraint_variable="is_medicaid_eligible",
+                    operation="==",
+                    value="True",
+                ),
+            ],
+        )
+
+    if constraint_var == "aca_ptc":
+        return (
+            "National ACA Premium Tax Credit Recipients",
+            [
+                StratumConstraint(
+                    constraint_variable="aca_ptc",
+                    operation=">",
+                    value="0",
+                ),
+                StratumConstraint(
+                    constraint_variable="is_aca_ptc_eligible",
+                    operation="==",
+                    value="True",
+                ),
+            ],
+        )
+
+    if constraint_var == "spm_unit_energy_subsidy_reported":
+        return (
+            "National LIHEAP Recipient Households",
+            [
+                StratumConstraint(
+                    constraint_variable="spm_unit_energy_subsidy_reported",
+                    operation=">",
+                    value="0",
+                )
+            ],
+        )
+
+    if constraint_var == "ssn_card_type":
+        return (
+            "National Undocumented Population",
+            [
+                StratumConstraint(
+                    constraint_variable="ssn_card_type",
+                    operation="==",
+                    value=cond_target.get("constraint_value", "NONE"),
+                )
+            ],
+        )
+
+    return (
+        f"National {constraint_var} Recipients",
+        [
+            StratumConstraint(
+                constraint_variable=constraint_var,
+                operation=">",
+                value="0",
+            )
+        ],
+    )
+
+
+def _constraint_tuples(
+    constraints: list[StratumConstraint],
+) -> set[tuple[str, str, str]]:
+    return {
+        (constraint.constraint_variable, constraint.operation, constraint.value)
+        for constraint in constraints
+    }
 
 
 def load_national_targets(
@@ -767,32 +851,10 @@ def load_national_targets(
 
         # Process conditional count targets (enrollment counts)
         for cond_target in conditional_targets:
-            constraint_var = cond_target["constraint_variable"]
             target_year = cond_target["year"]
             target_variable = cond_target.get("target_variable", "person_count")
             target_value = cond_target.get(target_variable)
-
-            # Determine constraint details
-            if constraint_var == "medicaid":
-                stratum_notes = "National Medicaid Enrollment"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "aca_ptc":
-                stratum_notes = "National ACA Premium Tax Credit Recipients"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "spm_unit_energy_subsidy_reported":
-                stratum_notes = "National LIHEAP Recipient Households"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "ssn_card_type":
-                stratum_notes = "National Undocumented Population"
-                constraint_operation = "=="
-                constraint_value = cond_target.get("constraint_value", "NONE")
-            else:
-                stratum_notes = f"National {constraint_var} Recipients"
-                constraint_operation = ">"
-                constraint_value = "0"
+            stratum_notes, constraints = _conditional_count_stratum_details(cond_target)
 
             # Check if this stratum already exists
             existing_stratum = session.exec(
@@ -803,6 +865,13 @@ def load_national_targets(
             ).first()
 
             if existing_stratum:
+                if _constraint_tuples(existing_stratum.constraints_rel) != (
+                    _constraint_tuples(constraints)
+                ):
+                    existing_stratum.constraints_rel = constraints
+                    session.add(existing_stratum)
+                    session.flush()
+
                 # Update the existing target in this stratum
                 existing_target = session.exec(
                     select(Target).where(
@@ -815,7 +884,10 @@ def load_national_targets(
                 if existing_target:
                     existing_target.value = target_value
                     existing_target.source = "PolicyEngine"
-                    print(f"Updated enrollment target for {constraint_var}")
+                    print(
+                        "Updated enrollment target for "
+                        f"{cond_target['constraint_variable']}"
+                    )
                 else:
                     # Add new target to existing stratum
                     new_target = Target(
@@ -828,7 +900,10 @@ def load_national_targets(
                         notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
                     )
                     session.add(new_target)
-                    print(f"Added enrollment target for {constraint_var}")
+                    print(
+                        "Added enrollment target for "
+                        f"{cond_target['constraint_variable']}"
+                    )
             else:
                 # Create new stratum with constraint
                 new_stratum = Stratum(
@@ -837,13 +912,7 @@ def load_national_targets(
                 )
 
                 # Add constraint
-                new_stratum.constraints_rel = [
-                    StratumConstraint(
-                        constraint_variable=constraint_var,
-                        operation=constraint_operation,
-                        value=constraint_value,
-                    )
-                ]
+                new_stratum.constraints_rel = constraints
 
                 # Add target
                 new_stratum.targets_rel = [
@@ -858,7 +927,10 @@ def load_national_targets(
                 ]
 
                 session.add(new_stratum)
-                print(f"Created stratum and target for {constraint_var} enrollment")
+                print(
+                    "Created stratum and target for "
+                    f"{cond_target['constraint_variable']} enrollment"
+                )
 
         session.commit()
 

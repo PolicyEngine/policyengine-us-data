@@ -8,7 +8,7 @@ from huggingface_hub import (
     CommitOperationDelete,
     hf_hub_download,
 )
-from huggingface_hub.errors import RevisionNotFoundError
+from huggingface_hub.errors import EntryNotFoundError, RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
@@ -241,7 +241,7 @@ def load_release_manifest_from_hf(
             )
         except RevisionNotFoundError:
             return None
-        except Exception:
+        except EntryNotFoundError:
             continue
 
         with open(manifest_path) as f:

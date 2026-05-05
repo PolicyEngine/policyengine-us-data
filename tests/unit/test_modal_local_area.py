@@ -17,6 +17,11 @@ def test_build_promote_national_publish_script_imports_version_manifest_helpers(
     assert "HFVersionInfo" in script
     assert "build_manifest" in script
     assert "upload_manifest" in script
+    assert "preflight_release_manifest_publish" in script
+    assert "should_finalize_local_area_release" not in script
+    assert script.index(
+        "should_finalize, missing_prefixes = preflight_release_manifest_publish("
+    ) < script.index("promoted = promote_staging_to_production_hf(")
     assert 'os.environ["US_DATA_RUN_ID"] = run_id' in script
     assert 'os.environ["RUN_ID"]' not in script
 
@@ -30,7 +35,11 @@ def test_build_promote_publish_script_finalizes_complete_release():
         rel_paths=["states/AL.h5", "districts/AL-01.h5", "cities/NYC.h5"],
     )
 
-    assert "should_finalize_local_area_release" in script
+    assert "preflight_release_manifest_publish" in script
+    assert "should_finalize_local_area_release" not in script
+    assert script.index(
+        "should_finalize, missing_prefixes = preflight_release_manifest_publish("
+    ) < script.index("promoted = promote_staging_to_production_hf(")
     assert "create_tag=should_finalize" in script
     assert "upload_manifest(" in script
     assert 'os.environ["US_DATA_RUN_ID"] = run_id' in script

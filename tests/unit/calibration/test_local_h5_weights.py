@@ -103,6 +103,13 @@ def test_normalization_rejects_non_numeric_vectors():
         CloneWeightMatrix.from_vector(vector, n_records=1)
 
 
+def test_normalization_rejects_complex_vectors():
+    vector = np.array([1.0 + 2.0j, 3.0 + 4.0j])
+
+    with pytest.raises(TypeError, match="real numeric dtype"):
+        CloneWeightMatrix.from_vector(vector, n_records=1)
+
+
 def test_normalization_rejects_non_one_dimensional_vectors():
     vector = np.arange(6, dtype=float).reshape(2, 3)
 

@@ -157,6 +157,8 @@ class CloneWeightMatrix:
             raise ValueError("Weight vector must be non-empty")
         if not np.issubdtype(vector.dtype, np.number):
             raise TypeError("Weight vector must have a numeric dtype")
+        if np.issubdtype(vector.dtype, np.complexfloating):
+            raise TypeError("Weight vector must have a real numeric dtype")
         return vector
 
     @staticmethod

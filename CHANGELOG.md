@@ -1,3 +1,10 @@
+## [1.95.5] - 2026-05-05
+
+### Fixed
+
+- Hardened CRFB long-run calibration so entropy solutions with large constraint misses are rejected before fallback, and recorded richer provenance for Trustees threshold projection inputs.
+
+
 ## [1.95.4] - 2026-05-04
 
 ### Changed

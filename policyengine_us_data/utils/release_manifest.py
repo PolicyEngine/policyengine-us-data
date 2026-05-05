@@ -43,6 +43,7 @@ def _base_manifest(
     run_context: Mapping[str, str] | None,
     build_id: str,
     created_at: str,
+    additional_compatible_specifiers: Sequence[str] | None = None,
 ) -> Dict:
     manifest = {
         "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
@@ -79,6 +80,10 @@ def _base_manifest(
                 "specifier": f"=={model_package_version}",
             }
         )
+    for specifier in additional_compatible_specifiers or ():
+        manifest["compatible_model_packages"].append(
+            {"name": model_package_name, "specifier": specifier}
+        )
     return manifest
 
 
@@ -111,6 +116,7 @@ def build_release_manifest(
     existing_manifest: Mapping | None = None,
     default_datasets: Optional[Mapping[str, str]] = None,
     created_at: str | None = None,
+    additional_compatible_specifiers: Sequence[str] | None = None,
 ) -> Dict:
     manifest = _normalize_existing_manifest(
         existing_manifest,
@@ -131,6 +137,7 @@ def build_release_manifest(
             run_context=run_context,
             build_id=resolved_build_id,
             created_at=manifest_timestamp,
+            additional_compatible_specifiers=additional_compatible_specifiers,
         )
     else:
         manifest["schema_version"] = RELEASE_MANIFEST_SCHEMA_VERSION
@@ -149,15 +156,20 @@ def build_release_manifest(
                 "git_sha": model_package_git_sha,
                 "data_build_fingerprint": model_package_data_build_fingerprint,
             }
+        compat = []
         if run_context:
             manifest["build"]["run"] = dict(run_context)
         if model_package_version:
-            manifest["compatible_model_packages"] = [
+            compat.append(
                 {
                     "name": model_package_name,
                     "specifier": f"=={model_package_version}",
                 }
-            ]
+            )
+        for specifier in additional_compatible_specifiers or ():
+            compat.append({"name": model_package_name, "specifier": specifier})
+        if compat:
+            manifest["compatible_model_packages"] = compat
 
     if default_datasets:
         manifest.setdefault("default_datasets", {}).update(default_datasets)

@@ -10,6 +10,12 @@ from policyengine_us_data.stage_contracts.core import (
     StageContract,
     SubstageRecord,
 )
+from policyengine_us_data.stage_contracts.io import (
+    contract_from_json,
+    contract_to_json,
+    read_contract,
+    write_contract,
+)
 
 
 def _fingerprint() -> Fingerprint:
@@ -49,6 +55,42 @@ def _execution() -> ExecutionRecord:
             invalid_outputs=0,
         ),
         metadata={"worker": "modal"},
+    )
+
+
+def _stage_contract(*, parameters=None) -> StageContract:
+    return StageContract(
+        contract_type="calibration_package",
+        stage_id="2_build_calibration_package",
+        run_id="run-123",
+        created_at="2026-05-05T10:00:03Z",
+        code_sha="abc123",
+        package_version="1.98.2",
+        inputs=(_artifact(),),
+        outputs=(
+            ArtifactRef(
+                logical_name="calibration_package",
+                uri="file:///pipeline/calibration_package.pkl",
+                sha256="sha256:calibration",
+            ),
+        ),
+        parameters=parameters or {"n_clones": 430, "seed": 42},
+        fingerprint=_fingerprint(),
+        substages=(
+            SubstageRecord(
+                substage_id="2a_build_target_matrix",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(
+                    ArtifactRef(
+                        logical_name="target_matrix",
+                        uri="memory://target_matrix",
+                    ),
+                ),
+            ),
+        ),
+        execution=_execution(),
+        metadata={"target_count": 304},
     )
 
 
@@ -112,39 +154,7 @@ def test_substage_record_dict_round_trip_with_nested_values():
 
 
 def test_stage_contract_dict_round_trip_with_substages():
-    contract = StageContract(
-        contract_type="calibration_package",
-        stage_id="2_build_calibration_package",
-        run_id="run-123",
-        created_at="2026-05-05T10:00:03Z",
-        code_sha="abc123",
-        package_version="1.98.2",
-        inputs=(_artifact(),),
-        outputs=(
-            ArtifactRef(
-                logical_name="calibration_package",
-                uri="file:///pipeline/calibration_package.pkl",
-                sha256="sha256:calibration",
-            ),
-        ),
-        parameters={"n_clones": 430, "seed": 42},
-        fingerprint=_fingerprint(),
-        substages=(
-            SubstageRecord(
-                substage_id="2a_build_target_matrix",
-                status="completed",
-                reuse_mode="handoff",
-                outputs=(
-                    ArtifactRef(
-                        logical_name="target_matrix",
-                        uri="memory://target_matrix",
-                    ),
-                ),
-            ),
-        ),
-        execution=_execution(),
-        metadata={"target_count": 304},
-    )
+    contract = _stage_contract()
 
     restored = StageContract.from_dict(contract.to_dict())
 
@@ -186,3 +196,49 @@ def test_invalid_schema_version_raises():
             uri="file:///policy_data.db",
             schema_version="0",
         )
+
+
+def test_contract_to_json_is_deterministic_across_equivalent_contracts():
+    first = _stage_contract(parameters={"n_clones": 430, "seed": 42})
+    second = _stage_contract(parameters={"seed": 42, "n_clones": 430})
+
+    assert contract_to_json(first) == contract_to_json(second)
+
+
+def test_contract_from_json_restores_nested_tuple_fields():
+    restored = contract_from_json(contract_to_json(_stage_contract()))
+
+    assert isinstance(restored.inputs, tuple)
+    assert isinstance(restored.outputs, tuple)
+    assert isinstance(restored.substages, tuple)
+    assert isinstance(restored.substages[0].outputs, tuple)
+
+
+def test_write_contract_writes_only_to_explicit_path(tmp_path):
+    target = tmp_path / "nested" / "2_build_calibration_package.json"
+
+    write_contract(_stage_contract(), target)
+
+    assert target.exists()
+    assert not (tmp_path / "contracts").exists()
+
+
+def test_read_contract_restores_stage_contract(tmp_path):
+    contract = _stage_contract()
+    target = tmp_path / "2_build_calibration_package.json"
+    write_contract(contract, target)
+
+    restored = read_contract(target)
+
+    assert restored == contract
+
+
+def test_contract_json_ends_with_newline():
+    assert contract_to_json(_stage_contract()).endswith("\n")
+
+
+def test_contract_json_top_level_keys_are_sorted():
+    lines = contract_to_json(_stage_contract()).splitlines()
+
+    assert lines[0] == "{"
+    assert lines[1].strip().startswith('"code_sha"')

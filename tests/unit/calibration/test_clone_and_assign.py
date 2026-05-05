@@ -194,9 +194,9 @@ class TestAssignRandomGeography:
             rec_cds = [
                 r.cd_geoid[clone * r.n_records + rec] for clone in range(r.n_clones)
             ]
-            assert len(rec_cds) == len(
-                set(rec_cds)
-            ), f"Record {rec} has duplicate CDs: {rec_cds}"
+            assert len(rec_cds) == len(set(rec_cds)), (
+                f"Record {rec} has duplicate CDs: {rec_cds}"
+            )
 
     def test_missing_file_raises(self, tmp_path):
         fake = tmp_path / "nonexistent"

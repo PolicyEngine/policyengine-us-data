@@ -1223,7 +1223,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1241,7 +1241,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1259,7 +1259,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1277,7 +1277,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1295,7 +1295,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1313,7 +1313,7 @@
           "stability": "stable",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1331,7 +1331,7 @@
           "stability": "moving",
           "status": "legacy",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1349,7 +1349,7 @@
           "stability": "moving",
           "status": "legacy",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1385,7 +1385,7 @@
           "stability": "moving",
           "status": "legacy",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1403,7 +1403,7 @@
           "stability": "moving",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {
@@ -1421,7 +1421,7 @@
           "stability": "stable",
           "status": "current",
           "validation_commands": [
-            "uv run pytest tests/integration/test_cps.py"
+            "uv run pytest validation/stage_1/test_cps.py"
           ]
         },
         {

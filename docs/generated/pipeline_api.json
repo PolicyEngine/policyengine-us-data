@@ -77,7 +77,7 @@
       "stability": "moving",
       "status": "legacy",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth",
@@ -104,7 +104,7 @@
       "stability": "stable",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_household_variables",
@@ -185,7 +185,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_personal_income_variables",
@@ -212,7 +212,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_personal_variables",
@@ -239,7 +239,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_previous_year_income",
@@ -266,7 +266,7 @@
       "stability": "moving",
       "status": "legacy",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_rent",
@@ -293,7 +293,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_spm_variables",
@@ -320,7 +320,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_ssn_card_type",
@@ -347,7 +347,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_takeup",
@@ -374,7 +374,7 @@
       "stability": "moving",
       "status": "legacy",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.add_tips",
@@ -981,7 +981,7 @@
       "stability": "stable",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/test_cps.py"
+        "uv run pytest validation/stage_1/test_cps.py"
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.CPS.downsample",

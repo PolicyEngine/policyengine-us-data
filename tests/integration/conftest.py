@@ -8,14 +8,6 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-# ── Skip logic for missing datasets ───────────────────────────
-
-NEEDS_CPS = not (STORAGE_FOLDER / "cps_2024.h5").exists()
-
-collect_ignore_glob = []
-if NEEDS_CPS:
-    collect_ignore_glob.append("test_cps.py")
-
 
 # ── Shared fixtures for calibration tests ─────────────────────
 

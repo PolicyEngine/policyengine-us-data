@@ -284,7 +284,7 @@ class CPS(Dataset):
             status="current",
             stability="stable",
             pathways=["data_build"],
-            validation_commands=["uv run pytest tests/integration/test_cps.py"],
+            validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
         )
     )
     def downsample(self, frac: float) -> None:
@@ -317,7 +317,7 @@ class CPS(Dataset):
         status="legacy",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
@@ -431,7 +431,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_takeup(self):
@@ -925,7 +925,7 @@ def add_id_variables(
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
@@ -1057,7 +1057,7 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
@@ -1333,7 +1333,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
@@ -1395,7 +1395,7 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
         status="current",
         stability="stable",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
@@ -1437,7 +1437,7 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_previous_year_income(self, cps: h5py.File) -> None:
@@ -1543,7 +1543,7 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
         status="current",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_ssn_card_type(
@@ -2442,7 +2442,7 @@ def _update_documentation_with_numbers(log_df, docs_dir):
         status="legacy",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_tips(self, cps: h5py.File):
@@ -2731,7 +2731,7 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
         status="legacy",
         stability="moving",
         pathways=["data_build"],
-        validation_commands=["uv run pytest tests/integration/test_cps.py"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
     )
 )
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:

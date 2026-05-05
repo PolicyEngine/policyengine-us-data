@@ -17,11 +17,15 @@ PERSON_COLUMNS = [
     "AGEP",  # Age
     "CIT",  # Citizenship
     "MAR",  # Marital status
+    "RELSHIPP",  # Relationship to reference person
     "WAGP",  # Wage/salary
+    "INTP",  # Interest income
     "SSP",  # Social security income
     "SSIP",  # Supplemental security income
     "SEX",  # Sex
     "SEMP",  # Self-employment income
+    "SCH",  # School enrollment
+    "SCHG",  # Grade attending
     "SCHL",  # Educational attainment
     "RETP",  # Retirement income
     "PAP",  # Public assistance income
@@ -30,6 +34,12 @@ PERSON_COLUMNS = [
     "PINCP",  # Total income
     "POVPIP",  # Income-to-poverty line percentage
     "RAC1P",  # Race
+    "DDRS",  # Self-care difficulty
+    "DEAR",  # Hearing difficulty
+    "DEYE",  # Vision difficulty
+    "DOUT",  # Independent living difficulty
+    "DPHY",  # Ambulatory difficulty
+    "DREM",  # Cognitive difficulty
 ]
 
 HOUSEHOLD_COLUMNS = [
@@ -58,7 +68,6 @@ class CensusACS(Dataset):
     data_format = Dataset.TABLES
 
     def generate(self) -> None:
-        spm_url = f"https://www2.census.gov/programs-surveys/supplemental-poverty-measure/datasets/spm/spm_{self.time_period}_pu.dta"
         person_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_pus.zip"
         household_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_hus.zip"
 

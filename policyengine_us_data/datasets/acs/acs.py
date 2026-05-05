@@ -1,6 +1,9 @@
 from policyengine_core.data import Dataset
 import h5py
 from policyengine_us_data.datasets.acs.census_acs import CensusACS_2022
+from policyengine_us_data.datasets.acs.tax_unit_construction import (
+    construct_tax_units_acs,
+)
 from policyengine_us_data.storage import STORAGE_FOLDER
 from pandas import DataFrame
 import numpy as np
@@ -19,7 +22,7 @@ class ACS(Dataset):
         acs = h5py.File(self.file_path, mode="w")
         person, household = [raw_data[entity] for entity in ("person", "household")]
 
-        self.add_id_variables(acs, person, household)
+        self.add_id_variables(acs, person, household, self.time_period)
         self.add_person_variables(acs, person, household)
         self.add_household_variables(acs, household)
 
@@ -31,6 +34,7 @@ class ACS(Dataset):
         acs: h5py.File,
         person: DataFrame,
         household: DataFrame,
+        year: int,
     ) -> None:
         # Create numeric IDs based on SERIALNO
         h_id_to_number = pd.Series(
@@ -38,19 +42,23 @@ class ACS(Dataset):
         )
         household["household_id"] = h_id_to_number[household["SERIALNO"]].values
         person["household_id"] = h_id_to_number[person["SERIALNO"]].values
-        person["person_id"] = person.index + 1
+        person["person_id"] = np.arange(len(person)) + 1
+        person_tax_unit, tax_unit = construct_tax_units_acs(person, year)
 
         acs["person_id"] = person["person_id"]
         acs["household_id"] = household["household_id"]
         acs["spm_unit_id"] = acs["household_id"]
-        acs["tax_unit_id"] = acs["household_id"]
+        acs["tax_unit_id"] = tax_unit["TAX_ID"].values
         acs["family_id"] = acs["household_id"]
         acs["marital_unit_id"] = acs["household_id"]
         acs["person_household_id"] = person["household_id"]
         acs["person_spm_unit_id"] = person["household_id"]
-        acs["person_tax_unit_id"] = person["household_id"]
+        acs["person_tax_unit_id"] = person_tax_unit["TAX_ID"].values
         acs["person_family_id"] = person["household_id"]
         acs["person_marital_unit_id"] = person["household_id"]
+        acs["is_related_to_head_or_spouse"] = person_tax_unit[
+            "is_related_to_head_or_spouse"
+        ].values
         acs["household_weight"] = household.WGTP
 
     @staticmethod

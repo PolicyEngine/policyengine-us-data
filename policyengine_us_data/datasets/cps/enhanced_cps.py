@@ -15,6 +15,11 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024_Half,
     CPS_2024,
 )
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     ACA_POST_CALIBRATION_PERSON_TARGETS,
@@ -84,6 +89,13 @@ def _load_aca_enrollment_targets(period: int) -> dict[str, float] | None:
 
 
 def _load_aca_spending_targets(period: int) -> dict[str, float] | None:
+    soi_targets = load_aca_ptc_state_targets(period, storage_folder=STORAGE_FOLDER)
+    if soi_targets is not None:
+        return {
+            str(row.state): float(row.TotalPTCAmount)
+            for row in soi_targets.itertuples(index=False)
+        }
+
     path = (
         STORAGE_FOLDER
         / "calibration_targets"
@@ -116,6 +128,23 @@ def _tax_unit_state_codes(
     return state_codes
 
 
+@pipeline_node(
+    PipelineNode(
+        id="aca_2025_override",
+        label="ACA 2025 Take-Up Override",
+        node_type="process",
+        description=(
+            "Adds synthetic 2025 ACA take-up assignments until calibrated "
+            "person-level APTC enrollment reaches the target."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["extended_cps_2024"],
+        artifacts_out=["aca_2025_takeup"],
+        pydoc=True,
+    )
+)
 def create_aca_2025_takeup_override(
     base_takeup: np.ndarray,
     person_enrolled_if_takeup: np.ndarray,
@@ -182,6 +211,23 @@ def create_aca_2025_takeup_override(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="reweight",
+        label="Enhanced CPS Reweighting",
+        node_type="process",
+        description=(
+            "Fits enhanced CPS weights against calibration targets with the "
+            "hard-concrete loss machinery."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["loss_matrix", "calibration_targets"],
+        artifacts_out=["enhanced_cps_weights"],
+        pydoc=True,
+    )
+)
 def reweight(
     original_weights,
     loss_matrix,

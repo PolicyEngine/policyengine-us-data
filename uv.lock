@@ -2139,7 +2139,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us-data"
-version = "1.98.0"
+version = "1.98.2"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },
@@ -2185,6 +2185,7 @@ dev = [
     { name = "mystmd" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "quantile-forest" },
     { name = "ruff" },
     { name = "tabulate" },
@@ -2232,6 +2233,7 @@ dev = [
     { name = "mystmd", specifier = ">=1.7.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "quantile-forest" },
     { name = "ruff", specifier = ">=0.9.0" },
     { name = "tabulate" },

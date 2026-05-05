@@ -1,3 +1,17 @@
+## [1.98.2] - 2026-05-05
+
+### Changed
+
+- Document the initial AI harness engineering structure, including vendor-neutral agent instructions, generated pipeline documentation artifacts, and Pydoc coverage for H5 build pipeline helpers. Add CI coverage for pipeline/Pydoc artifact generation and publish generated artifacts from the main-branch versioning workflow.
+
+
+## [1.98.1] - 2026-05-05
+
+### Fixed
+
+- Corrected ACA premium tax credit calibration targets to use IRS SOI total PTC columns, including target-year-uprated state-level PTC returns and amounts.
+
+
 ## [1.98.0] - 2026-05-05
 
 ### Added

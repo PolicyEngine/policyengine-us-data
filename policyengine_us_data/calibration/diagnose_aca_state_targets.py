@@ -22,6 +22,9 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
     create_aca_2025_takeup_override,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
 
 DEFAULT_HF_PREFIX = "hf://policyengine/policyengine-us-data/staging/states"
 STATE_ABBRS = sorted(STATE_CODES.values())
@@ -78,6 +81,14 @@ def _target_path(period: int) -> Path:
 def _load_targets(period: int) -> pd.DataFrame:
     targets = pd.read_csv(_target_path(period))
     targets["annual_spending"] = targets["spending"] * 12
+    soi_targets = load_aca_ptc_state_targets(period)
+    if soi_targets is not None:
+        spending_by_state = dict(
+            zip(soi_targets["state"], soi_targets["TotalPTCAmount"])
+        )
+        targets["annual_spending"] = (
+            targets["state"].map(spending_by_state).fillna(targets["annual_spending"])
+        )
     return targets
 
 

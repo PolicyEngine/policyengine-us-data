@@ -6,7 +6,7 @@ Uses uniform weights to isolate the consistency invariant
 from any optimizer behavior.
 
 Usage:
-    pytest tests/integration/test_xw_consistency.py -v
+    pytest validation/stage_1/test_xw_consistency.py -v
 """
 
 import tempfile

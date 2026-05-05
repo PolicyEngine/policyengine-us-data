@@ -1,45 +1,4 @@
-import pytest
-
-
-@pytest.mark.parametrize("year", [2022, 2024])
-def test_census_cps_generates(year: int):
-    from policyengine_us_data.datasets.cps.census_cps import (
-        CensusCPS_2022,
-        CensusCPS_2024,
-    )
-
-    dataset_by_year = {
-        2022: CensusCPS_2022,
-        2024: CensusCPS_2024,
-    }
-
-    dataset_by_year[year](require=True)
-
-
-@pytest.mark.parametrize("year", [2022, 2024])
-def test_census_cps_has_all_tables(year: int):
-    from policyengine_us_data.datasets.cps.census_cps import (
-        CensusCPS_2022,
-        CensusCPS_2024,
-    )
-
-    dataset_by_year = {
-        2022: CensusCPS_2022,
-        2024: CensusCPS_2024,
-    }
-
-    dataset = dataset_by_year[year](require=True)
-    TABLES = [
-        "person",
-        "family",
-        "tax_unit",
-        "spm_unit",
-    ]
-    # Try loading each as a dataframe
-
-    for table in TABLES:
-        df = dataset.load(table)
-        assert len(df) > 0
+import pandas as pd
 
 
 def test_resolve_person_usecols_allows_missing_optional_now_columns():
@@ -66,8 +25,6 @@ def test_resolve_person_usecols_allows_missing_optional_now_columns():
 
 
 def test_fill_missing_optional_person_columns_backfills_zeroes():
-    import pandas as pd
-
     from policyengine_us_data.datasets.cps.census_cps import (
         OPTIONAL_PERSON_COLUMNS,
         _fill_missing_optional_person_columns,
@@ -84,8 +41,6 @@ def test_fill_missing_optional_person_columns_backfills_zeroes():
 
 
 def test_create_tax_unit_table_preserves_census_tax_id_and_replaces_tax_id():
-    import pandas as pd
-
     from policyengine_us_data.datasets.cps.census_cps import CensusCPS_2024
 
     dataset = object.__new__(CensusCPS_2024)
@@ -136,8 +91,6 @@ def test_create_tax_unit_table_preserves_census_tax_id_and_replaces_tax_id():
 
 
 def test_create_tax_unit_table_accepts_census_documented_mode():
-    import pandas as pd
-
     from policyengine_us_data.datasets.cps.census_cps import CensusCPS_2024
 
     dataset = object.__new__(CensusCPS_2024)

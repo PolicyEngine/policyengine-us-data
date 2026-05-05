@@ -47,6 +47,8 @@ from policyengine_us_data.datasets.org import (
 from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +145,23 @@ def _encode_tenure_type(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+@pipeline_node(
+    PipelineNode(
+        id="source_impute",
+        label="Source-Impute Stratified CPS",
+        node_type="entrypoint",
+        description="Apply ACS, SIPP, ORG, and SCF donor imputations to the stratified CPS calibration input.",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["stratified_extended_cps_2024.h5"],
+        artifacts_out=["source_imputed_stratified_extended_cps_2024.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_source_impute.py"
+        ],
+    )
+)
 def impute_source_variables(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -275,6 +294,21 @@ def _person_state_fips(
     return np.repeat(state_fips, counts)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="acs_qrf",
+        label="ACS QRF Imputation",
+        node_type="library",
+        description="Impute rent and real estate tax variables from ACS donor data.",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_source_impute.py"
+        ],
+    )
+)
 def _impute_acs(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -361,6 +395,21 @@ def _impute_acs(
     return data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="sipp_qrf",
+        label="SIPP QRF Imputation",
+        node_type="library",
+        description="Impute tips, liquid assets, and vehicle assets from SIPP donor data.",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_source_impute.py"
+        ],
+    )
+)
 def _impute_sipp(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -730,6 +779,21 @@ def _impute_sipp(
     return data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="scf_qrf",
+        label="SCF QRF Imputation",
+        node_type="library",
+        description="Impute net worth and auto-loan variables from SCF donor data.",
+        source_file="policyengine_us_data/calibration/source_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_source_impute.py"
+        ],
+    )
+)
 def _impute_scf(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,

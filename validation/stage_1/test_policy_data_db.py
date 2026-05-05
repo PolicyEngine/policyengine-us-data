@@ -1,90 +1,20 @@
-"""
-End-to-end test for the calibration database build pipeline.
-
-Runs every ETL script in the same order as ``make database`` and
-validates the resulting SQLite database has the expected structure and
-content.  This catches API mismatches, missing imports, and data-loading
-errors that unit tests on individual tables would miss.
-"""
+"""Validate the built Stage 1 calibration database artifact."""
 
 import sqlite3
-import subprocess
-import sys
 
 import pytest
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
-# Directory and file for the calibration database.
-DB_DIR = STORAGE_FOLDER / "calibration"
-DB_PATH = DB_DIR / "policy_data.db"
-
-# Modules run in the same order as `make database` in the Makefile.
-# create_database_tables and validate_database do not use etl_argparser.
-PIPELINE_MODULES = [
-    ("policyengine_us_data.db.create_database_tables", []),
-    ("policyengine_us_data.db.create_initial_strata", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_national_targets", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_age", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_medicaid", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_snap", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_tanf", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_state_income_tax", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_irs_soi", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_aca_agi_state_targets", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_aca_marketplace", ["--year", "2024"]),
-    ("policyengine_us_data.db.etl_pregnancy", ["--year", "2024"]),
-    ("policyengine_us_data.db.validate_database", []),
-]
-
-REPO_ROOT = STORAGE_FOLDER.parent.parent
-
-
-def _run_module(
-    module_name: str,
-    extra_args: list,
-) -> subprocess.CompletedProcess:
-    """Run a database build module from the repo root and return the result."""
-    return subprocess.run(
-        [sys.executable, "-m", module_name] + extra_args,
-        capture_output=True,
-        text=True,
-        timeout=300,
-        cwd=REPO_ROOT,
-    )
+DB_PATH = STORAGE_FOLDER / "calibration" / "policy_data.db"
 
 
 @pytest.fixture(scope="module")
 def built_db():
-    """Build the calibration database from scratch once per module.
-
-    Removes any existing DB first so the test validates a clean build.
-    """
-    DB_DIR.mkdir(parents=True, exist_ok=True)
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-
-    errors = []
-    for module_name, args in PIPELINE_MODULES:
-        result = _run_module(module_name, args)
-        if result.returncode != 0:
-            errors.append(
-                f"{module_name} failed (rc={result.returncode}):\n"
-                f"  stderr (last 500 chars): "
-                f"{result.stderr[-500:]}"
-            )
-
-    if errors:
-        pytest.fail(f"{len(errors)} ETL script(s) failed:\n" + "\n\n".join(errors))
-
-    assert DB_PATH.exists(), "policy_data.db was not created"
+    """Return the Stage 1 DB artifact produced before validation runs."""
+    if not DB_PATH.exists():
+        pytest.skip("policy_data.db not built locally")
     return DB_PATH
-
-
-def test_all_etl_scripts_succeed(built_db):
-    """The fixture itself asserts all scripts pass; this makes the
-    assertion visible as a named test."""
-    assert built_db.exists()
 
 
 def test_expected_tables_exist(built_db):

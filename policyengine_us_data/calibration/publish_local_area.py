@@ -41,6 +41,8 @@ from policyengine_us_data.utils.takeup import (
     apply_block_takeup_to_arrays,
     reported_subsidized_marketplace_by_tax_unit,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
@@ -53,6 +55,24 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
+@pipeline_node(
+    PipelineNode(
+        id="local_h5_input_fingerprint",
+        label="Compute Local H5 Input Fingerprint",
+        node_type="library",
+        description="Compute a scope fingerprint for local H5 checkpoint and resume decisions.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="legacy",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        ],
+    )
+)
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,
@@ -89,6 +109,29 @@ def compute_input_fingerprint(
     return service.compute_scope_fingerprint(traceability)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="load_calibration_geography",
+        label="Load Calibration Geography",
+        node_type="library",
+        description="Resolve exact geography from saved bundles, package metadata, or legacy block artifacts.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="legacy",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
+        ],
+        artifacts_in=[
+            "calibration_weights.npy",
+            "geography_assignment.npz",
+            "stacked_blocks.npy",
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        ],
+    )
+)
 def load_calibration_geography(
     weights_path: Path,
     n_records: int,
@@ -255,6 +298,28 @@ def _build_reported_takeup_anchors(
     return reported_anchors
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_h5",
+        label="Build Local Area H5",
+        node_type="library",
+        description="Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+        details="This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="transitional",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_in=[
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5",
+        ],
+        artifacts_out=["states/*.h5", "districts/*.h5", "cities/*.h5", "US.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_publish_local_area.py",
+            "uv run pytest tests/integration/test_tiny_h5_pipeline.py",
+        ],
+    )
+)
 def build_h5(
     weights: np.ndarray,
     geography,
@@ -282,9 +347,6 @@ def build_h5(
     import h5py
     from collections import defaultdict
     from policyengine_core.enums import Enum
-    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
-        County,
-    )
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -545,10 +607,9 @@ def build_h5(
     data["state_fips"] = {
         time_period: clone_geo["state_fips"].astype(np.int32),
     }
-    county_names = np.array(
-        [County._member_names_[i].encode("utf-8") for i in clone_geo["county_index"]]
-    )
-    data["county"] = {time_period: county_names}
+    data["county"] = {
+        time_period: clone_geo["county_index"].astype(np.int32),
+    }
     data["county_fips"] = {
         time_period: clone_geo["county_fips"].astype(np.int32),
     }
@@ -712,6 +773,19 @@ def get_district_friendly_name(cd_geoid: str) -> str:
     return f"{state_code}-{district_num:02d}"
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_states",
+        label="Build State H5 Files",
+        node_type="library",
+        description="Build state-level H5 files from calibrated weights and exact geography.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["states/*.h5"],
+    )
+)
 def build_states(
     weights_path: Path,
     dataset_path: Path,
@@ -785,6 +859,19 @@ def build_states(
         upload_local_area_batch_to_hf(hf_queue)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_districts",
+        label="Build District H5 Files",
+        node_type="library",
+        description="Build congressional-district H5 files from calibrated weights and exact geography.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["districts/*.h5"],
+    )
+)
 def build_districts(
     weights_path: Path,
     dataset_path: Path,
@@ -859,6 +946,19 @@ def build_districts(
         upload_local_area_batch_to_hf(hf_queue)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_cities",
+        label="Build City H5 Files",
+        node_type="library",
+        description="Build supported city H5 files with county probability filtering.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["cities/*.h5"],
+    )
+)
 def build_cities(
     weights_path: Path,
     dataset_path: Path,

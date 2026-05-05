@@ -14,6 +14,7 @@ from typing import Literal
 
 import numpy as np
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     load_geography,
@@ -25,11 +26,37 @@ GEOGRAPHY_FILENAME = "geography_assignment.npz"
 LEGACY_BLOCKS_FILENAME = "stacked_blocks.npy"
 
 GeographySourceKind = Literal["saved_geography", "calibration_package", "legacy_blocks"]
+CanonicalGeographyChecksum = str
+
+__all__ = [
+    "CalibrationGeographyLoader",
+    "CanonicalGeographyChecksum",
+    "GeographySourceKind",
+    "ResolvedGeographySource",
+]
 
 
+@pipeline_node(
+    id="local_h5_resolved_geography_source",
+    label="ResolvedGeographySource",
+    node_type="library",
+    description="Resolved physical source used to recover exact calibration geography.",
+    source_file="policyengine_us_data/calibration/local_h5/geography_loader.py",
+    status="current",
+    stability="stable",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+    ],
+)
 @dataclass(frozen=True)
 class ResolvedGeographySource:
-    """Resolved physical source used to recover calibration geography."""
+    """Resolved physical source used to recover calibration geography.
+
+    Attributes:
+        kind: Source format selected by `CalibrationGeographyLoader`.
+        path: Path to the selected source artifact.
+    """
 
     kind: GeographySourceKind
     path: Path
@@ -46,8 +73,27 @@ def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
     return weights_path.with_name(f"{prefix}{artifact_name}")
 
 
+@pipeline_node(
+    id="calibration_geography_loader",
+    label="CalibrationGeographyLoader",
+    node_type="library",
+    description="Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
+    source_file="policyengine_us_data/calibration/local_h5/geography_loader.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+    ],
+)
 class CalibrationGeographyLoader:
-    """Resolve and load exact geography artifacts for publication flows."""
+    """Resolve, load, and checksum exact geography artifacts.
+
+    The loader hides compatibility ordering across current saved geography
+    bundles, calibration packages, and legacy block arrays. Public callers can
+    use `resolve_source` to inspect what would be loaded or `load` to return the
+    normalized `GeographyAssignment`.
+    """
 
     def resolve_source(
         self,
@@ -63,6 +109,16 @@ class CalibrationGeographyLoader:
         saved geography artifact first,
         calibration package payload when available,
         legacy blocks fallback last.
+
+        Args:
+            weights_path: Path to `calibration_weights.npy`; sibling artifacts
+                are searched relative to this file.
+            geography_path: Optional explicit saved geography artifact.
+            blocks_path: Optional explicit legacy stacked blocks artifact.
+            calibration_package_path: Optional explicit calibration package.
+
+        Returns:
+            Resolved geography source, or `None` when no supported source exists.
         """
 
         geo_candidates = []
@@ -111,7 +167,26 @@ class CalibrationGeographyLoader:
         blocks_path: Path | None = None,
         calibration_package_path: Path | None = None,
     ) -> GeographyAssignment:
-        """Load geography using the configured compatibility order."""
+        """Load exact geography using the configured compatibility order.
+
+        Args:
+            weights_path: Path to `calibration_weights.npy`.
+            n_records: Number of source household records expected before
+                cloning.
+            n_clones: Expected clone count, when known.
+            geography_path: Optional explicit saved geography artifact.
+            blocks_path: Optional explicit legacy stacked blocks artifact.
+            calibration_package_path: Optional explicit calibration package.
+
+        Returns:
+            Normalized `GeographyAssignment` with block, county, district, and
+            state arrays.
+
+        Raises:
+            FileNotFoundError: If no supported geography source exists.
+            ValueError: If the selected source is malformed or inconsistent with
+            `n_records` / `n_clones`.
+        """
 
         resolved = self.resolve_source(
             weights_path=Path(weights_path),
@@ -158,8 +233,21 @@ class CalibrationGeographyLoader:
         geography_path: Path | None = None,
         blocks_path: Path | None = None,
         calibration_package_path: Path | None = None,
-    ) -> str:
-        """Hash the normalized geography payload independent of source format."""
+    ) -> CanonicalGeographyChecksum:
+        """Hash normalized geography independent of source artifact format.
+
+        Args:
+            weights_path: Path to `calibration_weights.npy`.
+            n_records: Number of source household records expected before
+                cloning.
+            n_clones: Expected clone count, when known.
+            geography_path: Optional explicit saved geography artifact.
+            blocks_path: Optional explicit legacy stacked blocks artifact.
+            calibration_package_path: Optional explicit calibration package.
+
+        Returns:
+            SHA-256 digest prefixed with `"sha256:"`.
+        """
 
         import hashlib
 

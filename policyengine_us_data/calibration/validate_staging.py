@@ -42,6 +42,8 @@ from policyengine_us_data.calibration.sanity_checks import (
     run_sanity_checks,
 )
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +299,21 @@ def _get_reform_income_tax_delta(
     return reform_delta_cache[variable]
 
 
+@pipeline_node(
+    PipelineNode(
+        id="target_validation",
+        label="Validate Area Against Targets",
+        node_type="validation",
+        description="Run microsimulation target comparisons for one staged area.",
+        source_file="policyengine_us_data/calibration/validate_staging.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_validate_staging.py"
+        ],
+    )
+)
 def validate_area(
     sim,
     targets_df: pd.DataFrame,

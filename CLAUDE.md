@@ -1,109 +1,35 @@
-# CLAUDE.md - Guidelines for PolicyEngine US Data
+# Claude Instructions
 
-## Build Commands
-- `make install` - Install dependencies and dev environment
-- `make build` - Build the package using Python build
-- `make data` - Generate project datasets
+These instructions apply repository-wide.
 
-## Testing
+## Canonical guidance
 
-Canonical testing guidance lives in `docs/engineering/skills/testing.md`. If
-this file conflicts with that skill, follow the skill and update this adapter.
+Repository-wide AI-facing engineering guidance lives in `AGENTS.md`.
+Canonical skills live under `docs/engineering/skills/`.
 
-### Running Tests
-- `make test-unit` - Run unit tests only (fast, no data dependencies)
-- `make test-integration` - Run integration tests (requires built H5 datasets)
-- `make test` - Run all tests
-- `pytest tests/unit/ -v` - Unit tests directly
-- `pytest tests/integration/test_cps.py -v` - Specific integration test
-- `python scripts/run_quality_guards.py` - Run layout/import quality guards
+Use those files as the source of truth. This file is a Claude adapter and should
+stay thin; do not duplicate detailed testing, CI, formatting, or architecture
+rules here.
 
-### Test Organization
-Tests are in the top-level `tests/` directory, split into these sub-directories:
+## Required skill lookup
 
-- **`tests/unit/`** — Self-contained tests that use synthetic data, mocks, patches, or checked-in fixtures. Run in seconds with no external dependencies.
-  - `unit/datasets/` — unit tests for dataset code
-  - `unit/calibration/` — unit tests for calibration code
+Before opening, replacing, or sharing a PR, read
+`docs/engineering/skills/github-prs.md`.
 
-- **`tests/integration/`** — Tests that require built H5 datasets, HuggingFace downloads, Microsimulation objects, or database ETL. Named after the dataset they test.
-- **`tests/optimized/`** — Tests that exercise deployed Modal/staging seams.
+When adding, moving, or reviewing tests, read
+`docs/engineering/skills/testing.md` before editing. Then run
+`uv run --no-sync --with pyyaml python scripts/run_quality_guards.py` before
+handing off test-layout changes.
 
-### Test Placement Rules
-- **NEVER** put pytest files under `policyengine_us_data/tests/`; CI does not collect that tree
-- **NEVER** put tests that require H5 files or Microsimulation in `unit/`
-- **NEVER** put tests that use only synthetic data or mocks in `integration/`
-- **NEVER** import from `tests.conftest`; fixtures are discovered automatically and helper functions belong in local support modules
-- **NEVER** import helpers across test lanes, such as `tests.unit` from an integration test
-- Integration test files are named after their dataset dependency: `test_cps.py` tests `cps_2024.h5`
-- Sanity checks (value ranges, population counts) belong in the per-dataset integration test file, not in a separate sanity file
-- When adding a new integration test, add it to the existing per-dataset file if one exists
+When reviewing PRs that change pipeline behavior, stage boundaries, generated
+artifacts, or public library functions, read
+`docs/engineering/skills/documentation_review.md`.
 
-## Formatting
-- `make format` - Format all code using ruff
-- `ruff format --check .` - Check formatting without changing files
-- `ruff check .` - Run linter
+## Safety boundaries
 
-## Code Style Guidelines
-- **Imports**: Standard libraries first, then third-party, then internal
-- **Type Hints**: Use for all function parameters and return values
-- **Naming**: Classes: PascalCase, Functions/Variables: snake_case, Constants: UPPER_SNAKE_CASE
-- **Documentation**: Google-style docstrings with Args and Returns sections
-- **Error Handling**: Use validation checks with specific error messages
-- **Line Length**: ruff default (see pyproject.toml for any override)
-- **Python Version**: Targeting Python 3.12-3.14
+Do not fabricate data, validation metrics, academic results, or performance
+claims. If a result has not been computed from code or cited from a published
+source, mark it as pending instead.
 
-## CI/CD Structure
-Six workflow files in `.github/workflows/`:
-
-- **`pr.yaml`** — Runs on every PR to main: fork check, lint, uv.lock freshness, changelog fragment, unit tests with Codecov, smoke test, and docs build. Integration tests trigger automatically when the PR changes files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/`. ~2-3 minutes for unit tests.
-- **`push.yaml`** — Runs on push to main. Two paths:
-  - Version bump commits (`Update package version`): build and publish to PyPI
-  - All other commits: full Modal data build with integration tests
-  - Docs build and deploy to gh-pages runs unconditionally on every push.
-- **`pipeline.yaml`** — Dispatch only. Spawns the H5 generation pipeline on Modal with configurable GPU, epochs, and worker count.
-- **`versioning.yaml`** — Auto-bumps version when changelog.d fragments are merged. Commits `Update package version` which triggers the publish path in push.yaml.
-- **`local_area_publish.yaml`** — Manual dispatch. Builds and stages local area H5 files on Modal, then validates staged files.
-- **`local_area_promote.yaml`** — Manual dispatch. Promotes staged local area H5 files to production.
-
-## Git and PR Guidelines
-- Read `docs/engineering/skills/github-prs.md` before opening, replacing, or sharing a PR.
-- **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository
-- CI requires access to secrets that are not available to fork PRs for security reasons
-- Fork PRs will fail on data download steps and cannot be merged
-- Before opening a PR, always run `make push-pr-branch` from the repo root. This pushes the current branch to the `upstream` remote and sets the upstream tracking branch correctly for PR creation.
-- Do not prefix PR titles with `[codex]` or any other agent label. Use the plain descriptive title.
-- Always create branches directly on the upstream repository:
-  ```bash
-  git checkout main
-  git pull upstream main
-  git checkout -b your-branch-name
-  make push-pr-branch
-  ```
-- Use descriptive branch names like `fix-issue-123` or `add-feature-name`
-- Always run `make format` before committing
-
-## CRITICAL RULES FOR ACADEMIC INTEGRITY
-
-### NEVER FABRICATE DATA OR RESULTS
-- **NEVER make up numbers, statistics, or results** - This is academic malpractice
-- **NEVER invent performance metrics, error rates, or validation results**
-- **NEVER create fictional poverty rates, income distributions, or demographic statistics**
-- **NEVER fabricate cross-validation results, correlations, or statistical tests**
-- If you don't have actual data, say "Results to be determined" or "Analysis pending"
-- Always use placeholder text like "[TO BE CALCULATED]" for unknown values
-- When writing papers, use generic descriptions without specific numbers unless verified
-
-### When Writing Academic Papers
-- Only cite actual results from running code or published sources
-- Use placeholders for any metrics you haven't calculated
-- Clearly mark sections that need empirical validation
-- Never guess or estimate academic results
-- If asked to complete analysis without data, explain what would need to be done
-
-### Consequences of Fabrication
-- Fabricating data in academic work can lead to:
-  - Rejection from journals
-  - Blacklisting from future publications
-  - Damage to institutional reputation
-  - Legal consequences in funded research
-  - Career-ending academic misconduct charges
+Do not upload, promote, or publish data artifacts unless the user explicitly
+asks for that operation.

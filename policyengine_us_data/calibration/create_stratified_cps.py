@@ -14,6 +14,8 @@ import h5py
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 
 # Per-bracket caps for the high-AGI tail. The extended_cps passes through PUF
@@ -60,6 +62,23 @@ def _split_non_top_strata(agi, top_agi_floor):
     return non_top_mask, bottom_mask, middle_mask, bottom_25_threshold
 
 
+@pipeline_node(
+    PipelineNode(
+        id="create_stratified",
+        label="Create Stratified CPS Dataset",
+        node_type="entrypoint",
+        description="Create a calibration-sized stratified CPS sample while preserving high-AGI tail records.",
+        source_file="policyengine_us_data/calibration/create_stratified_cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["extended_cps_2024.h5"],
+        artifacts_out=["stratified_extended_cps_2024.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_create_stratified_cps.py"
+        ],
+    )
+)
 def create_stratified_cps_dataset(
     target_households=30_000,
     oversample_poor=False,
@@ -126,7 +145,7 @@ def create_stratified_cps_dataset(
     # are PUF templates with household_weight=0. Uncapped, they pile up in the
     # >$10M bracket and dominate the stratified dataset. Cap each bracket to a
     # target count, preferring weighted CPS records when available.
-    print(f"\nSelecting high-AGI records by bracket:")
+    print("\nSelecting high-AGI records by bracket:")
     print(
         f"  {'bracket':<22s} {'selected':>10s} {'available':>10s} "
         f"{'cap':>6s} {'weighted':>10s}"
@@ -201,7 +220,7 @@ def create_stratified_cps_dataset(
         r_middle = min(1.0, r_middle)
         r_bottom = min(1.0, r_bottom)
 
-    print(f"\nSampling rates:")
+    print("\nSampling rates:")
     print(f"  Bottom 25%: {r_bottom:.1%}")
     print(f"  Middle: {r_middle:.1%}")
 
@@ -227,7 +246,7 @@ def create_stratified_cps_dataset(
         )
         selected_mask[selected_middle] = True
 
-    print(f"\nFinal selection:")
+    print("\nFinal selection:")
     print(
         f"  High-AGI (>= ${top_agi_floor:,.0f}): "
         f"{int((selected_mask & ~non_top_mask).sum()):,}"
@@ -318,7 +337,7 @@ def create_stratified_cps_dataset(
             for period, values in periods.items():
                 grp.create_dataset(str(period), data=values)
 
-    print(f"Stratified CPS dataset saved successfully!")
+    print("Stratified CPS dataset saved successfully!")
 
     # Verify the saved file
     print("\nVerifying saved file...")
@@ -347,7 +366,7 @@ def create_stratified_cps_dataset(
 
     max_agi_original = np.max(agi)
     max_agi_stratified = np.max(agi_stratified)
-    print(f"\nMaximum AGI:")
+    print("\nMaximum AGI:")
     print(f"  Original: ${max_agi_original:,.0f}")
     print(f"  Stratified: ${max_agi_stratified:,.0f}")
 
@@ -379,7 +398,7 @@ if __name__ == "__main__":
         elif arg.isdigit():
             target = int(arg)
 
-    print(f"Creating stratified dataset:")
+    print("Creating stratified dataset:")
     print(f"  Target households: {target:,}")
     print(f"  High-AGI bracket caps: {HIGH_AGI_BRACKETS}")
     print(f"  Oversample poor: {oversample}")

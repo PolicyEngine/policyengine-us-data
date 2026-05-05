@@ -953,6 +953,41 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     assert audit["approximation_method"] == "lp_minimax_exact"
 
 
+def test_entropy_calibration_rejects_large_constraint_error_without_exception(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        calibration_module,
+        "calibrate_entropy",
+        lambda *args, **kwargs: (np.array([1.0, 1.0]), 3),
+    )
+    monkeypatch.setattr(
+        calibration_module,
+        "calibrate_lp_minimax",
+        lambda *args, **kwargs: (
+            np.array([10.0, 2.0]),
+            1,
+            {"best_case_max_pct_error": 0.0},
+        ),
+    )
+
+    weights, _, audit = calibrate_weights(
+        X=np.array([[1.0], [0.0]]),
+        y_target=np.array([1.0]),
+        baseline_weights=np.array([1.0, 1.0]),
+        method="entropy",
+        payroll_values=np.array([1.0, 0.0]),
+        payroll_target=10.0,
+        n_ages=1,
+        allow_approximate_entropy=False,
+    )
+
+    np.testing.assert_allclose(weights, np.array([10.0, 2.0]))
+    assert audit["lp_fallback_used"] is True
+    assert audit["approximation_method"] == "lp_minimax_exact"
+    assert "above allowable" in audit["entropy_error"]
+
+
 def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasible():
     feasible_A = np.array(
         [

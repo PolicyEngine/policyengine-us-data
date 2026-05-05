@@ -129,6 +129,52 @@ class TestPufCloneDataset:
         np.testing.assert_array_equal(result_states[:5], state_fips)
         np.testing.assert_array_equal(result_states[5:], state_fips)
 
+    def test_geography_fields_preserved(self):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        state_fips = np.array([1, 2, 36, 6, 48])
+        block_geoid = np.array(
+            [
+                "010010001001001",
+                "020010001001001",
+                "360610001001000",
+                "060010001001001",
+                "480010001001001",
+            ]
+        )
+        cd_geoid = np.array(["101", "202", "3610", "601", "4801"])
+        county_fips = np.array(["01001", "02001", "36061", "06001", "48001"])
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=state_fips,
+            block_geoid=block_geoid,
+            cd_geoid=cd_geoid,
+            county_fips=county_fips,
+            time_period=2024,
+            skip_qrf=True,
+        )
+
+        np.testing.assert_array_equal(
+            result["block_geoid"][2024][:5].astype(str),
+            block_geoid,
+        )
+        np.testing.assert_array_equal(
+            result["block_geoid"][2024][5:].astype(str),
+            block_geoid,
+        )
+        np.testing.assert_array_equal(
+            result["congressional_district_geoid"][2024][:5],
+            cd_geoid.astype(np.int32),
+        )
+        np.testing.assert_array_equal(
+            result["county_fips"][2024][:5].astype(str),
+            county_fips,
+        )
+        np.testing.assert_array_equal(
+            result["tract_geoid"][2024][:5].astype(str),
+            np.array([b[:11] for b in block_geoid]),
+        )
+
     def test_demographics_shared(self):
         data = _make_mock_data(n_persons=20, n_households=5)
         state_fips = np.array([1, 2, 36, 6, 48])

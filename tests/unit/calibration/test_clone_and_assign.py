@@ -15,6 +15,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
     load_global_block_distribution,
     load_sorted_block_cd_lookup,
     assign_random_geography,
+    assign_geography_within_state_county,
     double_geography_for_puf,
     reconstruct_geography_from_blocks,
     save_geography,
@@ -63,22 +64,24 @@ def _mock_distribution():
     blocks = MOCK_BLOCKS["block_geoid"].values
     cds = MOCK_BLOCKS["cd_geoid"].astype(str).values
     states = np.array([int(b[:2]) for b in blocks])
-    probs = MOCK_BLOCKS["probability"].values.astype(np.float64)
-    probs = probs / probs.sum()
-    return blocks, cds, states, probs
+    counties = np.array([b[:5] for b in blocks])
+    weights = MOCK_BLOCKS["probability"].values.astype(np.float64)
+    return blocks, cds, states, counties, weights
 
 
 class TestLoadGlobalBlockDistribution:
-    def test_loads_and_normalizes(self, tmp_path):
+    def test_loads_distribution(self, tmp_path):
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
         MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
         with patch(
             "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
-            blocks, cds, states, probs = load_global_block_distribution.__wrapped__()
+            blocks, cds, states, counties, weights = (
+                load_global_block_distribution.__wrapped__()
+            )
         assert len(blocks) == 9
-        np.testing.assert_almost_equal(probs.sum(), 1.0)
+        assert len(cds) == len(states) == len(counties) == len(weights) == 9
 
     def test_state_fips_extracted(self, tmp_path):
         csv_path = tmp_path / "block_cd_distributions.csv.gz"
@@ -87,10 +90,35 @@ class TestLoadGlobalBlockDistribution:
             "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
             tmp_path,
         ):
-            _, _, states, _ = load_global_block_distribution.__wrapped__()
+            _, _, states, _, _ = load_global_block_distribution.__wrapped__()
         assert states[0] == 1
         assert states[3] == 2
         assert states[5] == 36
+
+    def test_county_fips_extracted(self, tmp_path):
+        csv_path = tmp_path / "block_cd_distributions.csv.gz"
+        MOCK_BLOCKS.to_csv(csv_path, index=False, compression="gzip")
+        with patch(
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
+            tmp_path,
+        ):
+            _, _, _, counties, _ = load_global_block_distribution.__wrapped__()
+        np.testing.assert_array_equal(
+            counties[[0, 3, 5]],
+            np.array(["01001", "02001", "36010"]),
+        )
+
+    def test_uses_population_column_when_available(self, tmp_path):
+        csv_path = tmp_path / "block_cd_distributions.csv.gz"
+        df = MOCK_BLOCKS.copy()
+        df["population"] = np.arange(1, len(df) + 1)
+        df.to_csv(csv_path, index=False, compression="gzip")
+        with patch(
+            "policyengine_us_data.calibration.clone_and_assign.STORAGE_FOLDER",
+            tmp_path,
+        ):
+            *_, weights = load_global_block_distribution.__wrapped__()
+        np.testing.assert_array_equal(weights, df["population"].values)
 
 
 class TestAssignRandomGeography:
@@ -166,9 +194,9 @@ class TestAssignRandomGeography:
             rec_cds = [
                 r.cd_geoid[clone * r.n_records + rec] for clone in range(r.n_clones)
             ]
-            assert len(rec_cds) == len(set(rec_cds)), (
-                f"Record {rec} has duplicate CDs: {rec_cds}"
-            )
+            assert len(rec_cds) == len(
+                set(rec_cds)
+            ), f"Record {rec} has duplicate CDs: {rec_cds}"
 
     def test_missing_file_raises(self, tmp_path):
         fake = tmp_path / "nonexistent"
@@ -179,6 +207,60 @@ class TestAssignRandomGeography:
         ):
             with pytest.raises(FileNotFoundError):
                 load_global_block_distribution.__wrapped__()
+
+
+class TestAssignGeographyWithinStateCounty:
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_samples_within_county_when_available(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_geography_within_state_county(
+            state_fips=np.array([1, 2, 36]),
+            county_fips=np.array([1, 1, 10]),
+            seed=42,
+        )
+        assert all(
+            block.startswith(prefix)
+            for block, prefix in zip(
+                r.block_geoid,
+                ["01001", "02001", "36010"],
+            )
+        )
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_falls_back_to_state_when_county_missing(self, mock_load):
+        mock_load.return_value = _mock_distribution()
+        r = assign_geography_within_state_county(
+            state_fips=np.array([1, 2, 36]),
+            county_fips=np.array([999, 0, None], dtype=object),
+            seed=42,
+        )
+        assert [int(block[:2]) for block in r.block_geoid] == [1, 2, 36]
+
+    @patch(
+        "policyengine_us_data.calibration.clone_and_assign"
+        ".load_global_block_distribution"
+    )
+    def test_respects_population_weights(self, mock_load):
+        blocks = np.array(["010010001001001", "010010001001002"])
+        mock_load.return_value = (
+            blocks,
+            np.array(["101", "101"]),
+            np.array([1, 1]),
+            np.array(["01001", "01001"]),
+            np.array([99.0, 1.0]),
+        )
+        r = assign_geography_within_state_county(
+            state_fips=np.ones(500, dtype=int),
+            county_fips=np.ones(500, dtype=int),
+            seed=42,
+        )
+        assert (r.block_geoid == blocks[0]).sum() > 450
 
 
 class TestDoubleGeographyForPuf:

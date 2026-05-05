@@ -467,6 +467,9 @@ def reconcile_ss_subcomponents(
 def puf_clone_dataset(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
+    block_geoid: Optional[np.ndarray] = None,
+    cd_geoid: Optional[np.ndarray] = None,
+    county_fips: Optional[np.ndarray] = None,
     time_period: int = 2024,
     puf_dataset=None,
     skip_qrf: bool = False,
@@ -481,6 +484,9 @@ def puf_clone_dataset(
     Args:
         data: CPS dataset dict {variable: {time_period: array}}.
         state_fips: State FIPS per household, shape (n_households,).
+        block_geoid: Optional 15-character Census block GEOID per household.
+        cd_geoid: Optional congressional district GEOID per household.
+        county_fips: Optional 5-digit county FIPS per household.
         time_period: Tax year.
         puf_dataset: PUF dataset class or path for QRF training.
             If None, skips QRF (same as skip_qrf=True).
@@ -569,6 +575,25 @@ def puf_clone_dataset(
     new_data["state_fips"] = {
         time_period: np.concatenate([state_fips, state_fips]).astype(np.int32)
     }
+    if block_geoid is not None:
+        block_str = np.asarray([str(b).zfill(15) for b in block_geoid])
+        block_geoid = block_str.astype("S15")
+        new_data["block_geoid"] = {
+            time_period: np.concatenate([block_geoid, block_geoid])
+        }
+        tract_geoid = np.asarray([b[:11] for b in block_str]).astype("S11")
+        new_data["tract_geoid"] = {
+            time_period: np.concatenate([tract_geoid, tract_geoid])
+        }
+    if cd_geoid is not None:
+        new_data["congressional_district_geoid"] = {
+            time_period: np.concatenate([cd_geoid, cd_geoid]).astype(np.int32)
+        }
+    if county_fips is not None:
+        county_fips = np.asarray([f"{int(c):05d}" for c in county_fips]).astype("S5")
+        new_data["county_fips"] = {
+            time_period: np.concatenate([county_fips, county_fips])
+        }
 
     if y_full:
         for var in IMPUTED_VARIABLES:

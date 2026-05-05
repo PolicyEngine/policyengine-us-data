@@ -1250,6 +1250,12 @@ for year_idx in range(n_years):
             calibration_baseline_weights = calibration_blueprint["baseline_weights"]
             for idx, age_vector in calibration_blueprint["age_overrides"].items():
                 X_calibration[idx] = age_vector
+            if ss_values_calibration is not None:
+                for idx, value in calibration_blueprint["ss_overrides"].items():
+                    ss_values_calibration[idx] = value
+            if payroll_values_calibration is not None:
+                for idx, value in calibration_blueprint["payroll_overrides"].items():
+                    payroll_values_calibration[idx] = value
             blueprint_summary = calibration_blueprint["summary"]
             if year in display_years:
                 print(

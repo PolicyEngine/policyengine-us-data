@@ -100,8 +100,8 @@ def build_block_cd_distributions():
         print(f"Warning: {len(bad_sums)} CDs don't sum to 1.0")
 
     # Step 5: Prepare output
-    output = df[["cd_geoid", "GEOID", "probability"]].rename(
-        columns={"GEOID": "block_geoid"}
+    output = df[["cd_geoid", "GEOID", "probability", "POP20"]].rename(
+        columns={"GEOID": "block_geoid", "POP20": "population"}
     )
     output = output.sort_values(["cd_geoid", "probability"], ascending=[True, False])
 

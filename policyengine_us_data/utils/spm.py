@@ -18,18 +18,17 @@ def calculate_spm_thresholds_with_geoadj(
     year: int,
 ) -> np.ndarray:
     """
-    Calculate SPM thresholds using Census-provided geographic adjustments.
+    Calculate SPM thresholds using supplied geographic adjustments.
 
-    This function uses the SPM_GEOADJ values already computed by the Census
-    Bureau, combined with spm-calculator's base thresholds and equivalence
-    scale formula. This avoids the need for a Census API key.
+    This combines geographic adjustment factors with spm-calculator's base
+    thresholds and equivalence scale formula.
 
     Args:
         num_adults: Array of number of adults (18+) in each SPM unit.
         num_children: Array of number of children (<18) in each SPM unit.
         tenure_codes: Array of Census tenure/mortgage status codes.
             1 = owner with mortgage, 2 = owner without mortgage, 3 = renter.
-        geoadj: Array of Census SPM_GEOADJ geographic adjustment factors.
+        geoadj: Array of geographic adjustment factors.
         year: The year for which to calculate thresholds.
 
     Returns:

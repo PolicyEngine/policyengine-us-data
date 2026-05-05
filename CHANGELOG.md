@@ -1,3 +1,10 @@
+## [1.98.1] - 2026-05-05
+
+### Fixed
+
+- Corrected ACA premium tax credit calibration targets to use IRS SOI total PTC columns, including target-year-uprated state-level PTC returns and amounts.
+
+
 ## [1.98.0] - 2026-05-05
 
 ### Added

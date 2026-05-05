@@ -36,6 +36,8 @@ from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: 
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
+from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.utils.run_context import resolve_run_id  # noqa: E402
 
 app = modal.App(
@@ -336,6 +338,22 @@ def get_version() -> str:
     return pyproject["project"]["version"]
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_publishing_input_bundle",
+        label="Build Publishing Input Bundle",
+        node_type="library",
+        description="Assemble artifact paths and run metadata for scope fingerprinting.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle"
+        ],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
 def _build_publishing_input_bundle(
     *,
     weights_path: Path,
@@ -367,6 +385,22 @@ def _build_publishing_input_bundle(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="resolve_scope_fingerprint",
+        label="Resolve Scope Fingerprint",
+        node_type="library",
+        description="Compute the regional or national local H5 fingerprint from publishing inputs.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+        ],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
 def _resolve_scope_fingerprint(
     *,
     inputs: PublishingInputBundle,
@@ -393,6 +427,22 @@ def _resolve_scope_fingerprint(
     return computed_fingerprint
 
 
+@pipeline_node(
+    PipelineNode(
+        id="coordinate_work_partition",
+        label="Coordinate Work Partition",
+        node_type="library",
+        description="Compatibility wrapper for local H5 weighted work partitioning.",
+        source_file="modal_app/local_area.py",
+        status="legacy",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items"
+        ],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
 def partition_work(
     work_items: List[Dict],
     num_workers: int,
@@ -428,6 +478,20 @@ def get_completed_from_volume(run_dir: Path) -> set:
     return completed
 
 
+@pipeline_node(
+    PipelineNode(
+        id="run_local_h5_phase",
+        label="Run Local H5 Worker Phase",
+        node_type="entrypoint",
+        description="Spawn local H5 workers for one partitioned build phase and record completed outputs.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["staged phase outputs"],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
 def run_phase(
     phase_name: str,
     work_items: List[Dict],
@@ -539,6 +603,23 @@ def run_phase(
     max_containers=50,
     nonpreemptible=True,
 )
+@pipeline_node(
+    PipelineNode(
+        id="build_areas_worker",
+        label="Build Areas Worker",
+        node_type="entrypoint",
+        description="Modal worker entrypoint for state, district, city, or typed local H5 requests.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["one or more H5 files"],
+        validation_commands=[
+            "uv run pytest tests/unit/test_modal_local_area.py",
+            "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py",
+        ],
+    )
+)
 def build_areas_worker(
     branch: str,
     run_id: str,
@@ -639,6 +720,19 @@ def build_areas_worker(
     timeout=1800,
     nonpreemptible=True,
 )
+@pipeline_node(
+    PipelineNode(
+        id="validate_staging",
+        label="Validate Staged H5 Files",
+        node_type="validation",
+        description="Run staged H5 validation before upload and promotion.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
 def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     """Validate all expected files and generate manifest."""
     setup_repo(branch)
@@ -700,6 +794,20 @@ print(json.dumps(manifest))
     memory=8192,
     timeout=28800,
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="staging_upload",
+        label="Upload Local H5s To Staging",
+        node_type="entrypoint",
+        description="Upload completed local H5 outputs to staging storage before promotion.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_in=["staged local-area H5 files"],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
 )
 def upload_to_staging(
     branch: str, version: str, manifest: Dict, run_id: str = ""
@@ -840,6 +948,24 @@ def promote_publish(
     memory=8192,
     timeout=86400,
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="coordinate_publish",
+        label="Coordinate Local H5 Publish",
+        node_type="entrypoint",
+        description="Coordinate local H5 partitioning, worker phases, validation, staging, and promotion.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5", "orchestration"],
+        artifacts_in=[
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5",
+        ],
+        artifacts_out=["staged local-area H5 files"],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
 )
 def coordinate_publish(
     branch: str = "main",

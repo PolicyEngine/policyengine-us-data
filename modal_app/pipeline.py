@@ -98,6 +98,8 @@ from policyengine_us_data.utils.step_manifest import (  # noqa: E402
     read_step_manifest,
     run_manifest_path,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
+from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -395,6 +397,19 @@ print(json.dumps(result, indent=2, sort_keys=True))
 @app.function(
     image=image,
     timeout=300,
+)
+@pipeline_node(
+    PipelineNode(
+        id="verify_runtime_seams",
+        label="Verify Modal Runtime Seams",
+        node_type="validation",
+        description="Check import, subprocess, baked-file, and Modal function seams before heavy pipeline execution.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration"],
+        validation_commands=["uv run pytest tests/unit/test_pipeline.py"],
+    )
 )
 def verify_runtime_seams() -> dict:
     """Verify deployed-image imports and subprocess seams."""
@@ -716,6 +731,24 @@ def _write_validation_diagnostics(
     },
     secrets=[hf_secret, gcp_secret],
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="run_modal_pipeline",
+        label="Run Modal Pipeline",
+        node_type="entrypoint",
+        description="Coordinate data build, calibration package, weight fit, local H5 publishing, validation, and promotion.",
+        details="This is the current production orchestration surface. It remains documented as a bundled pathway while lower-level seams are migrated.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration"],
+        artifacts_out=["run metadata", "diagnostics", "published H5 artifacts"],
+        validation_commands=[
+            "uv run pytest tests/unit/test_pipeline.py",
+            "uv run pytest tests/integration/test_modal_pipeline_seams.py",
+        ],
+    )
 )
 def run_pipeline(
     branch: str = "main",
@@ -1602,6 +1635,21 @@ def _print_step_manifests(run_id: str) -> None:
     },
     secrets=[hf_secret, gcp_secret],
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="promote_pipeline_run",
+        label="Promote Pipeline Run",
+        node_type="entrypoint",
+        description="Promote a completed staged pipeline run without re-running computation.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration", "local_h5"],
+        artifacts_in=["staged H5 files", "run metadata"],
+        artifacts_out=["production H5 release"],
+        validation_commands=["uv run pytest tests/unit/test_pipeline.py"],
+    )
 )
 def promote_run(
     run_id: str,

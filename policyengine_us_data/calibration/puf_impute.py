@@ -22,6 +22,8 @@ import yaml
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -379,6 +381,21 @@ def _age_heuristic_ss_shares(
     return shares
 
 
+@pipeline_node(
+    PipelineNode(
+        id="ss_reconcile",
+        label="Social Security Subcomponent Reconciliation",
+        node_type="library",
+        description="Scale imputed Social Security subcomponents so they reconcile to total Social Security.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def reconcile_ss_subcomponents(
     data: Dict[str, Dict[int, np.ndarray]],
     n_cps: int,
@@ -431,6 +448,22 @@ def reconcile_ss_subcomponents(
         data[sub][time_period] = arr
 
 
+@pipeline_node(
+    PipelineNode(
+        id="record_double",
+        label="PUF Clone Dataset",
+        node_type="library",
+        description="Double CPS records and populate the clone half with PUF-imputed tax variables.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_out=["extended_cps_2024.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def puf_clone_dataset(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
@@ -558,6 +591,21 @@ def puf_clone_dataset(
     return new_data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="weeks_impute",
+        label="Weeks Unemployed Imputation",
+        node_type="library",
+        description="Impute weeks unemployed for the clone half using CPS donor relationships.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _impute_weeks_unemployed(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -649,6 +697,21 @@ def _impute_weeks_unemployed(
     return imputed_weeks
 
 
+@pipeline_node(
+    PipelineNode(
+        id="retire_impute",
+        label="Retirement Contribution Imputation",
+        node_type="library",
+        description="Impute and constrain retirement contribution inputs on the PUF clone half.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _impute_retirement_contributions(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -779,6 +842,21 @@ def _impute_retirement_contributions(
     return result
 
 
+@pipeline_node(
+    PipelineNode(
+        id="puf_qrf_pass",
+        label="PUF QRF Imputation Pass",
+        node_type="library",
+        description="Run Quantile Random Forest imputation from PUF tax variables onto CPS clone records.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _run_qrf_imputation(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,

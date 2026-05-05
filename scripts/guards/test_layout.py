@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import subprocess
 from pathlib import Path
 
@@ -12,7 +13,8 @@ TEST_LANES = {
     "tests/unit": Path("tests/unit"),
     "tests/integration": Path("tests/integration"),
 }
-ALLOWED_TEST_ROOTS = tuple(TEST_LANES.values())
+VALIDATION_ROOT = Path("validation")
+VALIDATION_STAGE_PATTERN = re.compile(r"^stage_[1-9]\d*$")
 PYTEST_FILE_PREFIX = "test_"
 PYTEST_FILE_SUFFIX = "_test.py"
 
@@ -57,10 +59,34 @@ def _is_under(path: Path, parent: Path) -> bool:
     return path == parent or parent in path.parents
 
 
+def _validation_stage_root(path: Path) -> Path | None:
+    if len(path.parts) < 2 or path.parts[0] != VALIDATION_ROOT.name:
+        return None
+
+    stage = path.parts[1]
+    if not VALIDATION_STAGE_PATTERN.fullmatch(stage):
+        return None
+
+    return VALIDATION_ROOT / stage
+
+
+def _allowed_test_root(path: Path) -> Path | None:
+    for root in TEST_LANES.values():
+        if _is_under(path, root):
+            return root
+
+    return _validation_stage_root(path)
+
+
 def _test_lane(path: Path) -> str | None:
     for name, root in TEST_LANES.items():
         if _is_under(path, root):
             return name
+
+    validation_root = _validation_stage_root(path)
+    if validation_root is not None:
+        return validation_root.as_posix()
+
     return None
 
 
@@ -70,6 +96,12 @@ def _module_root(module: str) -> str | None:
             f"{name.replace('/', '.')}."
         ):
             return name
+
+    if module == "validation" or module.startswith("validation."):
+        parts = module.split(".")
+        if len(parts) >= 2 and VALIDATION_STAGE_PATTERN.fullmatch(parts[1]):
+            return f"validation/{parts[1]}"
+
     return None
 
 
@@ -82,15 +114,16 @@ def _check_test_placement(files: list[Path]) -> list[str]:
         if _is_under(path, Path("policyengine_us_data/tests")):
             violations.append(
                 f"{path}: package-internal tests are not collected by CI; "
-                "move tests under tests/unit or tests/integration."
+                "move tests under tests/unit, tests/integration, or validation."
             )
             continue
 
-        if path.parts and path.parts[0] == "tests":
-            if not any(_is_under(path, root) for root in ALLOWED_TEST_ROOTS):
+        if path.parts and path.parts[0] in {"tests", "validation"}:
+            if _allowed_test_root(path) is None:
                 violations.append(
-                    f"{path}: pytest files under tests/ must live under "
-                    "tests/unit or tests/integration."
+                    f"{path}: pytest files under tests/ or validation/ must live "
+                    "under tests/unit, tests/integration, or a stage-specific "
+                    "validation/stage_<n>/ folder."
                 )
 
     return violations
@@ -99,7 +132,7 @@ def _check_test_placement(files: list[Path]) -> list[str]:
 def _check_test_imports(files: list[Path]) -> list[str]:
     violations = []
     for path in files:
-        if path.suffix != ".py" or not _is_under(path, Path("tests")):
+        if path.suffix != ".py" or _allowed_test_root(path) is None:
             continue
 
         source = (REPO_ROOT / path).read_text(encoding="utf-8")

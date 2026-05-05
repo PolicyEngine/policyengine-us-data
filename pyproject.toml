@@ -73,6 +73,7 @@ dev = [
     "pytest-cov",
     "mdformat>=1.0.0",
     "mdformat-gfm>=1.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [tool.setuptools]
@@ -90,6 +91,7 @@ testpaths = [
 ]
 markers = [
     "integration: tests that exercise integration-level behavior or external runtime seams",
+    "slow: tests or validators that require substantial local runtime or built artifacts",
 ]
 filterwarnings = [
     "ignore::SyntaxWarning:IPython.core.interactiveshell",

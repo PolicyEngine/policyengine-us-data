@@ -20,6 +20,8 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
+from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
+from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     resolve_run_id,
 )
@@ -122,10 +124,9 @@ SCRIPT_OUTPUTS = {
 CPS_BUILD_SCRIPT = "policyengine_us_data/datasets/cps/cps.py"
 PUF_BUILD_SCRIPT = "policyengine_us_data/datasets/puf/puf.py"
 
-# Test modules to run individually for checkpoint tracking
-TEST_MODULES = [
-    "tests/unit/",
-    "tests/integration/",
+# Post-build validation modules to run individually for checkpoint tracking.
+VALIDATION_MODULES = [
+    "validation/stage_1/",
 ]
 
 
@@ -389,6 +390,19 @@ def run_script_with_checkpoint(
     return script_path
 
 
+@pipeline_node(
+    PipelineNode(
+        id="cps_puf_build_phase",
+        label="CPS Then PUF Build Phase",
+        node_type="entrypoint",
+        description="Build CPS before PUF to avoid shared raw-cache and fixture races.",
+        source_file="modal_app/data_build.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/test_modal_data_build.py"],
+    )
+)
 def run_cps_then_puf_phase(
     branch: str,
     volume: modal.Volume,
@@ -415,7 +429,7 @@ def run_tests_with_checkpoints(
     volume: modal.Volume,
     env: dict,
 ) -> None:
-    """Run tests module-by-module, checkpointing progress.
+    """Run post-build validators module-by-module, checkpointing progress.
 
     Args:
         branch: Git branch name for checkpoint scoping.
@@ -423,13 +437,13 @@ def run_tests_with_checkpoints(
         env: Environment variables dict.
 
     Raises:
-        RuntimeError: If any test module fails.
+        RuntimeError: If any validation module fails.
     """
     commit = get_current_commit()
     checkpoint_dir = Path(VOLUME_MOUNT) / branch / commit / "tests"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    for module in TEST_MODULES:
+    for module in VALIDATION_MODULES:
         # Use stem for files, or last component for directories
         module_path = Path(module)
         if module_path.suffix:
@@ -443,14 +457,14 @@ def run_tests_with_checkpoints(
             print(f"Skipping {module} (already passed)")
             continue
 
-        print(f"Running tests: {module}")
+        print(f"Running validation: {module}")
         result = subprocess.run(
             _python_cmd("-u", "-m", "pytest", module, "-v"),
             env=env,
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Tests failed: {module}")
+            raise RuntimeError(f"Validation failed: {module}")
 
         # Mark as passed
         marker_file.touch()
@@ -469,6 +483,20 @@ def run_tests_with_checkpoints(
     cpu=8.0,
     timeout=28800,  # 8 hours
     nonpreemptible=True,
+)
+@pipeline_node(
+    PipelineNode(
+        id="build_datasets",
+        label="Build Datasets On Modal",
+        node_type="entrypoint",
+        description="Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
+        source_file="modal_app/data_build.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build", "orchestration"],
+        artifacts_out=["source_imputed_*.h5", "policy_data.db"],
+        validation_commands=["uv run pytest tests/unit/test_modal_data_build.py"],
+    )
 )
 def build_datasets(
     upload: bool = False,
@@ -764,11 +792,11 @@ def build_datasets(
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 
-    # Run tests with checkpointing
+    # Run post-build validators with checkpointing.
     if skip_tests:
         print("Skipping tests (--skip-tests)")
     else:
-        print("=== Running tests with checkpointing ===")
+        print("=== Running post-build validation with checkpointing ===")
         run_tests_with_checkpoints(branch, checkpoint_volume, env)
 
     validate_and_maybe_upload_datasets(

@@ -35,6 +35,8 @@ from policyengine_us.variables.household.demographic.geographic.county.county_en
     County,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 # === GEOID Parsing Functions ===
 # Block GEOID format: SSCCCTTTTTTBBBB (15 chars)
@@ -535,6 +537,21 @@ def assign_geography_for_cd(
     }
 
 
+@pipeline_node(
+    PipelineNode(
+        id="geo_derive",
+        label="Derive Geography From Blocks",
+        node_type="library",
+        description="Derive state, county, tract, PUMA, place, district, and other geography from block GEOIDs.",
+        source_file="policyengine_us_data/calibration/block_assignment.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5", "calibration_package"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_clone_and_assign.py"
+        ],
+    )
+)
 def derive_geography_from_blocks(
     block_geoids: np.ndarray,
 ) -> Dict[str, np.ndarray]:

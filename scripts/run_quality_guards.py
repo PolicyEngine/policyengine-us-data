@@ -10,12 +10,16 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.guards import test_layout  # noqa: E402
+from scripts.guards import pipeline_docs, pydoc_completeness, test_layout  # noqa: E402
 
 
 Guard = tuple[str, Callable[[], list[str]]]
 
-GUARDS: tuple[Guard, ...] = (("test-layout", test_layout.check),)
+GUARDS: tuple[Guard, ...] = (
+    ("test-layout", test_layout.check),
+    ("pipeline-docs", pipeline_docs.check),
+    ("pydoc-completeness", pydoc_completeness.check),
+)
 
 
 def main() -> int:

@@ -7,11 +7,24 @@ Use this skill whenever adding, moving, or reviewing tests.
 - Put unit tests under `tests/unit/`.
 - Put data-dependent, runtime, deployed Modal, and staging integration tests
   under `tests/integration/`.
+- Put post-build artifact validators under stage-specific folders such as
+  `validation/stage_1/`, `validation/stage_2/`, and so on. These checks consume
+  already-built artifacts for that stage and assert that their file structure,
+  runtime behavior, calibration outputs, or handoff contracts meet expectations.
+  Do not treat `validation/stage_1/` as a catch-all validator lane for later
+  stages.
 - Do not add pytest files under `policyengine_us_data/tests/`; CI does not
   collect that tree.
 
 ## Integration Test Roles
 
+- Use `validation/stage_<n>/` for post-build validators only, matching the stage
+  whose artifacts are being checked. For example, Stage 1 validators currently
+  live in `validation/stage_1/`; future Stage 2 validators should live in
+  `validation/stage_2/` instead of being folded into Stage 1. Validators should
+  not rebuild stage artifacts or exercise unrelated orchestration seams; they
+  should load the artifacts produced by the build and fail when those artifacts
+  do not satisfy the expected contract.
 - Treat the old full dataset-build PR path as legacy linear integration testing.
   It proves the production build can run, but it is not the model for new
   fixture-scale integration tests.
@@ -63,15 +76,18 @@ Use this skill whenever adding, moving, or reviewing tests.
 Run this before opening or updating a PR:
 
 ```bash
-python scripts/run_quality_guards.py
+uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
 ```
 
-The current guard enforces:
+The current guards enforce:
 
 - No package-internal pytest files under `policyengine_us_data/tests/`.
-- No pytest files outside `tests/unit/` and `tests/integration/`.
+- No pytest files outside `tests/unit/`, `tests/integration/`, and
+  stage-specific `validation/stage_<n>/` folders.
 - No imports from `tests.conftest`.
 - No imports across test lanes.
+- Structured pipeline documentation metadata is valid.
+- Stable pydoc-facing library nodes have basic docstring and typing coverage.
 
 When adding a new guard, register it in `scripts/run_quality_guards.py` so CI
 continues to expose a single `Quality guards` job.

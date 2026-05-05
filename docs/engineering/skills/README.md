@@ -9,5 +9,10 @@ first, then keep adapters thin.
 
 Current skills:
 
+- `documentation_review.md`: model-neutral review harness for checking pipeline
+  docs, Pydoc coverage, generated artifacts, and PR-facing confidence/impact
+  notes.
+- `pipeline_docs.md`: decorator-backed pipeline map maintenance and generated
+  pydoc-style artifacts.
 - `testing.md`: test layout, fixture scope, helper placement, and quality guard
   expectations.

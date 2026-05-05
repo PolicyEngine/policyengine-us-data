@@ -50,6 +50,8 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -272,7 +274,25 @@ class CPS(Dataset):
         if self.frac is not None and self.frac < 1.0:
             self.downsample(frac=self.frac)
 
-    def downsample(self, frac: float):
+    @pipeline_node(
+        PipelineNode(
+            id="downsample",
+            label="Downsample CPS",
+            node_type="library",
+            description="Subsample CPS arrays for released CPS vintages while full variants skip this step.",
+            source_file="policyengine_us_data/datasets/cps/cps.py",
+            status="current",
+            stability="stable",
+            pathways=["data_build"],
+            validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+        )
+    )
+    def downsample(self, frac: float) -> None:
+        """Subsample the loaded CPS dataset and preserve downsampled arrays.
+
+        Args:
+            frac: Fraction of records to retain.
+        """
         from policyengine_us import Microsimulation
 
         original_data: dict = self.load_dataset()
@@ -287,6 +307,19 @@ class CPS(Dataset):
         )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_rent",
+        label="Rent Imputation",
+        node_type="library",
+        description="Impute rent and real estate taxes using ACS donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(
         {
@@ -388,6 +421,19 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_takeup",
+        label="Benefit Takeup",
+        node_type="library",
+        description="Apply stochastic takeup and reported-anchor alignment for benefit programs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_takeup(self):
     data = self.load_dataset()
 
@@ -805,6 +851,21 @@ def _validate_raw_cps_schema(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_id_variables",
+        label="Add ID Variables",
+        node_type="library",
+        description="Create person, household, tax-unit, SPM-unit, family, and marital-unit IDs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="stable",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/datasets/test_cps_identification.py"
+        ],
+    )
+)
 def add_id_variables(
     cps: h5py.File,
     person: DataFrame,
@@ -854,6 +915,19 @@ def add_id_variables(
     cps["marital_unit_id"] = marital_unit_id.drop_duplicates().values
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_personal_variables",
+        label="Add Personal Variables",
+        node_type="library",
+        description="Populate CPS personal demographics and occupation-derived inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     """Add personal demographic variables.
 
@@ -973,6 +1047,19 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_personal_income_variables",
+        label="Add Income Variables",
+        node_type="library",
+        description="Populate CPS income, transfer, retirement, and QBI-related personal inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     """Add income variables.
 
@@ -1236,6 +1323,19 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_spm_variables",
+        label="Add SPM Variables",
+        node_type="library",
+        description="Populate CPS supplemental poverty measure variables and thresholds.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     from policyengine_us_data.utils.spm import (
         calculate_spm_thresholds_with_geoadj,
@@ -1285,7 +1385,26 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_household_variables",
+        label="Add Household Variables",
+        node_type="library",
+        description="Populate household geography variables including state, county, and NYC flag.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="stable",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
+    """Populate household-level geography variables used by PolicyEngine US.
+
+    Args:
+        cps: Output CPS H5 group receiving derived household variables.
+        household: Raw CPS household table.
+    """
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
     state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]
@@ -1308,6 +1427,19 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["in_nyc"] = np.isin(state_county_fips, nyc_full_county_fips)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_previous_year_income",
+        label="Previous-Year Income",
+        node_type="library",
+        description="Link CPS records across adjacent years and populate prior-year income inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_previous_year_income(self, cps: h5py.File) -> None:
     if self.previous_year_raw_cps is None:
         logging.info(
@@ -1401,6 +1533,19 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_ssn_card_type",
+        label="Add SSN Card Type",
+        node_type="library",
+        description="Classify SSN card type and immigration-related CPS inputs from ASEC conditions.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_ssn_card_type(
     cps: h5py.File,
     person: pd.DataFrame,
@@ -2287,6 +2432,19 @@ def _update_documentation_with_numbers(log_df, docs_dir):
     print(f"Documentation updated with population numbers: {doc_path}")
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_tips",
+        label="Tips And Asset Imputation",
+        node_type="library",
+        description="Impute tip income and household asset inputs from SIPP donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
 
@@ -2447,6 +2605,19 @@ def add_tips(self, cps: h5py.File):
     self.save_dataset(household_vehicle_data)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_org_inputs",
+        label="ORG Labor-Market Inputs",
+        node_type="library",
+        description="Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_org.py"],
+    )
+)
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
     n_persons = len(np.asarray(cps["age"]))
@@ -2550,6 +2721,19 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_auto_loan",
+        label="Auto Loan And Net Worth Imputation",
+        node_type="library",
+        description="Impute auto loan balance, auto loan interest, and net worth from SCF donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     """ "Add auto loan balance, interest and net_worth variable."""
     self.save_dataset(cps)

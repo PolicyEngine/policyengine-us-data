@@ -23,6 +23,8 @@ from policyengine_us_data.utils.policyengine import (
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 rng = np.random.default_rng(seed=64)
 
@@ -277,6 +279,19 @@ def simulate_business_is_sstb(puf, *, rng, probability_map=None):
     return rng.binomial(n=1, p=pr_sstb).astype(bool)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="simulate_qbi",
+        label="QBI Simulation",
+        node_type="library",
+        description="Simulate Section 199A W-2 wage and UBIA guardrail quantities from PUF income.",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_irs_puf.py"],
+    )
+)
 def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     """
     Simulate two Section 199A guard-rail quantities for every record
@@ -368,6 +383,19 @@ def simulate_w2_and_ubia_from_puf(puf, *, seed=None, diagnostics=True):
     return w2_wages, ubia
 
 
+@pipeline_node(
+    PipelineNode(
+        id="impute_puf_pension",
+        label="Impute PUF Pension Contributions",
+        node_type="library",
+        description="Impute pre-tax retirement contributions onto PUF tax units from CPS donors.",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_irs_puf.py"],
+    )
+)
 def impute_pension_contributions_to_puf(puf_df):
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import CPS_2024
@@ -411,6 +439,19 @@ def impute_pension_contributions_to_puf(puf_df):
     return predictions["pre_tax_contributions"]
 
 
+@pipeline_node(
+    PipelineNode(
+        id="impute_puf_demographics",
+        label="Impute PUF Demographics",
+        node_type="library",
+        description="Impute missing PUF demographics from demographic donor records.",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_irs_puf.py"],
+    )
+)
 def impute_missing_demographics(
     puf: pd.DataFrame, demographics: pd.DataFrame
 ) -> pd.DataFrame:
@@ -518,6 +559,19 @@ def decode_age_dependent(age_range: int) -> int:
     return rng.integers(low=lower, high=upper, endpoint=False)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="preprocess_puf",
+        label="Preprocess PUF",
+        node_type="library",
+        description="Rename IRS variables and derive PolicyEngine-ready PUF tax inputs.",
+        source_file="policyengine_us_data/datasets/puf/puf.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_irs_puf.py"],
+    )
+)
 def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     # Add variable renames
     puf.S006 = puf.S006 / 100

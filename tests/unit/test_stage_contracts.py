@@ -198,6 +198,42 @@ def test_invalid_schema_version_raises():
         )
 
 
+def test_from_dict_rejects_none_required_string_fields():
+    with pytest.raises(ValueError, match="logical_name"):
+        ArtifactRef.from_dict({"logical_name": None, "uri": "file:///artifact"})
+
+    payload = _stage_contract().to_dict()
+    payload["stage_id"] = None
+    with pytest.raises(ValueError, match="stage_id"):
+        StageContract.from_dict(payload)
+
+
+def test_mapping_fields_are_defensively_frozen():
+    parameters = {"seed": 42, "nested": {"n_clones": 430}}
+    metadata = {"target_count": 304}
+    contract = StageContract(
+        contract_type="calibration_package",
+        stage_id="2_build_calibration_package",
+        created_at="2026-05-05T10:00:03Z",
+        parameters=parameters,
+        fingerprint=_fingerprint(),
+        execution=_execution(),
+        metadata=metadata,
+    )
+
+    parameters["seed"] = 99
+    parameters["nested"]["n_clones"] = 1
+    metadata["target_count"] = 1
+
+    assert contract.parameters["seed"] == 42
+    assert contract.parameters["nested"]["n_clones"] == 430
+    assert contract.metadata["target_count"] == 304
+    with pytest.raises(TypeError):
+        contract.parameters["seed"] = 100
+    with pytest.raises(TypeError):
+        contract.parameters["nested"]["n_clones"] = 100
+
+
 def test_contract_to_json_is_deterministic_across_equivalent_contracts():
     first = _stage_contract(parameters={"n_clones": 430, "seed": 42})
     second = _stage_contract(parameters={"seed": 42, "n_clones": 430})
@@ -231,6 +267,16 @@ def test_read_contract_restores_stage_contract(tmp_path):
     restored = read_contract(target)
 
     assert restored == contract
+
+
+def test_write_contract_replaces_existing_file_without_temp_files(tmp_path):
+    target = tmp_path / "2_build_calibration_package.json"
+    write_contract(_stage_contract(parameters={"seed": 1}), target)
+
+    write_contract(_stage_contract(parameters={"seed": 2}), target)
+
+    assert read_contract(target).parameters["seed"] == 2
+    assert not list(tmp_path.glob(f".{target.name}.*.tmp"))
 
 
 def test_contract_json_ends_with_newline():

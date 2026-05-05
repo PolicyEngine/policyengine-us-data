@@ -67,9 +67,7 @@ def _validate_output_relative_path(output_relative_path: str) -> None:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_requests.py"],
 )
 @dataclass(frozen=True)
 class AreaFilter:
@@ -145,9 +143,7 @@ class AreaFilter:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_requests.py"],
 )
 @dataclass(frozen=True)
 class AreaBuildRequest:

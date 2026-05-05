@@ -70,7 +70,7 @@ META_FILE = WORK_DIR / "checkpoint_meta.json"
             "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService"
         ],
         validation_commands=[
-            "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+            "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
         ],
     )
 )
@@ -129,7 +129,7 @@ def compute_input_fingerprint(
             "stacked_blocks.npy",
         ],
         validation_commands=[
-            "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+            "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
         ],
     )
 )

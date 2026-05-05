@@ -35,9 +35,7 @@ def work_item_key(item: WorkItem) -> str:
     status="current",
     stability="stable",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_partitioning.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_partitioning.py"],
 )
 def partition_weighted_work_items(
     work_items: WorkItems,

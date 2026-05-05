@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_weights.py``."""
+"""Fixture helpers for ``test_weights.py``."""
 
 from __future__ import annotations
 
@@ -38,24 +38,21 @@ def _load_module(name: str, path: Path):
 
 
 def load_weights_exports():
-    """Load the local H5 weights module under a synthetic package name."""
+    """Load the build output weights module under a synthetic package name."""
 
-    local_h5_root = (
-        Path(__file__).resolve().parents[4]
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
+    build_outputs_root = (
+        Path(__file__).resolve().parents[3] / "policyengine_us_data" / "build_outputs"
     )
-    package_name = "local_h5_weights_fixture"
+    package_name = "build_outputs_weights_fixture"
 
     for name in list(sys.modules):
         if name == package_name or name.startswith(f"{package_name}."):
             sys.modules.pop(name, None)
 
-    _ensure_package(package_name, local_h5_root)
+    _ensure_package(package_name, build_outputs_root)
     weights_module = _load_module(
         f"{package_name}.weights",
-        local_h5_root / "weights.py",
+        build_outputs_root / "weights.py",
     )
     return {
         "module": weights_module,

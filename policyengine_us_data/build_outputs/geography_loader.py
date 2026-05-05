@@ -46,7 +46,7 @@ __all__ = [
     stability="stable",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
     ],
 )
 @dataclass(frozen=True)
@@ -83,7 +83,7 @@ def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
     ],
 )
 class CalibrationGeographyLoader:

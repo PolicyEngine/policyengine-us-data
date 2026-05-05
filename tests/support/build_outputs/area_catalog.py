@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_area_catalog.py``."""
+"""Fixture helpers for build-output area catalog tests."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def load_area_catalog_exports():
     """Load the local H5 area catalog and related request contracts."""
 
     build_outputs_root = (
-        Path(__file__).resolve().parents[4] / "policyengine_us_data" / "build_outputs"
+        Path(__file__).resolve().parents[3] / "policyengine_us_data" / "build_outputs"
     )
     package_name = "local_h5_area_catalog_fixture"
 

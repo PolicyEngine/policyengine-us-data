@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal, Mapping, get_args
+from types import MappingProxyType
+from typing import Any, Literal, get_args
 
 CONTRACT_SCHEMA_VERSION = "1"
 CONTRACT_FINGERPRINT_ALGORITHM = "sha256-canonical-json-v1"
@@ -80,6 +82,66 @@ def _require_non_empty(value: str | None, field_name: str) -> None:
         raise ValueError(f"{field_name} must be non-empty")
 
 
+def _required_string(data: Mapping[str, Any], field_name: str) -> str:
+    value = data.get(field_name)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty string")
+    return value
+
+
+def _optional_string(data: Mapping[str, Any], field_name: str) -> str | None:
+    value = data.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{field_name} must be a non-empty string when provided")
+    return value
+
+
+def _schema_version(data: Mapping[str, Any]) -> str:
+    value = data.get("schema_version", CONTRACT_SCHEMA_VERSION)
+    if not isinstance(value, str) or not value:
+        raise ValueError("schema_version must be a non-empty string")
+    return value
+
+
+def _mapping_value(data: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
+    value = data.get(field_name, {})
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping")
+    return value
+
+
+def _optional_mapping_value(
+    data: Mapping[str, Any],
+    field_name: str,
+) -> Mapping[str, Any] | None:
+    value = data.get(field_name)
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping when provided")
+    return value
+
+
+def _freeze_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {str(key): _freeze_value(item) for key, item in value.items()}
+        )
+    if isinstance(value, tuple | list):
+        return tuple(_freeze_value(item) for item in value)
+    return value
+
+
+def _freeze_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{field_name} must be a mapping")
+    return MappingProxyType(
+        {str(key): _freeze_value(item) for key, item in value.items()}
+    )
+
+
 def _jsonable_value(value: Any) -> Any:
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return value.to_dict()
@@ -108,6 +170,11 @@ class ArtifactRef:
         _require_non_empty(self.uri, "uri")
         if self.size_bytes is not None and self.size_bytes < 0:
             raise ValueError("size_bytes must be non-negative")
+        object.__setattr__(
+            self,
+            "metadata",
+            _freeze_mapping(self.metadata, "metadata"),
+        )
 
     def to_dict(self) -> ContractPayload:
         return {
@@ -123,15 +190,13 @@ class ArtifactRef:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ArtifactRef":
         return cls(
-            logical_name=str(data["logical_name"]),
-            uri=str(data["uri"]),
-            sha256=data.get("sha256"),
+            logical_name=_required_string(data, "logical_name"),
+            uri=_required_string(data, "uri"),
+            sha256=_optional_string(data, "sha256"),
             size_bytes=data.get("size_bytes"),
-            media_type=data.get("media_type"),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
-            metadata=dict(data.get("metadata", {})),
+            media_type=_optional_string(data, "media_type"),
+            schema_version=_schema_version(data),
+            metadata=_mapping_value(data, "metadata"),
         )
 
 
@@ -148,6 +213,11 @@ class Fingerprint:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
         _require_non_empty(self.algorithm, "algorithm")
         _require_non_empty(self.value, "value")
+        object.__setattr__(
+            self,
+            "material",
+            _freeze_mapping(self.material, "material"),
+        )
 
     def to_dict(self) -> ContractPayload:
         return {
@@ -160,14 +230,14 @@ class Fingerprint:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "Fingerprint":
         return cls(
-            algorithm=str(
-                data.get("algorithm", CONTRACT_FINGERPRINT_ALGORITHM)
+            algorithm=(
+                _required_string(data, "algorithm")
+                if "algorithm" in data
+                else CONTRACT_FINGERPRINT_ALGORITHM
             ),
-            value=str(data["value"]),
-            material=dict(data.get("material", {})),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
+            value=_required_string(data, "value"),
+            material=_mapping_value(data, "material"),
+            schema_version=_schema_version(data),
         )
 
 
@@ -246,6 +316,20 @@ class ExecutionRecord:
             raise ValueError("attempt must be non-negative")
         if self.duration_s is not None and self.duration_s < 0:
             raise ValueError("duration_s must be non-negative")
+        object.__setattr__(
+            self,
+            "error",
+            (
+                _freeze_mapping(self.error, "error")
+                if self.error is not None
+                else None
+            ),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            _freeze_mapping(self.metadata, "metadata"),
+        )
 
     def to_dict(self) -> ContractPayload:
         return {
@@ -277,11 +361,9 @@ class ExecutionRecord:
             reuse_summary=ReuseSummary.from_dict(
                 data.get("reuse_summary", {})
             ),
-            error=data.get("error"),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
-            metadata=dict(data.get("metadata", {})),
+            error=_optional_mapping_value(data, "error"),
+            schema_version=_schema_version(data),
+            metadata=_mapping_value(data, "metadata"),
         )
 
 
@@ -306,6 +388,16 @@ class SubstageRecord:
             raise ValueError(f"Invalid substage status: {self.status!r}")
         if self.reuse_mode not in SUBSTAGE_REUSE_MODES:
             raise ValueError(f"Invalid substage reuse mode: {self.reuse_mode!r}")
+        object.__setattr__(
+            self,
+            "parameters",
+            _freeze_mapping(self.parameters, "parameters"),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            _freeze_mapping(self.metadata, "metadata"),
+        )
 
     def to_dict(self) -> ContractPayload:
         return {
@@ -328,7 +420,7 @@ class SubstageRecord:
     def from_dict(cls, data: Mapping[str, Any]) -> "SubstageRecord":
         fingerprint = data.get("fingerprint")
         return cls(
-            substage_id=str(data["substage_id"]),
+            substage_id=_required_string(data, "substage_id"),
             status=data["status"],
             inputs=tuple(
                 ArtifactRef.from_dict(item) for item in data.get("inputs", ())
@@ -336,17 +428,15 @@ class SubstageRecord:
             outputs=tuple(
                 ArtifactRef.from_dict(item) for item in data.get("outputs", ())
             ),
-            parameters=dict(data.get("parameters", {})),
+            parameters=_mapping_value(data, "parameters"),
             fingerprint=(
                 Fingerprint.from_dict(fingerprint)
                 if fingerprint is not None
                 else None
             ),
             reuse_mode=data.get("reuse_mode", "observed_only"),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
-            metadata=dict(data.get("metadata", {})),
+            schema_version=_schema_version(data),
+            metadata=_mapping_value(data, "metadata"),
         )
 
 
@@ -374,6 +464,16 @@ class StageContract:
         _require_non_empty(self.contract_type, "contract_type")
         _require_non_empty(self.stage_id, "stage_id")
         _require_non_empty(self.created_at, "created_at")
+        object.__setattr__(
+            self,
+            "parameters",
+            _freeze_mapping(self.parameters, "parameters"),
+        )
+        object.__setattr__(
+            self,
+            "metadata",
+            _freeze_mapping(self.metadata, "metadata"),
+        )
 
     def to_dict(self) -> ContractPayload:
         return {
@@ -396,27 +496,25 @@ class StageContract:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "StageContract":
         return cls(
-            contract_type=str(data["contract_type"]),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
-            stage_id=str(data["stage_id"]),
-            run_id=data.get("run_id"),
-            created_at=str(data["created_at"]),
-            code_sha=data.get("code_sha"),
-            package_version=data.get("package_version"),
+            contract_type=_required_string(data, "contract_type"),
+            schema_version=_schema_version(data),
+            stage_id=_required_string(data, "stage_id"),
+            run_id=_optional_string(data, "run_id"),
+            created_at=_required_string(data, "created_at"),
+            code_sha=_optional_string(data, "code_sha"),
+            package_version=_optional_string(data, "package_version"),
             inputs=tuple(
                 ArtifactRef.from_dict(item) for item in data.get("inputs", ())
             ),
             outputs=tuple(
                 ArtifactRef.from_dict(item) for item in data.get("outputs", ())
             ),
-            parameters=dict(data.get("parameters", {})),
+            parameters=_mapping_value(data, "parameters"),
             fingerprint=Fingerprint.from_dict(data["fingerprint"]),
             substages=tuple(
                 SubstageRecord.from_dict(item)
                 for item in data.get("substages", ())
             ),
             execution=ExecutionRecord.from_dict(data["execution"]),
-            metadata=dict(data.get("metadata", {})),
+            metadata=_mapping_value(data, "metadata"),
         )

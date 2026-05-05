@@ -1,4 +1,4 @@
-from tests.unit.calibration.fixtures.test_local_h5_area_catalog import (
+from tests.support.build_outputs.area_catalog import (
     load_area_catalog_exports,
     make_geography,
 )

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from .core import StageContract
 
@@ -25,7 +27,25 @@ def write_contract(contract: StageContract, path: str | Path) -> None:
 
     contract_path = Path(path)
     contract_path.parent.mkdir(parents=True, exist_ok=True)
-    contract_path.write_text(contract_to_json(contract))
+    temp_path: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            "w",
+            delete=False,
+            dir=contract_path.parent,
+            encoding="utf-8",
+            prefix=f".{contract_path.name}.",
+            suffix=".tmp",
+        ) as handle:
+            temp_path = Path(handle.name)
+            handle.write(contract_to_json(contract))
+            handle.flush()
+            os.fsync(handle.fileno())
+        temp_path.replace(contract_path)
+    except Exception:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        raise
 
 
 def read_contract(path: str | Path) -> StageContract:

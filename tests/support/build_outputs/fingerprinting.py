@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_fingerprinting.py``."""
+"""Fixture helpers for build-output fingerprinting tests."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from tests.unit.calibration.fixtures.test_local_h5_geography_loader import (
+from tests.support.build_outputs.geography_loader import (
     write_saved_geography,
 )
 

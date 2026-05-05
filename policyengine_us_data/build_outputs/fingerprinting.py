@@ -84,7 +84,7 @@ class PublishingInputBundle:
     stability="stable",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 @dataclass(frozen=True)
@@ -119,7 +119,7 @@ class ArtifactIdentity:
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 @dataclass(frozen=True)
@@ -194,7 +194,7 @@ class TraceabilityBundle:
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 class FingerprintingService:

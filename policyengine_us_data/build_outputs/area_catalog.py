@@ -43,9 +43,7 @@ def _load_default_state_codes() -> Mapping[int, str]:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_area_catalog.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_area_catalog.py"],
 )
 class USAreaCatalog:
     """Construct typed H5 build requests for supported US geographies.

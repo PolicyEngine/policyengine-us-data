@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_geography_loader.py``."""
+"""Fixture helpers for build-output geography loader tests."""
 
 from __future__ import annotations
 

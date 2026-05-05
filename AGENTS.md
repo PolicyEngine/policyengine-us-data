@@ -13,6 +13,10 @@ When adding, moving, or reviewing tests, read
 `policyengine_us_data/tests/`, do not import from `tests.conftest`, and do not
 import helpers across test lanes.
 
+When reviewing PRs that change pipeline behavior, stage boundaries, generated
+artifacts, or public library functions, read
+`docs/engineering/skills/documentation_review.md`.
+
 ## GitHub PRs
 
 Do not open `policyengine-us-data` PRs from forks. CI expects same-repository

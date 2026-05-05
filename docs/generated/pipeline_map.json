@@ -665,8 +665,8 @@
   "metadata": {
     "api_node_count": 30,
     "canonical_stage_count": 5,
-    "decorated_object_count": 80,
-    "mapped_decorated_node_count": 50,
+    "decorated_object_count": 79,
+    "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17
   },
@@ -3608,33 +3608,22 @@
           "node_type": "external"
         },
         {
-          "description": "Base artifacts uploaded to staging paths for later promotion",
-          "id": "out_staged_base_s4c",
-          "label": "staged base datasets",
-          "node_type": "artifact"
-        },
-        {
-          "api_refs": [
-            "modal_app.pipeline.stage_base_datasets"
-          ],
-          "artifacts_out": [
-            "source_imputed_*.h5",
-            "policy_data.db"
-          ],
-          "description": "Run Modal data build, collect source-imputed H5s, and stage base artifacts for the pipeline run.",
+          "description": "Record base source-imputed datasets and policy database artifacts as staged run outputs.",
           "id": "stage_base_datasets",
-          "label": "Stage Base Datasets",
-          "node_type": "entrypoint",
-          "pathways": [
-            "orchestration",
-            "data_build"
-          ],
+          "label": "stage base datasets",
+          "node_type": "process",
           "source_file": "modal_app/pipeline.py",
           "stability": "moving",
           "status": "current",
           "validation_commands": [
             "uv run pytest tests/unit/test_pipeline.py"
           ]
+        },
+        {
+          "description": "Base artifacts uploaded to staging paths for later promotion",
+          "id": "out_staged_base_s4c",
+          "label": "staged base datasets",
+          "node_type": "artifact"
         }
       ],
       "stability": "moving",

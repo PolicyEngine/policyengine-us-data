@@ -57,5 +57,17 @@ Then run the focused extractor tests:
 uv run pytest tests/unit/test_pipeline_docs_extractor.py
 ```
 
+Run quality guards before committing pipeline documentation changes:
+
+```bash
+uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
+```
+
+The `pipeline-docs` guard checks stage IDs, canonical-stage wiring, edge and
+node metadata, duplicate decorator IDs, and validation command paths. The
+`pydoc-completeness` guard checks stable public library nodes for docstrings,
+return annotations, and `__all__` membership when the source module declares an
+export list.
+
 If the local platform cannot install the full project environment, use
 `uv run --no-sync --with pyyaml ...` for these docs-only commands.

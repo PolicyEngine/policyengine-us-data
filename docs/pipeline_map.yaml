@@ -1331,6 +1331,15 @@ stages:
     label: HuggingFace staging/{run_id}
     node_type: external
     description: Run-scoped staging prefix for base datasets
+  - id: stage_base_datasets
+    label: stage base datasets
+    node_type: process
+    description: Record base source-imputed datasets and policy database artifacts as staged run outputs.
+    source_file: modal_app/pipeline.py
+    status: current
+    stability: moving
+    validation_commands:
+    - uv run pytest tests/unit/test_pipeline.py
   - id: out_staged_base_s4c
     label: staged base datasets
     node_type: artifact

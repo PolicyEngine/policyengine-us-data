@@ -287,7 +287,12 @@ class CPS(Dataset):
             validation_commands=["uv run pytest tests/integration/test_cps.py"],
         )
     )
-    def downsample(self, frac: float):
+    def downsample(self, frac: float) -> None:
+        """Subsample the loaded CPS dataset and preserve downsampled arrays.
+
+        Args:
+            frac: Fraction of records to retain.
+        """
         from policyengine_us import Microsimulation
 
         original_data: dict = self.load_dataset()
@@ -1394,6 +1399,12 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     )
 )
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
+    """Populate household-level geography variables used by PolicyEngine US.
+
+    Args:
+        cps: Output CPS H5 group receiving derived household variables.
+        household: Raw CPS household table.
+    """
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
     state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]

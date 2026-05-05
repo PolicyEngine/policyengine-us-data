@@ -579,8 +579,8 @@ Stage base source-imputed datasets and policy database artifacts for the run
 | `in_source_imputed_s4c` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
 | `in_policy_db_s4c` policy_data.db | `artifact` | `unknown` | `unknown` |  |
 | `hf_staging_base_s4c` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `stage_base_datasets` stage base datasets | `process` | `current` | `moving` |  |
 | `out_staged_base_s4c` staged base datasets | `artifact` | `unknown` | `unknown` |  |
-| `stage_base_datasets` Stage Base Datasets | `entrypoint` | `current` | `moving` | `modal_app.pipeline.stage_base_datasets` |
 
 #### Edges
 
@@ -817,7 +817,7 @@ Compatibility wrapper over the extracted pure partitioning seam.
 ### `modal_app.data_build.run_cps_then_puf_phase`
 
 ```python
-def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None) -> None
+def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None) -> None
 ```
 
 Build CPS before PUF because PUF pension imputation loads CPS_2024.
@@ -953,7 +953,7 @@ Run a single build phase, spawning workers and collecting results.
 ### `modal_app.pipeline.run_pipeline`
 
 ```python
-def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '') -> str
+def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '') -> str
 ```
 
 Run the full pipeline end-to-end.

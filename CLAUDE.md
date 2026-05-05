@@ -15,7 +15,12 @@ rules here.
 
 When adding, moving, or reviewing tests, read
 `docs/engineering/skills/testing.md` before editing. Then run
-`python scripts/run_quality_guards.py` before handing off test-layout changes.
+`uv run --no-sync --with pyyaml python scripts/run_quality_guards.py` before
+handing off test-layout changes.
+
+When reviewing PRs that change pipeline behavior, stage boundaries, generated
+artifacts, or public library functions, read
+`docs/engineering/skills/documentation_review.md`.
 
 ## Safety boundaries
 

@@ -61,7 +61,7 @@
     "docstring": "\"Add auto loan balance, interest and net_worth variable.",
     "id": "add_auto_loan",
     "kind": "function",
-    "line": 2643,
+    "line": 2737,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
@@ -85,10 +85,10 @@
     "source_file": "policyengine_us_data/datasets/cps/cps.py"
   },
   "add_household_variables": {
-    "docstring": "",
+    "docstring": "Populate household-level geography variables used by PolicyEngine US.\n\nArgs:\n    cps: Output CPS H5 group receiving derived household variables.\n    household: Raw CPS household table.",
     "id": "add_household_variables",
     "kind": "function",
-    "line": 1313,
+    "line": 1401,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_household_variables"
@@ -115,7 +115,7 @@
     "docstring": "Add basic ID and weight variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The person table of the ASEC.\n    tax_unit (DataFrame): The tax unit table created from the person table\n        of the ASEC.\n    family (DataFrame): The family table of the ASEC.\n    spm_unit (DataFrame): The SPM unit table created from the person table\n        of the ASEC.\n    household (DataFrame): The household table of the ASEC.",
     "id": "add_id_variables",
     "kind": "function",
-    "line": 787,
+    "line": 869,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_id_variables"
@@ -142,7 +142,7 @@
     "docstring": "Impute ORG-derived wage and union inputs onto CPS persons.",
     "id": "add_org_inputs",
     "kind": "function",
-    "line": 2527,
+    "line": 2621,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
@@ -169,7 +169,7 @@
     "docstring": "Add income variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.\n    year (int): The CPS year",
     "id": "add_personal_income_variables",
     "kind": "function",
-    "line": 981,
+    "line": 1063,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_income_variables"
@@ -196,7 +196,7 @@
     "docstring": "Add personal demographic variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.",
     "id": "add_personal_variables",
     "kind": "function",
-    "line": 849,
+    "line": 931,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_variables"
@@ -223,7 +223,7 @@
     "docstring": "",
     "id": "add_previous_year_income",
     "kind": "function",
-    "line": 1349,
+    "line": 1443,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_previous_year_income"
@@ -250,7 +250,7 @@
     "docstring": "",
     "id": "add_rent",
     "kind": "function",
-    "line": 242,
+    "line": 323,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_rent"
@@ -277,7 +277,7 @@
     "docstring": "",
     "id": "add_spm_variables",
     "kind": "function",
-    "line": 1251,
+    "line": 1339,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_spm_variables"
@@ -304,7 +304,7 @@
     "docstring": "Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.\nCodes:\n- 0: \"NONE\" - Likely undocumented immigrants\n- 1: \"CITIZEN\" - US citizens (born or naturalized)\n- 2: \"NON_CITIZEN_VALID_EAD\" - Non-citizens with work/study authorization\n- 3: \"OTHER_NON_CITIZEN\" - Non-citizens with indicators of legal status",
     "id": "add_ssn_card_type",
     "kind": "function",
-    "line": 1455,
+    "line": 1549,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_ssn_card_type"
@@ -331,7 +331,7 @@
     "docstring": "",
     "id": "add_takeup",
     "kind": "function",
-    "line": 356,
+    "line": 437,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_takeup"
@@ -358,7 +358,7 @@
     "docstring": "",
     "id": "add_tips",
     "kind": "function",
-    "line": 2354,
+    "line": 2448,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_tips"
@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 602,
+    "line": 623,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -474,7 +474,7 @@
     "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    stage_only: Upload to HF staging only, without promoting a release.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 441,
+    "line": 502,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 336,
+    "line": 357,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle",
@@ -778,7 +778,7 @@
     "docstring": "Replace clone-half person-level feature variables with donor matches.",
     "id": "clone_features",
     "kind": "function",
-    "line": 372,
+    "line": 379,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions"
@@ -810,7 +810,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 943,
+    "line": 970,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -845,7 +845,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 425,
+    "line": 446,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
@@ -873,7 +873,7 @@
     "docstring": "Second-stage QRF: train on CPS, predict for PUF clones.\n\nFor the PUF clone half of the extended CPS we need plausible values\nof CPS-only variables (retirement distributions, transfers, hours,\nSPM components, etc.) that are consistent with the clone's\nPUF-imputed income -- not just naively copied from the CPS donor.\n\nWe train a QRF on CPS person-level data where:\n  * predictors = demographics + key income variables\n  * outputs    = CPS-only variables listed in\n                 ``CPS_ONLY_IMPUTED_VARIABLES``\n\nFor PUF clone prediction we use the PUF-imputed income values\nfrom the second half of ``data`` (the clone half, which already\nhas PUF-imputed income from stage 1).\n\nUses ``fit_predict()`` with ``max_train_samples`` instead of\nmanual sampling + separate fit/predict.\n\nArgs:\n    data: Extended dataset dict after ``puf_clone_dataset()`` --\n        already doubled, with PUF-imputed income in the second half.\n    time_period: Tax year.\n    dataset_path: Path to the CPS h5 file for Microsimulation.\n\nReturns:\n    DataFrame with one column per CPS-only variable, containing\n    predicted values for the PUF clone half (person-level).",
     "id": "cps_only",
     "kind": "function",
-    "line": 411,
+    "line": 418,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables"
@@ -905,7 +905,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 348,
+    "line": 407,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -925,7 +925,7 @@
       ]
     },
     "object_path": "modal_app.data_build.run_cps_then_puf_phase",
-    "signature": "def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None) -> None",
+    "signature": "def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None) -> None",
     "source_file": "modal_app/data_build.py"
   },
   "create_stratified": {
@@ -962,10 +962,10 @@
     "source_file": "policyengine_us_data/calibration/create_stratified_cps.py"
   },
   "downsample": {
-    "docstring": "",
+    "docstring": "Subsample the loaded CPS dataset and preserve downsampled arrays.\n\nArgs:\n    frac: Fraction of records to retain.",
     "id": "downsample",
     "kind": "function",
-    "line": 214,
+    "line": 290,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.CPS.downsample"
@@ -985,7 +985,7 @@
       ]
     },
     "object_path": "policyengine_us_data.datasets.cps.cps.CPS.downsample",
-    "signature": "def downsample(self, frac: float)",
+    "signature": "def downsample(self, frac: float) -> None",
     "source_file": "policyengine_us_data/datasets/cps/cps.py"
   },
   "fit_model": {
@@ -1026,7 +1026,7 @@
     "docstring": "Remove variables that are computed by policyengine-us.\n\nVariables with formulas, ``adds``, or ``subtracts`` are\nrecomputed by the simulation engine, so storing them wastes\nspace and can mislead validation.\n\nAggregate variables whose ``adds`` include a behavioral-\nresponse input (e.g. ``employment_income_before_lsr``) are\nrenamed to that input before dropping so the raw data is\npreserved under the correct input-variable name.",
     "id": "formula_drop",
     "kind": "function",
-    "line": 1062,
+    "line": 1079,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
@@ -1609,10 +1609,10 @@
     "source_file": "policyengine_us_data/datasets/puf/puf.py"
   },
   "promote_pipeline_run": {
-    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote H5s (regional + national) via existing\n   promote functions\n3. Register version in version_manifest.json\n4. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    version: Override version (default: from run\n        metadata).\n\nReturns:\n    Summary message.",
+    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    version: Override version (default: from run\n        metadata).\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1302,
+    "line": 1654,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -1674,7 +1674,7 @@
     "docstring": "Replace PUF clone half of CPS-only variables with QRF predictions.\n\nAfter ``puf_clone_dataset()`` the CPS-only variables in the second\nhalf are naive copies of the CPS donor values. This function\nreplaces them with the second-stage QRF predictions that are\nconsistent with the clone's PUF-imputed income.\n\nArgs:\n    data: Extended dataset dict (already doubled).\n    predictions: DataFrame from ``_impute_cps_only_variables()``.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 file for entity mapping.\n\nReturns:\n    Modified data dict with CPS-only variables spliced in.",
     "id": "qrf_pass2",
     "kind": "function",
-    "line": 798,
+    "line": 815,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"
@@ -1735,7 +1735,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 383,
+    "line": 404,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
@@ -1861,7 +1861,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 474,
+    "line": 495,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -1888,10 +1888,10 @@
     "source_file": "modal_app/local_area.py"
   },
   "run_modal_pipeline": {
-    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n\nReturns:\n    The run ID for use with promote.",
+    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 839,
+    "line": 753,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -1918,7 +1918,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.run_pipeline",
-    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '') -> str",
+    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '') -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "sanity_checks": {
@@ -2089,43 +2089,11 @@
     "signature": "def reconcile_ss_subcomponents(data: Dict[str, Dict[int, np.ndarray]], n_cps: int, time_period: int) -> None",
     "source_file": "policyengine_us_data/calibration/puf_impute.py"
   },
-  "stage_base_datasets": {
-    "docstring": "Upload source_imputed + policy_data.db from pipeline\nvolume to HF staging/.\n\nClones the repo and shells out to upload_to_staging_hf()\nvia subprocess, consistent with other Modal apps.\n\nArgs:\n    run_id: The current run ID (for logging).\n    version: Package version string for the commit.\n    branch: Git branch for repo clone.",
-    "id": "stage_base_datasets",
-    "kind": "function",
-    "line": 343,
-    "metadata": {
-      "api_refs": [
-        "modal_app.pipeline.stage_base_datasets"
-      ],
-      "artifacts_out": [
-        "source_imputed_*.h5",
-        "policy_data.db"
-      ],
-      "description": "Run Modal data build, collect source-imputed H5s, and stage base artifacts for the pipeline run.",
-      "id": "stage_base_datasets",
-      "label": "Stage Base Datasets",
-      "node_type": "entrypoint",
-      "pathways": [
-        "orchestration",
-        "data_build"
-      ],
-      "source_file": "modal_app/pipeline.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/test_pipeline.py"
-      ]
-    },
-    "object_path": "modal_app.pipeline.stage_base_datasets",
-    "signature": "def stage_base_datasets(run_id: str, version: str, branch: str) -> None",
-    "source_file": "modal_app/pipeline.py"
-  },
   "staging_upload": {
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 791,
+    "line": 812,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -2236,7 +2204,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 715,
+    "line": 736,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"
@@ -2263,7 +2231,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 509,
+    "line": 414,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

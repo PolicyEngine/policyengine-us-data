@@ -63,15 +63,17 @@ Use this skill whenever adding, moving, or reviewing tests.
 Run this before opening or updating a PR:
 
 ```bash
-python scripts/run_quality_guards.py
+uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
 ```
 
-The current guard enforces:
+The current guards enforce:
 
 - No package-internal pytest files under `policyengine_us_data/tests/`.
 - No pytest files outside `tests/unit/` and `tests/integration/`.
 - No imports from `tests.conftest`.
 - No imports across test lanes.
+- Structured pipeline documentation metadata is valid.
+- Stable pydoc-facing library nodes have basic docstring and typing coverage.
 
 When adding a new guard, register it in `scripts/run_quality_guards.py` so CI
 continues to expose a single `Quality guards` job.

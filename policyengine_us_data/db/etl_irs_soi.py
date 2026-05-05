@@ -92,7 +92,7 @@ GEOGRAPHY_FILE_TARGET_SPECS = [
     dict(code="18425", name="salt", breakdown=None),
     dict(code="06500", name="income_tax", breakdown=None),
     dict(code="05800", name="income_tax_before_credits", breakdown=None),
-    dict(code="85530", name="aca_ptc", breakdown=None),
+    dict(code="85770", name="aca_ptc", breakdown=None),
 ]
 
 """See the 22incddocguide.docx manual from the IRS SOI"""

@@ -43,20 +43,20 @@ def test_aca_targets_fall_back_to_earliest_available_year():
     assert data_year == 2024
 
 
-def test_aca_national_targets_annualize_2025_state_file():
+def test_aca_national_targets_use_uprated_soi_total_ptc_amount():
     spending, enrollment, data_year = _get_aca_national_targets(2025)
 
     assert data_year == 2025
     assert enrollment == 21_822_894
-    assert spending == pytest.approx(143_951_057_388.72)
+    assert spending == pytest.approx(101_191_587_487.48738)
 
 
-def test_aca_national_targets_annualize_2026_state_file():
+def test_aca_national_targets_reuse_latest_uprated_soi_total_ptc_amount():
     spending, enrollment, data_year = _get_aca_national_targets(2026)
 
     assert data_year == 2026
     assert enrollment == 20_035_756
-    assert spending == pytest.approx(156_175_881_600.0)
+    assert spending == pytest.approx(101_191_587_487.48738)
 
 
 def test_medicaid_targets_roll_forward_to_2025():

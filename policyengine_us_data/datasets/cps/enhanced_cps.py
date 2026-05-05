@@ -15,6 +15,9 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024_Half,
     CPS_2024,
 )
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     ACA_POST_CALIBRATION_PERSON_TARGETS,
@@ -84,6 +87,13 @@ def _load_aca_enrollment_targets(period: int) -> dict[str, float] | None:
 
 
 def _load_aca_spending_targets(period: int) -> dict[str, float] | None:
+    soi_targets = load_aca_ptc_state_targets(period, storage_folder=STORAGE_FOLDER)
+    if soi_targets is not None:
+        return {
+            str(row.state): float(row.TotalPTCAmount)
+            for row in soi_targets.itertuples(index=False)
+        }
+
     path = (
         STORAGE_FOLDER
         / "calibration_targets"

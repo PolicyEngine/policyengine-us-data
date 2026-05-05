@@ -11,6 +11,13 @@
   • Location: https://www.cms.gov/files/document/effectuated-enrollment-early-snapshot-2025-and-full-year-2024-average.pdf  
   • Notes: `enrollment` is APTC enrollment by state; `spending` is monthly APTC enrollment multiplied by average monthly APTC for APTC recipients
 
+- **aca_ptc_state.csv**
+  • Source: IRS SOI Historical Table 2, total premium tax credit columns `N85770` and `A85770`
+  • Date: tax year 2022
+  • Created by: `policyengine_us_data/storage/calibration_targets/refresh_aca_ptc_state_targets.py`
+  • Location: https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv
+  • Notes: used as the ACA PTC amount target because the model variable `aca_ptc` is total premium tax credit entitlement, not CMS advance PTC outlays. Target-year calibration applies checked-in 2022-to-target-year ACA PTC multipliers when available.
+
 - **agi_state.csv**
   • Source: IRS SOI state data file used by legacy local calibration
   • Date: tax year 2022

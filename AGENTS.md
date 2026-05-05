@@ -15,10 +15,21 @@ import helpers across test lanes.
 
 ## GitHub PRs
 
-Do not open `policyengine-us-data` PRs from forks. CI expects same-repository
-branches on `PolicyEngine/policyengine-us-data`, so push PR branches to the
-`upstream` remote (or another remote whose `gh repo view --json nameWithOwner`
-is `PolicyEngine/policyengine-us-data`). If you cannot push a branch to the
-upstream repository, stop and ask for access instead of creating a fork-based
-PR. Before sharing a PR, verify that the PR head repository is
-`PolicyEngine/policyengine-us-data`.
+Never open `policyengine-us-data` PRs from forks. CI rejects fork-based PRs
+before running the real checks, which wastes the reviewer and agent loop.
+
+Before creating or sharing any PR, all developers and agents must:
+
+1. Confirm the target remote is the canonical repository:
+   `gh repo view PolicyEngine/policyengine-us-data --json nameWithOwner`.
+2. Push the branch to that repository, for example:
+   `git push upstream HEAD:<branch-name>`.
+3. Create the PR from the same repository, for example:
+   `gh pr create --repo PolicyEngine/policyengine-us-data --head <branch-name> --base main`.
+4. Verify the PR head repository before reporting it:
+   `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
+
+The PR is valid only if the head repository is `PolicyEngine/policyengine-us-data`.
+If you cannot push to the canonical repository, stop and ask for access. Do not
+create a fork PR as a fallback. If you accidentally create one, immediately
+close it and replace it with a same-repository PR.

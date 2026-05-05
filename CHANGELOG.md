@@ -1,3 +1,10 @@
+## [1.99.0] - 2026-05-05
+
+### Added
+
+- Added the local H5 clone weight matrix contract for upcoming migration slices.
+
+
 ## [1.98.3] - 2026-05-05
 
 ### Changed

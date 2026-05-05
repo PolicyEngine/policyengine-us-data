@@ -798,6 +798,14 @@ class CalibrationGeographyLoader
 
 Resolve, load, and checksum exact geography artifacts.
 
+### `policyengine_us_data.calibration.local_h5.weights.CloneWeightMatrix`
+
+```python
+class CloneWeightMatrix
+```
+
+Structured view of clone-level household weights.
+
 ### `modal_app.local_area.coordinate_publish`
 
 ```python

@@ -806,6 +806,37 @@
     "signature": "def _splice_clone_feature_predictions(data: dict, predictions: pd.DataFrame, time_period: int) -> dict",
     "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
   },
+  "clone_weight_matrix": {
+    "docstring": "Structured view of clone-level household weights.\n\nThe canonical in-memory representation remains the flat vector of length\n``n_records * n_clones``. Matrix views are derived on demand as\n``(n_clones, n_records)`` arrays.\n\nAttributes:\n    values: Flat clone-level weight vector.\n    n_records: Number of base records represented by each clone.\n    n_clones: Number of clone copies represented in the flat vector.",
+    "id": "clone_weight_matrix",
+    "kind": "class",
+    "line": 38,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.local_h5.weights.CloneWeightMatrix"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "national_calibration_weights.npy"
+      ],
+      "description": "Explicit shape contract for flat clone-level calibration weights.",
+      "id": "clone_weight_matrix",
+      "label": "CloneWeightMatrix",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/calibration/local_h5/weights.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_local_h5_weights.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.local_h5.weights.CloneWeightMatrix",
+    "signature": "class CloneWeightMatrix",
+    "source_file": "policyengine_us_data/calibration/local_h5/weights.py"
+  },
   "coordinate_publish": {
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",

@@ -82,7 +82,7 @@ from projection_utils import (
 )
 from tax_assumptions import (
     TRUSTEES_CORE_THRESHOLD_ASSUMPTION,
-    create_wage_indexed_core_thresholds_reform,
+    create_trustees_core_thresholds_reform,
     get_long_run_tax_assumption_metadata,
 )
 from support_augmentation import (
@@ -701,7 +701,7 @@ if TAX_ASSUMPTION == "current-law-literal":
         "end_year": int(END_YEAR),
     }
 else:
-    ACTIVE_LONG_RUN_TAX_REFORM = create_wage_indexed_core_thresholds_reform(
+    ACTIVE_LONG_RUN_TAX_REFORM = create_trustees_core_thresholds_reform(
         start_year=TRUSTEES_CORE_THRESHOLD_ASSUMPTION["start_year"],
         end_year=LONG_RUN_TAX_ASSUMPTION_END_YEAR,
     )

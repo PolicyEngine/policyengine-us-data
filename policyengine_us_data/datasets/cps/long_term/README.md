@@ -37,7 +37,7 @@ python run_household_projection_parallel.py \
 - `END_YEAR`: Target year for projection (default: 2035)
 - `--profile`: Named calibration contract. Recommended over legacy flags.
 - `--target-source`: Named long-term target source package.
-- `--tax-assumption`: Long-run federal tax assumption. Defaults to `trustees-core-thresholds-v1`; use `current-law-literal` to opt out.
+- `--tax-assumption`: Long-run federal tax assumption. Defaults to `trustees-2025-core-thresholds-v1`; use `current-law-literal` to opt out.
 - `--output-dir`: Output directory for generated H5 files and metadata sidecars.
 - `--support-augmentation-profile`: Late-year support expansion profile. The runner accepts target-year donor profiles such as `donor-backed-synthetic-v1` and `donor-backed-composite-v1`, plus the rule-based profiles defined in `support_augmentation.py`.
 - `--support-augmentation-target-year`: Extreme year used to build the donor-backed supplement (defaults to `END_YEAR`).

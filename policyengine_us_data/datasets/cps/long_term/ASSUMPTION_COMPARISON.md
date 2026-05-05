@@ -6,7 +6,7 @@ This note distinguishes between:
 - tax-side assumptions used to make those targets more comparable to the public Trustees/OACT methodology
 
 The current long-run baseline now adopts a named tax-side assumption,
-`trustees-core-thresholds-v1`, before hard-targeting TOB.
+`trustees-2025-core-thresholds-v1`, before hard-targeting TOB.
 
 | Component | Current `policyengine-us-data` approach | Trustees / OACT published approach | Calibration use |
 | --- | --- | --- | --- |
@@ -14,8 +14,8 @@ The current long-run baseline now adopts a named tax-side assumption,
 | OASDI benefits | Named long-term target source package | Trustees or OACT-patched annual OASDI path | Hard target |
 | Taxable payroll | Named long-term target source package | Trustees annual taxable payroll path | Hard target |
 | Social Security benefit-tax thresholds | Literal current-law statutory thresholds remain fixed in nominal dollars | Trustees also describe the statutory `$25k/$32k/$0` and `$34k/$44k` thresholds as remaining fixed in nominal dollars | Not separately targeted |
-| Federal income-tax brackets | Core ordinary thresholds are wage-indexed after `2034` via `trustees-core-thresholds-v1` | Trustees assume periodic future bracket adjustments; after the tenth projection year, ordinary federal income-tax brackets are assumed to rise with average wages to avoid indefinite bracket creep | Tax-side assumption |
-| Standard deduction / aged-blind addition / capital gains thresholds / AMT thresholds | Included in the same `trustees-core-thresholds-v1` bundle | Not parameterized publicly line-by-line, but these are the main additional federal thresholds most likely to affect long-run TOB | Tax-side assumption |
+| Federal income-tax brackets | Core ordinary thresholds are wage-indexed after `2034` via `trustees-2025-core-thresholds-v1` | Trustees assume periodic future bracket adjustments; after the tenth projection year, ordinary federal income-tax brackets are assumed to rise with average wages to avoid indefinite bracket creep | Tax-side assumption |
+| Standard deduction / aged-blind addition / capital gains thresholds / AMT thresholds | Included in the same `trustees-2025-core-thresholds-v1` bundle | Not parameterized publicly line-by-line, but these are the main additional federal thresholds most likely to affect long-run TOB | Tax-side assumption |
 | OASDI TOB | Computed under the core-threshold tax assumption and targeted in `ss-payroll-tob` profiles | Trustees/OACT publish annual revenue paths or ratios, but not a full public household-level micro rule schedule | Hard target |
 | HI TOB | Computed under the core-threshold tax assumption and targeted in `ss-payroll-tob` profiles | Trustees publish current-law HI TOB path; OACT OBBBA updates do not currently provide a full public annual HI replacement series | Hard target |
 | OBBBA OASDI update | Available through named target source `oact_2025_08_05_provisional` | August 5, 2025 OACT letter provides annual OASDI changes through 2100 | Benchmark / target-source input |
@@ -24,7 +24,7 @@ The current long-run baseline now adopts a named tax-side assumption,
 ## Practical interpretation
 
 - `ss-payroll` remains the core non-TOB hard-target profile.
-- `ss-payroll-tob` now means: calibrate on age + OASDI benefits + taxable payroll + TOB under `trustees-core-thresholds-v1`.
+- `ss-payroll-tob` now means: calibrate on age + OASDI benefits + taxable payroll + TOB under `trustees-2025-core-thresholds-v1`.
 - The core-threshold bundle is a best-public approximation, not a literal public Trustees rules schedule.
 - Trustees-consistent long-run TOB requires keeping two different tax-side ideas separate:
   - the Social Security benefit-tax thresholds remain fixed in nominal dollars

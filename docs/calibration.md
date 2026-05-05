@@ -560,7 +560,7 @@ users actually load.
 
 ### Testing
 
-The `test_xw_consistency.py` test (`pytest -m slow`) verifies this invariant end-to-end:
+The `validation/stage_1/test_xw_consistency.py` validator (`pytest -m slow`) verifies this invariant end-to-end:
 
 1. Load base dataset, create geography with uniform weights
 1. Build $X$ with the matrix builder (including takeup rerandomization)

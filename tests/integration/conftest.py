@@ -1,8 +1,4 @@
-"""Integration test configuration.
-
-Skips tests when prerequisite data files are not available.
-Provides shared fixtures for calibration database and dataset paths.
-"""
+"""Integration test configuration."""
 
 import pytest
 from sqlalchemy import create_engine
@@ -14,19 +10,9 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 
 # ── Skip logic for missing datasets ───────────────────────────
 
-NEEDS_ECPS = not (STORAGE_FOLDER / "enhanced_cps_2024.h5").exists()
 NEEDS_CPS = not (STORAGE_FOLDER / "cps_2024.h5").exists()
 
 collect_ignore_glob = []
-if NEEDS_ECPS:
-    collect_ignore_glob.extend(
-        [
-            "test_enhanced_cps.py",
-            "test_small_enhanced_cps.py",
-            "test_sparse_enhanced_cps.py",
-            "test_sipp_assets.py",
-        ]
-    )
 if NEEDS_CPS:
     collect_ignore_glob.append("test_cps.py")
 

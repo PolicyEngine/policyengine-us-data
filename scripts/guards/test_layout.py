@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TEST_LANES = {
     "tests/unit": Path("tests/unit"),
     "tests/integration": Path("tests/integration"),
+    "validation/stage_1": Path("validation/stage_1"),
 }
 ALLOWED_TEST_ROOTS = tuple(TEST_LANES.values())
 PYTEST_FILE_PREFIX = "test_"
@@ -82,15 +83,15 @@ def _check_test_placement(files: list[Path]) -> list[str]:
         if _is_under(path, Path("policyengine_us_data/tests")):
             violations.append(
                 f"{path}: package-internal tests are not collected by CI; "
-                "move tests under tests/unit or tests/integration."
+                "move tests under tests/unit, tests/integration, or validation."
             )
             continue
 
-        if path.parts and path.parts[0] == "tests":
+        if path.parts and path.parts[0] in {"tests", "validation"}:
             if not any(_is_under(path, root) for root in ALLOWED_TEST_ROOTS):
                 violations.append(
-                    f"{path}: pytest files under tests/ must live under "
-                    "tests/unit or tests/integration."
+                    f"{path}: pytest files under tests/ or validation/ must live "
+                    "under tests/unit, tests/integration, or validation/stage_1."
                 )
 
     return violations
@@ -99,7 +100,9 @@ def _check_test_placement(files: list[Path]) -> list[str]:
 def _check_test_imports(files: list[Path]) -> list[str]:
     violations = []
     for path in files:
-        if path.suffix != ".py" or not _is_under(path, Path("tests")):
+        if path.suffix != ".py" or not any(
+            _is_under(path, root) for root in ALLOWED_TEST_ROOTS
+        ):
             continue
 
         source = (REPO_ROOT / path).read_text(encoding="utf-8")

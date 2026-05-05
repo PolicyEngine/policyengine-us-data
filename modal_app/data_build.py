@@ -124,10 +124,9 @@ SCRIPT_OUTPUTS = {
 CPS_BUILD_SCRIPT = "policyengine_us_data/datasets/cps/cps.py"
 PUF_BUILD_SCRIPT = "policyengine_us_data/datasets/puf/puf.py"
 
-# Test modules to run individually for checkpoint tracking
-TEST_MODULES = [
-    "tests/unit/",
-    "tests/integration/",
+# Post-build validation modules to run individually for checkpoint tracking.
+VALIDATION_MODULES = [
+    "validation/stage_1/",
 ]
 
 
@@ -430,7 +429,7 @@ def run_tests_with_checkpoints(
     volume: modal.Volume,
     env: dict,
 ) -> None:
-    """Run tests module-by-module, checkpointing progress.
+    """Run post-build validators module-by-module, checkpointing progress.
 
     Args:
         branch: Git branch name for checkpoint scoping.
@@ -438,13 +437,13 @@ def run_tests_with_checkpoints(
         env: Environment variables dict.
 
     Raises:
-        RuntimeError: If any test module fails.
+        RuntimeError: If any validation module fails.
     """
     commit = get_current_commit()
     checkpoint_dir = Path(VOLUME_MOUNT) / branch / commit / "tests"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    for module in TEST_MODULES:
+    for module in VALIDATION_MODULES:
         # Use stem for files, or last component for directories
         module_path = Path(module)
         if module_path.suffix:
@@ -458,14 +457,14 @@ def run_tests_with_checkpoints(
             print(f"Skipping {module} (already passed)")
             continue
 
-        print(f"Running tests: {module}")
+        print(f"Running validation: {module}")
         result = subprocess.run(
             _python_cmd("-u", "-m", "pytest", module, "-v"),
             env=env,
         )
 
         if result.returncode != 0:
-            raise RuntimeError(f"Tests failed: {module}")
+            raise RuntimeError(f"Validation failed: {module}")
 
         # Mark as passed
         marker_file.touch()
@@ -793,11 +792,11 @@ def build_datasets(
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 
-    # Run tests with checkpointing
+    # Run post-build validators with checkpointing.
     if skip_tests:
         print("Skipping tests (--skip-tests)")
     else:
-        print("=== Running tests with checkpointing ===")
+        print("=== Running post-build validation with checkpointing ===")
         run_tests_with_checkpoints(branch, checkpoint_volume, env)
 
     validate_and_maybe_upload_datasets(

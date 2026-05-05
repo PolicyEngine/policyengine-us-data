@@ -7,11 +7,18 @@ Use this skill whenever adding, moving, or reviewing tests.
 - Put unit tests under `tests/unit/`.
 - Put data-dependent, runtime, deployed Modal, and staging integration tests
   under `tests/integration/`.
+- Put post-build artifact validators under `validation/stage_1/`. These checks
+  consume already-built Stage 1 artifacts and assert that their file structure,
+  runtime behavior, calibration outputs, or handoff contracts meet expectations.
 - Do not add pytest files under `policyengine_us_data/tests/`; CI does not
   collect that tree.
 
 ## Integration Test Roles
 
+- Use `validation/stage_1/` for post-build validators only. They should not
+  rebuild Stage 1 artifacts or exercise unrelated orchestration seams; they
+  should load the artifacts produced by the build and fail when those artifacts
+  do not satisfy the expected contract.
 - Treat the old full dataset-build PR path as legacy linear integration testing.
   It proves the production build can run, but it is not the model for new
   fixture-scale integration tests.
@@ -69,7 +76,8 @@ uv run --no-sync --with pyyaml python scripts/run_quality_guards.py
 The current guards enforce:
 
 - No package-internal pytest files under `policyengine_us_data/tests/`.
-- No pytest files outside `tests/unit/` and `tests/integration/`.
+- No pytest files outside `tests/unit/`, `tests/integration/`, and
+  `validation/stage_1/`.
 - No imports from `tests.conftest`.
 - No imports across test lanes.
 - Structured pipeline documentation metadata is valid.

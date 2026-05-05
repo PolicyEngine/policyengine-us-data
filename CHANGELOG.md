@@ -1,3 +1,10 @@
+## [1.96.0] - 2026-05-05
+
+### Added
+
+- Calibrate employer-sponsored insurance premiums and seed CPS policyholder ESI contributions for CBO-style income concepts.
+
+
 ## [1.95.5] - 2026-05-05
 
 ### Fixed

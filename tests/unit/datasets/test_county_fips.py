@@ -150,6 +150,9 @@ def test_output_file_creation(
     mock_resp.status_code = 200
     mock_resp.text = SAMPLE_CENSUS_DATA
 
+    # Create a mock path object
+    mock_path = MagicMock()
+
     generate_county_fips_2020_dataset()
 
     # Check that to_csv was called with gzip compression

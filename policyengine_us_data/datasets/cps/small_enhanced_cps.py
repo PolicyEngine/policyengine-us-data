@@ -65,6 +65,7 @@ def create_sparse_ecps():
     ecps = EnhancedCPS_2024()
     h5 = ecps.load()
     sparse_weights = h5["household_weight"][str(time_period)][:]
+    hh_ids = h5["household_id"][str(time_period)][:]
     h5.close()
 
     template_sim = Microsimulation(
@@ -77,6 +78,7 @@ def create_sparse_ecps():
 
     household_weight_column = f"household_weight__{time_period}"
     df_household_id_column = f"household_id__{time_period}"
+    df_person_id_column = f"person_id__{time_period}"
 
     # Group by household ID and get the first entry for each group
     h_df = df.groupby(df_household_id_column).first()

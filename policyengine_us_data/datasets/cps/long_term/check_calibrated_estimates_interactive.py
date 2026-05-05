@@ -101,8 +101,8 @@ oasdi_tob_estimate_b
 
 # Testing the H6 Reform ------------------------------------------------------
 
-from policyengine_us import Microsimulation  # noqa: E402
-from policyengine_core.reforms import Reform  # noqa: E402
+from policyengine_us import Microsimulation
+from policyengine_core.reforms import Reform
 
 
 def create_h6_reform():

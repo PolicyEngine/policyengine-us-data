@@ -12,10 +12,10 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # Import the diagnostic functions
-import sys  # noqa: E402
+import sys
 
 sys.path.append("/Users/maxghenis/PolicyEngine/policyengine-us-data")
-from validation.qrf_diagnostics import (  # noqa: E402
+from validation.qrf_diagnostics import (
     analyze_common_support,
     test_joint_distribution_preservation,
 )
@@ -67,7 +67,7 @@ def load_dataset_as_dataframe(dataset_class):
                 ).values
             else:
                 data[var] = sim.calculate(var, 2024, map_to="person").values
-        except Exception:
+        except:
             print(f"Could not extract {var}")
             data[var] = np.zeros(len(sim.calculate("person_id", 2024).values))
 
@@ -87,7 +87,7 @@ def load_dataset_as_dataframe(dataset_class):
             data[var.replace("_income", "")] = sim.calculate(
                 actual_var, 2024, map_to="person"
             ).values
-        except Exception:
+        except:
             print(f"Could not extract {var}")
             data[var.replace("_income", "")] = np.zeros(
                 len(sim.calculate("person_id", 2024).values)

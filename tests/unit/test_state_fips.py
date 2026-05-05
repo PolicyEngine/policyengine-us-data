@@ -1,5 +1,7 @@
 """Tests for the shared STATE_ABBR_TO_FIPS dict used across calibration code."""
 
+import pytest
+
 
 def test_dc_fips_is_string():
     """DC's FIPS in the canonical dict is a string '11' (matches GEO_ID suffix)."""

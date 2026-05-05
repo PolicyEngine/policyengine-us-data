@@ -253,4 +253,4 @@ def get_district_mapping():
 
 if __name__ == "__main__":
     build_crosswalk_cd116_to_cd119()
-    print(get_district_mapping())
+    print(get_district_mapping_matrix())

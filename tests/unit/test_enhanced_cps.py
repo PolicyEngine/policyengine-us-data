@@ -1,7 +1,9 @@
 import numpy as np
 
+from policyengine_us_data.datasets.cps import enhanced_cps
 from policyengine_us_data.datasets.cps.enhanced_cps import (
     _get_base_aca_takeup,
+    _load_aca_spending_targets,
     _set_period_array,
     create_aca_2025_takeup_override,
 )
@@ -35,6 +37,39 @@ def test_set_period_array_creates_missing_variable_entry():
     _set_period_array(data, "takes_up_aca_if_eligible", 2025, values)
 
     np.testing.assert_array_equal(data["takes_up_aca_if_eligible"][2025], values)
+
+
+def test_load_aca_spending_targets_prefers_soi_total_ptc(
+    monkeypatch,
+    tmp_path,
+):
+    target_dir = tmp_path / "calibration_targets"
+    target_dir.mkdir()
+    (target_dir / "aca_ptc_state.csv").write_text(
+        "\n".join(
+            [
+                "# test",
+                "GEO_ID,Returns,TotalPTCAmount",
+                "0400000US06,10,123000",
+                "0400000US36,20,456000",
+            ]
+        )
+    )
+    (target_dir / "aca_spending_and_enrollment_2025.csv").write_text(
+        "\n".join(
+            [
+                "state,spending,enrollment",
+                "CA,1,2",
+                "NY,3,4",
+            ]
+        )
+    )
+    monkeypatch.setattr(enhanced_cps, "STORAGE_FOLDER", tmp_path)
+
+    assert _load_aca_spending_targets(2025) == {
+        "CA": 123_000.0,
+        "NY": 456_000.0,
+    }
 
 
 def test_create_aca_2025_takeup_override_matches_state_targets():

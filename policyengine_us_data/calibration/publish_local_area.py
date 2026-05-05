@@ -282,9 +282,6 @@ def build_h5(
     import h5py
     from collections import defaultdict
     from policyengine_core.enums import Enum
-    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
-        County,
-    )
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -545,10 +542,9 @@ def build_h5(
     data["state_fips"] = {
         time_period: clone_geo["state_fips"].astype(np.int32),
     }
-    county_names = np.array(
-        [County._member_names_[i].encode("utf-8") for i in clone_geo["county_index"]]
-    )
-    data["county"] = {time_period: county_names}
+    data["county"] = {
+        time_period: clone_geo["county_index"].astype(np.int32),
+    }
     data["county_fips"] = {
         time_period: clone_geo["county_fips"].astype(np.int32),
     }

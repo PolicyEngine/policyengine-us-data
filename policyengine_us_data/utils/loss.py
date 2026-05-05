@@ -9,6 +9,9 @@ from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
@@ -353,6 +356,10 @@ def _load_aca_spending_and_enrollment_targets(
     return _load_yeared_target_csv("aca_spending_and_enrollment", requested_year)
 
 
+def _load_aca_ptc_state_targets(requested_year: int) -> pd.DataFrame | None:
+    return load_aca_ptc_state_targets(requested_year)
+
+
 def _load_medicaid_enrollment_targets(
     requested_year: int,
 ) -> tuple[pd.DataFrame, int]:
@@ -361,6 +368,14 @@ def _load_medicaid_enrollment_targets(
 
 def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
     targets, data_year = _load_aca_spending_and_enrollment_targets(requested_year)
+    aca_ptc_state = _load_aca_ptc_state_targets(requested_year)
+    if aca_ptc_state is not None:
+        return (
+            float(aca_ptc_state["TotalPTCAmount"].sum()),
+            float(targets["enrollment"].sum()),
+            data_year,
+        )
+
     if data_year in ACA_SPENDING_TARGETS and data_year in ACA_ENROLLMENT_TARGETS:
         return (
             ACA_SPENDING_TARGETS[data_year],
@@ -461,6 +476,51 @@ def _add_state_eitc_targets(
         loss_matrix[amount_label] = np.where(in_state, eitc_amount_hh, 0.0)
         if not _skip_unverified_target(row["Amount"]):
             targets_list.append(float(row["Amount"]) * eitc_spending_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
+def _add_state_aca_ptc_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    time_period: int,
+):
+    """Add per-state total ACA PTC return and amount targets from IRS SOI."""
+    aca_ptc_state = _load_aca_ptc_state_targets(time_period)
+    if aca_ptc_state is None:
+        return targets_list, loss_matrix
+
+    aca_ptc = sim.calculate("aca_ptc", period=time_period).values
+    aca_ptc_returns_tu = (aca_ptc > 0).astype(float)
+    aca_ptc_returns_hh = sim.map_result(
+        aca_ptc_returns_tu,
+        "tax_unit",
+        "household",
+    )
+    aca_ptc_amount_hh = sim.map_result(aca_ptc, "tax_unit", "household")
+
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(state, "person", "household", how="value_from_first_person")
+    state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS.get(s, None))
+
+    for row in aca_ptc_state.itertuples(index=False):
+        fips = str(row.GEO_ID)[-2:]
+        in_state = (state_fips == fips).to_numpy()
+
+        returns_label = f"nation/irs/aca_ptc/returns/state_{fips}"
+        loss_matrix[returns_label] = np.where(in_state, aca_ptc_returns_hh, 0.0)
+        if not _skip_unverified_target(row.Returns):
+            targets_list.append(float(row.Returns))
+        else:
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/aca_ptc/amount/state_{fips}"
+        loss_matrix[amount_label] = np.where(in_state, aca_ptc_amount_hh, 0.0)
+        if not _skip_unverified_target(row.TotalPTCAmount):
+            targets_list.append(float(row.TotalPTCAmount))
         else:
             del loss_matrix[amount_label]
 
@@ -1061,35 +1121,38 @@ def build_loss_matrix(dataset: type, time_period):
 
         targets_array.append(target_count)
 
-    # ACA spending by state
-    spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
-    # Monthly to yearly
-    spending_by_state["spending"] = spending_by_state["spending"] * 12
-    # Adjust to match national target
-    spending_by_state["spending"] = spending_by_state["spending"] * (
-        aca_spending_target / spending_by_state["spending"].sum()
-    )
-
-    for _, row in spending_by_state.iterrows():
-        # Households located in this state
-        in_state = (
-            sim.calculate("state_code", map_to="household").values == row["state"]
+    # ACA PTC by state. Prefer IRS SOI total PTC claimed (A85770/N85770),
+    # because ``aca_ptc`` computes gross PTC entitlement rather than CMS APTC
+    # outlays. Fall back to the legacy CMS APTC state distribution if the SOI
+    # state file is absent.
+    if _load_aca_ptc_state_targets(time_period) is not None:
+        targets_array, loss_matrix = _add_state_aca_ptc_targets(
+            loss_matrix,
+            targets_array,
+            sim,
+            time_period,
+        )
+    else:
+        spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
+        # Monthly to yearly
+        spending_by_state["spending"] = spending_by_state["spending"] * 12
+        # Adjust to match national target
+        spending_by_state["spending"] = spending_by_state["spending"] * (
+            aca_spending_target / spending_by_state["spending"].sum()
         )
 
-        # ACA PTC amounts for every household at time_period.
-        aca_value = sim.calculate(
-            "aca_ptc", map_to="household", period=time_period
-        ).values
-
-        # Add a loss-matrix entry and matching target. Prefix `state/`
-        # so `reweight()` correctly classifies this as a state-level
-        # (non-national) target via `startswith("nation/")`.
-        label = f"state/irs/aca_spending/{row['state'].lower()}"
-        loss_matrix[label] = aca_value * in_state
-        annual_target = row["spending"]
-        if any(loss_matrix[label].isna()):
-            raise ValueError(f"Missing values for {label}")
-        targets_array.append(annual_target)
+        for _, row in spending_by_state.iterrows():
+            in_state = (
+                sim.calculate("state_code", map_to="household").values == row["state"]
+            )
+            aca_value = sim.calculate(
+                "aca_ptc", map_to="household", period=time_period
+            ).values
+            label = f"state/irs/aca_spending/{row['state'].lower()}"
+            loss_matrix[label] = aca_value * in_state
+            if any(loss_matrix[label].isna()):
+                raise ValueError(f"Missing values for {label}")
+            targets_array.append(row["spending"])
 
     # Marketplace enrollment by state (targets in thousands)
     enrollment_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)

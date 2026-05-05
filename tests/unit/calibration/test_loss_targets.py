@@ -7,15 +7,16 @@ import pytest
 from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
-    _add_irs_soi_aggregate_targets,
+    HARD_CODED_TOTALS,
     _add_ctc_targets,
+    _add_irs_soi_aggregate_targets,
+    _add_medicare_enrollment_target,
     _get_aca_national_targets,
     _get_medicaid_national_targets,
     _load_aca_spending_and_enrollment_targets,
     _load_medicaid_enrollment_targets,
     _should_skip_soi_agi_row,
     _should_skip_soi_taxability_row,
-    HARD_CODED_TOTALS,
 )
 
 
@@ -122,6 +123,26 @@ class _FakeSimulation:
     def map_result(self, values, source_entity, target_entity, how=None):
         self.map_result_calls.append((source_entity, target_entity, how))
         assert source_entity == "tax_unit"
+        assert target_entity == "household"
+        return np.asarray(values, dtype=np.float32)
+
+
+class _FakeMedicareEnrollmentSimulation:
+    def __init__(self):
+        self.calculate_calls = []
+        self.map_result_calls = []
+
+    def calculate(self, variable, map_to=None, period=None):
+        self.calculate_calls.append((variable, map_to, period))
+        if variable != "medicare_enrolled":
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        if map_to != "person":
+            raise AssertionError(f"Unexpected map_to {map_to!r}")
+        return _FakeArrayResult([1.0, 0.0, 1.0])
+
+    def map_result(self, values, source_entity, target_entity, how=None):
+        self.map_result_calls.append((source_entity, target_entity, how))
+        assert source_entity == "person"
         assert target_entity == "household"
         return np.asarray(values, dtype=np.float32)
 
@@ -257,3 +278,25 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
 
 def test_tanf_hardcoded_target_uses_fy2024_basic_assistance_total():
     assert HARD_CODED_TOTALS["tanf"] == pytest.approx(7_788_317_474.55)
+
+
+def test_add_medicare_enrollment_target(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_medicare_enrollment_target",
+        lambda year: 68_030_000.0,
+    )
+    sim = _FakeMedicareEnrollmentSimulation()
+
+    targets, loss_matrix = _add_medicare_enrollment_target(
+        pd.DataFrame(),
+        [],
+        sim,
+        2024,
+    )
+
+    assert targets == [68_030_000.0]
+    assert sim.calculate_calls == [("medicare_enrolled", "person", 2024)]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/cms/medicare_enrollment"],
+        np.array([1.0, 0.0, 1.0], dtype=np.float32),
+    )

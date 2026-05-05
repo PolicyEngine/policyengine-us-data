@@ -53,6 +53,16 @@ The most significant limitation is the temporal gap between data sources:
 
 While dollar amounts are uprated and calibration partially addresses this, fundamental demographic changes may not be reflected.
 
+\subsubsection{Long-Run Projection Support}
+
+Long-run Social Security analyses add an additional extrapolation challenge. The baseline microdata are drawn from contemporary households, while 75-year analyses require representing future combinations of age structure, earnings, Social Security benefits, taxable payroll, and taxation-of-benefits liability. Reweighting can match aggregate targets only when the microdata contain enough support for the relevant household types. In late projection years, some valid aggregate combinations may be represented by relatively few observed households, creating concentration risk even when aggregate calibration errors are small.
+
+We address this by making the long-run assumptions and validation contract explicit. Projection artifacts record the target source, tax assumption, model version, and support augmentation profile; publishable runs must pass non-negative-weight, target-error, effective-sample-size, and weight-concentration checks. Donor-backed augmentation is treated as a diagnostic or sensitivity tool unless those checks show that it improves support without allowing a small number of households to dominate the estimate.
+
+\subsubsection{Long-Run Tax Assumptions}
+
+The Trustees reports provide aggregate projections and describe broad long-run tax assumptions, but they do not provide a complete public microsimulation parameter file for every federal income-tax threshold. Our \texttt{trustees-2025-core-thresholds-v1} assumption therefore represents an explicit modeling choice: Social Security benefit-tax thresholds remain fixed in nominal dollars, while a documented core set of broader federal thresholds is wage-indexed after 2034. Results using this assumption should be interpreted as Trustees-aligned rather than as a statutory current-law literal baseline. We retain literal-current-law and broader-indexing sensitivities to evaluate how much published results depend on this assumption.
+
 \subsubsection{Imputation Assumptions}
 
 The QRF imputation assumes:

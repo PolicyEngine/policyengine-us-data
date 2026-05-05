@@ -43,7 +43,14 @@ If your change is a non-bugfix update to a cloud-hosted dataset (CPS, enhanced C
 make push-pr-branch
 ```
 
-pushes the current branch to `upstream` with the correct tracking so `gh pr create` just works.
+pushes the current branch to `upstream` with the correct tracking so `gh pr create` just works. Then create and verify the PR explicitly:
+
+```bash
+gh pr create --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main
+gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository
+```
+
+The PR is valid only if the head repository is `PolicyEngine/policyengine-us-data`. If you cannot push to that repository, ask for access instead of opening a fork PR.
 
 ## Repo-specific anti-patterns
 

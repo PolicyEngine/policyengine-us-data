@@ -15,6 +15,9 @@ import helpers across test lanes.
 
 ## GitHub PRs
 
+Read `docs/engineering/skills/github-prs.md` before opening, replacing, or
+sharing any pull request.
+
 Never open `policyengine-us-data` PRs from forks. CI rejects fork-based PRs
 before running the real checks, which wastes the reviewer and agent loop.
 

@@ -5,3 +5,7 @@ Follow the repository's canonical engineering skills under
 
 For tests, read `docs/engineering/skills/testing.md` before adding, moving, or
 reviewing test files. Do not duplicate or override that testing guidance here.
+
+For pull requests, read `docs/engineering/skills/github-prs.md` before opening,
+replacing, or sharing a PR. This repository only accepts same-repository PRs
+from branches in `PolicyEngine/policyengine-us-data`; never create fork PRs.

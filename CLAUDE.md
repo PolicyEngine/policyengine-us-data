@@ -66,6 +66,7 @@ Six workflow files in `.github/workflows/`:
 - **`local_area_promote.yaml`** — Manual dispatch. Promotes staged local area H5 files to production.
 
 ## Git and PR Guidelines
+- Read `docs/engineering/skills/github-prs.md` before opening, replacing, or sharing a PR.
 - **CRITICAL**: NEVER create PRs from personal forks - ALL PRs MUST be created from branches pushed to the upstream PolicyEngine repository
 - CI requires access to secrets that are not available to fork PRs for security reasons
 - Fork PRs will fail on data download steps and cannot be merged

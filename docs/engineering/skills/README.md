@@ -9,5 +9,7 @@ first, then keep adapters thin.
 
 Current skills:
 
+- `github-prs.md`: same-repository PR workflow, PR head verification, and title
+  conventions.
 - `testing.md`: test layout, fixture scope, helper placement, and quality guard
   expectations.

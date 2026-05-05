@@ -354,6 +354,7 @@ def promote_datasets(
         new_repo_paths=rel_paths,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
+        pipeline_run_id=run_id,
     )
 
     print(f"\nPromoting {len(rel_paths)} staged files to production...")
@@ -378,6 +379,7 @@ def promote_datasets(
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
         create_tag=should_finalize,
+        pipeline_run_id=run_id,
     )
     if not should_finalize:
         print(

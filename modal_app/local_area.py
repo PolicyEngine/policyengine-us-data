@@ -142,6 +142,7 @@ manifest = publish_release_manifest_to_hf(
     [(national_h5, "national/US.h5")],
     version=version,
     create_tag=should_finalize,
+    pipeline_run_id=run_id,
 )
 if should_finalize:
     upload_manifest(
@@ -234,6 +235,7 @@ manifest = publish_release_manifest_to_hf(
     [(run_dir / rel_path, rel_path) for rel_path in rel_paths],
     version=version,
     create_tag=should_finalize,
+    pipeline_run_id=run_id,
 )
 if should_finalize:
     upload_manifest(

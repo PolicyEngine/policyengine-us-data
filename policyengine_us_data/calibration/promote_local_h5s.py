@@ -137,6 +137,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
         manifest_files,
         version=version,
         new_repo_paths=rel_paths,
+        pipeline_run_id=run_id,
     )
 
     logger.info(
@@ -152,6 +153,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
         manifest_files,
         version=version,
         create_tag=should_finalize,
+        pipeline_run_id=run_id,
     )
     if should_finalize:
         upload_manifest(

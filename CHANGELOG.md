@@ -1,3 +1,227 @@
+## [1.96.0] - 2026-05-05
+
+### Added
+
+- Calibrate employer-sponsored insurance premiums and seed CPS policyholder ESI contributions for CBO-style income concepts.
+
+
+## [1.95.5] - 2026-05-05
+
+### Fixed
+
+- Hardened CRFB long-run calibration so entropy solutions with large constraint misses are rejected before fallback, and recorded richer provenance for Trustees threshold projection inputs.
+
+
+## [1.95.4] - 2026-05-04
+
+### Changed
+
+- Add run-scoped publication identity for GitHub, Modal, and Hugging Face staging.
+
+
+## [1.95.3] - 2026-05-04
+
+### Fixed
+
+- Clarified SIPP licensing language in `policyengine_us_data/datasets/sipp/README.md`: SIPP public-use data is unrestricted (no per-user license, agreement, or registration). Of the six upstream microdata sources the Enhanced CPS pipeline ingests (CPS, ACS, SCF, ORG, SIPP, IRS-PUF), only IRS-PUF has a genuine access restriction. Fixes #808.
+
+
+## [1.95.2] - 2026-05-04
+
+### Changed
+
+- Updated GitHub Actions workflows for Node 24-compatible action runtimes.
+
+
+## [1.95.1] - 2026-05-04
+
+### Fixed
+
+- Make the 2025 ACA take-up override state-aware and spending-aware, allowing the final vector to add or remove tax-unit take-up by state against checked-in APTC enrollment and spending targets.
+
+
+## [1.95.0] - 2026-05-04
+
+### Fixed
+
+- Map CPS farm self-employment income to farm operations income.
+- Impute unavailable CPS prior-year wage and self-employment income instead of emitting sentinel values.
+
+### Removed
+
+- Remove tracked Beads metadata from the repository.
+
+
+## [1.94.0] - 2026-05-04
+
+### Added
+
+- Add 2026 ACA Marketplace and Medicaid enrollment calibration targets.
+
+
+## [1.93.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate targets for positive miscellaneous income in calibration.
+
+
+## [1.92.0] - 2026-05-04
+
+### Added
+
+- Re-enabled SOI aggregate and AGI-bin targets for tax-exempt interest income and SOI aggregate targets for charitable deductions in calibration.
+
+
+## [1.91.1] - 2026-05-04
+
+### Fixed
+
+- Fixed structural mortgage-interest conversion so QRF outliers cannot create implausibly large gross mortgage-interest inputs.
+
+
+## [1.91.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate and AGI-bin targets for long-term capital gains to the legacy enhanced CPS calibration loss matrix and target database.
+
+
+## [1.90.2] - 2026-05-04
+
+### Changed
+
+- Replace QBI simulation assumptions with a documented source-based model for qualification, SSTB status, W-2 wages, UBIA, and REIT/PTP/BDC income.
+
+
+## [1.90.1] - 2026-05-04
+
+### Fixed
+
+- Add CBO aggregate and AGI-bracket targets for capital gains, dividends, and interest income, and scale Forbes top-tail SCF draws to Forbes AGI estimates instead of Forbes wealth, to constrain inflated capital-income aggregates (issues #555, #866).
+
+
+## [1.90.0] - 2026-05-01
+
+### Added
+
+- Added local H5 traceability metadata and scope fingerprinting for calibration artifacts.
+
+### Changed
+
+- Add quality guards for test layout and document the testing skill for AI tooling.
+
+
+## [1.89.1] - 2026-04-30
+
+### Fixed
+
+- Read `is_household_head` directly from the ACS and CPS H5 datasets in `add_rent` and require `policyengine-core>=3.25.4` for PolicyEngine/policyengine-core#482, where user-supplied ETERNITY inputs were dropped after `_invalidate_all_caches`. Removes the empty-train-frame `ValueError` from `sample(10_000)` that was failing the Modal CPS build.
+- Improve Modal data-build diagnostics so database-step failures preserve their stdout and stderr in the build log.
+- Skip the flaky ACF HTML landing page in `etl_tanf` and fetch the FY-stamped workbooks directly via a per-year `TANF_WORKBOOK_URLS` constant; keep the tenacity retry / extended timeout around the workbook GET so transient `acf.gov` slowness does not fail `make database` on Modal builds.
+
+
+## [1.89.0] - 2026-04-30
+
+### Added
+
+- Added hourly wage and annual employment income consistency diagnostics.
+
+
+## [1.88.3] - 2026-04-29
+
+### Fixed
+
+- Added other health insurance premiums as the non-Medicare premium category not covered by modeled Marketplace, CHIP, or Medicaid premiums.
+
+
+## [1.88.2] - 2026-04-29
+
+### Changed
+
+- Enable all state- and district-level EITC and CTC targets in the default calibration target configuration.
+
+### Fixed
+
+- Fix the Modal pipeline diagnostics-upload helper so its generated `python -c` script is valid Python and covered by a unit test before deployment.
+
+
+## [1.88.1] - 2026-04-28
+
+### Fixed
+
+- Remove calibration optimizer checkpoint artifacts from the Modal calibration pipeline.
+
+
+## [1.88.0] - 2026-04-25
+
+### Added
+
+- Construct CPS tax units from ASEC household relationships instead of using Census tax-unit assignments.
+
+
+## [1.87.0] - 2026-04-25
+
+### Added
+
+- Add a reproducible Forbes-backed PUF top-tail synthesis path.
+
+
+## [1.86.2] - 2026-04-24
+
+### Changed
+
+- Extracted inline CI/CD workflow Python into dedicated helper scripts under `.github/scripts` and updated the PR, pipeline, local-area publish, and push workflows to call them directly.
+
+### Fixed
+
+- Added a tiny-fixture Modal H5 end-to-end PR test harness and aligned checkpoint/package artifact handling so local-area publication catches contract mismatches earlier.
+
+
+## [1.86.1] - 2026-04-23
+
+### Fixed
+
+- Refactor Modal runtime setup to rely on `Image.uv_sync()` and the active Python interpreter rather than manual venv wiring, and add an optimized deployed-image seam test lane to the push workflow.
+- Activate the uv-managed venv inside Modal pipeline containers so module-scope imports from `policyengine_us_data` (notably `pandas` via `geography/__init__.py`) resolve at container boot. `uv sync --frozen` installs dependencies into `/root/policyengine-us-data/.venv/`, but Modal boots the container with the system Python, so `pipeline.py` imports were failing with `ModuleNotFoundError: No module named 'pandas'`. The image now sets `VIRTUAL_ENV`, prepends `.venv/bin` to `PATH`, and adds the venv site-packages to `PYTHONPATH`.
+
+
+## [1.86.0] - 2026-04-21
+
+### Added
+
+- Add an ACA marketplace ETL that loads state-level HC.gov bronze-plan
+  selection targets for APTC recipients into the calibration database.
+
+
+## [1.85.2] - 2026-04-21
+
+### Fixed
+
+- Loosened the per-state ACA PTC calibration tolerance from 500% to 1000% in the enhanced/sparse ECPS integration tests. CMS APTC state targets mix outlay and claimed-PTC concepts and don't account for ACA §1331 Basic Health Programs in NY and MN, so several states chronically fail a tight tolerance regardless of reweighting. Temporary until the target-side redesign in #805 lands.
+
+
+## [1.85.1] - 2026-04-21
+
+### Changed
+
+- Publish TRACE TRO declarations alongside US data release manifests on Hugging Face. The TRO uses canonical TROv 0.1 vocabulary, exposes structured `pe:*` build provenance fields (model version, git sha, data-build fingerprint, CI emission context), and ships with a JSON schema for downstream validation.
+
+
+## [1.85.0] - 2026-04-21
+
+### Added
+
+- Rebuilt EITC calibration on a coherent IRS SOI TY2022 target set. Added ~102 per-state targets (SOI Historical Table 2) and ~224 per-(child x AGI) targets (Publication 1304 Table 2.5), and removed the contradictory Treasury `tax_expenditures.eitc` aggregate column (which measures outlays, not total claimed) plus the stale TY2020 `eitc.csv` per-child-count targets. The optimizer now has geographic and AGI-shape coverage over EITC without fighting definition mismatches between outlay- and claim-based totals. Addresses #802.
+
+
+## [1.84.0] - 2026-04-20
+
+### Added
+
+- Added a Marketplace plan benchmark ratio imputation that populates `selected_marketplace_plan_benchmark_ratio` per tax unit by backing out the implied plan cost from CPS-reported private health premiums and PolicyEngine-computed PTC.
+
+
 ## [1.83.4] - 2026-04-18
 
 ### Fixed

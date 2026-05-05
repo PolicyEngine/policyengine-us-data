@@ -1,3 +1,5 @@
+from io import BytesIO
+import zipfile
 import numpy as np
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
@@ -10,6 +12,8 @@ from policyengine_us_data.datasets.org import (
 )
 from policyengine_us_data.datasets.org.org import (
     CPS_BASIC_MONTHLY_ORG_COLUMNS,
+    CPS_BASIC_MONTHLY_ORG_COLSPECS,
+    CPS_BASIC_MONTHLY_ORG_FWF_COLUMNS,
     _build_union_priority_weights,
     _load_cps_basic_org_month,
     load_org_training_data,
@@ -227,6 +231,88 @@ def test_load_cps_basic_org_month_reorders_file_order_columns(monkeypatch):
         "pemlr": 1,
         "peio1cow": 1,
     }
+
+
+def _build_fixed_width_org_dat(values: dict[str, int | float]) -> str:
+    width = max(end for _, end in CPS_BASIC_MONTHLY_ORG_COLSPECS)
+    row = [" "] * width
+    for (start, end), column in zip(
+        CPS_BASIC_MONTHLY_ORG_COLSPECS,
+        CPS_BASIC_MONTHLY_ORG_FWF_COLUMNS,
+    ):
+        field_width = end - start
+        text = str(values[column])
+        assert len(text) <= field_width, (
+            f"{column}={text!r} does not fit in width {field_width}"
+        )
+        row[start:end] = list(text.rjust(field_width))
+    return "".join(row)
+
+
+def _build_org_zip_bytes(row_text: str) -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("may24pub.dat", f"{row_text}\n")
+    return buffer.getvalue()
+
+
+def test_load_cps_basic_org_month_falls_back_to_zip(monkeypatch):
+    expected_values = {
+        "HRMIS": 4,
+        "gestfips": 6,
+        "prtage": 30,
+        "pesex": 2,
+        "ptdtrace": 1,
+        "pehspnon": 2,
+        "pworwgt": 100.0,
+        "pternwa": 100000.0,
+        "pternhly": 2500.0,
+        "peernhry": 1,
+        "pehruslt": 40,
+        "prerelg": 1,
+        "pemlr": 1,
+        "peio1cow": 1,
+    }
+    raw_values = {
+        "HRMIS": 4,
+        "gestfips": 6,
+        "prtage": 30,
+        "pesex": 2,
+        "ptdtrace": 1,
+        "pehspnon": 2,
+        "pworwgt": 100,
+        "pternwa": 100000,
+        "pternhly": 2500,
+        "peernhry": 1,
+        "pehruslt": 40,
+        "prerelg": 1,
+        "pemlr": 1,
+        "peio1cow": 1,
+    }
+    zip_bytes = _build_org_zip_bytes(_build_fixed_width_org_dat(raw_values))
+
+    class FakeResponse:
+        def __init__(self, content: bytes, status_code: int = 200):
+            self.content = content
+            self.status_code = status_code
+
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise ValueError("bad status")
+
+    def fake_get(url, timeout):
+        if url.endswith(".csv"):
+            return FakeResponse(b"<html>blocked</html>")
+        if url.endswith(".zip"):
+            return FakeResponse(zip_bytes)
+        raise AssertionError(f"unexpected URL: {url}")
+
+    monkeypatch.setattr("policyengine_us_data.datasets.org.org.requests.get", fake_get)
+
+    loaded = _load_cps_basic_org_month(2024, "may", max_attempts=1)
+
+    assert loaded.columns.tolist() == CPS_BASIC_MONTHLY_ORG_COLUMNS
+    assert loaded.iloc[0].to_dict() == expected_values
 
 
 def test_load_org_training_data_serializes_first_cache_build(monkeypatch, tmp_path):

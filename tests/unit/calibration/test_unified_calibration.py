@@ -27,6 +27,9 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
+    adjust_aca_takeup_to_match_enrollment_and_spending_targets,
+    adjust_aca_takeup_to_match_target,
+    adjust_aca_takeup_to_state_targets,
     apply_block_takeup_to_arrays,
     compute_block_takeup_draws_for_entities,
     compute_block_takeup_for_entities,
@@ -279,6 +282,87 @@ class TestAcaTakeupTargeting:
             np.array([True, False, True, True], dtype=bool),
         )
 
+    def test_adjust_removes_high_draw_takers_when_above_target(self):
+        base_takeup = np.array([True, True, True, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.90, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([2.0, 5.0, 3.0, 4.0], dtype=np.float64)
+
+        result = adjust_aca_takeup_to_match_target(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            target_people=5.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, False], dtype=bool),
+        )
+
+    def test_adjust_state_targets_adds_and_removes_independently(self):
+        base_takeup = np.array([True, True, False, False], dtype=bool)
+        entity_draws = np.array([0.90, 0.10, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([5.0, 4.0, 7.0, 3.0], dtype=np.float64)
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 4.0, "FL": 10.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, True, True], dtype=bool),
+        )
+
+    def test_adjust_targets_spending_per_person_when_provided(self):
+        base_takeup = np.array([True, True, True], dtype=bool)
+        entity_draws = np.array([0.30, 0.10, 0.20], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0], dtype=np.float64)
+        assigned_spending_weights = np.array(
+            [100.0, 500.0, 1_000.0],
+            dtype=np.float64,
+        )
+
+        result = adjust_aca_takeup_to_match_enrollment_and_spending_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            assigned_spending_weights,
+            target_people=100.0,
+            target_spending=1_000.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, False, True], dtype=bool),
+        )
+
+    def test_state_targets_use_spending_when_available(self):
+        base_takeup = np.array([False, False, False, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.20, 0.30, 0.40], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0, 100.0])
+        assigned_spending_weights = np.array([100.0, 1_000.0, 500.0, 100.0])
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 100.0, "FL": 100.0},
+            assigned_spending_weights=assigned_spending_weights,
+            target_spending_by_state={"NY": 1_000.0, "FL": 100.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, False, True], dtype=bool),
+        )
+
 
 class TestResolveRate:
     """Verify _resolve_rate handles scalar and dict rates."""
@@ -427,6 +511,9 @@ class TestParseArgsNewFlags:
         )
         assert args.resume_from == "weights.npy"
         assert args.checkpoint_output == "weights.checkpoint.pt"
+
+        args_default = parse_args([])
+        assert args_default.checkpoint_output is None
 
 
 class FakeSparseCalibrationWeights:

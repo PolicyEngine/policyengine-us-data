@@ -91,7 +91,6 @@ def transform_age_data(age_data, docs):
 
 
 def load_age_data(df_long, geo, year):
-
     # Quick data quality check before loading ----
     if geo == "National":
         assert len(set(df_long.ucgid_str)) == 1

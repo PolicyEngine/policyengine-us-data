@@ -29,26 +29,38 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
+from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: E402
+    FingerprintingService,
+    PublishingInputBundle,
+)
 from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
+from policyengine_us_data.utils.run_context import resolve_run_id  # noqa: E402
 
-app = modal.App("policyengine-us-data-local-area")
+app = modal.App(
+    os.environ.get("US_DATA_LOCAL_AREA_APP_NAME") or "policyengine-us-data-local-area"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
 staging_volume = modal.Volume.from_name(
-    "local-area-staging",
+    os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
     create_if_missing=True,
 )
 
 pipeline_volume = modal.Volume.from_name(
-    "pipeline-artifacts",
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
 )
 
 VOLUME_MOUNT = "/staging"
+
+
+def _python_cmd(*args: str) -> list[str]:
+    """Build a command that uses the current interpreter."""
+    return [sys.executable, *args]
 
 
 def setup_gcp_credentials():
@@ -77,10 +89,13 @@ def _build_promote_national_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -97,7 +112,9 @@ from policyengine_us_data.utils.version_manifest import (
 
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
 rel_paths = json.loads('''{rel_paths_json}''')
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting national H5 from staging to production (run_id={{run_id!r}})...")
@@ -135,6 +152,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")
@@ -144,9 +162,12 @@ else:
         f"missing prefixes: {{', '.join(missing_prefixes)}}"
     )
 
-print("Cleaning up staging...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging")
+if cleanup_staging:
+    print("Cleaning up staging...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging")
+else:
+    print("Deferring staged national cleanup until full release promotion succeeds")
 print(f"Successfully promoted national H5 for version {{version}}")
 """
 
@@ -156,10 +177,13 @@ def _build_promote_publish_script(
     version: str,
     run_id: str,
     rel_paths: list[str],
+    cleanup_staging: bool = True,
 ) -> str:
     rel_paths_json = json.dumps(rel_paths)
+    cleanup_staging_json = json.dumps(cleanup_staging)
     return f"""
 import json
+import os
 from pathlib import Path
 from policyengine_us_data.utils.data_upload import (
     promote_staging_to_production_hf,
@@ -177,6 +201,8 @@ from policyengine_us_data.utils.version_manifest import (
 rel_paths = json.loads('''{rel_paths_json}''')
 version = "{version}"
 run_id = "{run_id}"
+os.environ["US_DATA_RUN_ID"] = run_id
+cleanup_staging = json.loads('''{cleanup_staging_json}''')
 run_dir = Path("{VOLUME_MOUNT}") / run_id
 
 print(f"Promoting {{len(rel_paths)}} files from staging/ to production (run_id={{run_id!r}})...")
@@ -218,6 +244,7 @@ if should_finalize:
                 repo="policyengine/policyengine-us-data",
                 commit=version,
             ),
+            run_id=run_id or None,
         )
     )
     print("Updated release manifest and created tag")
@@ -228,9 +255,12 @@ else:
     )
     print("Deferring version_manifest.json update until release finalization")
 
-print("Cleaning up staging/...")
-cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
-print(f"Cleaned up {{cleaned}} files from staging/")
+if cleanup_staging:
+    print("Cleaning up staging/...")
+    cleaned = cleanup_staging_hf(rel_paths, version, run_id=run_id)
+    print(f"Cleaned up {{cleaned}} files from staging/")
+else:
+    print("Deferring staged regional cleanup until full release promotion succeeds")
 
 print(f"Successfully published version {{version}}")
 """
@@ -304,6 +334,63 @@ def get_version() -> str:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
+
+
+def _build_publishing_input_bundle(
+    *,
+    weights_path: Path,
+    dataset_path: Path,
+    db_path: Path | None,
+    geography_path: Path | None,
+    calibration_package_path: Path | None,
+    run_config_path: Path | None,
+    run_id: str,
+    version: str,
+    n_clones: int | None,
+    seed: int,
+    legacy_blocks_path: Path | None = None,
+) -> PublishingInputBundle:
+    """Build the normalized coordinator input bundle for one publish scope."""
+
+    return PublishingInputBundle(
+        weights_path=weights_path,
+        source_dataset_path=dataset_path,
+        target_db_path=db_path,
+        exact_geography_path=geography_path,
+        calibration_package_path=calibration_package_path,
+        run_config_path=run_config_path,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=legacy_blocks_path,
+    )
+
+
+def _resolve_scope_fingerprint(
+    *,
+    inputs: PublishingInputBundle,
+    scope: str,
+    expected_fingerprint: str = "",
+) -> str:
+    """Compute the scope fingerprint while preserving pinned resume values."""
+
+    service = FingerprintingService()
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    computed_fingerprint = service.compute_scope_fingerprint(traceability)
+    if expected_fingerprint:
+        if expected_fingerprint != computed_fingerprint:
+            print(
+                "WARNING: Pinned fingerprint differs from current "
+                f"{scope} scope fingerprint. "
+                "Preserving pinned value for backward-compatible resume.\n"
+                f"  Pinned:   {expected_fingerprint}\n"
+                f"  Current:  {computed_fingerprint}"
+            )
+        else:
+            print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
+        return expected_fingerprint
+    return computed_fingerprint
 
 
 def partition_work(
@@ -465,6 +552,8 @@ def build_areas_worker(
     """
     setup_gcp_credentials()
     setup_repo(branch)
+    pipeline_volume.reload()
+    staging_volume.reload()
 
     output_dir = Path(VOLUME_MOUNT) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -472,10 +561,7 @@ def build_areas_worker(
     work_items_json = json.dumps(work_items)
 
     worker_cmd = [
-        "uv",
-        "run",
-        "python",
-        "modal_app/worker_script.py",
+        *_python_cmd("-m", "modal_app.worker_script"),
         "--work-items",
         work_items_json,
         "--weights-path",
@@ -489,6 +575,13 @@ def build_areas_worker(
     ]
     if "geography" in calibration_inputs:
         worker_cmd.extend(["--geography-path", calibration_inputs["geography"]])
+    if "calibration_package" in calibration_inputs:
+        worker_cmd.extend(
+            [
+                "--calibration-package-path",
+                calibration_inputs["calibration_package"],
+            ]
+        )
     if "n_clones" in calibration_inputs:
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
@@ -549,6 +642,7 @@ def build_areas_worker(
 def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     """Validate all expected files and generate manifest."""
     setup_repo(branch)
+    staging_volume.reload()
 
     if not version:
         version = run_id.split("_", 1)[0]
@@ -560,10 +654,7 @@ def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     # enumeration to USAreaCatalog and send typed --requests-json payloads to
     # workers so area construction no longer lives in the coordinator.
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
             f"""
 import json
@@ -579,7 +670,7 @@ manifest_path = staging_dir / run_id / "manifest.json"
 save_manifest(manifest, manifest_path)
 print(json.dumps(manifest))
 """,
-        ],
+        ),
         capture_output=True,
         text=True,
         env=os.environ.copy(),
@@ -624,10 +715,7 @@ def upload_to_staging(
     manifest_json = json.dumps(manifest)
 
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
             f"""
 import json
@@ -665,7 +753,7 @@ print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
 
 print(f"Staged version {{version}} for promotion")
 """,
-        ],
+        ),
         text=True,
         env=os.environ.copy(),
     )
@@ -687,7 +775,12 @@ print(f"Staged version {{version}} for promotion")
     timeout=3600,
     nonpreemptible=True,
 )
-def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -> str:
+def promote_publish(
+    branch: str = "main",
+    version: str = "",
+    run_id: str = "",
+    cleanup_staging: bool = True,
+) -> str:
     """
     Promote staged files from HF staging/ to production paths,
     upload to GCS, then cleanup HF staging.
@@ -701,7 +794,7 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
 
     staging_dir = Path(VOLUME_MOUNT)
     staging_volume.reload()
@@ -716,17 +809,15 @@ def promote_publish(branch: str = "main", version: str = "", run_id: str = "") -
         manifest = json.load(f)
 
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
             _build_promote_publish_script(
                 version=version,
                 run_id=run_id,
                 rel_paths=list(manifest["files"].keys()),
+                cleanup_staging=cleanup_staging,
             ),
-        ],
+        ),
         text=True,
         env=os.environ.copy(),
     )
@@ -758,6 +849,7 @@ def coordinate_publish(
     validate: bool = True,
     run_id: str = "",
     expected_fingerprint: str = "",
+    work_items_override: List[Dict] | None = None,
 ) -> Dict:
     """Coordinate the full publishing workflow."""
     setup_gcp_credentials()
@@ -765,11 +857,12 @@ def coordinate_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. Local-area publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")
@@ -789,6 +882,7 @@ def coordinate_publish(
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
     config_json_path = artifacts / "unified_run_config.json"
+    calibration_package_path = artifacts / "calibration_package.pkl"
 
     required = {
         "weights": weights_path,
@@ -811,6 +905,8 @@ def coordinate_publish(
         "n_clones": n_clones,
         "seed": 42,
     }
+    if calibration_package_path.exists():
+        calibration_inputs["calibration_package"] = str(calibration_package_path)
     validate_artifacts(config_json_path, artifacts)
 
     if validate:
@@ -830,88 +926,91 @@ def coordinate_publish(
             validate = False
 
     # Fingerprint-based cache invalidation
-    if expected_fingerprint:
-        fingerprint = expected_fingerprint
-        print(f"Using pinned fingerprint from pipeline: {fingerprint}")
-    else:
-        fp_result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-from policyengine_us_data.calibration.publish_local_area import (
-    compute_input_fingerprint,
-)
-print(compute_input_fingerprint("{weights_path}", "{dataset_path}", {n_clones}, seed=42))
-""",
-            ],
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
-        )
-        if fp_result.returncode != 0:
-            raise RuntimeError(f"Failed to compute fingerprint: {fp_result.stderr}")
-        fingerprint = fp_result.stdout.strip()
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=(
+            calibration_package_path if calibration_package_path.exists() else None
+        ),
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=42,
+        legacy_blocks_path=artifacts / "stacked_blocks.npy",
+    )
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        expected_fingerprint=expected_fingerprint,
+    )
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
     staging_volume.commit()
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
-import json
-from policyengine_us_data.calibration.calibration_utils import (
-    get_all_cds_from_database,
-    STATE_CODES,
-)
-from policyengine_us_data.calibration.publish_local_area import (
-    get_district_friendly_name,
-)
+    if work_items_override is None:
+        result = subprocess.run(
+            _python_cmd(
+                "-c",
+                (
+                    "import json\n"
+                    "from policyengine_us_data.calibration.calibration_utils "
+                    "import get_all_cds_from_database, STATE_CODES\n"
+                    "from policyengine_us_data.calibration.publish_local_area "
+                    "import get_district_friendly_name\n"
+                    f'db_uri = "sqlite:///{db_path}"\n'
+                    "cds = get_all_cds_from_database(db_uri)\n"
+                    "states = list(STATE_CODES.values())\n"
+                    "districts = [get_district_friendly_name(cd) for cd in cds]\n"
+                    'print(json.dumps({"states": states, "districts": districts, '
+                    '"cities": ["NYC"], "cds": cds}))\n'
+                ),
+            ),
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
 
-db_uri = "sqlite:///{db_path}"
-cds = get_all_cds_from_database(db_uri)
-states = list(STATE_CODES.values())
-districts = [get_district_friendly_name(cd) for cd in cds]
-print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], "cds": cds}}))
-""",
-        ],
-        capture_output=True,
-        text=True,
-        env=os.environ.copy(),
-    )
+        if result.returncode != 0:
+            raise RuntimeError(f"Failed to get work items: {result.stderr}")
 
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to get work items: {result.stderr}")
+        work_info = json.loads(result.stdout)
+        states = work_info["states"]
+        districts = work_info["districts"]
+        cities = work_info["cities"]
 
-    work_info = json.loads(result.stdout)
-    states = work_info["states"]
-    districts = work_info["districts"]
-    cities = work_info["cities"]
+        from collections import Counter
 
-    from collections import Counter
+        cds_per_state = Counter(d.split("-")[0] for d in districts)
 
-    cds_per_state = Counter(d.split("-")[0] for d in districts)
+        CITY_WEIGHTS = {"NYC": 11}
 
-    CITY_WEIGHTS = {"NYC": 11}
-
-    work_items = []
-    for s in states:
-        work_items.append({"type": "state", "id": s, "weight": cds_per_state.get(s, 1)})
-    for d in districts:
-        work_items.append({"type": "district", "id": d, "weight": 1})
-    for c in cities:
-        work_items.append({"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)})
+        work_items = []
+        for s in states:
+            work_items.append(
+                {"type": "state", "id": s, "weight": cds_per_state.get(s, 1)}
+            )
+        for d in districts:
+            work_items.append({"type": "district", "id": d, "weight": 1})
+        for c in cities:
+            work_items.append(
+                {"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)}
+            )
+    else:
+        work_items = work_items_override
+        states = [item["id"] for item in work_items if item.get("type") == "state"]
+        districts = [
+            item["id"] for item in work_items if item.get("type") == "district"
+        ]
+        cities = [item["id"] for item in work_items if item.get("type") == "city"]
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
+    initially_completed = set(completed)
     print(f"Found {len(completed)} already-completed items on volume")
 
     phase_args = dict(
@@ -963,12 +1062,22 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
             f"Volume preserved for retry."
         )
 
+    reused_outputs = initially_completed & completed
+    recomputed_outputs = completed - initially_completed
+    reuse_measurement = {
+        "expected_outputs": expected_total,
+        "valid_reused_outputs": len(reused_outputs),
+        "recomputed_outputs": len(recomputed_outputs),
+        "invalid_outputs": max(expected_total - len(completed), 0),
+    }
+
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
         return {
             "message": (f"Build complete for version {version}. Upload skipped."),
             "validation_rows": accumulated_validation_rows,
             "fingerprint": fingerprint,
+            "reuse_measurement": reuse_measurement,
         }
 
     print("\nValidating staging...")
@@ -1005,6 +1114,7 @@ print(json.dumps({{"states": states, "districts": districts, "cities": ["NYC"], 
         "run_id": run_id,
         "validation_rows": accumulated_validation_rows,
         "fingerprint": fingerprint,
+        "reuse_measurement": reuse_measurement,
     }
 
 
@@ -1046,6 +1156,7 @@ def coordinate_national_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    skip_upload: bool = False,
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
@@ -1053,11 +1164,12 @@ def coordinate_national_publish(
 
     version = get_version()
 
+    run_id = run_id or resolve_run_id()
     if not run_id:
-        from policyengine_us_data.utils.run_id import generate_run_id
-
-        sha = os.environ.get("GIT_COMMIT", "unknown")
-        run_id = generate_run_id(version, sha)
+        raise RuntimeError(
+            "run_id is required. National publishing must receive the "
+            "GitHub-created run ID from the pipeline."
+        )
 
     print("=" * 60)
     print(f"Run ID: {run_id}")
@@ -1105,8 +1217,25 @@ def coordinate_national_publish(
             "geography_assignment.npz": "national_geography_assignment.npz",
         },
     )
+    fingerprint_inputs = _build_publishing_input_bundle(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=None,
+        run_config_path=config_json_path if config_json_path.exists() else None,
+        run_id=run_id,
+        version=version,
+        n_clones=n_clones,
+        seed=42,
+    )
+    fingerprint = _resolve_scope_fingerprint(
+        inputs=fingerprint_inputs,
+        scope="national",
+    )
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    national_h5 = run_dir / "national" / "US.h5"
 
     work_items = [{"type": "national", "id": "US"}]
     print("Spawning worker for national H5 build...")
@@ -1148,15 +1277,12 @@ def coordinate_national_publish(
     if validate:
         print("Running national H5 validation...")
         val_result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
+            _python_cmd(
                 "-m",
                 "policyengine_us_data.calibration.validate_national_h5",
                 "--h5-path",
                 str(national_h5),
-            ],
+            ),
             capture_output=True,
             text=True,
             env=os.environ.copy(),
@@ -1171,12 +1297,24 @@ def coordinate_national_publish(
                 f"non-zero exit code: {val_result.returncode}"
             )
 
+    if skip_upload:
+        print("\nSkipping national upload (--skip-upload flag set)")
+        return {
+            "message": (f"National US.h5 built for version {version}. Upload skipped."),
+            "run_id": run_id,
+            "fingerprint": fingerprint,
+            "national_validation": national_validation_output,
+            "reuse_measurement": {
+                "expected_outputs": 1,
+                "valid_reused_outputs": 0,
+                "recomputed_outputs": 1,
+                "invalid_outputs": 0,
+            },
+        }
+
     print(f"Uploading {national_h5} to HF staging...")
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
             f"""
 from policyengine_us_data.utils.data_upload import (
@@ -1189,7 +1327,7 @@ upload_to_staging_hf(
 )
 print("Done")
 """,
-        ],
+        ),
         text=True,
         env=os.environ.copy(),
     )
@@ -1212,7 +1350,14 @@ print("Done")
             f"{version}. Run main_national_promote to publish."
         ),
         "run_id": run_id,
+        "fingerprint": fingerprint,
         "national_validation": national_validation_output,
+        "reuse_measurement": {
+            "expected_outputs": 1,
+            "valid_reused_outputs": 0,
+            "recomputed_outputs": 1,
+            "invalid_outputs": 0,
+        },
     }
 
 
@@ -1240,6 +1385,7 @@ def promote_national_publish(
     branch: str = "main",
     version: str = "",
     run_id: str = "",
+    cleanup_staging: bool = True,
 ) -> str:
     """Promote national US.h5 from HF staging to production + GCS."""
     setup_gcp_credentials()
@@ -1248,21 +1394,19 @@ def promote_national_publish(
     if not run_id:
         raise ValueError("--run-id is required for promote")
     if not version:
-        version = run_id.split("_", 1)[0]
+        version = get_version()
     rel_paths = ["national/US.h5"]
 
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
             _build_promote_national_publish_script(
                 version=version,
                 run_id=run_id,
                 rel_paths=rel_paths,
+                cleanup_staging=cleanup_staging,
             ),
-        ],
+        ),
         text=True,
         env=os.environ.copy(),
     )

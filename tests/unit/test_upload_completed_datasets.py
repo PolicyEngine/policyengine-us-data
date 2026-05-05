@@ -194,9 +194,9 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
         lambda file_path: validated.append(Path(file_path).name),
     )
     monkeypatch.setattr(
-        upload_module.metadata,
-        "version",
-        lambda _: "1.73.0",
+        upload_module,
+        "DATA_PACKAGE_VERSION",
+        "1.73.0",
     )
     monkeypatch.setattr(
         upload_module,
@@ -313,7 +313,7 @@ def test_upload_datasets_stage_only_skips_promote(tmp_path, monkeypatch):
     promote_calls = []
 
     monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
-    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")
     monkeypatch.setattr(
         upload_module,
         "upload_to_staging_hf",
@@ -353,7 +353,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
         f"staging/run-123/{repo_path}" for repo_path in expected_repo_paths
     ]
     monkeypatch.setattr(upload_module, "HfApi", lambda: mock_api)
-    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")
     monkeypatch.setattr(
         upload_module,
         "hf_hub_download",
@@ -469,7 +469,7 @@ def test_promote_datasets_preflight_failure_stops_before_production_writes(
     ]
     promote_calls = []
 
-    monkeypatch.setattr(upload_module.metadata, "version", lambda _: "1.73.0")
+    monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")
     monkeypatch.setattr(
         upload_module,
         "preflight_release_manifest_publish",

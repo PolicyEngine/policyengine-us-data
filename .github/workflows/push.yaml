@@ -8,46 +8,45 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: pip install ruff>=0.9.0
       - run: ruff format --check .
 
-  # ── Build datasets and run integration tests ────────────────
-  build-and-test:
+  run-context:
+    name: Run context
     runs-on: ubuntu-latest
-    needs: lint
     if: github.event.head_commit.message != 'Update package version'
+    outputs:
+      run_id: ${{ steps.run-context.outputs.run_id }}
+      github_run_url: ${{ steps.run-context.outputs.github_run_url }}
     env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      MODAL_ENVIRONMENT: main
+      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
-      - run: pip install modal
-      - name: Build datasets and run integration tests on Modal
-        run: |
-          modal run modal_app/data_build.py \
-            --upload \
-            --branch=${{ github.ref_name }}
+      - name: Resolve run context
+        id: run-context
+        run: python .github/scripts/resolve_run_context.py
 
   # ── Documentation ──────────────────────────────────────────
   docs:
+    name: Documentation
     runs-on: ubuntu-latest
     if: github.event.head_commit.message != 'Update package version'
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Build documentation
         run: uv run make documentation
@@ -62,35 +61,63 @@ jobs:
 
   # ── Versioning (bump + changelog on non-version-bump pushes) ──
   versioning:
+    name: Versioning
     runs-on: ubuntu-latest
+    needs: run-context
     if: github.event.head_commit.message != 'Update package version'
+    outputs:
+      version_sha: ${{ steps.version-commit.outputs.sha }}
     steps:
       - name: Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v1
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ steps.app-token.outputs.token }}
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: pip install towncrier
       - name: Bump version and build changelog
         run: |
           python .github/bump_version.py
-          towncrier build --yes --version $(python -c "import re; print(re.search(r'version = \"(.+?)\"', open('pyproject.toml').read()).group(1))")
+          towncrier build --yes --version "$(python .github/fetch_version.py)"
       - name: Update lockfile
         run: uv lock
       - name: Update changelog
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v10
         with:
           add: "."
           message: Update package version
+      - name: Capture version commit
+        id: version-commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ── Full publication pipeline ───────────────────────────────
+  launch-pipeline:
+    name: Launch publication pipeline
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - run-context
+      - versioning
+    if: github.event.head_commit.message != 'Update package version'
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dispatch pipeline workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
+          SOURCE_SHA: ${{ needs.versioning.outputs.version_sha }}
+        run: bash .github/scripts/dispatch_publication_pipeline.sh
 
   # ── PyPI publish (version bump commits only) ────────────────
   publish:
@@ -98,11 +125,11 @@ jobs:
     needs: lint
     if: github.event.head_commit.message == 'Update package version'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - run: uv run python -m build
       - name: Publish to PyPI

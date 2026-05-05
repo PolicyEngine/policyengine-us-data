@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 from policyengine_us_data.utils.mortgage_interest import (
+    MAX_DEDUCTIBLE_MORTGAGE_INTEREST_RATE,
     STRUCTURAL_MORTGAGE_VARIABLES,
     _filing_status_for_mortgage_caps,
     _interest_implied_balance_floor,
@@ -358,6 +359,37 @@ def test_structural_mortgage_conversion_scales_hints_to_interest_floor():
         converted["first_home_mortgage_interest"][TIME_PERIOD][0]
         + converted["second_home_mortgage_interest"][TIME_PERIOD][0]
     )
+
+
+@pytest.mark.skipif(
+    not HAS_STRUCTURAL_MORTGAGE_INPUTS,
+    reason="Installed policyengine-us does not yet expose structural MID inputs.",
+)
+def test_structural_mortgage_conversion_caps_impossible_outliers():
+    data = _base_dataset_dict(
+        person_tax_unit_ids=[1, 1],
+        ages=[55, 53],
+        deductible_mortgage_interest=[100_000_000.0, 0.0],
+        interest_deduction=[10_000.0],
+        filing_status=[b"JOINT"],
+    )
+    _set_balance_hints(data, first=[2_000_000_000.0], second=[0.0])
+
+    converted = convert_mortgage_interest_to_structural_inputs(data, TIME_PERIOD)
+
+    origination_year = int(
+        converted["first_home_mortgage_origination_year"][TIME_PERIOD][0]
+    )
+    current_law_cap = _current_law_cap(b"JOINT", origination_year)
+    max_interest = MAX_DEDUCTIBLE_MORTGAGE_INTEREST_RATE * current_law_cap
+
+    assert converted["first_home_mortgage_balance"][TIME_PERIOD][0] <= (
+        current_law_cap + 1
+    )
+    assert converted["first_home_mortgage_interest"][TIME_PERIOD][0] <= (
+        max_interest + 1
+    )
+    assert converted["home_mortgage_interest"][TIME_PERIOD].sum() <= (max_interest + 1)
 
 
 def test_post_tcja_cap_uses_mfs_limit():

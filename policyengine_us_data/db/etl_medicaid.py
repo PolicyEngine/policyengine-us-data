@@ -146,7 +146,6 @@ def transform_survey_medicaid_data(cd_survey_df):
 
 
 def load_medicaid_data(long_state, long_cd, year):
-
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 

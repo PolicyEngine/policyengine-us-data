@@ -19,38 +19,38 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 DB_DIR = STORAGE_FOLDER / "calibration"
 DB_PATH = DB_DIR / "policy_data.db"
 
-# Scripts run in the same order as `make database` in the Makefile.
-# create_database_tables.py and validate_database.py do not use etl_argparser.
-PIPELINE_SCRIPTS = [
-    ("db/create_database_tables.py", []),
-    ("db/create_initial_strata.py", ["--year", "2024"]),
-    ("db/etl_national_targets.py", ["--year", "2024"]),
-    ("db/etl_age.py", ["--year", "2024"]),
-    ("db/etl_medicaid.py", ["--year", "2024"]),
-    ("db/etl_snap.py", ["--year", "2024"]),
-    ("db/etl_tanf.py", ["--year", "2024"]),
-    ("db/etl_state_income_tax.py", ["--year", "2024"]),
-    ("db/etl_irs_soi.py", ["--year", "2024"]),
-    ("db/etl_aca_agi_state_targets.py", ["--year", "2024"]),
-    ("db/etl_pregnancy.py", ["--year", "2024"]),
-    ("db/validate_database.py", []),
+# Modules run in the same order as `make database` in the Makefile.
+# create_database_tables and validate_database do not use etl_argparser.
+PIPELINE_MODULES = [
+    ("policyengine_us_data.db.create_database_tables", []),
+    ("policyengine_us_data.db.create_initial_strata", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_national_targets", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_age", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_medicaid", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_snap", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_tanf", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_state_income_tax", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_irs_soi", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_aca_agi_state_targets", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_aca_marketplace", ["--year", "2024"]),
+    ("policyengine_us_data.db.etl_pregnancy", ["--year", "2024"]),
+    ("policyengine_us_data.db.validate_database", []),
 ]
 
-PKG_ROOT = STORAGE_FOLDER.parent
+REPO_ROOT = STORAGE_FOLDER.parent.parent
 
 
-def _run_script(
-    relative_path: str,
+def _run_module(
+    module_name: str,
     extra_args: list,
 ) -> subprocess.CompletedProcess:
-    """Run a script from the package root and return the result."""
-    script = PKG_ROOT / relative_path
-    assert script.exists(), f"Script not found: {script}"
+    """Run a database build module from the repo root and return the result."""
     return subprocess.run(
-        [sys.executable, str(script)] + extra_args,
+        [sys.executable, "-m", module_name] + extra_args,
         capture_output=True,
         text=True,
         timeout=300,
+        cwd=REPO_ROOT,
     )
 
 
@@ -65,11 +65,11 @@ def built_db():
         DB_PATH.unlink()
 
     errors = []
-    for script, args in PIPELINE_SCRIPTS:
-        result = _run_script(script, args)
+    for module_name, args in PIPELINE_MODULES:
+        result = _run_module(module_name, args)
         if result.returncode != 0:
             errors.append(
-                f"{script} failed (rc={result.returncode}):\n"
+                f"{module_name} failed (rc={result.returncode}):\n"
                 f"  stderr (last 500 chars): "
                 f"{result.stderr[-500:]}"
             )
@@ -115,10 +115,35 @@ def test_national_targets_loaded(built_db):
     conn.close()
 
     variables = {r[0] for r in rows}
-    for expected in ["snap", "social_security", "ssi"]:
+    for expected in [
+        "long_term_capital_gains",
+        "snap",
+        "social_security",
+        "ssi",
+    ]:
         assert expected in variables, (
             f"National target '{expected}' missing. Found: {sorted(variables)}"
         )
+
+
+def test_national_ltcg_agi_targets_loaded(built_db):
+    """National Table 1.4A LTCG AGI-bin targets should be present."""
+    conn = sqlite3.connect(str(built_db))
+    rows = conn.execute("""
+        SELECT variable, COUNT(*)
+        FROM target_overview
+        WHERE geo_level = 'national'
+          AND domain_variable = 'adjusted_gross_income,long_term_capital_gains'
+          AND variable IN ('long_term_capital_gains', 'tax_unit_count')
+        GROUP BY variable
+        """).fetchall()
+    conn.close()
+
+    counts = dict(rows)
+    assert counts == {
+        "long_term_capital_gains": 19,
+        "tax_unit_count": 19,
+    }
 
 
 def test_jct_mortgage_tax_expenditure_uses_mortgage_specific_variable(built_db):
@@ -198,7 +223,8 @@ def test_state_income_tax_targets(built_db):
 
 
 def test_state_aca_and_agi_targets_loaded(built_db):
-    """ACA spending/enrollment and AGI state targets should be present."""
+    """Legacy ACA spending/enrollment and AGI state targets should be present
+    (loaded by etl_aca_agi_state_targets.py)."""
     conn = sqlite3.connect(str(built_db))
     aca_spending = conn.execute(
         """
@@ -241,6 +267,45 @@ def test_state_aca_and_agi_targets_loaded(built_db):
     assert aca_enrollment > 0, "Missing ACA enrollment targets by state"
     assert agi_amount > 0, "Missing state AGI amount targets"
     assert agi_count > 0, "Missing state AGI count targets"
+
+
+def test_state_marketplace_targets_loaded(built_db):
+    """ACA marketplace APTC and bronze state targets should be present, with
+    canonical alphabetical domain_variable strings that ``target_config.yaml``
+    rules can match."""
+    conn = sqlite3.connect(str(built_db))
+    aptc_targets = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable = 'used_aca_ptc'
+        """
+    ).fetchone()[0]
+    # Regression for the bronze domain_variable ordering bug: must match the
+    # alphabetical form in target_config.yaml:68, not an insertion-ordered
+    # alternative.
+    bronze_targets = conn.execute(
+        """
+        SELECT COUNT(*)
+        FROM target_overview
+        WHERE variable = 'tax_unit_count'
+          AND geo_level = 'state'
+          AND domain_variable
+              = 'selected_marketplace_plan_benchmark_ratio,used_aca_ptc'
+        """
+    ).fetchone()[0]
+    conn.close()
+
+    # HC.gov had 32 states in 2024; allow a cushion for data updates.
+    assert aptc_targets >= 27, (
+        f"Missing state marketplace APTC targets (got {aptc_targets})"
+    )
+    assert bronze_targets >= 27, (
+        "Missing state marketplace bronze-selection targets with canonical "
+        f"domain_variable (got {bronze_targets})"
+    )
 
 
 def test_tanf_targets(built_db):

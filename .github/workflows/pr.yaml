@@ -23,11 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-fork
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - name: Check lock file is up-to-date
         run: |
           uv lock --locked || {
@@ -39,21 +39,33 @@ jobs:
     runs-on: ubuntu-latest
     needs: check-fork
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: pip install ruff>=0.9.0
       - run: ruff format --check .
+
+  quality-guards:
+    name: Quality guards
+    runs-on: ubuntu-latest
+    needs: check-fork
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Run quality guards
+        run: python scripts/run_quality_guards.py
 
   check-changelog:
     runs-on: ubuntu-latest
     needs: check-fork
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Check for changelog fragment
         run: uv run towncrier check --compare-with origin/main
@@ -62,11 +74,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-fork, lint]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Run unit tests with coverage
         env:
@@ -78,38 +90,91 @@ jobs:
           -v
       - name: Upload coverage to Codecov
         if: always()
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
-          file: coverage.xml
+          files: coverage.xml
           flags: unit
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  target-integration-tests:
+    runs-on: ubuntu-latest
+    needs: [check-fork, lint, unit-tests, smoke-test, decide-test-scope]
+    if: needs.decide-test-scope.outputs.run_integration == 'true'
+    name: Integration tests
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
+      MODAL_ENVIRONMENT: staging-us-data-pr-${{ github.event.pull_request.number }}
+      MODAL_APP_NAME: policyengine-us-data-pipeline
+      MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
+      MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - uses: astral-sh/setup-uv@v8.1.0
+      - run: uv sync --dev
+      - name: Install integration test deps
+        run: uv pip install modal pytest numpy pandas
+      - name: Ensure PR Modal environment exists
+        run: uv run python .github/scripts/ensure_modal_environment.py
+      - name: Sync Modal secrets to PR environment
+        run: uv run python .github/scripts/sync_modal_secrets.py
+      - name: Deploy Modal pipeline app to PR staging
+        run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
+      - name: Deploy Modal local-area app to PR staging
+        run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/local_area.py
+      - name: Deploy Modal H5 test harness to PR staging
+        run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/h5_test_harness.py
+      - name: Run integration tests
+        run: >
+          uv run pytest
+          tests/integration/test_tiny_pipeline_workspace.py
+          tests/integration/test_tiny_stage_1_artifacts.py
+          tests/integration/test_tiny_stage_2_artifacts.py
+          tests/integration/test_tiny_stage_3_artifacts.py
+          tests/integration/test_tiny_stage_4_artifacts.py
+          tests/integration/test_tiny_stage_5_artifacts.py
+          tests/integration/test_tiny_pipeline_e2e.py
+          tests/integration/test_tiny_pipeline_h5_e2e.py
+          tests/integration/local_h5/
+          tests/integration/test_modal_pipeline_seams.py
+          tests/integration/test_tiny_h5_pipeline.py
+          tests/integration/test_modal_pipeline_e2e.py
+          -v
+      - name: Cleanup PR Modal environment
+        if: always()
+        run: uv run python .github/scripts/delete_modal_environment.py
+
   smoke-test:
     runs-on: ubuntu-latest
     needs: [check-fork, lint]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - run: python -m pip install .
-      - run: python -c "import policyengine_us_data; print('OK')"
-      - run: python -c "from policyengine_core.data import Dataset; print('OK')"
+      - run: python .github/scripts/check_python_import.py policyengine_us_data
+      - run: python .github/scripts/check_python_import.py policyengine_core.data:Dataset
 
   docs-build:
     runs-on: ubuntu-latest
     needs: [check-fork]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: "24"
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: uv sync --dev
       - name: Test documentation builds
         run: uv run make documentation
@@ -120,50 +185,15 @@ jobs:
     outputs:
       run_integration: ${{ steps.check.outputs.run_integration }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Check changed files for integration scope
         id: check
         run: |
           CHANGED=$(git diff --name-only origin/main...HEAD)
-          if echo "$CHANGED" | grep -qE '^(policyengine_us_data/|modal_app/|tests/integration/)'; then
+          if echo "$CHANGED" | grep -qE '^(\.github/scripts/|\.github/workflows/pr\.yaml|modal_app/|policyengine_us_data/|tests/integration/|tests/support/|pyproject\.toml|uv\.lock)'; then
             echo "run_integration=true" >> "$GITHUB_OUTPUT"
           else
             echo "run_integration=false" >> "$GITHUB_OUTPUT"
           fi
-
-  integration-tests:
-    runs-on: ubuntu-latest
-    needs: [check-fork, lint, decide-test-scope]
-    if: needs.decide-test-scope.outputs.run_integration == 'true'
-    env:
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-      - run: pip install modal
-      - name: Build datasets and run integration tests on Modal
-        run: |
-          STAGE_ARGS=""
-          if git diff --name-only origin/main...HEAD | grep -qx 'pyproject.toml'; then
-            VERSION=$(python -c "from pathlib import Path; import tomllib; print(tomllib.load(Path('pyproject.toml').open('rb'))['project']['version'])")
-            STAGE_ARGS="--upload --stage-only --run-id=${VERSION}"
-            {
-              echo "## Release Artifact Staging"
-              echo ""
-              echo "- package version: \`${VERSION}\`"
-              echo "- staged HF prefix: \`staging/${VERSION}/\`"
-              echo "- promote with: \`uv run python policyengine_us_data/storage/upload_completed_datasets.py --promote-only --run-id=${VERSION} --version=${VERSION}\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-          modal run modal_app/data_build.py \
-            --branch=${{ github.head_ref || github.ref_name }} \
-            ${STAGE_ARGS}

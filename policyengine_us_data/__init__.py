@@ -1,8 +1,10 @@
 from importlib import import_module
 
-from .geography import ZIP_CODE_DATASET
-
 _LAZY_EXPORTS = {
+    "ZIP_CODE_DATASET": (
+        "policyengine_us_data.geography",
+        "ZIP_CODE_DATASET",
+    ),
     "CPS_2024": (
         "policyengine_us_data.datasets.cps.cps",
         "CPS_2024",

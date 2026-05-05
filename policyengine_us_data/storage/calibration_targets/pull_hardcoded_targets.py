@@ -7,9 +7,12 @@ Hardcoded targets for the year 2024 from CPS-derived statistics and other source
 """
 
 HARD_CODED_TOTALS = {
+    # BEA NIPA 2024 employer contributions for employee pension and
+    # insurance funds: group health insurance.
+    "employer_sponsored_insurance_premiums": 1_002.9e9,
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premiums": 112e9,
+    "medicare_part_b_premium": 112e9,
     "over_the_counter_health_expenses": 72e9,
     "spm_unit_spm_threshold": 3_945e9,
     "child_support_expense": 33e9,

@@ -1,10 +1,10 @@
 from pathlib import Path
-from importlib import metadata
 
 import h5py
 from huggingface_hub import HfApi, hf_hub_download
 from policyengine_core.data import Dataset
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
@@ -16,6 +16,7 @@ from policyengine_us_data.utils.data_upload import (
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
+from policyengine_us_data.utils.run_context import resolve_run_id
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
     load_dataset_for_validation,
@@ -59,6 +60,10 @@ INCOME_GROUPS = [
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
+
+
+def _resolve_run_id(run_id: str = "") -> str:
+    return run_id or resolve_run_id()
 
 
 class DatasetValidationError(Exception):
@@ -114,6 +119,7 @@ def _collect_staged_dataset_repo_paths(
     run_id: str = "",
 ) -> list[str]:
     api = HfApi()
+    run_id = _resolve_run_id(run_id)
     prefix = f"staging/{run_id}" if run_id else "staging"
     repo_files = set(
         api.list_repo_files(
@@ -145,6 +151,7 @@ def _download_staged_dataset_artifacts(
     rel_paths: list[str],
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
+    run_id = _resolve_run_id(run_id)
     staging_prefix = f"staging/{run_id}" if run_id else "staging"
     downloaded_files = []
     for rel_path in rel_paths:
@@ -301,7 +308,8 @@ def stage_datasets(
     version: str | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
-    version = version or metadata.version("policyengine-us-data")
+    run_id = _resolve_run_id(run_id)
+    version = version or DATA_PACKAGE_VERSION
     files_with_repo_paths = _collect_existing_dataset_artifacts(
         require_enhanced_cps=require_enhanced_cps
     )
@@ -323,8 +331,10 @@ def promote_datasets(
     version: str | None = None,
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
+    cleanup_staging: bool = True,
 ) -> list[str]:
-    version = version or metadata.version("policyengine-us-data")
+    run_id = _resolve_run_id(run_id)
+    version = version or DATA_PACKAGE_VERSION
     rel_paths = (
         [repo_path for _, repo_path in files_with_repo_paths]
         if files_with_repo_paths
@@ -385,17 +395,21 @@ def promote_datasets(
                     artifact["path"] for artifact in manifest["artifacts"].values()
                 ),
                 hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+                run_id=run_id or None,
             )
         )
     else:
         print("Deferring version_manifest.json update until the release is finalized.")
-    cleanup_staging_hf(
-        rel_paths,
-        version=version,
-        hf_repo_name=HF_REPO_NAME,
-        hf_repo_type=HF_REPO_TYPE,
-        run_id=run_id,
-    )
+    if cleanup_staging:
+        cleanup_staging_hf(
+            rel_paths,
+            version=version,
+            hf_repo_name=HF_REPO_NAME,
+            hf_repo_type=HF_REPO_TYPE,
+            run_id=run_id,
+        )
+    else:
+        print("Deferring staged dataset cleanup until full release promotion succeeds.")
     return rel_paths
 
 
@@ -406,19 +420,21 @@ def upload_datasets(
     promote_only: bool = False,
     run_id: str = "",
     version: str | None = None,
+    cleanup_staging: bool = True,
 ):
+    run_id = _resolve_run_id(run_id)
     if stage_only and promote_only:
         raise ValueError("Choose either stage_only or promote_only, not both.")
 
-    version = version or metadata.version("policyengine-us-data")
+    version = version or DATA_PACKAGE_VERSION
 
     if promote_only:
-        promote_datasets(
+        return promote_datasets(
             require_enhanced_cps=require_enhanced_cps,
             version=version,
             run_id=run_id,
+            cleanup_staging=cleanup_staging,
         )
-        return
 
     files_with_repo_paths = stage_datasets(
         require_enhanced_cps=require_enhanced_cps,
@@ -426,13 +442,14 @@ def upload_datasets(
         run_id=run_id,
     )
     if stage_only:
-        return
+        return [repo_path for _, repo_path in files_with_repo_paths]
 
-    promote_datasets(
+    return promote_datasets(
         require_enhanced_cps=require_enhanced_cps,
         version=version,
         run_id=run_id,
         files_with_repo_paths=files_with_repo_paths,
+        cleanup_staging=cleanup_staging,
     )
 
 
@@ -480,8 +497,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-id",
-        default="",
-        help="Optional staging run ID, for example a CI commit SHA.",
+        default=resolve_run_id(),
+        help="GitHub-created staging run ID.",
     )
     parser.add_argument(
         "--version",

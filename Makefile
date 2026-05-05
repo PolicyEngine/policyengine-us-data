@@ -41,10 +41,10 @@ changelog:
 	python .github/bump_version.py
 	towncrier build --yes --version $$(python -c "import re; print(re.search(r'version = \"(.+?)\"', open('pyproject.toml').read()).group(1))")
 download:
-	python policyengine_us_data/storage/download_private_prerequisites.py
+	python -m policyengine_us_data.storage.download_private_prerequisites
 
 upload:
-	python policyengine_us_data/storage/upload_completed_datasets.py
+	python -m policyengine_us_data.storage.upload_completed_datasets
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest
@@ -78,18 +78,19 @@ DATABASE_YEAR ?= 2024
 
 database:
 	rm -f policyengine_us_data/storage/calibration/policy_data.db
-	python policyengine_us_data/db/create_database_tables.py
-	python policyengine_us_data/db/create_initial_strata.py --year $(YEAR)
-	python policyengine_us_data/db/etl_national_targets.py --year $(YEAR)
-	python policyengine_us_data/db/etl_age.py --year $(YEAR)
-	python policyengine_us_data/db/etl_medicaid.py --year $(YEAR)
-	python policyengine_us_data/db/etl_snap.py --year $(YEAR)
-	python policyengine_us_data/db/etl_tanf.py --year $(YEAR)
-	python policyengine_us_data/db/etl_state_income_tax.py --year $(YEAR)
-	python policyengine_us_data/db/etl_irs_soi.py --year $(YEAR)
-	python policyengine_us_data/db/etl_aca_agi_state_targets.py --year $(YEAR)
-	python policyengine_us_data/db/etl_pregnancy.py --year $(YEAR)
-	python policyengine_us_data/db/validate_database.py
+	python -m policyengine_us_data.db.create_database_tables
+	python -m policyengine_us_data.db.create_initial_strata --year $(YEAR)
+	python -m policyengine_us_data.db.etl_national_targets --year $(YEAR)
+	python -m policyengine_us_data.db.etl_age --year $(YEAR)
+	python -m policyengine_us_data.db.etl_medicaid --year $(YEAR)
+	python -m policyengine_us_data.db.etl_snap --year $(YEAR)
+	python -m policyengine_us_data.db.etl_tanf --year $(YEAR)
+	python -m policyengine_us_data.db.etl_state_income_tax --year $(YEAR)
+	python -m policyengine_us_data.db.etl_irs_soi --year $(YEAR)
+	python -m policyengine_us_data.db.etl_aca_agi_state_targets --year $(YEAR)
+	python -m policyengine_us_data.db.etl_aca_marketplace --year $(YEAR)
+	python -m policyengine_us_data.db.etl_pregnancy --year $(YEAR)
+	python -m policyengine_us_data.db.validate_database
 
 database-refresh:
 	rm -f policyengine_us_data/storage/calibration/policy_data.db
@@ -104,18 +105,18 @@ promote-dataset:
 	@echo "Dataset promoted to HF."
 
 data: download database
-	python policyengine_us_data/utils/uprating.py
-	python policyengine_us_data/datasets/acs/acs.py
-	python policyengine_us_data/datasets/cps/cps.py
-	python policyengine_us_data/datasets/puf/irs_puf.py
-	python policyengine_us_data/datasets/puf/puf.py
-	python policyengine_us_data/datasets/cps/extended_cps.py
-	python policyengine_us_data/calibration/create_stratified_cps.py
-	python policyengine_us_data/calibration/create_source_imputed_cps.py
+	python -m policyengine_us_data.utils.uprating
+	python -m policyengine_us_data.datasets.acs.acs
+	python -m policyengine_us_data.datasets.cps.cps
+	python -m policyengine_us_data.datasets.puf.irs_puf
+	python -m policyengine_us_data.datasets.puf.puf
+	python -m policyengine_us_data.datasets.cps.extended_cps
+	python -m policyengine_us_data.calibration.create_stratified_cps
+	python -m policyengine_us_data.calibration.create_source_imputed_cps
 
 data-legacy: data
-	python policyengine_us_data/datasets/cps/enhanced_cps.py
-	python policyengine_us_data/datasets/cps/small_enhanced_cps.py
+	python -m policyengine_us_data.datasets.cps.enhanced_cps
+	python -m policyengine_us_data.datasets.cps.small_enhanced_cps
 
 calibrate: data
 	python -m policyengine_us_data.calibration.unified_calibration \
@@ -150,7 +151,7 @@ validate-data:
 	python -c "from policyengine_us_data.storage.upload_completed_datasets import validate_all_datasets; validate_all_datasets()"
 
 refresh-soi-targets:
-	python policyengine_us_data/storage/calibration_targets/refresh_soi_table_targets.py \
+	python -m policyengine_us_data.storage.calibration_targets.refresh_soi_table_targets \
 		--source-year $(SOI_SOURCE_YEAR) \
 		--target-year $(SOI_TARGET_YEAR)
 
@@ -249,15 +250,19 @@ check-sanity:
 		--sanity-only --area-type states --areas NC \
 		$(if $(RUN_ID),--run-id $(RUN_ID))
 
-build-data-modal:
-	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests
+require-run-id:
+	@test -n "$(RUN_ID)" || (echo "RUN_ID is required; use the GitHub-created US data run ID." >&2; exit 1)
 
-pipeline:
+build-data-modal: require-run-id
+	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --run-id $(RUN_ID)
+
+pipeline: require-run-id
 	modal run --detach modal_app.pipeline::main \
 		--action run --branch $(BRANCH) --gpu $(GPU) \
 		--epochs $(EPOCHS) --national-gpu $(NATIONAL_GPU) \
 		--national-epochs $(NATIONAL_EPOCHS) \
-		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES)
+		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES) \
+		--run-id $(RUN_ID)
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

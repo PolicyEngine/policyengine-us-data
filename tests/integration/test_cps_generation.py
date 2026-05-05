@@ -119,7 +119,17 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
     import policyengine_us_data.datasets.acs.acs as acs_module
     from policyengine_us_data.datasets.cps.cps import add_rent
 
-    fake_acs_dataset = object()
+    fake_acs_path = tmp_path / "acs_2022.h5"
+    with h5py.File(fake_acs_path, "w") as fake_acs_h5:
+        fake_acs_h5.create_dataset(
+            "is_household_head",
+            data=np.ones(10_050, dtype=bool),
+        )
+
+    class FakeACSDataset:
+        file_path = fake_acs_path
+
+    fake_acs_dataset = FakeACSDataset()
     monkeypatch.setattr(acs_module, "ACS_2022", fake_acs_dataset)
 
     class FakeDataset:
@@ -200,6 +210,7 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
 
     cps = {
         "age": np.array([40, 12, 70], dtype=np.int32),
+        "is_household_head": np.array([True, False, True], dtype=bool),
         "spm_unit_capped_housing_subsidy_reported": np.zeros(3, dtype=np.float32),
     }
     person = pd.DataFrame({"P_SEQ": [1, 2, 1]})

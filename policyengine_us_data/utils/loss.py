@@ -19,6 +19,9 @@ from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_targe
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 
+
+MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
+
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to
 # other years without re-sourcing.  They are duplicated in
@@ -27,10 +30,11 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
+    "employer_sponsored_insurance_premiums": 1_002.9e9,
     "health_insurance_premiums_without_medicare_part_b": 385e9,
     "other_medical_expenses": 278e9,
-    "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
-        2024
+    MEDICARE_PART_B_PREMIUM_VARIABLE: (
+        get_beneficiary_paid_medicare_part_b_premiums_target(2024)
     ),
     "over_the_counter_health_expenses": 72e9,
     "spm_unit_spm_threshold": 3_945e9,
@@ -129,6 +133,55 @@ MEDICAID_SPENDING_TARGETS = {
 MEDICAID_ENROLLMENT_TARGETS = {
     2024: 72_429_055,
 }
+
+LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "qualified_dividends",
+    "taxable_interest_income",
+}
+
+AGI_LEVEL_TARGETED_VARIABLES = (
+    "adjusted_gross_income",
+    "count",
+    "employment_income",
+    "business_net_profits",
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "partnership_and_s_corp_income",
+    "qualified_dividends",
+    "taxable_interest_income",
+    "total_pension_income",
+    "total_social_security",
+)
+
+AGGREGATE_LEVEL_TARGETED_VARIABLES = (
+    "business_net_losses",
+    "capital_gains_distributions",
+    "capital_gains_losses",
+    "estate_income",
+    "estate_losses",
+    "exempt_interest",
+    "ira_distributions",
+    "partnership_and_s_corp_losses",
+    "rent_and_royalty_net_income",
+    "rent_and_royalty_net_losses",
+    # The current SOI source only exposes taxable-only aggregate targets for
+    # mortgage-interest deductions, not the AGI-bin detail used above.
+    "mortgage_interest_deductions",
+    # Keep the legacy loss matrix aligned with the national QBI amount and
+    # claimant-count controls used by the target-config calibration path.
+    "qualified_business_income_deduction",
+    "taxable_pension_income",
+    "taxable_social_security",
+    "unemployment_compensation",
+)
+
+IRS_SOI_AGGREGATE_TARGETS = [
+    # This complements the net capital gains target with the source-specific
+    # control used by downstream preferential-rate reforms.
+    ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
+]
 
 
 def fmt(x):
@@ -337,6 +390,155 @@ def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, i
     )
 
 
+def _skip_unverified_target(value) -> bool:
+    """Return True when a CSV value is a placeholder instead of a real target.
+
+    CSV rows containing "[TO BE CALCULATED]" (or an empty cell) are
+    intentionally skipped. This matches the repo-wide convention of
+    ``[TO BE CALCULATED]`` for unverified IRS extractions and keeps the
+    optimizer from consuming fabricated numbers. See CLAUDE.md §
+    "NEVER FABRICATE DATA OR RESULTS".
+    """
+    if value is None:
+        return True
+    if isinstance(value, float) and pd.isna(value):
+        return True
+    if isinstance(value, str) and value.strip() in (
+        "",
+        "[TO BE CALCULATED]",
+        "TBD",
+    ):
+        return True
+    return False
+
+
+def _add_state_eitc_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    eitc_spending_uprating: float,
+    population_uprating: float,
+):
+    """Add per-state EITC returns and amount targets.
+
+    Sourced from IRS SOI Historical Table 2 (``eitc_state.csv``). Returns
+    counts are uprated by population; amount targets are uprated by the
+    Treasury EITC trajectory (same uprating used for the existing
+    per-child-count EITC targets so state and child-count signals move
+    together).
+    """
+    eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
+    if not eitc_state_path.exists():
+        return targets_list, loss_matrix
+
+    eitc_state = pd.read_csv(eitc_state_path, comment="#")
+
+    eitc = sim.calculate("eitc").values  # tax-unit level
+    eitc_returns_tu = (eitc > 0).astype(float)
+
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(state, "person", "household", how="value_from_first_person")
+    state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS.get(s, None))
+
+    eitc_returns_hh = sim.map_result(eitc_returns_tu, "tax_unit", "household")
+    eitc_amount_hh = sim.map_result(eitc, "tax_unit", "household")
+
+    for _, row in eitc_state.iterrows():
+        fips = str(row["GEO_ID"])[-2:]
+        in_state = (state_fips == fips).to_numpy()
+
+        returns_label = f"nation/irs/eitc/returns/state_{fips}"
+        loss_matrix[returns_label] = np.where(in_state, eitc_returns_hh, 0.0)
+        if not _skip_unverified_target(row["Returns"]):
+            targets_list.append(float(row["Returns"]) * population_uprating)
+        else:
+            # Remove the column we just added since we aren't appending a
+            # target for it; otherwise loss_matrix/targets_array go out of
+            # alignment.
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/eitc/amount/state_{fips}"
+        loss_matrix[amount_label] = np.where(in_state, eitc_amount_hh, 0.0)
+        if not _skip_unverified_target(row["Amount"]):
+            targets_list.append(float(row["Amount"]) * eitc_spending_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
+def _add_eitc_by_agi_and_children_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    eitc_spending_uprating: float,
+    population_uprating: float,
+):
+    """Add per-(qualifying-children x AGI bucket) EITC returns and amount
+    targets.
+
+    Sourced from IRS SOI Publication 1304 Table 2.5
+    (``eitc_by_agi_and_children.csv``). The SOI table buckets qualifying
+    children as 0, 1, 2, "3 or more" (coded as ``count_children = 3``)
+    and uses the half-open [lower, upper) AGI convention.
+
+    The loss-matrix labels embed child count and AGI bucket so the
+    optimizer can distinguish, e.g., EITC claims by 2-child families
+    with AGI in [$20k, $25k) from 2-child families with AGI in
+    [$25k, $30k).
+    """
+    eitc_agi_path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    if not eitc_agi_path.exists():
+        return targets_list, loss_matrix
+
+    eitc_by_agi = pd.read_csv(eitc_agi_path, comment="#")
+    eitc_by_agi["agi_lower"] = eitc_by_agi["agi_lower"].astype(float)
+    eitc_by_agi["agi_upper"] = eitc_by_agi["agi_upper"].astype(float)
+
+    eitc_eligible_children = sim.calculate("eitc_child_count").values
+    eitc = sim.calculate("eitc").values
+    agi_tu = sim.calculate("adjusted_gross_income").values
+
+    for _, row in eitc_by_agi.iterrows():
+        count_children = int(row["count_children"])
+        agi_lower = float(row["agi_lower"])
+        agi_upper = float(row["agi_upper"])
+
+        if count_children < 3:
+            meets_child_criteria = eitc_eligible_children == count_children
+        else:
+            meets_child_criteria = eitc_eligible_children >= count_children
+
+        in_agi = (agi_tu >= agi_lower) & (agi_tu < agi_upper)
+        in_bucket = meets_child_criteria & in_agi
+
+        slug = f"c{count_children}_{fmt(agi_lower)}_{fmt(agi_upper)}"
+
+        returns_label = f"nation/irs/eitc/returns/{slug}"
+        loss_matrix[returns_label] = sim.map_result(
+            (eitc > 0) * in_bucket,
+            "tax_unit",
+            "household",
+        )
+        if not _skip_unverified_target(row["returns"]):
+            targets_list.append(float(row["returns"]) * population_uprating)
+        else:
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/eitc/amount/{slug}"
+        loss_matrix[amount_label] = sim.map_result(
+            eitc * in_bucket,
+            "tax_unit",
+            "household",
+        )
+        if not _skip_unverified_target(row["amount"]):
+            targets_list.append(float(row["amount"]) * eitc_spending_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
 def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     """Add legacy national CTC component amount and recipient-count targets."""
     for variable in ("refundable_ctc", "non_refundable_ctc"):
@@ -362,6 +564,40 @@ def _add_ctc_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _sum_household_variables(sim, variable_names):
+    return sum(
+        sim.calculate(variable_name, map_to="household").values
+        for variable_name in variable_names
+    )
+
+
+def _add_irs_soi_aggregate_targets(loss_matrix, targets_list, sim, time_period):
+    soi = sim.tax_benefit_system.parameters(time_period).calibration.gov.irs.soi
+
+    for label_suffix, pe_variables, soi_param_name in IRS_SOI_AGGREGATE_TARGETS:
+        label = f"nation/irs/soi/{label_suffix}"
+        loss_matrix[label] = _sum_household_variables(sim, pe_variables)
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(soi._children[soi_param_name])
+
+    return targets_list, loss_matrix
+
+
+def _should_skip_soi_agi_row(row) -> bool:
+    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    if row["AGI upper bound"] > 10_000:
+        return False
+    return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+
+def _should_skip_soi_taxability_row(row) -> bool:
+    """Use all-return SOI rows only for investment-income controls."""
+    if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
+        return row["Taxable only"]
+    return not row["Taxable only"]
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -370,44 +606,13 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
-    agi_level_targeted_variables = [
-        "adjusted_gross_income",
-        "count",
-        "employment_income",
-        "business_net_profits",
-        "capital_gains_gross",
-        "ordinary_dividends",
-        "partnership_and_s_corp_income",
-        "qualified_dividends",
-        "taxable_interest_income",
-        "total_pension_income",
-        "total_social_security",
-    ]
-    aggregate_level_targeted_variables = [
-        "business_net_losses",
-        "capital_gains_distributions",
-        "capital_gains_losses",
-        "estate_income",
-        "estate_losses",
-        "exempt_interest",
-        "ira_distributions",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_income",
-        "rent_and_royalty_net_losses",
-        # The current SOI source only exposes taxable-only aggregate targets for
-        # mortgage-interest deductions, not the AGI-bin detail used above.
-        "mortgage_interest_deductions",
-        "taxable_pension_income",
-        "taxable_social_security",
-        "unemployment_compensation",
-    ]
     aggregate_level_targeted_variables = [
         variable
-        for variable in aggregate_level_targeted_variables
+        for variable in AGGREGATE_LEVEL_TARGETED_VARIABLES
         if variable in df.columns
     ]
     soi_subset = soi_subset[
-        soi_subset.Variable.isin(agi_level_targeted_variables)
+        soi_subset.Variable.isin(AGI_LEVEL_TARGETED_VARIABLES)
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)
@@ -415,10 +620,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if not row["Taxable only"]:
-            continue  # exclude non "taxable returns" statistics
+        if _should_skip_soi_taxability_row(row):
+            continue  # exclude non "taxable returns" statistics by default
 
-        if row["AGI upper bound"] <= 10_000:
+        if _should_skip_soi_agi_row(row):
             continue
 
         mask = (
@@ -532,6 +737,51 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[param_name]
         )
 
+    # CBO income-by-source aggregate targets.
+    # Without these, the per-AGI-bracket SOI targets fail to constrain the
+    # *aggregate* (the optimizer can satisfy bracket-level totals while
+    # concentrating weight on a few records and blowing up the national sum).
+    # See issues #555 and #866 — single records with $60M+ raw LTCG were
+    # ending up with calibration weights of 50k-70k, inflating the national
+    # net_capital_gains aggregate to 12x the CBO target.
+    #
+    # Each entry maps a PolicyEngine variable (or sum of variables) to the
+    # corresponding CBO `income_by_source` parameter.
+    CBO_INCOME_BY_SOURCE_TARGETS = [
+        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
+        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
+        (
+            "qualified_dividend_income",
+            ["qualified_dividend_income"],
+            "qualified_dividend_income",
+        ),
+        (
+            "taxable_interest_and_ordinary_dividends",
+            ["taxable_interest_income", "non_qualified_dividend_income"],
+            "taxable_interest_and_ordinary_dividends",
+        ),
+    ]
+
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+
+    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
+        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
+        loss_matrix[label] = values
+        targets_array.append(income_by_source._children[cbo_param_name])
+
+    # IRS SOI aggregate capital-gains targets. This adds a long-term gains
+    # control on top of the CBO net capital gains aggregate, which is important
+    # for reforms that change preferential LTCG rates.
+    targets_array, loss_matrix = _add_irs_soi_aggregate_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (
         _get_medicaid_national_targets(time_period)
@@ -574,54 +824,53 @@ def build_loss_matrix(dataset: type, time_period):
 
     targets_array.append(aca_enrollment_target)
 
-    # Treasury EITC
-
-    loss_matrix["nation/treasury/eitc"] = sim.calculate(
-        "eitc", map_to="household"
-    ).values
+    # EITC targets.
+    #
+    # Authoritative source: IRS SOI TY2022 tables. Treasury's
+    # ``tax_expenditures.eitc`` parameter ($67B in 2024) is the
+    # *outlay* measure (refundable portion with tax-expenditure
+    # methodology) and is not directly comparable to the total EITC
+    # claimed on tax returns that the ``eitc`` variable computes
+    # ($59B per SOI). Previously the loss function targeted Treasury's
+    # $67B number as the national aggregate, which contradicted the
+    # ~$59B implied by the per-state and per-child-count rows we also
+    # targeted, and contradicted reality: the optimizer couldn't
+    # satisfy both definitions simultaneously.
+    #
+    # v2: drop the Treasury aggregate and the legacy ``eitc.csv``
+    # (TY2020, stale) per-child-count targets entirely. Rely on the
+    # new SOI TY2022 sources below, which provide better geographic
+    # and AGI-shape coverage AND a coherent total.
+    #
+    # Treasury's EITC parameter is still used to derive the dollar
+    # uprating trajectory — its year-over-year growth captures the
+    # expected EITC evolution, even if its level is defined
+    # differently from what we target.
     eitc_spending = (
         sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
     )
-    targets_array.append(eitc_spending(time_period))
-
-    # IRS EITC filers and totals by child counts
-    eitc_stats = pd.read_csv(CALIBRATION_FOLDER / "eitc.csv")
-
-    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2021)
     population = (
         sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
     )
-    population_uprating = population(time_period) / population(2021)
+    # Source CSVs use TY2022 data; uprate to ``time_period`` from 2022.
+    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2022)
+    population_uprating = population(time_period) / population(2022)
 
-    for _, row in eitc_stats.iterrows():
-        returns_label = (
-            f"nation/irs/eitc/returns/count_children_{row['count_children']}"
-        )
-        eitc_eligible_children = sim.calculate("eitc_child_count").values
-        eitc = sim.calculate("eitc").values
-        # IRS Pub 1304 Table 2.5 reports EITC returns by exclusive
-        # qualifying-child categories: 0, 1, 2, and "3 or more". Row 3
-        # represents 3+ since EITC caps qualifying children at 3.
-        if row["count_children"] < 3:
-            meets_child_criteria = eitc_eligible_children == row["count_children"]
-        else:
-            meets_child_criteria = eitc_eligible_children >= row["count_children"]
-        loss_matrix[returns_label] = sim.map_result(
-            (eitc > 0) * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_returns"] * population_uprating)
+    targets_array, loss_matrix = _add_state_eitc_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        eitc_spending_uprating,
+        population_uprating,
+    )
 
-        spending_label = (
-            f"nation/irs/eitc/spending/count_children_{row['count_children']}"
-        )
-        loss_matrix[spending_label] = sim.map_result(
-            eitc * meets_child_criteria,
-            "tax_unit",
-            "household",
-        )
-        targets_array.append(row["eitc_total"] * eitc_spending_uprating)
+    targets_array, loss_matrix = _add_eitc_by_agi_and_children_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        eitc_spending_uprating,
+        population_uprating,
+    )
 
     targets_array, loss_matrix = _add_ctc_targets(
         loss_matrix,
@@ -703,18 +952,21 @@ def build_loss_matrix(dataset: type, time_period):
         else:
             in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
             label_suffix = f"age_{age_lower_bound}_to_{age_lower_bound + 9}"
-        for expense_type in [
-            "health_insurance_premiums_without_medicare_part_b",
-            "over_the_counter_health_expenses",
-            "other_medical_expenses",
-            "medicare_part_b_premiums",
+        for expense_type, target_column in [
+            (
+                "health_insurance_premiums_without_medicare_part_b",
+                "health_insurance_premiums_without_medicare_part_b",
+            ),
+            ("over_the_counter_health_expenses", "over_the_counter_health_expenses"),
+            ("other_medical_expenses", "other_medical_expenses"),
+            (MEDICARE_PART_B_PREMIUM_VARIABLE, "medicare_part_b_premiums"),
         ]:
             label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
             )
-            targets_array.append(row[expense_type])
+            targets_array.append(row[target_column])
 
     # AGI by SPM threshold totals
 

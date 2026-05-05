@@ -31,6 +31,14 @@ python run_household_projection_parallel.py \
   --output-dir ./projected_datasets_parallel \
   --profile ss-payroll-tob \
   --target-source oact_2025_08_05_provisional
+
+# Production wrapper with a sampled-year specification and run manifest
+python run_long_term_production.py \
+  --years 2026-2035,2040,2045,2050,2055,2060,2065,2070,2075,2080,2085,2090,2095,2100 \
+  --jobs 4 \
+  --output-dir ./projected_datasets_production \
+  --profile ss-payroll-tob \
+  --target-source trustees_2025_current_law
 ```
 
 **Arguments:**
@@ -58,6 +66,13 @@ python run_household_projection_parallel.py \
 - `run_household_projection_parallel.py` runs one `run_household_projection.py YEAR YEAR ...` subprocess per year and merges the resulting H5 artifacts into one output directory.
 - The wrapper forces `--save-h5` and controls `--output-dir` itself, so those flags should not be forwarded to the inner runner.
 - Per-year stdout/stderr logs are written under `OUTPUT_DIR/.parallel_logs/`.
+
+**Manual production workflow:**
+- `.github/workflows/long_run_projection.yaml` is `workflow_dispatch` only. It does not run on pull requests, normal merges, or the standard `push.yaml` publication path.
+- The workflow calls `run_long_term_production.py`, which wraps the parallel runner, writes `long_run_production_manifest.json`, and preserves per-year logs with the run metadata.
+- The default year set builds the 10-year budget window plus 5-year sampled points through `2100`; override `years` for full annual builds or narrower diagnostics.
+- Hugging Face upload is disabled by default. Set `upload_to_hf_staging=true` only for a candidate run that should publish generated H5s and metadata under `staging/{run_id}/long_term/`.
+- Late-year support augmentation remains an explicit input. The workflow exposes the donor-backed controls, but it does not silently enable experimental support profiles.
 
 **Named profiles:**
 - `age-only`: IPF age-only calibration
@@ -205,6 +220,7 @@ python run_household_projection_parallel.py \
 ### Files in this Directory
 
 - **`run_household_projection.py`** - Main projection script (see Quick Start)
+- **`run_long_term_production.py`** - Manual production wrapper for sampled-year long-run H5 builds, run manifests, logs, and optional HF staging upload
 - **`calibration.py`** - IPF and GREG weight calibration implementations
 - **`ssa_data.py`** - Load SSA population and named long-term target source projections
 - **`build_long_term_target_sources.py`** - Rebuild named long-term target source packages

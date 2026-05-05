@@ -48,8 +48,11 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     SinglePersonSyntheticGridRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
+    build_targeted_donor_augmented_dataset,
     household_support_summary,
+    is_targeted_donor_support_augmentation_profile,
     select_donor_households,
+    valid_support_augmentation_profile_names,
 )
 from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
     SyntheticCandidate,
@@ -150,6 +153,24 @@ def test_support_augmentation_selects_expected_donors():
     )
     donors = select_donor_households(summary, rule)
     assert list(donors) == [1]
+
+
+def test_support_augmentation_profile_registry_includes_runner_profiles():
+    profiles = valid_support_augmentation_profile_names()
+    assert "late-clone-v1" in profiles
+    assert "donor-backed-composite-v1" in profiles
+    assert is_targeted_donor_support_augmentation_profile("donor-backed-composite-v1")
+    assert not is_targeted_donor_support_augmentation_profile("late-clone-v1")
+
+
+def test_targeted_donor_support_builder_rejects_unknown_profile():
+    with pytest.raises(ValueError, match="Unknown targeted donor support profile"):
+        build_targeted_donor_augmented_dataset(
+            base_dataset="unused.h5",
+            base_year=2024,
+            target_year=2100,
+            profile="late-clone-v1",
+        )
 
 
 def test_support_augmentation_clones_households_with_new_ids():

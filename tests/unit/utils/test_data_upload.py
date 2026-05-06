@@ -1,4 +1,5 @@
 import importlib
+import json
 import os
 import sys
 from pathlib import Path
@@ -671,3 +672,69 @@ def test_upload_release_completion_marker_fails_without_validation_report(
                 }
             },
         )
+
+
+def test_release_completion_marker_exists_on_hf_validates_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    marker = data_upload.build_release_completion_marker(
+        version="1.73.0",
+        run_id="run-123",
+        hf_repo_name="policyengine/policyengine-us-data",
+        hf_repo_type="model",
+        release_manifest={
+            "artifacts": {
+                "states/AL": {
+                    "path": "states/AL.h5",
+                    "sha256": "abc123",
+                }
+            }
+        },
+        released_paths=["states/AL.h5"],
+        validation_report_paths=[
+            "calibration/runs/run-123/diagnostics/validation_summary.json"
+        ],
+        promoted_hf=1,
+        uploaded_gcs=1,
+        created_at="2026-05-06T00:00:00Z",
+    )
+    marker_file = tmp_path / "release-complete.json"
+    marker_file.write_text(json.dumps(marker), encoding="utf-8")
+    downloads = []
+
+    def fake_hf_hub_download(**kwargs):
+        downloads.append(kwargs)
+        return str(marker_file)
+
+    monkeypatch.setattr(data_upload, "hf_hub_download", fake_hf_hub_download)
+
+    assert data_upload.release_completion_marker_exists_on_hf(version="1.73.0")
+    assert downloads[0]["revision"] == "1.73.0"
+
+
+def test_release_completion_marker_exists_on_hf_rejects_invalid_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    marker_file = tmp_path / "release-complete.json"
+    marker_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "complete",
+                "version": "1.72.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        data_upload,
+        "hf_hub_download",
+        lambda **kwargs: str(marker_file),
+    )
+
+    assert not data_upload.release_completion_marker_exists_on_hf(version="1.73.0")

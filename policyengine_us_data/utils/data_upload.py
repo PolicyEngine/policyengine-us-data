@@ -37,6 +37,7 @@ from policyengine_us_data.utils.release_completion import (
     build_release_completion_marker,
     release_completion_marker_path,
     serialize_release_completion_marker,
+    validate_release_completion_marker,
 )
 from policyengine_us_data.utils.release_promotion import (
     FullReleasePromotionConfig,
@@ -1494,16 +1495,30 @@ def release_completion_marker_exists_on_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
 ) -> bool:
+    """Return True only for a valid marker at the version tag."""
     token = os.environ.get("HUGGING_FACE_TOKEN")
     try:
-        hf_hub_download(
+        local_path = hf_hub_download(
             repo_id=hf_repo_name,
             filename=release_completion_marker_path(version),
             repo_type=hf_repo_type,
             revision=version,
             token=token,
         )
-    except (EntryNotFoundError, RevisionNotFoundError):
+        with open(local_path, encoding="utf-8") as marker_file:
+            marker = json.load(marker_file)
+        validate_release_completion_marker(
+            marker,
+            version=version,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+        )
+    except (
+        EntryNotFoundError,
+        RevisionNotFoundError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
         return False
     return True
 

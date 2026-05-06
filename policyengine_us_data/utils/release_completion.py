@@ -40,6 +40,165 @@ def _artifacts_have_checksums(release_manifest: Mapping[str, Any]) -> bool:
     )
 
 
+def _require_mapping(value: Any, field: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Release completion marker {field} must be an object.")
+    return value
+
+
+def _require_string(value: Any, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"Release completion marker {field} must be a string.")
+    return value
+
+
+def _require_string_sequence(value: Any, field: str) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        raise ValueError(f"Release completion marker {field} must be a list.")
+    strings = list(value)
+    if not all(isinstance(item, str) for item in strings):
+        raise ValueError(
+            f"Release completion marker {field} must contain only strings."
+        )
+    return strings
+
+
+def _require_nonnegative_int(value: Any, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ValueError(
+            f"Release completion marker {field} must be a non-negative integer."
+        )
+    return value
+
+
+def _require_equal(value: Any, expected: Any, field: str) -> None:
+    if value != expected:
+        raise ValueError(
+            f"Release completion marker {field} must be {expected!r}; got {value!r}."
+        )
+
+
+def _require_paths(
+    *,
+    actual_paths: Sequence[str],
+    expected_paths: Sequence[str],
+    field: str,
+) -> None:
+    missing_paths = sorted(set(expected_paths) - set(actual_paths))
+    if missing_paths:
+        raise ValueError(
+            f"Release completion marker {field} is missing paths: "
+            + ", ".join(missing_paths)
+        )
+
+
+def validate_release_completion_marker(
+    marker: Mapping[str, Any],
+    *,
+    version: str,
+    hf_repo_name: str | None = None,
+    hf_repo_type: str | None = None,
+) -> Mapping[str, Any]:
+    """Validate that a marker certifies a complete release at a version tag."""
+    marker = _require_mapping(marker, "root")
+    _require_equal(
+        marker.get("schema_version"),
+        RELEASE_COMPLETION_SCHEMA_VERSION,
+        "schema_version",
+    )
+    _require_equal(marker.get("status"), "complete", "status")
+    _require_equal(marker.get("version"), version, "version")
+    _require_equal(
+        marker.get("marker_path"),
+        release_completion_marker_path(version),
+        "marker_path",
+    )
+    _require_string(marker.get("run_id"), "run_id")
+    _require_string(marker.get("completed_at"), "completed_at")
+
+    hf = _require_mapping(marker.get("hf"), "hf")
+    if hf_repo_name is not None:
+        _require_equal(hf.get("repo_id"), hf_repo_name, "hf.repo_id")
+    else:
+        _require_string(hf.get("repo_id"), "hf.repo_id")
+    if hf_repo_type is not None:
+        _require_equal(hf.get("repo_type"), hf_repo_type, "hf.repo_type")
+    else:
+        _require_string(hf.get("repo_type"), "hf.repo_type")
+    _require_equal(hf.get("revision"), version, "hf.revision")
+
+    required_paths = _require_mapping(
+        marker.get("required_paths"),
+        "required_paths",
+    )
+    release_manifest_paths = _require_string_sequence(
+        required_paths.get("release_manifest"),
+        "required_paths.release_manifest",
+    )
+    _require_paths(
+        actual_paths=release_manifest_paths,
+        expected_paths=[
+            "release_manifest.json",
+            f"releases/{version}/release_manifest.json",
+        ],
+        field="required_paths.release_manifest",
+    )
+    trace_tro_paths = _require_string_sequence(
+        required_paths.get("trace_tro"),
+        "required_paths.trace_tro",
+    )
+    _require_paths(
+        actual_paths=trace_tro_paths,
+        expected_paths=[
+            "trace.tro.jsonld",
+            f"releases/{version}/trace.tro.jsonld",
+        ],
+        field="required_paths.trace_tro",
+    )
+    _require_equal(
+        required_paths.get("version_manifest"),
+        VERSION_MANIFEST_PATH,
+        "required_paths.version_manifest",
+    )
+    validation_report_paths = _require_string_sequence(
+        required_paths.get("validation_reports"),
+        "required_paths.validation_reports",
+    )
+    if not validation_report_paths:
+        raise ValueError(
+            "Release completion marker required_paths.validation_reports "
+            "must not be empty."
+        )
+    artifact_paths = _require_string_sequence(
+        required_paths.get("artifacts"),
+        "required_paths.artifacts",
+    )
+    if not artifact_paths:
+        raise ValueError(
+            "Release completion marker required_paths.artifacts must not be empty."
+        )
+
+    checks = _require_mapping(marker.get("checks"), "checks")
+    _require_nonnegative_int(
+        checks.get("hf_artifacts_promoted"),
+        "checks.hf_artifacts_promoted",
+    )
+    _require_nonnegative_int(
+        checks.get("gcs_artifacts_uploaded"),
+        "checks.gcs_artifacts_uploaded",
+    )
+    for field in (
+        "release_manifest_written",
+        "trace_tro_written",
+        "version_manifest_written",
+        "validation_reports_present",
+        "release_manifest_checksums_present",
+    ):
+        _require_equal(checks.get(field), True, f"checks.{field}")
+
+    return marker
+
+
 def build_release_completion_marker(
     *,
     version: str,
@@ -68,7 +227,7 @@ def build_release_completion_marker(
         raise ValueError("A release completion marker requires validation reports.")
 
     marker_path = release_completion_marker_path(version)
-    return {
+    marker = {
         "schema_version": RELEASE_COMPLETION_SCHEMA_VERSION,
         "status": "complete",
         "version": version,
@@ -103,6 +262,13 @@ def build_release_completion_marker(
             "release_manifest_checksums_present": True,
         },
     }
+    validate_release_completion_marker(
+        marker,
+        version=version,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+    )
+    return marker
 
 
 def serialize_release_completion_marker(marker: Mapping[str, Any]) -> bytes:

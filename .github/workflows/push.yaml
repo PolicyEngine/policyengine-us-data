@@ -15,7 +15,6 @@ jobs:
   run-context:
     name: Run context
     runs-on: ubuntu-latest
-    if: github.event.head_commit.message != 'Update package version'
     outputs:
       run_id: ${{ steps.run-context.outputs.run_id }}
       github_run_url: ${{ steps.run-context.outputs.github_run_url }}
@@ -109,8 +108,8 @@ jobs:
     needs:
       - lint
       - run-context
-      - versioning
-    if: github.event.head_commit.message != 'Update package version'
+      - publish
+    if: github.event.head_commit.message == 'Update package version'
     permissions:
       actions: write
       contents: read
@@ -120,7 +119,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
-          SOURCE_SHA: ${{ needs.versioning.outputs.version_sha }}
+          SOURCE_SHA: ${{ github.sha }}
         run: bash .github/scripts/dispatch_publication_pipeline.sh
 
   # ── PyPI publish (version bump commits only) ────────────────
@@ -142,3 +141,5 @@ jobs:
           user: __token__
           password: ${{ secrets.PYPI }}
           skip-existing: true
+      - name: Verify PyPI version before data publication
+        run: python .github/scripts/verify_pypi_version.py

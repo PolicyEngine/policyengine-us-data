@@ -1488,6 +1488,26 @@ def upload_release_completion_marker_to_hf(
     return marker
 
 
+def release_completion_marker_exists_on_hf(
+    *,
+    version: str,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> bool:
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    try:
+        hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=release_completion_marker_path(version),
+            repo_type=hf_repo_type,
+            revision=version,
+            token=token,
+        )
+    except (EntryNotFoundError, RevisionNotFoundError):
+        return False
+    return True
+
+
 def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
     return FullReleasePromotionDependencies(
         dedupe_preserving_order=_dedupe_preserving_order,
@@ -1500,6 +1520,7 @@ def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
         publish_release_manifest_to_hf=publish_release_manifest_to_hf,
         upload_final_version_manifest=upload_final_version_manifest,
         upload_release_completion_marker=upload_release_completion_marker_to_hf,
+        release_completion_marker_exists=release_completion_marker_exists_on_hf,
         cleanup_staging_hf=cleanup_staging_hf,
     )
 

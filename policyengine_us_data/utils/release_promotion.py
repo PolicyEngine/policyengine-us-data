@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from policyengine_us_data.utils.release_completion import release_completion_marker_path
+
 
 ManifestFile = tuple[Path, str]
 ReleaseManifest = dict[str, Any]
@@ -45,6 +47,7 @@ class FullReleasePromotionDependencies:
     publish_release_manifest_to_hf: Callable[..., ReleaseManifest]
     upload_final_version_manifest: Callable[..., None]
     upload_release_completion_marker: Callable[..., ReleaseManifest]
+    release_completion_marker_exists: Callable[..., bool]
     cleanup_staging_hf: Callable[..., int]
 
 
@@ -202,14 +205,8 @@ def _finish_already_finalized_release(
     finalized_manifest: ReleaseManifest,
     deps: FullReleasePromotionDependencies,
 ) -> dict[str, Any]:
-    _upload_version_manifest(config, finalized_manifest, deps)
-    completion_marker = _upload_release_completion_marker(
+    completion_marker_path = _assert_finalized_release_has_completion_marker(
         config=config,
-        release_manifest=finalized_manifest,
-        rel_paths=rel_paths,
-        promoted_hf=0,
-        uploaded_gcs=0,
-        create_tag=False,
         deps=deps,
     )
     cleaned = _cleanup_staging_after_release(
@@ -225,7 +222,7 @@ def _finish_already_finalized_release(
         "hf_promoted": 0,
         "gcs_uploaded": 0,
         "release_manifest_artifacts": len(finalized_manifest["artifacts"]),
-        "release_completion_marker": completion_marker.get("marker_path"),
+        "release_completion_marker": completion_marker_path,
         "staging_cleaned": cleaned,
         "already_finalized": True,
     }
@@ -302,6 +299,26 @@ def _upload_release_completion_marker(
         promoted_hf=promoted_hf,
         uploaded_gcs=uploaded_gcs,
         create_tag=create_tag,
+    )
+
+
+def _assert_finalized_release_has_completion_marker(
+    *,
+    config: FullReleasePromotionConfig,
+    deps: FullReleasePromotionDependencies,
+) -> str:
+    marker_path = release_completion_marker_path(config.version)
+    if deps.release_completion_marker_exists(
+        version=config.version,
+        hf_repo_name=config.hf_repo_name,
+        hf_repo_type=config.hf_repo_type,
+    ):
+        return marker_path
+
+    raise RuntimeError(
+        f"Release {config.version} is already finalized, but {marker_path} "
+        f"is not present at tag {config.version}. Refusing to mutate release "
+        "state after finalization; repair or migrate this release manually."
     )
 
 

@@ -65,16 +65,22 @@ def _load_data_upload_module():
     return _DATA_UPLOAD_MODULE
 
 
-def _track_run_context_env(monkeypatch=None):
+def _track_run_context_env(monkeypatch):
     for key in _RUN_CONTEXT_ENV_KEYS:
-        os.environ.pop(key, None)
+        monkeypatch.delenv(key, raising=False)
 
 
 @pytest.fixture(autouse=True)
-def _clear_run_context_env(monkeypatch):
-    _track_run_context_env(monkeypatch)
+def _restore_run_context_env():
+    original = {
+        key: os.environ[key] for key in _RUN_CONTEXT_ENV_KEYS if key in os.environ
+    }
     yield
-    _track_run_context_env(monkeypatch)
+    for key in _RUN_CONTEXT_ENV_KEYS:
+        if key in original:
+            os.environ[key] = original[key]
+        else:
+            os.environ.pop(key, None)
 
 
 def _install_fake_hf(monkeypatch, tmp_path):
@@ -472,7 +478,7 @@ def test_promote_full_release_orders_full_release_operations(
     )
 
 
-def test_promote_full_release_can_finish_registry_after_finalized_release(
+def test_promote_full_release_verifies_marker_after_finalized_release(
     monkeypatch,
     tmp_path,
 ):
@@ -496,23 +502,21 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     monkeypatch.setattr(
         data_upload,
         "upload_final_version_manifest",
-        lambda **kwargs: calls.append(
-            (
-                "version_manifest",
-                kwargs["released_paths"],
-                kwargs.get("run_id"),
-            )
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("already-finalized retries must not mutate registry state")
         ),
     )
     monkeypatch.setattr(
         data_upload,
         "upload_release_completion_marker_to_hf",
-        lambda **kwargs: calls.append(
-            ("release_complete", kwargs["released_paths"], kwargs.get("create_tag"))
-        )
-        or {
-            "marker_path": "releases/1.73.0/release-complete.json",
-        },
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("already-finalized retries must not write release markers")
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "release_completion_marker_exists_on_hf",
+        lambda **kwargs: calls.append(("check_marker", kwargs["version"])) or True,
     )
     monkeypatch.setattr(
         data_upload,
@@ -531,10 +535,53 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     assert result["hf_promoted"] == 0
     assert result["gcs_uploaded"] == 0
     assert calls == [
-        ("version_manifest", ["states/AL.h5"], "run-123"),
-        ("release_complete", ["states/AL.h5"], False),
+        ("check_marker", "1.73.0"),
         ("cleanup", ["states/AL.h5"]),
     ]
+    assert result["release_completion_marker"] == (
+        "releases/1.73.0/release-complete.json"
+    )
+
+
+def test_promote_full_release_rejects_finalized_release_without_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    files = _make_files(tmp_path, ["states/AL.h5"])
+
+    monkeypatch.setattr(
+        data_upload,
+        "get_matching_finalized_release_manifest",
+        lambda *args, **kwargs: {"artifacts": {"states/AL": {"path": "states/AL.h5"}}},
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "release_completion_marker_exists_on_hf",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_final_version_manifest",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("missing marker repair must be manual")
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_release_completion_marker_to_hf",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("missing marker repair must be manual")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="repair or migrate this release manually"):
+        data_upload.promote_full_release_from_staging(
+            rel_paths=["states/AL.h5"],
+            version="1.73.0",
+            run_id="run-123",
+            files_with_paths=files,
+        )
 
 
 def test_upload_release_completion_marker_requires_release_paths(monkeypatch):

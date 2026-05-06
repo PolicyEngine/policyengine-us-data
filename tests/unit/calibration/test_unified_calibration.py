@@ -614,6 +614,39 @@ class TestFitTargetGroups:
             target_groups,
         )
 
+    def test_passes_target_groups_to_logged_l0_fit(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            fit_l0_weights,
+        )
+
+        target_groups = np.array([0, 1], dtype=np.int64)
+        FakeSparseCalibrationWeights.fit_calls = []
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            weights = fit_l0_weights(
+                X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+                targets=np.array([1.0, 2.0], dtype=np.float64),
+                lambda_l0=1e-4,
+                epochs=2,
+                device="cpu",
+                target_names=["target_a", "target_b"],
+                initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+                log_freq=1,
+                log_path=str(tmp_path / "calibration_log.csv"),
+                target_groups=target_groups,
+            )
+
+        np.testing.assert_allclose(weights, np.array([4.0, 5.0]))
+        assert len(FakeSparseCalibrationWeights.fit_calls) == 2
+        for fit_call in FakeSparseCalibrationWeights.fit_calls:
+            np.testing.assert_array_equal(
+                fit_call["target_groups"],
+                target_groups,
+            )
+
 
 class TestFitResume:
     def _fit_kwargs(self, tmp_path):
@@ -758,6 +791,34 @@ class TestFitResume:
                     **{
                         **kwargs,
                         "X_sparse": changed_matrix,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
+    def test_resume_checkpoint_rejects_changed_target_groups(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+        kwargs["target_groups"] = np.array([0, 1], dtype=np.int64)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            with pytest.raises(ValueError, match="target_groups_sha256"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "target_groups": np.array([1, 0], dtype=np.int64),
                         "resume_from": str(checkpoint_path),
                     }
                 )

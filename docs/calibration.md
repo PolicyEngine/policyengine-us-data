@@ -61,6 +61,46 @@ at calibration time.
 
 ## Workflows
 
+### 0. Production L0-vs-legacy comparison
+
+Before retiring the legacy Enhanced CPS output, run the production pipeline and build a comparison
+report for the completed run. The report summarizes regional and national L0 calibration target
+errors, then compares the staged national `US.h5` against the staged legacy
+`enhanced_cps_2024.h5` for the same national aggregate variables used by
+`validate_national_h5`.
+
+The default paths are all derived from the GitHub-created run ID:
+
+```bash
+python -m policyengine_us_data.calibration.compare_calibration_runs \
+  --run-id usdata-gha123456789-a1-abcdef12 \
+  --output-dir calibration_comparison_report
+```
+
+This writes:
+
+- `calibration_comparison_report/report.md`
+- `calibration_comparison_report/summary.json`
+- `calibration_comparison_report/diagnostics_summary.csv`
+- `calibration_comparison_report/h5_comparison.csv`
+
+The command is report-only by default. To use it as a gate, pass thresholds and
+`--fail-on-threshold`:
+
+```bash
+python -m policyengine_us_data.calibration.compare_calibration_runs \
+  --run-id usdata-gha123456789-a1-abcdef12 \
+  --p95-threshold 0.10 \
+  --p99-threshold 0.50 \
+  --h5-delta-threshold 0.10 \
+  --fail-on-threshold
+```
+
+The same report is available as the manual GitHub Actions workflow
+**Compare Calibration Run**. Trigger it after **Run Pipeline** completes, passing the pipeline
+`run_id`. Use `skip_h5=true` for a fast diagnostics-only report while the national H5 is not staged
+yet.
+
 ### 1. Lightweight build-then-fit (recommended for iteration)
 
 Build the matrix from the stratified CPS without PUF cloning or re-imputation. This is the fastest

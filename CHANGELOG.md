@@ -1,3 +1,10 @@
+## [1.99.2] - 2026-05-06
+
+### Changed
+
+- Pass calibration target groups through unified L0 fitting so grouped target loss is used consistently.
+
+
 ## [1.99.1] - 2026-05-05
 
 ### Fixed

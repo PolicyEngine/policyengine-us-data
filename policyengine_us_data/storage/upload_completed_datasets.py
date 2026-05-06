@@ -185,6 +185,7 @@ def _validate_dataset_artifacts(files_with_repo_paths: list[tuple[Path, str]]) -
     for file_path, _ in files_with_repo_paths:
         validate_dataset(file_path)
 
+
 def validate_dataset(file_path: Path) -> None:
     """Validate a dataset file before upload.
 

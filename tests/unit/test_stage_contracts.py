@@ -29,6 +29,10 @@ from policyengine_us_data.stage_contracts.fingerprints import (
     canonicalize_for_fingerprint,
     fingerprint_material,
 )
+from policyengine_us_data.stage_contracts.stages import (
+    CONTRACT_TYPE_BY_STAGE_ID,
+    STAGE_2_BUILD_CALIBRATION_PACKAGE,
+)
 
 
 def _fingerprint() -> Fingerprint:
@@ -606,6 +610,37 @@ def test_stage_contract_dict_round_trip_with_substages():
     assert restored.execution.status == "completed"
 
 
+def test_direct_constructors_normalize_nested_sequence_fields():
+    artifact = _artifact()
+    substage = SubstageRecord(
+        substage_id="2a_build_target_matrix",
+        status="completed",
+        inputs=[artifact],
+        outputs=[artifact],
+        diagnostics=[_diagnostic()],
+    )
+    contract = StageContract(
+        contract_type="calibration_package",
+        stage_id="2_build_calibration_package",
+        created_at="2026-05-05T10:00:03Z",
+        fingerprint=_fingerprint(),
+        execution=_execution(),
+        inputs=[artifact],
+        outputs=[artifact],
+        substages=[substage],
+        diagnostics=[_diagnostic(artifact=artifact)],
+    )
+
+    assert isinstance(substage.inputs, tuple)
+    assert isinstance(substage.outputs, tuple)
+    assert isinstance(substage.diagnostics, tuple)
+    assert isinstance(contract.inputs, tuple)
+    assert isinstance(contract.outputs, tuple)
+    assert isinstance(contract.substages, tuple)
+    assert isinstance(contract.diagnostics, tuple)
+    assert StageContract.from_dict(contract.to_dict()) == contract
+
+
 def test_sample_stage_contract_builders_match_canonical_stage_shapes():
     samples = _sample_stage_contracts()
 
@@ -854,6 +889,23 @@ def test_from_dict_rejects_none_required_string_fields():
         StageContract.from_dict(payload)
 
 
+def test_direct_constructors_reject_invalid_string_fields():
+    with pytest.raises(ValueError, match="logical_name"):
+        ArtifactRef(logical_name=123, uri="file:///policy_data.db")
+
+    with pytest.raises(ValueError, match="uri"):
+        ArtifactRef(logical_name="policy_data_db", uri=456)
+
+    with pytest.raises(ValueError, match="stage_id"):
+        StageContract(
+            contract_type="calibration_package",
+            stage_id=123,
+            created_at="2026-05-05T10:00:03Z",
+            fingerprint=_fingerprint(),
+            execution=_execution(),
+        )
+
+
 def test_contract_numeric_fields_reject_non_numeric_constructor_values():
     with pytest.raises(ValueError, match="size_bytes"):
         ArtifactRef(
@@ -932,6 +984,46 @@ def test_mapping_fields_are_defensively_frozen():
         contract.parameters["nested"]["n_clones"] = 100
 
 
+def test_stage_contracts_validate_canonical_stage_shape():
+    assert (
+        CONTRACT_TYPE_BY_STAGE_ID[STAGE_2_BUILD_CALIBRATION_PACKAGE]
+        == "calibration_package"
+    )
+
+    with pytest.raises(ValueError, match="Invalid canonical stage_id"):
+        StageContract(
+            contract_type="custom",
+            stage_id="custom_stage",
+            created_at="2026-05-05T10:00:03Z",
+            fingerprint=_fingerprint(),
+            execution=_execution(),
+        )
+
+    with pytest.raises(ValueError, match="contract_type"):
+        StageContract(
+            contract_type="wrong_type",
+            stage_id="2_build_calibration_package",
+            created_at="2026-05-05T10:00:03Z",
+            fingerprint=_fingerprint(),
+            execution=_execution(),
+        )
+
+    with pytest.raises(ValueError, match="substage_id"):
+        StageContract(
+            contract_type="calibration_package",
+            stage_id="2_build_calibration_package",
+            created_at="2026-05-05T10:00:03Z",
+            fingerprint=_fingerprint(),
+            execution=_execution(),
+            substages=(
+                SubstageRecord(
+                    substage_id="3a_weight_fitting_regional",
+                    status="completed",
+                ),
+            ),
+        )
+
+
 def test_contract_to_json_is_deterministic_across_equivalent_contracts():
     first = _stage_contract(parameters={"n_clones": 430, "seed": 42})
     second = _stage_contract(parameters={"seed": 42, "n_clones": 430})
@@ -986,6 +1078,19 @@ def test_contract_json_top_level_keys_are_sorted():
 
     assert lines[0] == "{"
     assert lines[1].strip().startswith('"code_sha"')
+
+
+def test_contract_to_json_rejects_non_standard_json_floats():
+    with pytest.raises(ValueError, match="Out of range float values"):
+        contract_to_json(_stage_contract(parameters={"bad": float("nan")}))
+
+
+def test_contract_from_json_rejects_non_standard_json_constants():
+    payload = contract_to_json(_stage_contract(parameters={"bad": 1.0}))
+    payload = payload.replace('"bad": 1.0', '"bad": NaN')
+
+    with pytest.raises(ValueError, match="Non-standard JSON constant"):
+        contract_from_json(payload)
 
 
 def test_fingerprint_material_is_stable_across_mapping_order():
@@ -1069,13 +1174,25 @@ def test_stage_contract_package_exports_public_api():
     assert contracts.read_contract is read_contract
     assert contracts.canonicalize_for_fingerprint is canonicalize_for_fingerprint
     assert contracts.fingerprint_material is fingerprint_material
+    assert contracts.STAGE_2_BUILD_CALIBRATION_PACKAGE == (
+        STAGE_2_BUILD_CALIBRATION_PACKAGE
+    )
+    assert contracts.CONTRACT_TYPE_BY_STAGE_ID == CONTRACT_TYPE_BY_STAGE_ID
     assert set(contracts.__all__) >= {
         "ArtifactRef",
+        "CANONICAL_STAGE_IDS",
+        "CONTRACT_TYPE_BY_STAGE_ID",
         "DiagnosticRef",
         "Fingerprint",
         "ValidationFinding",
         "ValidationReport",
         "ReuseSummary",
+        "STAGE_1_BUILD_DATASETS",
+        "STAGE_2_BUILD_CALIBRATION_PACKAGE",
+        "STAGE_3_FIT_WEIGHTS",
+        "STAGE_4_BUILD_OUTPUTS",
+        "STAGE_5_VALIDATE_AND_PROMOTE_RELEASE",
+        "SUBSTAGE_IDS_BY_STAGE_ID",
         "ExecutionRecord",
         "SubstageRecord",
         "StageContract",
@@ -1085,6 +1202,8 @@ def test_stage_contract_package_exports_public_api():
         "read_contract",
         "canonicalize_for_fingerprint",
         "fingerprint_material",
+        "is_canonical_stage_id",
+        "substage_ids_for_stage",
     }
 
 

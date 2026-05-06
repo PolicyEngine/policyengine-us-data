@@ -8,6 +8,12 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Any, Literal, get_args
 
+from .stages import (
+    contract_type_for_stage,
+    is_canonical_stage_id,
+    is_canonical_substage_id,
+)
+
 CONTRACT_SCHEMA_VERSION = "1"
 CONTRACT_FINGERPRINT_ALGORITHM = "sha256-canonical-json-v1"
 
@@ -93,20 +99,21 @@ def _validate_schema_version(schema_version: str, owner: str) -> None:
         )
 
 
-def _require_non_empty(value: str | None, field_name: str) -> None:
-    if not value:
-        raise ValueError(f"{field_name} must be non-empty")
-
-
-def _required_string(data: Mapping[str, Any], field_name: str) -> str:
-    value = data.get(field_name)
+def _require_non_empty(value: Any, field_name: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field_name} must be a non-empty string")
     return value
 
 
+def _required_string(data: Mapping[str, Any], field_name: str) -> str:
+    return _require_non_empty(data.get(field_name), field_name)
+
+
 def _optional_string(data: Mapping[str, Any], field_name: str) -> str | None:
-    value = data.get(field_name)
+    return _optional_string_value(data.get(field_name), field_name)
+
+
+def _optional_string_value(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
     if not isinstance(value, str) or not value:
@@ -205,6 +212,33 @@ def _freeze_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, A
     )
 
 
+def _freeze_sequence(
+    value: Any,
+    field_name: str,
+    item_type: type | tuple[type, ...],
+) -> tuple[Any, ...]:
+    if not isinstance(value, tuple | list):
+        raise ValueError(f"{field_name} must be a tuple or list")
+    items = tuple(value)
+    for item in items:
+        if not isinstance(item, item_type):
+            if isinstance(item_type, tuple):
+                expected = " or ".join(kind.__name__ for kind in item_type)
+            else:
+                expected = item_type.__name__
+            raise ValueError(f"{field_name} entries must be {expected}")
+    return items
+
+
+def _validate_optional_instance(
+    value: Any,
+    field_name: str,
+    expected_type: type,
+) -> None:
+    if value is not None and not isinstance(value, expected_type):
+        raise ValueError(f"{field_name} must be {expected_type.__name__}")
+
+
 def _jsonable_value(value: Any) -> Any:
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return value.to_dict()
@@ -229,8 +263,22 @@ class ArtifactRef:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.logical_name, "logical_name")
-        _require_non_empty(self.uri, "uri")
+        object.__setattr__(
+            self,
+            "logical_name",
+            _require_non_empty(self.logical_name, "logical_name"),
+        )
+        object.__setattr__(self, "uri", _require_non_empty(self.uri, "uri"))
+        object.__setattr__(
+            self,
+            "sha256",
+            _optional_string_value(self.sha256, "sha256"),
+        )
+        object.__setattr__(
+            self,
+            "media_type",
+            _optional_string_value(self.media_type, "media_type"),
+        )
         _validate_optional_int(self.size_bytes, "size_bytes")
         if self.size_bytes is not None and self.size_bytes < 0:
             raise ValueError("size_bytes must be non-negative")
@@ -277,8 +325,9 @@ class DiagnosticRef:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.name, "name")
-        _require_non_empty(self.kind, "kind")
+        object.__setattr__(self, "name", _require_non_empty(self.name, "name"))
+        object.__setattr__(self, "kind", _require_non_empty(self.kind, "kind"))
+        _validate_optional_instance(self.artifact, "artifact", ArtifactRef)
         if self.severity not in DIAGNOSTIC_SEVERITIES:
             raise ValueError(f"Invalid diagnostic severity: {self.severity!r}")
         object.__setattr__(
@@ -327,8 +376,12 @@ class Fingerprint:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.algorithm, "algorithm")
-        _require_non_empty(self.value, "value")
+        object.__setattr__(
+            self,
+            "algorithm",
+            _require_non_empty(self.algorithm, "algorithm"),
+        )
+        object.__setattr__(self, "value", _require_non_empty(self.value, "value"))
         object.__setattr__(
             self,
             "material",
@@ -372,8 +425,21 @@ class ValidationFinding:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.check_id, "check_id")
-        _require_non_empty(self.message, "message")
+        object.__setattr__(
+            self,
+            "check_id",
+            _require_non_empty(self.check_id, "check_id"),
+        )
+        object.__setattr__(
+            self,
+            "message",
+            _require_non_empty(self.message, "message"),
+        )
+        object.__setattr__(
+            self,
+            "metric",
+            _optional_string_value(self.metric, "metric"),
+        )
         if self.status not in VALIDATION_FINDING_STATUSES:
             raise ValueError(
                 f"Invalid validation finding status: {self.status!r}"
@@ -426,6 +492,16 @@ class ValidationReport:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
         if self.status not in VALIDATION_REPORT_STATUSES:
             raise ValueError(f"Invalid validation report status: {self.status!r}")
+        object.__setattr__(
+            self,
+            "findings",
+            _freeze_sequence(self.findings, "findings", ValidationFinding),
+        )
+        object.__setattr__(
+            self,
+            "diagnostics",
+            _freeze_sequence(self.diagnostics, "diagnostics", DiagnosticRef),
+        )
         object.__setattr__(
             self,
             "metadata",
@@ -530,6 +606,28 @@ class ExecutionRecord:
             raise ValueError(f"Invalid execution status: {self.status!r}")
         if self.reuse_decision not in REUSE_DECISIONS:
             raise ValueError(f"Invalid reuse decision: {self.reuse_decision!r}")
+        object.__setattr__(
+            self,
+            "started_at",
+            _optional_string_value(self.started_at, "started_at"),
+        )
+        object.__setattr__(
+            self,
+            "completed_at",
+            _optional_string_value(self.completed_at, "completed_at"),
+        )
+        object.__setattr__(
+            self,
+            "modal_call_id",
+            _optional_string_value(self.modal_call_id, "modal_call_id"),
+        )
+        object.__setattr__(
+            self,
+            "reuse_reason",
+            _optional_string_value(self.reuse_reason, "reuse_reason"),
+        )
+        if not isinstance(self.reuse_summary, ReuseSummary):
+            raise ValueError("reuse_summary must be ReuseSummary")
         _validate_int(self.attempt, "attempt")
         if self.attempt < 0:
             raise ValueError("attempt must be non-negative")
@@ -605,11 +703,32 @@ class SubstageRecord:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.substage_id, "substage_id")
+        object.__setattr__(
+            self,
+            "substage_id",
+            _require_non_empty(self.substage_id, "substage_id"),
+        )
         if self.status not in SUBSTAGE_STATUSES:
             raise ValueError(f"Invalid substage status: {self.status!r}")
         if self.reuse_mode not in SUBSTAGE_REUSE_MODES:
             raise ValueError(f"Invalid substage reuse mode: {self.reuse_mode!r}")
+        object.__setattr__(
+            self,
+            "inputs",
+            _freeze_sequence(self.inputs, "inputs", ArtifactRef),
+        )
+        object.__setattr__(
+            self,
+            "outputs",
+            _freeze_sequence(self.outputs, "outputs", ArtifactRef),
+        )
+        _validate_optional_instance(self.fingerprint, "fingerprint", Fingerprint)
+        _validate_optional_instance(self.validation, "validation", ValidationReport)
+        object.__setattr__(
+            self,
+            "diagnostics",
+            _freeze_sequence(self.diagnostics, "diagnostics", DiagnosticRef),
+        )
         object.__setattr__(
             self,
             "parameters",
@@ -701,9 +820,75 @@ class StageContract:
 
     def __post_init__(self) -> None:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
-        _require_non_empty(self.contract_type, "contract_type")
-        _require_non_empty(self.stage_id, "stage_id")
-        _require_non_empty(self.created_at, "created_at")
+        object.__setattr__(
+            self,
+            "contract_type",
+            _require_non_empty(self.contract_type, "contract_type"),
+        )
+        object.__setattr__(
+            self,
+            "stage_id",
+            _require_non_empty(self.stage_id, "stage_id"),
+        )
+        object.__setattr__(
+            self,
+            "created_at",
+            _require_non_empty(self.created_at, "created_at"),
+        )
+        object.__setattr__(
+            self,
+            "run_id",
+            _optional_string_value(self.run_id, "run_id"),
+        )
+        object.__setattr__(
+            self,
+            "code_sha",
+            _optional_string_value(self.code_sha, "code_sha"),
+        )
+        object.__setattr__(
+            self,
+            "package_version",
+            _optional_string_value(self.package_version, "package_version"),
+        )
+        if not is_canonical_stage_id(self.stage_id):
+            raise ValueError(f"Invalid canonical stage_id: {self.stage_id!r}")
+        expected_contract_type = contract_type_for_stage(self.stage_id)
+        if self.contract_type != expected_contract_type:
+            raise ValueError(
+                "contract_type must match canonical stage "
+                f"{self.stage_id!r}: {expected_contract_type!r}"
+            )
+        if not isinstance(self.fingerprint, Fingerprint):
+            raise ValueError("fingerprint must be Fingerprint")
+        if not isinstance(self.execution, ExecutionRecord):
+            raise ValueError("execution must be ExecutionRecord")
+        object.__setattr__(
+            self,
+            "inputs",
+            _freeze_sequence(self.inputs, "inputs", ArtifactRef),
+        )
+        object.__setattr__(
+            self,
+            "outputs",
+            _freeze_sequence(self.outputs, "outputs", ArtifactRef),
+        )
+        object.__setattr__(
+            self,
+            "substages",
+            _freeze_sequence(self.substages, "substages", SubstageRecord),
+        )
+        for substage in self.substages:
+            if not is_canonical_substage_id(self.stage_id, substage.substage_id):
+                raise ValueError(
+                    "substage_id must belong to canonical stage "
+                    f"{self.stage_id!r}: {substage.substage_id!r}"
+                )
+        _validate_optional_instance(self.validation, "validation", ValidationReport)
+        object.__setattr__(
+            self,
+            "diagnostics",
+            _freeze_sequence(self.diagnostics, "diagnostics", DiagnosticRef),
+        )
         object.__setattr__(
             self,
             "parameters",

@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from policyengine_us_data.utils.canonical_json import (
+    canonical_json_dumps as _canonical_json_dumps,
+)
+
 
 STEP_MANIFEST_SCHEMA_VERSION = "1"
 
@@ -47,7 +51,7 @@ def utc_now() -> str:
 
 def canonical_json_dumps(payload: Mapping[str, Any]) -> str:
     """Serialize manifest JSON deterministically."""
-    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    return _canonical_json_dumps(payload)
 
 
 def _drop_none(value: Any) -> Any:

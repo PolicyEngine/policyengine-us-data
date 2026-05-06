@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+
+from policyengine_us_data.utils.canonical_json import (
+    canonical_json_dumps,
+    canonical_json_loads,
+)
 
 from .core import StageContract
 
@@ -13,13 +17,13 @@ from .core import StageContract
 def contract_to_json(contract: StageContract) -> str:
     """Serialize a stage contract to deterministic JSON."""
 
-    return json.dumps(contract.to_dict(), indent=2, sort_keys=True) + "\n"
+    return canonical_json_dumps(contract.to_dict())
 
 
 def contract_from_json(payload: str) -> StageContract:
     """Deserialize deterministic JSON into a stage contract."""
 
-    return StageContract.from_dict(json.loads(payload))
+    return StageContract.from_dict(canonical_json_loads(payload))
 
 
 def write_contract(contract: StageContract, path: str | Path) -> None:

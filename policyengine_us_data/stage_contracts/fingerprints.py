@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import is_dataclass
 from hashlib import sha256
 from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
+
+from policyengine_us_data.utils.canonical_json import canonical_json_bytes
 
 from .core import CONTRACT_FINGERPRINT_ALGORITHM, Fingerprint
 
@@ -45,12 +46,11 @@ def fingerprint_material(material: Mapping[str, Any]) -> Fingerprint:
     """Hash canonicalized semantic material into a `Fingerprint`."""
 
     canonical_material = canonicalize_for_fingerprint(material)
-    payload = json.dumps(
+    payload = canonical_json_bytes(
         canonical_material,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
+        compact=True,
+        trailing_newline=False,
+    )
     return Fingerprint(
         algorithm=CONTRACT_FINGERPRINT_ALGORITHM,
         value=f"sha256:{sha256(payload).hexdigest()}",

@@ -1,6 +1,26 @@
 from importlib import import_module
 
 _LAZY_EXPORTS = {
+    "CPS_CLONE_FEATURE_PREDICTORS": (
+        "policyengine_us_data.datasets.cps.extended_cps",
+        "CPS_CLONE_FEATURE_PREDICTORS",
+    ),
+    "CPS_CLONE_FEATURE_VARIABLES": (
+        "policyengine_us_data.datasets.cps.extended_cps",
+        "CPS_CLONE_FEATURE_VARIABLES",
+    ),
+    "CPS_ONLY_IMPUTED_VARIABLES": (
+        "policyengine_us_data.datasets.cps.extended_cps",
+        "CPS_ONLY_IMPUTED_VARIABLES",
+    ),
+    "CPS_STAGE2_DEMOGRAPHIC_PREDICTORS": (
+        "policyengine_us_data.datasets.cps.extended_cps",
+        "CPS_STAGE2_DEMOGRAPHIC_PREDICTORS",
+    ),
+    "CPS_STAGE2_INCOME_PREDICTORS": (
+        "policyengine_us_data.datasets.cps.extended_cps",
+        "CPS_STAGE2_INCOME_PREDICTORS",
+    ),
     "CPS": ("policyengine_us_data.datasets.cps.cps", "CPS"),
     "CPS_2019": ("policyengine_us_data.datasets.cps.cps", "CPS_2019"),
     "CPS_2020": ("policyengine_us_data.datasets.cps.cps", "CPS_2020"),
@@ -20,6 +40,22 @@ _LAZY_EXPORTS = {
         "policyengine_us_data.datasets.cps.enhanced_cps",
         "EnhancedCPS_2024",
     ),
+    "CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP": (
+        "policyengine_us_data.datasets.cps.cps",
+        "CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP",
+    ),
+    "CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP": (
+        "policyengine_us_data.datasets.cps.cps",
+        "CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP",
+    ),
+    "ESI_POLICYHOLDER_VARIABLE": (
+        "policyengine_us_data.datasets.cps.cps",
+        "ESI_POLICYHOLDER_VARIABLE",
+    ),
+    "ESI_SOURCE_COLUMNS": (
+        "policyengine_us_data.datasets.cps.cps",
+        "ESI_SOURCE_COLUMNS",
+    ),
     "ExtendedCPS": (
         "policyengine_us_data.datasets.cps.extended_cps",
         "ExtendedCPS",
@@ -31,6 +67,18 @@ _LAZY_EXPORTS = {
     "ExtendedCPS_2024_Half": (
         "policyengine_us_data.datasets.cps.extended_cps",
         "ExtendedCPS_2024_Half",
+    ),
+    "MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX": (
+        "policyengine_us_data.datasets.cps.cps",
+        "MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX",
+    ),
+    "MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN": (
+        "policyengine_us_data.datasets.cps.cps",
+        "MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN",
+    ),
+    "OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS": (
+        "policyengine_us_data.datasets.cps.cps",
+        "OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS",
     ),
     "ReweightedCPS_2024": (
         "policyengine_us_data.datasets.cps.enhanced_cps",

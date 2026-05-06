@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
-import json
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
+from policyengine_us_data.utils.canonical_json import canonical_json_bytes
 from policyengine_us_data.utils.manifest import compute_file_checksum
 
 RELEASE_MANIFEST_SCHEMA_VERSION = 1
@@ -442,4 +442,4 @@ def build_release_manifest(
 
 
 def serialize_release_manifest(manifest: Mapping) -> bytes:
-    return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return canonical_json_bytes(manifest)

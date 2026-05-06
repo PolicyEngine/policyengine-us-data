@@ -44,6 +44,7 @@ class FullReleasePromotionDependencies:
     upload_from_hf_staging_to_gcs: Callable[..., int]
     publish_release_manifest_to_hf: Callable[..., ReleaseManifest]
     upload_final_version_manifest: Callable[..., None]
+    upload_release_completion_marker: Callable[..., ReleaseManifest]
     cleanup_staging_hf: Callable[..., int]
 
 
@@ -55,8 +56,9 @@ def promote_full_release(
 
     The order is deliberately transaction-like:
     validate staged HF inputs, copy every HF artifact in one commit, upload
-    every GCS artifact, then finalize release_manifest.json, tag the release,
-    update version_manifest.json, and only then clean staged inputs.
+    every GCS artifact, publish release_manifest.json and TRACE TRO, update
+    version_manifest.json, write the release completion marker, tag that final
+    marker commit, and only then clean staged inputs.
     """
     rel_paths = _validated_release_paths(config, deps)
     manifest_files = _manifest_files_for_release(config, rel_paths, deps)
@@ -100,9 +102,18 @@ def promote_full_release(
         version=config.version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
-        create_tag=True,
+        create_tag=False,
     )
     _upload_version_manifest(config, release_manifest, deps)
+    completion_marker = _upload_release_completion_marker(
+        config=config,
+        release_manifest=release_manifest,
+        rel_paths=rel_paths,
+        promoted_hf=promoted_hf,
+        uploaded_gcs=uploaded_gcs,
+        create_tag=True,
+        deps=deps,
+    )
 
     cleaned = _cleanup_staging_after_release(
         config=config,
@@ -118,6 +129,7 @@ def promote_full_release(
         "hf_promoted": promoted_hf,
         "gcs_uploaded": uploaded_gcs,
         "release_manifest_artifacts": len(release_manifest["artifacts"]),
+        "release_completion_marker": completion_marker.get("marker_path"),
         "staging_cleaned": cleaned,
     }
 
@@ -191,6 +203,15 @@ def _finish_already_finalized_release(
     deps: FullReleasePromotionDependencies,
 ) -> dict[str, Any]:
     _upload_version_manifest(config, finalized_manifest, deps)
+    completion_marker = _upload_release_completion_marker(
+        config=config,
+        release_manifest=finalized_manifest,
+        rel_paths=rel_paths,
+        promoted_hf=0,
+        uploaded_gcs=0,
+        create_tag=False,
+        deps=deps,
+    )
     cleaned = _cleanup_staging_after_release(
         config=config,
         rel_paths=rel_paths,
@@ -204,6 +225,7 @@ def _finish_already_finalized_release(
         "hf_promoted": 0,
         "gcs_uploaded": 0,
         "release_manifest_artifacts": len(finalized_manifest["artifacts"]),
+        "release_completion_marker": completion_marker.get("marker_path"),
         "staging_cleaned": cleaned,
         "already_finalized": True,
     }
@@ -256,6 +278,30 @@ def _upload_version_manifest(
         released_paths=_released_paths(release_manifest),
         run_id=config.run_id,
         hf_repo_name=config.hf_repo_name,
+    )
+
+
+def _upload_release_completion_marker(
+    *,
+    config: FullReleasePromotionConfig,
+    release_manifest: ReleaseManifest,
+    rel_paths: Sequence[str],
+    promoted_hf: int,
+    uploaded_gcs: int,
+    create_tag: bool,
+    deps: FullReleasePromotionDependencies,
+) -> ReleaseManifest:
+    return deps.upload_release_completion_marker(
+        version=config.version,
+        run_id=config.run_id,
+        released_paths=rel_paths,
+        expected_paths=rel_paths,
+        release_manifest=release_manifest,
+        hf_repo_name=config.hf_repo_name,
+        hf_repo_type=config.hf_repo_type,
+        promoted_hf=promoted_hf,
+        uploaded_gcs=uploaded_gcs,
+        create_tag=create_tag,
     )
 
 

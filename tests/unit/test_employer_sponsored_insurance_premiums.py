@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
@@ -19,9 +17,6 @@ from policyengine_us_data.datasets.cps.cps import (
 )
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_ONLY_IMPUTED_VARIABLES,
-)
-from policyengine_us_data.storage.calibration_targets.pull_hardcoded_targets import (
-    HARD_CODED_TOTALS,
 )
 
 
@@ -85,19 +80,6 @@ def test_imputation_status_codes_remain_stable():
 
 def test_extended_cps_imputes_esi_premiums_for_clone_half():
     assert "employer_sponsored_insurance_premiums" in CPS_ONLY_IMPUTED_VARIABLES
-
-
-def test_hardcoded_targets_include_total_esi_premiums():
-    assert HARD_CODED_TOTALS["employer_sponsored_insurance_premiums"] == 1_002.9e9
-
-
-def test_target_config_includes_total_esi_premiums():
-    target_config_path = Path(__file__).parents[2] / (
-        "policyengine_us_data/calibration/target_config.yaml"
-    )
-    content = target_config_path.read_text()
-
-    assert "employer_sponsored_insurance_premiums" in content
 
 
 def test_policyholder_variable_name_remains_stable():

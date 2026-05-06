@@ -1,7 +1,9 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
+    ABSOLUTE_ERROR_SCALE_TARGETS,
     build_loss_matrix,
+    get_target_error_normalisation,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -241,6 +243,10 @@ def reweight(
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
+    numerator_shift_np, error_denominator_np = get_target_error_normalisation(
+        target_names,
+        targets_array,
+    )
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
@@ -249,6 +255,8 @@ def reweight(
     )
     normalisation_factor = torch.tensor(normalisation_factor, dtype=torch.float32)
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
+    numerator_shift = torch.tensor(numerator_shift_np, dtype=torch.float32)
+    error_denominator = torch.tensor(error_denominator_np, dtype=torch.float32)
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
@@ -260,7 +268,9 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        rel_error = (((estimate - targets_array) + 1) / (targets_array + 1)) ** 2
+        rel_error = (
+            (estimate - targets_array + numerator_shift) / error_denominator
+        ) ** 2
         rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
@@ -304,7 +314,10 @@ def reweight(
             )
             df["epoch"] = i
             df["error"] = df.estimate - df.target
-            df["rel_error"] = df.error / df.target
+            df["error_denominator"] = error_denominator.detach().numpy()
+            df["rel_error"] = (
+                df.error + numerator_shift.detach().numpy()
+            ) / df.error_denominator
             df["abs_error"] = df.error.abs()
             df["rel_abs_error"] = df.rel_error.abs()
             df["loss"] = df.rel_abs_error**2
@@ -331,6 +344,7 @@ def reweight(
         loss_matrix,
         targets_array,
         "L0 Sparse Solution",
+        target_names=target_names,
     )
 
     return final_weights_sparse
@@ -376,7 +390,12 @@ class EnhancedCPS(Dataset):
         # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
-            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+            scaled_zero_target_mask = loss_matrix.columns.isin(
+                ABSOLUTE_ERROR_SCALE_TARGETS.keys()
+            )
+            zero_mask = np.isclose(targets_array, 0.0, atol=0.1) & (
+                ~scaled_zero_target_mask
+            )
             bad_mask = loss_matrix.columns.isin(bad_targets)
             keep_mask_bool = ~(zero_mask | bad_mask)
             keep_idx = np.where(keep_mask_bool)[0]

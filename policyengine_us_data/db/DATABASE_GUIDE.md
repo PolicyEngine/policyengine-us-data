@@ -52,6 +52,24 @@ rm -f policyengine_us_data/storage/calibration/policy_data.db
 make database
 ```
 
+### Legacy National Target Parity
+
+The legacy national Enhanced CPS pipeline still builds labels through
+`policyengine_us_data.utils.loss.build_loss_matrix()`. To audit whether those
+labels correspond to structured rows in `policy_data.db`, build a parity
+manifest:
+
+```bash
+python -m policyengine_us_data.utils.national_target_parity \
+  --dataset-path policyengine_us_data/storage/enhanced_cps_2024.h5 \
+  --target-db policyengine_us_data/storage/calibration/policy_data.db \
+  --period 2024 \
+  --output national_target_parity.json
+```
+
+Each national loss label is classified as `matched` with a target ID or as
+`legacy_only` with an explicit reason.
+
 ## Database Schema
 
 ### Core Tables

@@ -11,6 +11,7 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_national_targets import (
+    extract_national_targets,
     load_national_targets,
 )
 
@@ -234,6 +235,60 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         assert liheap_target.value == 5_876_646
 
 
+def test_extract_national_targets_drops_survey_spm_targets():
+    targets = extract_national_targets(year=2024)
+    direct_sum_variables = {
+        target["variable"] for target in targets["direct_sum_targets"]
+    }
+    removed_targets = {
+        "alimony_income",
+        "alimony_expense",
+        "child_support_expense",
+        "child_support_received",
+        "employer_sponsored_insurance_premiums",
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_medical_expenses",
+        "over_the_counter_health_expenses",
+        "spm_unit_spm_threshold",
+        "spm_unit_capped_housing_subsidy",
+        "spm_unit_capped_work_childcare_expenses",
+    }
+
+    assert removed_targets.isdisjoint(direct_sum_variables)
+    assert {
+        "rent",
+        "real_estate_taxes",
+        "childcare_expenses",
+        "medicare_part_b_premium",
+    } <= direct_sum_variables
+
+    direct_sum_targets = {
+        target["variable"]: target for target in targets["direct_sum_targets"]
+    }
+    assert direct_sum_targets["rent"]["value"] == 764_925_694_800
+    assert direct_sum_targets["real_estate_taxes"]["value"] == 370_014_207_400
+    assert direct_sum_targets["childcare_expenses"]["value"] == 63_092e6
+
+
+def test_extract_national_targets_includes_wic_targets():
+    targets = extract_national_targets(year=2024)
+    direct_sum_targets = {
+        target["variable"]: target for target in targets["direct_sum_targets"]
+    }
+    wic_count_targets = [
+        target
+        for target in targets["conditional_count_targets"]
+        if target["constraint_variable"] == "wic"
+    ]
+
+    assert direct_sum_targets["wic"]["value"] == 4_911_500_000
+    assert direct_sum_targets["wic"]["source"] == (
+        etl_national_targets.WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE
+    )
+    assert len(wic_count_targets) == 1
+    assert wic_count_targets[0]["person_count"] == 6_704_000
+
+
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
     tmp_path, monkeypatch
 ):
@@ -356,3 +411,83 @@ def test_load_national_targets_supports_medicare_enrollment_counts(
         ).first()
         assert medicare_target is not None
         assert medicare_target.value == 68_030_000
+
+
+def test_load_national_targets_supports_wic_targets(tmp_path, monkeypatch):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        national_id = national.stratum_id
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    direct_targets_df = pd.DataFrame(
+        [
+            {
+                "variable": "wic",
+                "value": 4_911_500_000,
+                "source": etl_national_targets.WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+                "notes": "FY 2024 WIC food costs from FNS annual summary",
+                "year": 2024,
+            }
+        ]
+    )
+    conditional_targets = [
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": etl_national_targets.WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC average monthly participation",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=direct_targets_df,
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        wic_total_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == national_id,
+                Target.variable == "wic",
+                Target.period == 2024,
+            )
+        ).first()
+        assert wic_total_target is not None
+        assert wic_total_target.value == 4_911_500_000
+
+        wic_stratum = session.exec(
+            select(Stratum).where(Stratum.notes == "National WIC Recipients")
+        ).first()
+        assert wic_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in wic_stratum.constraints_rel
+        }
+        assert ("wic", ">", "0") in constraints
+
+        wic_count_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == wic_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert wic_count_target is not None
+        assert wic_count_target.value == 6_704_000

@@ -417,6 +417,39 @@ class TestLoadTargetConfig:
             "domain_variable": "tanf",
         } in include_rules
 
+    def test_training_config_includes_national_childcare_expenses_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "childcare_expenses",
+            "geo_level": "national",
+        } in config["include"]
+
+    def test_training_config_includes_wic_national_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {"variable": "wic", "geo_level": "national"} in include_rules
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "wic",
+        } in include_rules
+
 
 class TestCalibrationPackageRoundTrip:
     def test_round_trip(self, sample_targets, tmp_path):

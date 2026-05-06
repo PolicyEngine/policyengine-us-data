@@ -25,6 +25,10 @@ from policyengine_us_data.utils.db import (
     etl_argparser,
 )
 
+WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
+    "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
+)
+
 
 def extract_national_targets(year: int = DEFAULT_YEAR):
     """
@@ -118,20 +122,6 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
 
     direct_sum_targets = [
         {
-            "variable": "alimony_income",
-            "value": 13e9,
-            "source": "Survey-reported (post-TCJA grandfathered)",
-            "notes": "Alimony received - survey reported, not tax-filer restricted",
-            "year": 2024,
-        },
-        {
-            "variable": "alimony_expense",
-            "value": 13e9,
-            "source": "Survey-reported (post-TCJA grandfathered)",
-            "notes": "Alimony paid - survey reported, not tax-filer restricted",
-            "year": 2024,
-        },
-        {
             "variable": "medicaid",
             "value": 871.7e9,
             "source": "https://www.cms.gov/files/document/highlights.pdf",
@@ -146,27 +136,6 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "employer_sponsored_insurance_premiums",
-            "value": 1_002.9e9,
-            "source": "https://apps.bea.gov/scb/issues/2025/09-september/0925-nipa-methodologies.htm",
-            "notes": "BEA group health insurance total in employer contributions for employee pension and insurance funds",
-            "year": 2024,
-        },
-        {
-            "variable": "health_insurance_premiums_without_medicare_part_b",
-            "value": 385e9,
-            "source": "MEPS/NHEA",
-            "notes": "Health insurance premiums excluding Medicare Part B",
-            "year": 2024,
-        },
-        {
-            "variable": "other_medical_expenses",
-            "value": 278e9,
-            "source": "MEPS/NHEA",
-            "notes": "Out-of-pocket medical expenses",
-            "year": 2024,
-        },
-        {
             "variable": "medicare_part_b_premium",
             "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
             "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
@@ -174,52 +143,31 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "over_the_counter_health_expenses",
-            "value": 72e9,
-            "source": "Consumer Expenditure Survey",
-            "notes": "OTC health products and supplies",
-            "year": 2024,
-        },
-        {
-            "variable": "child_support_expense",
-            "value": 33e9,
-            "source": "Census Bureau",
-            "notes": "Child support payments",
-            "year": 2024,
-        },
-        {
-            "variable": "child_support_received",
-            "value": 33e9,
-            "source": "Census Bureau",
-            "notes": "Child support received",
-            "year": 2024,
-        },
-        {
-            "variable": "spm_unit_capped_work_childcare_expenses",
-            "value": 348e9,
-            "source": "Census Bureau SPM",
-            "notes": "Work and childcare expenses for SPM",
-            "year": 2024,
-        },
-        {
-            "variable": "spm_unit_capped_housing_subsidy",
-            "value": 35e9,
-            "source": "HUD/Census",
-            "notes": "Housing subsidies",
+            "variable": "rent",
+            "value": 764_925_694_800,
+            "source": "Census ACS 2024 1-year table B25060",
+            "notes": "Sum of state aggregate contract rent, annualized from monthly ACS aggregate contract rent",
             "year": 2024,
         },
         {
             "variable": "real_estate_taxes",
-            "value": 500e9,
-            "source": "Census Bureau",
-            "notes": "Property taxes paid",
+            "value": 370_014_207_400,
+            "source": "Census ACS 2024 1-year table B25090",
+            "notes": "Sum of state aggregate real estate taxes paid by owner-occupied housing units",
             "year": 2024,
         },
         {
-            "variable": "rent",
-            "value": 735e9,
-            "source": "Census Bureau/BLS",
-            "notes": "Rental payments",
+            "variable": "childcare_expenses",
+            "value": 63_092e6,
+            "source": "BLS Consumer Expenditure Surveys CE LABSTAT",
+            "notes": "Series CXU670320LB0101M aggregate expenditure: babysitting, childcare, daycare, preschool",
+            "year": 2024,
+        },
+        {
+            "variable": "wic",
+            "value": 4_911_500_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC food costs, excluding nutrition services and administration; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -333,6 +281,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": get_medicare_enrollment_target(2024),
             "source": get_medicare_enrollment_source(2024),
             "notes": get_medicare_enrollment_notes(2024),
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC average monthly participation; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -765,6 +720,10 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "spm_unit_energy_subsidy_reported":
                 stratum_notes = "National LIHEAP Recipient Households"
+                constraint_operation = ">"
+                constraint_value = "0"
+            elif constraint_var == "wic":
+                stratum_notes = "National WIC Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":

@@ -268,6 +268,11 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     if values.dtype.kind == "S" and isinstance(parsed, str):
         parsed = parsed.encode()
 
+    if op == "in":
+        allowed = [part.strip() for part in val.split("|")]
+        if values.dtype.kind == "S":
+            allowed = [part.encode() for part in allowed]
+        return np.isin(values, allowed)
     if op in ("==", "="):
         return values == parsed
     if op == ">":

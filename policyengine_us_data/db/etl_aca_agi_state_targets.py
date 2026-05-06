@@ -219,41 +219,26 @@ def _load_agi_state_targets(session: Session, year: int, geo_strata: dict) -> No
 
         constraints = [
             StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
                 constraint_variable="state_fips",
                 operation="==",
                 value=str(state_fips),
             ),
             StratumConstraint(
                 constraint_variable="adjusted_gross_income",
-                operation="<=",
+                operation="<",
                 value=str(upper),
             ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation=">=",
+                value=str(lower),
+            ),
         ]
-        if is_count:
-            if lower > 0:
-                constraints.append(
-                    StratumConstraint(
-                        constraint_variable="adjusted_gross_income",
-                        operation=">=",
-                        value=str(lower),
-                    )
-                )
-            else:
-                constraints.append(
-                    StratumConstraint(
-                        constraint_variable="adjusted_gross_income",
-                        operation=">",
-                        value="0",
-                    )
-                )
-        else:
-            constraints.append(
-                StratumConstraint(
-                    constraint_variable="adjusted_gross_income",
-                    operation=">=",
-                    value=str(lower),
-                )
-            )
         stratum = _get_or_create_stratum(
             session,
             parent_stratum_id,

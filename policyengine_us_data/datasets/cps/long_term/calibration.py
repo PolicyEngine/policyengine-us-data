@@ -35,7 +35,6 @@ def iterative_proportional_fitting(
         info: Dictionary with convergence info
     """
     w = w_initial.copy()
-    n_features = X.shape[1]
 
     for iter_num in range(max_iters):
         predictions = X.T @ w
@@ -103,6 +102,7 @@ def calibrate_greg(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
 ):
     """
@@ -140,6 +140,7 @@ def calibrate_greg(
         or (h6_income_values is not None and h6_revenue_target is not None)
         or (oasdi_tob_values is not None and oasdi_tob_target is not None)
         or (hi_tob_values is not None and hi_tob_target is not None)
+        or bool(extra_constraints)
     )
 
     if needs_aux_df:
@@ -166,6 +167,10 @@ def calibrate_greg(
         if hi_tob_values is not None and hi_tob_target is not None:
             aux_df["hi_tob"] = hi_tob_values
             controls["hi_tob"] = hi_tob_target
+
+        for name, (values, target) in (extra_constraints or {}).items():
+            aux_df[str(name)] = np.asarray(values, dtype=float)
+            controls[str(name)] = float(target)
 
         aux_vars = aux_df
     else:
@@ -194,6 +199,7 @@ def _build_constraint_dataframe_and_controls(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
 ):
     controls = {}
@@ -223,6 +229,10 @@ def _build_constraint_dataframe_and_controls(
         aux_df["hi_tob"] = np.asarray(hi_tob_values, dtype=float)
         controls["hi_tob"] = float(hi_tob_target)
 
+    for name, (values, target) in (extra_constraints or {}).items():
+        aux_df[str(name)] = np.asarray(values, dtype=float)
+        controls[str(name)] = float(target)
+
     return aux_df, controls
 
 
@@ -240,6 +250,7 @@ def calibrate_entropy(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
     max_iters=500,
     tol=1e-10,
@@ -264,6 +275,7 @@ def calibrate_entropy(
         oasdi_tob_target=oasdi_tob_target,
         hi_tob_values=hi_tob_values,
         hi_tob_target=hi_tob_target,
+        extra_constraints=extra_constraints,
         n_ages=n_ages,
     )
 
@@ -408,6 +420,7 @@ def calibrate_entropy_bounded(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
     max_constraint_error_pct=0.0,
     max_iters=500,
@@ -437,6 +450,7 @@ def calibrate_entropy_bounded(
         oasdi_tob_target=oasdi_tob_target,
         hi_tob_values=hi_tob_values,
         hi_tob_target=hi_tob_target,
+        extra_constraints=extra_constraints,
         n_ages=n_ages,
     )
 
@@ -627,6 +641,7 @@ def calibrate_lp_minimax(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
 ):
     """
@@ -650,6 +665,7 @@ def calibrate_lp_minimax(
         oasdi_tob_target=oasdi_tob_target,
         hi_tob_values=hi_tob_values,
         hi_tob_target=hi_tob_target,
+        extra_constraints=extra_constraints,
         n_ages=n_ages,
     )
 
@@ -740,6 +756,7 @@ def calibrate_weights(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
     n_ages=86,
     max_iters=100,
     tol=1e-6,
@@ -767,6 +784,7 @@ def calibrate_weights(
         oasdi_tob_target: Optional OASDI TOB revenue target total
         hi_tob_values: Optional HI TOB revenue values per household
         hi_tob_target: Optional HI TOB revenue target total
+        extra_constraints: Optional dict of named (values, target) constraints
         n_ages: Number of age groups
         max_iters: Max iterations for IPF
         tol: Convergence tolerance for IPF
@@ -810,6 +828,7 @@ def calibrate_weights(
                 oasdi_tob_target,
                 hi_tob_values,
                 hi_tob_target,
+                extra_constraints,
                 n_ages,
             )
             return w_new, iterations, audit
@@ -843,10 +862,44 @@ def calibrate_weights(
                 oasdi_tob_target=oasdi_tob_target,
                 hi_tob_values=hi_tob_values,
                 hi_tob_target=hi_tob_target,
+                extra_constraints=extra_constraints,
                 n_ages=n_ages,
                 max_iters=max_iters * 5,
                 tol=max(tol, 1e-10),
             )
+            candidate_audit = build_calibration_audit(
+                X=X,
+                y_target=y_target,
+                weights=w_new,
+                baseline_weights=baseline_weights,
+                calibration_event=audit,
+                ss_values=ss_values,
+                ss_target=ss_target,
+                payroll_values=payroll_values,
+                payroll_target=payroll_target,
+                h6_income_values=h6_income_values,
+                h6_revenue_target=h6_revenue_target,
+                oasdi_tob_values=oasdi_tob_values,
+                oasdi_tob_target=oasdi_tob_target,
+                hi_tob_values=hi_tob_values,
+                hi_tob_target=hi_tob_target,
+                extra_constraints=extra_constraints,
+            )
+            allowed_error_pct = max(tol * 100, 1e-6)
+            if approximate_max_error_pct is not None:
+                allowed_error_pct = max(
+                    allowed_error_pct,
+                    float(approximate_max_error_pct),
+                )
+            candidate_error_pct = float(
+                candidate_audit.get("max_constraint_pct_error", 0.0)
+            )
+            if candidate_error_pct > allowed_error_pct + 1e-6:
+                raise RuntimeError(
+                    "Entropy calibration returned weights with max constraint "
+                    f"error {candidate_error_pct:.6f}%, above allowable "
+                    f"{allowed_error_pct:.6f}%."
+                )
             return w_new, iterations, audit
         except RuntimeError as error:
             audit["entropy_error"] = str(error)
@@ -864,10 +917,14 @@ def calibrate_weights(
                 oasdi_tob_target=oasdi_tob_target,
                 hi_tob_values=hi_tob_values,
                 hi_tob_target=hi_tob_target,
+                extra_constraints=extra_constraints,
                 n_ages=n_ages,
             )
             approximate_error_pct = float(feasibility["best_case_max_pct_error"])
-            if approximate_error_pct <= max(tol * 100, 1e-6):
+            exact_lp_available = approximate_error_pct <= max(tol * 100, 1e-6)
+            if exact_lp_available and (
+                not allow_approximate_entropy or approximate_max_error_pct is None
+            ):
                 audit["lp_fallback_used"] = True
                 audit["approximation_method"] = "lp_minimax_exact"
                 audit["approximate_solution_error_pct"] = approximate_error_pct
@@ -901,6 +958,7 @@ def calibrate_weights(
                     oasdi_tob_target=oasdi_tob_target,
                     hi_tob_values=hi_tob_values,
                     hi_tob_target=hi_tob_target,
+                    extra_constraints=extra_constraints,
                     n_ages=n_ages,
                 )
                 dense_lp_weights, dense_lp_info = densify_lp_solution(
@@ -937,6 +995,7 @@ def calibrate_weights(
                         oasdi_tob_target=oasdi_tob_target,
                         hi_tob_values=hi_tob_values,
                         hi_tob_target=hi_tob_target,
+                        extra_constraints=extra_constraints,
                         n_ages=n_ages,
                         max_constraint_error_pct=approximate_max_error_pct,
                         max_iters=max_iters * 10,
@@ -965,6 +1024,12 @@ def calibrate_weights(
                 audit["lp_blend_lambda"] = float(dense_lp_info["blend_lambda"])
                 return dense_lp_weights, iterations, audit
 
+            if exact_lp_available:
+                audit["lp_fallback_used"] = True
+                audit["approximation_method"] = "lp_minimax_exact"
+                audit["approximate_solution_error_pct"] = approximate_error_pct
+                return w_new, iterations, audit
+
             audit["lp_fallback_used"] = True
             audit["approximate_solution_used"] = True
             audit["approximation_method"] = "lp_minimax"
@@ -975,6 +1040,163 @@ def calibrate_weights(
             X, y_target, baseline_weights, max_iters, tol, verbose
         )
         return w_new, info["iterations"], audit
+
+
+def build_group_weight_concentration_audit(
+    *,
+    weights,
+    group_ids,
+    prefix: str,
+) -> dict[str, float | int]:
+    weights = np.asarray(weights, dtype=float)
+    group_ids = np.asarray(group_ids)
+    if weights.ndim != 1:
+        raise ValueError("weights must be one-dimensional")
+    if group_ids.shape[0] != weights.shape[0]:
+        raise ValueError("group_ids must have the same length as weights")
+
+    grouped = pd.Series(weights).groupby(pd.Series(group_ids), sort=False).sum()
+    group_weights = grouped.to_numpy(dtype=float)
+    positive_mask = group_weights > 0
+    weight_sum = float(group_weights.sum())
+    if weight_sum > 0:
+        sorted_weights = np.sort(group_weights)
+        top_10_share = float(sorted_weights[-10:].sum() / weight_sum * 100)
+        top_100_share = float(sorted_weights[-100:].sum() / weight_sum * 100)
+        max_share = float(sorted_weights[-1] / weight_sum * 100)
+    else:
+        top_10_share = 0.0
+        top_100_share = 0.0
+        max_share = 0.0
+
+    denominator = float(np.dot(group_weights, group_weights))
+    effective_sample_size = weight_sum**2 / denominator if denominator > 0 else 0.0
+
+    return {
+        f"{prefix}_count": int(group_weights.shape[0]),
+        f"positive_{prefix}_count": int(positive_mask.sum()),
+        f"{prefix}_effective_sample_size": float(effective_sample_size),
+        f"top_10_{prefix}_weight_share_pct": top_10_share,
+        f"top_100_{prefix}_weight_share_pct": top_100_share,
+        f"max_{prefix}_weight_share_pct": max_share,
+    }
+
+
+def build_target_contribution_support_audit(
+    *,
+    weights,
+    values,
+    prefix: str,
+) -> dict[str, float | int]:
+    weights = np.asarray(weights, dtype=float)
+    values = np.asarray(values, dtype=float)
+    if weights.ndim != 1 or values.ndim != 1:
+        raise ValueError("weights and values must be one-dimensional")
+    if values.shape[0] != weights.shape[0]:
+        raise ValueError("values must have the same length as weights")
+
+    contributions = np.abs(values * weights)
+    contributor_mask = contributions > 0
+    contributor_contributions = contributions[contributor_mask]
+    contribution_sum = float(contributor_contributions.sum())
+    if contribution_sum > 0:
+        sorted_contributions = np.sort(contributor_contributions)
+        top_10_share = float(sorted_contributions[-10:].sum() / contribution_sum * 100)
+        top_100_share = float(
+            sorted_contributions[-100:].sum() / contribution_sum * 100
+        )
+        max_share = float(sorted_contributions[-1] / contribution_sum * 100)
+    else:
+        top_10_share = 0.0
+        top_100_share = 0.0
+        max_share = 0.0
+
+    denominator = float(np.dot(contributor_contributions, contributor_contributions))
+    effective_sample_size = (
+        contribution_sum**2 / denominator if denominator > 0 else 0.0
+    )
+
+    return {
+        f"{prefix}_contributor_count": int(values.shape[0]),
+        f"{prefix}_positive_contributor_count": int(contributor_mask.sum()),
+        f"{prefix}_contributor_effective_sample_size": float(effective_sample_size),
+        f"top_10_{prefix}_contribution_share_pct": top_10_share,
+        f"top_100_{prefix}_contribution_share_pct": top_100_share,
+        f"max_{prefix}_contribution_share_pct": max_share,
+    }
+
+
+def build_clone_donor_family_weight_concentration_audit(
+    *,
+    weights,
+    household_ids,
+    clone_household_reports,
+    prefix: str = "clone_donor_family",
+) -> dict[str, float | int]:
+    household_ids = np.asarray(household_ids)
+    weights = np.asarray(weights, dtype=float)
+    if household_ids.shape[0] != weights.shape[0]:
+        raise ValueError("household_ids must have the same length as weights")
+
+    donor_lookup = {}
+    for clone_report in clone_household_reports or []:
+        clone_household_id = clone_report.get("clone_household_id")
+        if clone_household_id is None:
+            continue
+        older_donor = clone_report.get("older_donor_tax_unit_id")
+        worker_donor = clone_report.get("worker_donor_tax_unit_id")
+        donor_lookup[int(clone_household_id)] = (
+            f"donor_family:older={older_donor};worker={worker_donor}"
+        )
+
+    clone_mask = np.zeros(household_ids.shape[0], dtype=bool)
+    clone_group_ids = []
+    for idx, household_id in enumerate(household_ids):
+        donor_family_id = donor_lookup.get(int(household_id))
+        if donor_family_id is not None:
+            clone_mask[idx] = True
+            clone_group_ids.append(donor_family_id)
+
+    return build_group_weight_concentration_audit(
+        weights=weights[clone_mask],
+        group_ids=np.asarray(clone_group_ids, dtype=object),
+        prefix=prefix,
+    )
+
+
+def build_clone_donor_component_weight_concentration_audit(
+    *,
+    weights,
+    household_ids,
+    clone_household_reports,
+    donor_key: str,
+    prefix: str,
+) -> dict[str, float | int]:
+    household_ids = np.asarray(household_ids)
+    weights = np.asarray(weights, dtype=float)
+    if household_ids.shape[0] != weights.shape[0]:
+        raise ValueError("household_ids must have the same length as weights")
+
+    donor_lookup = {}
+    for clone_report in clone_household_reports or []:
+        clone_household_id = clone_report.get("clone_household_id")
+        if clone_household_id is None:
+            continue
+        donor_lookup[int(clone_household_id)] = clone_report.get(donor_key)
+
+    clone_mask = np.zeros(household_ids.shape[0], dtype=bool)
+    donor_group_ids = []
+    for idx, household_id in enumerate(household_ids):
+        donor_id = donor_lookup.get(int(household_id))
+        if donor_id is not None:
+            clone_mask[idx] = True
+            donor_group_ids.append(f"{donor_key}:{donor_id}")
+
+    return build_group_weight_concentration_audit(
+        weights=weights[clone_mask],
+        group_ids=np.asarray(donor_group_ids, dtype=object),
+        prefix=prefix,
+    )
 
 
 def build_calibration_audit(
@@ -994,6 +1216,7 @@ def build_calibration_audit(
     oasdi_tob_target=None,
     hi_tob_values=None,
     hi_tob_target=None,
+    extra_constraints=None,
 ):
     achieved_ages = X.T @ weights
     age_errors = (
@@ -1051,6 +1274,10 @@ def build_calibration_audit(
         ("oasdi_tob", oasdi_tob_values, oasdi_tob_target),
         ("hi_tob", hi_tob_values, hi_tob_target),
     ]
+    constraint_specs.extend(
+        (str(name), values, target)
+        for name, (values, target) in (extra_constraints or {}).items()
+    )
 
     for name, values, target in constraint_specs:
         if values is None or target is None:

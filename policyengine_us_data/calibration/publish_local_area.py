@@ -8,16 +8,21 @@ Usage:
     python publish_local_area.py [--skip-download] [--states-only] [--upload]
 """
 
-import hashlib
 import json
 import shutil
 
-
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from policyengine_us import Microsimulation
+from policyengine_us_data.calibration.local_h5.fingerprinting import (
+    FingerprintingService,
+    PublishingInputBundle,
+)
+from policyengine_us_data.calibration.local_h5.geography_loader import (
+    CalibrationGeographyLoader,
+)
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
@@ -31,15 +36,13 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
-from policyengine_us_data.calibration.clone_and_assign import (
-    load_geography,
-    reconstruct_geography_from_blocks,
-)
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     apply_block_takeup_to_arrays,
     reported_subsidized_marketplace_by_tax_unit,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 CHECKPOINT_FILE = Path("completed_states.txt")
 CHECKPOINT_FILE_DISTRICTS = Path("completed_districts.txt")
@@ -52,54 +55,24 @@ NYC_COUNTY_FIPS = {"36005", "36047", "36061", "36081", "36085"}
 META_FILE = WORK_DIR / "checkpoint_meta.json"
 
 
-CALIBRATION_WEIGHTS_SUFFIX = "calibration_weights.npy"
-GEOGRAPHY_FILENAME = "geography_assignment.npz"
-LEGACY_BLOCKS_FILENAME = "stacked_blocks.npy"
-
-
-def _calibration_artifact_prefix(weights_path: Path) -> str:
-    if weights_path.name.endswith(CALIBRATION_WEIGHTS_SUFFIX):
-        return weights_path.name[: -len(CALIBRATION_WEIGHTS_SUFFIX)]
-    return ""
-
-
-def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
-    prefix = _calibration_artifact_prefix(weights_path)
-    return weights_path.with_name(f"{prefix}{artifact_name}")
-
-
-def resolve_calibration_geography_paths(
-    weights_path: Path,
-    geography_path: Optional[Path] = None,
-    blocks_path: Optional[Path] = None,
-) -> Tuple[Optional[Path], Optional[Path]]:
-    geo_candidates = []
-    block_candidates = []
-    if geography_path is not None:
-        geo_candidates.append(Path(geography_path))
-    geo_candidates.append(_sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME))
-
-    if blocks_path is not None:
-        block_candidates.append(Path(blocks_path))
-    block_candidates.append(
-        _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
+@pipeline_node(
+    PipelineNode(
+        id="local_h5_input_fingerprint",
+        label="Compute Local H5 Input Fingerprint",
+        node_type="library",
+        description="Compute a scope fingerprint for local H5 checkpoint and resume decisions.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="legacy",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        ],
     )
-    block_candidates.append(weights_path.with_name(LEGACY_BLOCKS_FILENAME))
-
-    resolved_geo = next((path for path in geo_candidates if path.exists()), None)
-    resolved_blocks = next(
-        (path for path in block_candidates if path.exists()),
-        None,
-    )
-    return resolved_geo, resolved_blocks
-
-
-def _update_hash_from_file(h: "hashlib._Hash", path: Path) -> None:
-    with open(path, "rb") as f:
-        while chunk := f.read(8192):
-            h.update(chunk)
-
-
+)
 def compute_input_fingerprint(
     weights_path: Path,
     dataset_path: Path,
@@ -107,86 +80,100 @@ def compute_input_fingerprint(
     seed: int = 42,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    target_db_path: Optional[Path] = None,
+    run_config_path: Optional[Path] = None,
+    calibration_package_path: Optional[Path] = None,
+    scope: str = "regional",
 ) -> str:
-    h = hashlib.sha256()
-    for p in [weights_path, dataset_path]:
-        _update_hash_from_file(h, p)
-
-    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
-        weights_path=weights_path,
-        geography_path=geography_path,
-        blocks_path=blocks_path,
+    service = FingerprintingService()
+    inputs = PublishingInputBundle(
+        weights_path=Path(weights_path),
+        source_dataset_path=Path(dataset_path),
+        target_db_path=Path(target_db_path) if target_db_path is not None else None,
+        exact_geography_path=(
+            Path(geography_path) if geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
+        run_config_path=Path(run_config_path) if run_config_path is not None else None,
+        run_id="",
+        version="",
+        n_clones=n_clones,
+        seed=seed,
+        legacy_blocks_path=Path(blocks_path) if blocks_path is not None else None,
     )
-    if resolved_geo is not None:
-        h.update(b"geography_assignment")
-        _update_hash_from_file(h, resolved_geo)
-    elif resolved_blocks is not None:
-        h.update(b"legacy_stacked_blocks")
-        _update_hash_from_file(h, resolved_blocks)
-    else:
-        h.update(f"legacy_regeneration:{n_clones}:{seed}".encode())
-    return h.hexdigest()[:16]
+    traceability = service.build_traceability(inputs=inputs, scope=scope)
+    return service.compute_scope_fingerprint(traceability)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="load_calibration_geography",
+        label="Load Calibration Geography",
+        node_type="library",
+        description="Resolve exact geography from saved bundles, package metadata, or legacy block artifacts.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="legacy",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
+        ],
+        artifacts_in=[
+            "calibration_weights.npy",
+            "geography_assignment.npz",
+            "stacked_blocks.npy",
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        ],
+    )
+)
 def load_calibration_geography(
     weights_path: Path,
     n_records: int,
     n_clones: Optional[int] = None,
     geography_path: Optional[Path] = None,
     blocks_path: Optional[Path] = None,
+    calibration_package_path: Optional[Path] = None,
 ):
-    resolved_geo, resolved_blocks = resolve_calibration_geography_paths(
-        weights_path=weights_path,
-        geography_path=geography_path,
-        blocks_path=blocks_path,
+    loader = CalibrationGeographyLoader()
+    resolved = loader.resolve_source(
+        weights_path=Path(weights_path),
+        geography_path=Path(geography_path) if geography_path is not None else None,
+        blocks_path=Path(blocks_path) if blocks_path is not None else None,
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
     )
-
-    if resolved_geo is not None:
-        geography = load_geography(resolved_geo)
-        if geography.n_records != n_records:
-            raise ValueError(
-                f"Geography artifact {resolved_geo} has n_records={geography.n_records}, "
-                f"expected {n_records}"
-            )
-        if n_clones is not None and geography.n_clones != n_clones:
-            raise ValueError(
-                f"Geography artifact {resolved_geo} has n_clones={geography.n_clones}, "
-                f"expected {n_clones}"
-            )
-        print(f"Loaded calibration geography from {resolved_geo}")
-        return geography
-
-    if resolved_blocks is not None:
-        block_geoids = np.asarray(
-            np.load(resolved_blocks, allow_pickle=True), dtype=str
-        )
-        if len(block_geoids) % n_records != 0:
-            raise ValueError(
-                f"Legacy blocks artifact {resolved_blocks} has {len(block_geoids)} "
-                f"rows, not divisible by n_records={n_records}"
-            )
-        inferred_n_clones = len(block_geoids) // n_records
-        if n_clones is not None and inferred_n_clones != n_clones:
-            raise ValueError(
-                f"Legacy blocks artifact {resolved_blocks} implies "
-                f"n_clones={inferred_n_clones}, expected {n_clones}"
-            )
-        print(
-            f"Reconstructing geography from legacy stacked blocks at {resolved_blocks}"
-        )
-        return reconstruct_geography_from_blocks(
-            block_geoids=block_geoids,
-            n_records=n_records,
-            n_clones=inferred_n_clones,
-        )
-
-    geo_hint = _sibling_artifact_path(weights_path, GEOGRAPHY_FILENAME)
-    legacy_hint = _sibling_artifact_path(weights_path, LEGACY_BLOCKS_FILENAME)
-    raise FileNotFoundError(
-        "No saved calibration geography found. Expected either "
-        f"{geo_hint} or {legacy_hint}. Re-run calibration on this branch or "
-        "provide --geography-path."
+    geography = loader.load(
+        weights_path=Path(weights_path),
+        n_records=n_records,
+        n_clones=n_clones,
+        geography_path=Path(geography_path) if geography_path is not None else None,
+        blocks_path=Path(blocks_path) if blocks_path is not None else None,
+        calibration_package_path=(
+            Path(calibration_package_path)
+            if calibration_package_path is not None
+            else None
+        ),
     )
+    if resolved is not None:
+        if resolved.kind == "saved_geography":
+            print(f"Loaded calibration geography from {resolved.path}")
+        elif resolved.kind == "calibration_package":
+            print(f"Loaded calibration geography from package {resolved.path}")
+        else:
+            print(
+                "Reconstructing geography from legacy stacked blocks at "
+                f"{resolved.path}"
+            )
+    return geography
 
 
 def validate_or_clear_checkpoints(fingerprint: str):
@@ -311,6 +298,28 @@ def _build_reported_takeup_anchors(
     return reported_anchors
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_h5",
+        label="Build Local Area H5",
+        node_type="library",
+        description="Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+        details="This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="transitional",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_in=[
+            "calibration_weights.npy",
+            "source_imputed_stratified_extended_cps*.h5",
+        ],
+        artifacts_out=["states/*.h5", "districts/*.h5", "cities/*.h5", "US.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_publish_local_area.py",
+            "uv run pytest tests/integration/test_tiny_h5_pipeline.py",
+        ],
+    )
+)
 def build_h5(
     weights: np.ndarray,
     geography,
@@ -338,9 +347,6 @@ def build_h5(
     import h5py
     from collections import defaultdict
     from policyengine_core.enums import Enum
-    from policyengine_us.variables.household.demographic.geographic.county.county_enum import (
-        County,
-    )
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -601,10 +607,9 @@ def build_h5(
     data["state_fips"] = {
         time_period: clone_geo["state_fips"].astype(np.int32),
     }
-    county_names = np.array(
-        [County._member_names_[i].encode("utf-8") for i in clone_geo["county_index"]]
-    )
-    data["county"] = {time_period: county_names}
+    data["county"] = {
+        time_period: clone_geo["county_index"].astype(np.int32),
+    }
     data["county_fips"] = {
         time_period: clone_geo["county_fips"].astype(np.int32),
     }
@@ -768,6 +773,19 @@ def get_district_friendly_name(cd_geoid: str) -> str:
     return f"{state_code}-{district_num:02d}"
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_states",
+        label="Build State H5 Files",
+        node_type="library",
+        description="Build state-level H5 files from calibrated weights and exact geography.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["states/*.h5"],
+    )
+)
 def build_states(
     weights_path: Path,
     dataset_path: Path,
@@ -841,6 +859,19 @@ def build_states(
         upload_local_area_batch_to_hf(hf_queue)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_districts",
+        label="Build District H5 Files",
+        node_type="library",
+        description="Build congressional-district H5 files from calibrated weights and exact geography.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["districts/*.h5"],
+    )
+)
 def build_districts(
     weights_path: Path,
     dataset_path: Path,
@@ -915,6 +946,19 @@ def build_districts(
         upload_local_area_batch_to_hf(hf_queue)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="build_cities",
+        label="Build City H5 Files",
+        node_type="library",
+        description="Build supported city H5 files with county probability filtering.",
+        source_file="policyengine_us_data/calibration/publish_local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["cities/*.h5"],
+    )
+)
 def build_cities(
     weights_path: Path,
     dataset_path: Path,

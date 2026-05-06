@@ -22,6 +22,8 @@ import yaml
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ IMPUTED_VARIABLES = [
     "taxable_ira_distributions",
     "self_employment_income",
     "sstb_self_employment_income",
+    "sstb_self_employment_income_would_be_qualified",
     "w2_wages_from_qualified_business",
     "unadjusted_basis_qualified_property",
     "business_is_sstb",
@@ -378,6 +381,21 @@ def _age_heuristic_ss_shares(
     return shares
 
 
+@pipeline_node(
+    PipelineNode(
+        id="ss_reconcile",
+        label="Social Security Subcomponent Reconciliation",
+        node_type="library",
+        description="Scale imputed Social Security subcomponents so they reconcile to total Social Security.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def reconcile_ss_subcomponents(
     data: Dict[str, Dict[int, np.ndarray]],
     n_cps: int,
@@ -430,9 +448,28 @@ def reconcile_ss_subcomponents(
         data[sub][time_period] = arr
 
 
+@pipeline_node(
+    PipelineNode(
+        id="record_double",
+        label="PUF Clone Dataset",
+        node_type="library",
+        description="Double CPS records and populate the clone half with PUF-imputed tax variables.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_out=["extended_cps_2024.h5"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def puf_clone_dataset(
     data: Dict[str, Dict[int, np.ndarray]],
     state_fips: np.ndarray,
+    block_geoid: Optional[np.ndarray] = None,
+    cd_geoid: Optional[np.ndarray] = None,
+    county_fips: Optional[np.ndarray] = None,
     time_period: int = 2024,
     puf_dataset=None,
     skip_qrf: bool = False,
@@ -447,6 +484,9 @@ def puf_clone_dataset(
     Args:
         data: CPS dataset dict {variable: {time_period: array}}.
         state_fips: State FIPS per household, shape (n_households,).
+        block_geoid: Optional 15-character Census block GEOID per household.
+        cd_geoid: Optional congressional district GEOID per household.
+        county_fips: Optional 5-digit county FIPS per household.
         time_period: Tax year.
         puf_dataset: PUF dataset class or path for QRF training.
             If None, skips QRF (same as skip_qrf=True).
@@ -535,6 +575,25 @@ def puf_clone_dataset(
     new_data["state_fips"] = {
         time_period: np.concatenate([state_fips, state_fips]).astype(np.int32)
     }
+    if block_geoid is not None:
+        block_str = np.asarray([str(b).zfill(15) for b in block_geoid])
+        block_geoid = block_str.astype("S15")
+        new_data["block_geoid"] = {
+            time_period: np.concatenate([block_geoid, block_geoid])
+        }
+        tract_geoid = np.asarray([b[:11] for b in block_str]).astype("S11")
+        new_data["tract_geoid"] = {
+            time_period: np.concatenate([tract_geoid, tract_geoid])
+        }
+    if cd_geoid is not None:
+        new_data["congressional_district_geoid"] = {
+            time_period: np.concatenate([cd_geoid, cd_geoid]).astype(np.int32)
+        }
+    if county_fips is not None:
+        county_fips = np.asarray([f"{int(c):05d}" for c in county_fips]).astype("S5")
+        new_data["county_fips"] = {
+            time_period: np.concatenate([county_fips, county_fips])
+        }
 
     if y_full:
         for var in IMPUTED_VARIABLES:
@@ -557,6 +616,21 @@ def puf_clone_dataset(
     return new_data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="weeks_impute",
+        label="Weeks Unemployed Imputation",
+        node_type="library",
+        description="Impute weeks unemployed for the clone half using CPS donor relationships.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _impute_weeks_unemployed(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -648,6 +722,21 @@ def _impute_weeks_unemployed(
     return imputed_weeks
 
 
+@pipeline_node(
+    PipelineNode(
+        id="retire_impute",
+        label="Retirement Contribution Imputation",
+        node_type="library",
+        description="Impute and constrain retirement contribution inputs on the PUF clone half.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _impute_retirement_contributions(
     data: Dict[str, Dict[int, np.ndarray]],
     puf_imputations: Dict[str, np.ndarray],
@@ -778,6 +867,21 @@ def _impute_retirement_contributions(
     return result
 
 
+@pipeline_node(
+    PipelineNode(
+        id="puf_qrf_pass",
+        label="PUF QRF Imputation Pass",
+        node_type="library",
+        description="Run Quantile Random Forest imputation from PUF tax variables onto CPS clone records.",
+        source_file="policyengine_us_data/calibration/puf_impute.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_calibration_puf_impute.py"
+        ],
+    )
+)
 def _run_qrf_imputation(
     data: Dict[str, Dict[int, np.ndarray]],
     time_period: int,

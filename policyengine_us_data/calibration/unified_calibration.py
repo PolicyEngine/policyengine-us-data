@@ -40,6 +40,11 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
+from policyengine_us_data.calibration.calibration_utils import (
+    create_target_groups,
+)
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logging.basicConfig(
     level=logging.INFO,
@@ -379,7 +384,7 @@ def parse_args(argv=None):
         "--checkpoint-output",
         default=None,
         help="Where to save resumable fit checkpoints "
-        "(default: <output>.checkpoint.pt).",
+        "(omit to disable checkpoint writing).",
     )
     return parser.parse_args(argv)
 
@@ -626,6 +631,22 @@ def resolve_resume_artifact(resume_from: str) -> tuple:
     return "checkpoint", resume_path
 
 
+@pipeline_node(
+    PipelineNode(
+        id="init_weights",
+        label="Compute Initial Weights",
+        node_type="library",
+        description="Build population-proportional initial weights from geography and targets.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_in=["calibration_package.pkl"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def compute_initial_weights(
     X_sparse,
     targets_df: "pd.DataFrame",
@@ -688,6 +709,23 @@ def compute_initial_weights(
     return initial_weights
 
 
+@pipeline_node(
+    PipelineNode(
+        id="fit_model",
+        label="Fit L0 Calibration Weights",
+        node_type="library",
+        description="Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_in=["calibration_package.pkl"],
+        artifacts_out=["calibration_weights.npy", "unified_diagnostics.csv"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def fit_l0_weights(
     X_sparse,
     targets: np.ndarray,
@@ -704,6 +742,7 @@ def fit_l0_weights(
     initial_weights: np.ndarray = None,
     targets_df: "pd.DataFrame" = None,
     achievable: np.ndarray = None,
+    target_groups: Optional[np.ndarray] = None,
     resume_from: str = None,
     checkpoint_path: str = None,
 ) -> np.ndarray:
@@ -727,6 +766,7 @@ def fit_l0_weights(
             computed from targets_df age targets.
         targets_df: Targets DataFrame, used to compute
             initial_weights when not provided.
+        target_groups: Optional group ID per target row for balanced loss.
         resume_from: Path to a `.checkpoint.pt` file or `.npy`
             weights file to continue fitting from.
         checkpoint_path: Where to save resumable fit checkpoints.
@@ -757,6 +797,7 @@ def fit_l0_weights(
         beta=beta,
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
+        target_groups=target_groups,
     )
     checkpoint_state_dict = None
     start_epoch = 0
@@ -886,7 +927,7 @@ def fit_l0_weights(
                 model.fit(
                     M=X_sparse,
                     y=targets,
-                    target_groups=None,
+                    target_groups=target_groups,
                     lambda_l0=lambda_l0,
                     lambda_l2=lambda_l2,
                     lr=learning_rate,
@@ -985,7 +1026,7 @@ def fit_l0_weights(
             model.fit(
                 M=X_sparse,
                 y=targets,
-                target_groups=None,
+                target_groups=target_groups,
                 lambda_l0=lambda_l0,
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
@@ -1025,6 +1066,22 @@ def fit_l0_weights(
     return weights
 
 
+@pipeline_node(
+    PipelineNode(
+        id="calibration_diagnostics",
+        label="Compute Calibration Diagnostics",
+        node_type="library",
+        description="Compare fitted weighted sums to calibration targets and summarize error.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["weight_fit"],
+        artifacts_out=["unified_diagnostics.csv"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def compute_diagnostics(
     weights: np.ndarray,
     X_sparse,
@@ -1054,6 +1111,29 @@ def compute_diagnostics(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="run_calibration",
+        label="Run Unified Calibration",
+        node_type="entrypoint",
+        description="Build or load the calibration package, fit sparse weights, and write diagnostics.",
+        details="This remains a bundled orchestration function; decorators document the semantic pathway until the implementation is further decomposed.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="transitional",
+        stability="moving",
+        pathways=["calibration_package", "weight_fit"],
+        artifacts_in=["source_imputed_stratified_extended_cps*.h5", "policy_data.db"],
+        artifacts_out=[
+            "calibration_package.pkl",
+            "calibration_weights.npy",
+            "unified_diagnostics.csv",
+            "unified_run_config.json",
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def run_calibration(
     dataset_path: str,
     db_path: str,
@@ -1143,6 +1223,7 @@ def run_calibration(
 
         initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
+        target_groups, _ = create_target_groups(targets_df)
         row_sums = np.array(X_sparse.sum(axis=1)).flatten()
         pkg_achievable = row_sums > 0
         weights = fit_l0_weights(
@@ -1160,6 +1241,7 @@ def run_calibration(
             initial_weights=initial_weights,
             targets_df=targets_df,
             achievable=pkg_achievable,
+            target_groups=target_groups,
             resume_from=resume_from,
             checkpoint_path=checkpoint_path,
         )
@@ -1426,6 +1508,7 @@ def run_calibration(
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
+    target_groups, _ = create_target_groups(targets_df)
 
     row_sums = np.array(X_sparse.sum(axis=1)).flatten()
     achievable = row_sums > 0
@@ -1450,6 +1533,7 @@ def run_calibration(
         initial_weights=initial_weights,
         targets_df=targets_df,
         achievable=achievable,
+        target_groups=target_groups,
         resume_from=resume_from,
         checkpoint_path=checkpoint_path,
     )
@@ -1548,9 +1632,7 @@ def main(argv=None):
         cal_log_path = str(output_dir / "calibration_log.csv")
     checkpoint_output_path = None
     if not args.build_only:
-        checkpoint_output_path = args.checkpoint_output or str(
-            default_checkpoint_path(output_path)
-        )
+        checkpoint_output_path = args.checkpoint_output
     (
         weights,
         targets_df,
@@ -1719,7 +1801,7 @@ def main(argv=None):
         },
     }
     if checkpoint_output_path and Path(checkpoint_output_path).exists():
-        run_config["artifacts"]["calibration_checkpoint.pt"] = _sha256(
+        run_config["artifacts"]["calibration_weights.checkpoint.pt"] = _sha256(
             checkpoint_output_path
         )
     run_config.update(get_git_provenance())

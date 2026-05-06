@@ -55,6 +55,7 @@ def _validate_in_subprocess(
         area_type=area_type,
         area_id=area_id,
         display_id=display_id,
+        dataset_path=h5_path,
         period=period,
         training_mask=area_training,
         variable_entity_map=variable_entity_map,
@@ -152,6 +153,11 @@ def parse_args(argv: list[str] | None = None):
         "--geography-path",
         default=None,
         help="Optional explicit path to geography_assignment.npz",
+    )
+    parser.add_argument(
+        "--calibration-package-path",
+        default=None,
+        help="Optional calibration_package.pkl used as a geography fallback",
     )
     parser.add_argument(
         "--n-clones",
@@ -328,6 +334,11 @@ def main(argv: list[str] | None = None):
         n_clones=args.n_clones,
         geography_path=(
             Path(args.geography_path) if args.geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(args.calibration_package_path)
+            if args.calibration_package_path is not None
+            else None
         ),
     )
     print(

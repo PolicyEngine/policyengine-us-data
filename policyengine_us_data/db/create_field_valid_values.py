@@ -45,6 +45,7 @@ def populate_field_valid_values(session: Session) -> None:
     operation_values = [
         ("operation", "==", "Equals"),
         ("operation", "!=", "Not equals"),
+        ("operation", "in", "In pipe-delimited set"),
         ("operation", ">", "Greater than"),
         ("operation", ">=", "Greater than or equal"),
         ("operation", "<", "Less than"),
@@ -70,6 +71,7 @@ def populate_field_valid_values(session: Session) -> None:
         ("source", "Census ACS S0101", "survey"),
         ("source", "IRS SOI", "administrative"),
         ("source", "CMS Marketplace", "administrative"),
+        ("source", "CMS 2024 OEP state metal status PUF", "administrative"),
         ("source", "CMS Medicaid", "administrative"),
         ("source", "Census ACS S2704", "survey"),
         ("source", "USDA FNS SNAP", "administrative"),

@@ -16,17 +16,20 @@ node_modules
 !medicaid_enrollment_2024.csv
 !medicaid_enrollment_2025.csv
 !eitc.csv
+!eitc_claim_controls.csv
 !eitc_state.csv
 !eitc_by_agi_and_children.csv
 !spm_threshold_agi.csv
 !population_by_state.csv
 !aca_spending_and_enrollment_2024.csv
 !aca_spending_and_enrollment_2025.csv
+!policyengine_us_data/storage/calibration_targets/acs_housing_costs_2024.csv
 !real_estate_taxes_by_state_acs.csv
 !snap_state.csv
 !age_state.csv
 !agi_state.csv
 !soi_targets.csv
+!policyengine_us_data/storage/calibration_targets/aca_marketplace_state_metal_selection_2024.csv
 !policyengine_us_data/storage/social_security_aux.csv
 !policyengine_us_data/storage/SSPopJul_TR2024.csv
 !policyengine_us_data/storage/national_and_district_rents_2023.csv
@@ -38,6 +41,10 @@ docs/.ipynb_checkpoints/
 
 ## Calibration run outputs (weights, diagnostics, packages, config)
 policyengine_us_data/storage/calibration/
+
+## Cached rich-list backbone snapshots
+policyengine_us_data/storage/forbes_us_top_400_*.json
+policyengine_us_data/storage/forbes_us_top_400_*.json.lock
 
 ## Batch processing checkpoints
 completed_*.txt

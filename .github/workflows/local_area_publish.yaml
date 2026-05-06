@@ -40,10 +40,10 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
 
@@ -82,15 +82,15 @@ jobs:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8.1.0
 
       - name: Install dependencies
         run: uv sync
@@ -102,12 +102,10 @@ jobs:
 
       - name: Upload validation results to HF
         run: |
-          uv run python -c "
-          from policyengine_us_data.utils.huggingface import upload
-          upload('validation_results.csv',
-                 'policyengine/policyengine-us-data',
-                 'calibration/logs/validation_results.csv')
-          "
+          uv run python .github/scripts/upload_validation_results.py \
+            validation_results.csv \
+            policyengine/policyengine-us-data \
+            calibration/logs/validation_results.csv
 
       - name: Post validation summary
         if: always()
@@ -125,7 +123,7 @@ jobs:
           fi
 
       - name: Upload validation artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: validation-results
           path: validation_results.csv

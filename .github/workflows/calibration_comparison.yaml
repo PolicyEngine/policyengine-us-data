@@ -1,0 +1,101 @@
+name: Compare Calibration Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Completed pipeline run ID to compare"
+        required: true
+        type: string
+      skip_h5:
+        description: "Only summarize calibration diagnostics; skip national H5 comparison"
+        default: false
+        type: boolean
+      fail_on_threshold:
+        description: "Fail the workflow when report thresholds are exceeded"
+        default: false
+        type: boolean
+      p95_threshold:
+        description: "Diagnostics p95 absolute relative error threshold"
+        default: "0.10"
+        type: string
+      p99_threshold:
+        description: "Diagnostics p99 absolute relative error threshold"
+        default: "0.50"
+        type: string
+      h5_delta_threshold:
+        description: "Max national H5 aggregate delta vs legacy Enhanced CPS"
+        default: "0.10"
+        type: string
+      variables:
+        description: "Optional comma-separated H5 variables to compare"
+        default: ""
+        type: string
+      candidate_h5:
+        description: "Optional candidate national H5 path"
+        default: ""
+        type: string
+      legacy_h5:
+        description: "Optional legacy Enhanced CPS H5 path"
+        default: ""
+        type: string
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    env:
+      HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install comparison dependencies
+        run: uv sync --dev
+
+      - name: Build calibration comparison report
+        run: |
+          CMD=(
+            uv run python -m policyengine_us_data.calibration.compare_calibration_runs
+            --run-id "${{ inputs.run_id }}"
+            --output-dir calibration_comparison_report
+            --p95-threshold "${{ inputs.p95_threshold }}"
+            --p99-threshold "${{ inputs.p99_threshold }}"
+            --h5-delta-threshold "${{ inputs.h5_delta_threshold }}"
+          )
+          if [ "${{ inputs.skip_h5 }}" = "true" ]; then
+            CMD+=(--skip-h5)
+          fi
+          if [ "${{ inputs.fail_on_threshold }}" = "true" ]; then
+            CMD+=(--fail-on-threshold)
+          fi
+          if [ -n "${{ inputs.variables }}" ]; then
+            CMD+=(--variables "${{ inputs.variables }}")
+          fi
+          if [ -n "${{ inputs.candidate_h5 }}" ]; then
+            CMD+=(--candidate-h5 "${{ inputs.candidate_h5 }}")
+          fi
+          if [ -n "${{ inputs.legacy_h5 }}" ]; then
+            CMD+=(--legacy-h5 "${{ inputs.legacy_h5 }}")
+          fi
+          "${CMD[@]}"
+
+      - name: Post comparison summary
+        if: always()
+        run: |
+          if [ -f calibration_comparison_report/report.md ]; then
+            cat calibration_comparison_report/report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Calibration comparison report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload comparison artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: calibration-comparison-${{ inputs.run_id }}
+          path: calibration_comparison_report/

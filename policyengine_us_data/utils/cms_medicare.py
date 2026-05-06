@@ -2,6 +2,10 @@ MEDICARE_PART_B_GROSS_PREMIUM_INCOME = {
     2024: 139.837e9,
 }
 
+MEDICARE_ENROLLMENT_TARGETS = {
+    2024: 68_030_000,
+}
+
 
 MEDICARE_STATE_BUY_IN_MINIMUM_BENEFICIARIES = {
     2024: 10_000_000,
@@ -11,6 +15,31 @@ MEDICARE_STATE_BUY_IN_MINIMUM_BENEFICIARIES = {
 BENEFICIARY_PAID_MEDICARE_PART_B_PREMIUM_TARGETS = {
     2024: 112e9,
 }
+
+
+def get_medicare_enrollment_target(year: int) -> float:
+    try:
+        return MEDICARE_ENROLLMENT_TARGETS[year]
+    except KeyError as exc:
+        raise ValueError(f"No Medicare enrollment target sourced for {year}.") from exc
+
+
+def get_medicare_enrollment_source(year: int) -> str:
+    enrollment = MEDICARE_ENROLLMENT_TARGETS[year]
+    return (
+        "CMS 2024 Medicare Trustees Report Table V.B3 intermediate estimate "
+        f"for {year} total Medicare enrollment "
+        f"({enrollment:,.0f} beneficiaries with HI and/or SMI coverage)"
+    )
+
+
+def get_medicare_enrollment_notes(year: int) -> str:
+    return (
+        "Total Medicare enrollment count for beneficiaries with HI and/or "
+        "SMI coverage. This matches policyengine-us medicare_enrolled "
+        "semantics and remains separate from beneficiary-paid Part B "
+        "premiums."
+    )
 
 
 def get_beneficiary_paid_medicare_part_b_premiums_target(year: int) -> float:

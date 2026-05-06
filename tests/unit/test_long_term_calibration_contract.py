@@ -48,8 +48,11 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     SinglePersonSyntheticGridRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
+    build_targeted_donor_augmented_dataset,
     household_support_summary,
+    is_targeted_donor_support_augmentation_profile,
     select_donor_households,
+    valid_support_augmentation_profile_names,
 )
 from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_support import (
     SyntheticCandidate,
@@ -150,6 +153,24 @@ def test_support_augmentation_selects_expected_donors():
     )
     donors = select_donor_households(summary, rule)
     assert list(donors) == [1]
+
+
+def test_support_augmentation_profile_registry_includes_runner_profiles():
+    profiles = valid_support_augmentation_profile_names()
+    assert "late-clone-v1" in profiles
+    assert "donor-backed-composite-v1" in profiles
+    assert is_targeted_donor_support_augmentation_profile("donor-backed-composite-v1")
+    assert not is_targeted_donor_support_augmentation_profile("late-clone-v1")
+
+
+def test_targeted_donor_support_builder_rejects_unknown_profile():
+    with pytest.raises(ValueError, match="Unknown targeted donor support profile"):
+        build_targeted_donor_augmented_dataset(
+            base_dataset="unused.h5",
+            base_year=2024,
+            target_year=2100,
+            profile="late-clone-v1",
+        )
 
 
 def test_support_augmentation_clones_households_with_new_ids():
@@ -953,6 +974,41 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     assert audit["approximation_method"] == "lp_minimax_exact"
 
 
+def test_entropy_calibration_rejects_large_constraint_error_without_exception(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        calibration_module,
+        "calibrate_entropy",
+        lambda *args, **kwargs: (np.array([1.0, 1.0]), 3),
+    )
+    monkeypatch.setattr(
+        calibration_module,
+        "calibrate_lp_minimax",
+        lambda *args, **kwargs: (
+            np.array([10.0, 2.0]),
+            1,
+            {"best_case_max_pct_error": 0.0},
+        ),
+    )
+
+    weights, _, audit = calibrate_weights(
+        X=np.array([[1.0], [0.0]]),
+        y_target=np.array([1.0]),
+        baseline_weights=np.array([1.0, 1.0]),
+        method="entropy",
+        payroll_values=np.array([1.0, 0.0]),
+        payroll_target=10.0,
+        n_ages=1,
+        allow_approximate_entropy=False,
+    )
+
+    np.testing.assert_allclose(weights, np.array([10.0, 2.0]))
+    assert audit["lp_fallback_used"] is True
+    assert audit["approximation_method"] == "lp_minimax_exact"
+    assert "above allowable" in audit["entropy_error"]
+
+
 def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasible():
     feasible_A = np.array(
         [
@@ -1194,7 +1250,7 @@ def test_manifest_persists_tax_assumption_metadata(tmp_path):
         "validation_issues": [],
     }
     tax_assumption = {
-        "name": "trustees-core-thresholds-v1",
+        "name": "trustees-2025-core-thresholds-v1",
         "start_year": 2035,
         "end_year": 2100,
     }
@@ -1222,7 +1278,7 @@ def test_manifest_persists_tax_assumption_metadata(tmp_path):
 
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert metadata["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
+    assert metadata["tax_assumption"]["name"] == "trustees-2025-core-thresholds-v1"
     assert manifest["tax_assumption"]["end_year"] == 2100
 
 
@@ -1322,7 +1378,7 @@ def test_parallel_projection_merge_outputs_rebuilds_manifest(tmp_path):
         "source_type": "oact_note",
     }
     tax_assumption = {
-        "name": "trustees-core-thresholds-v1",
+        "name": "trustees-2025-core-thresholds-v1",
         "start_year": 2035,
         "end_year": 2100,
     }
@@ -1353,7 +1409,7 @@ def test_parallel_projection_merge_outputs_rebuilds_manifest(tmp_path):
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["years"] == [2045, 2049]
     assert manifest["target_source"]["name"] == "oact_2025_08_05_provisional"
-    assert manifest["tax_assumption"]["name"] == "trustees-core-thresholds-v1"
+    assert manifest["tax_assumption"]["name"] == "trustees-2025-core-thresholds-v1"
     assert (tmp_path / "2045.h5").exists()
     assert (tmp_path / "2049.h5.metadata.json").exists()
     assert not (tmp_path / ".parallel_tmp").exists()
@@ -1382,7 +1438,7 @@ def test_parallel_projection_merge_outputs_rejects_mismatched_contract(tmp_path)
         year=2062,
         profile=profile,
         audit=audit,
-        tax_assumption={"name": "trustees-core-thresholds-v1"},
+        tax_assumption={"name": "trustees-2025-core-thresholds-v1"},
     )
     _write_parallel_temp_year(
         root=tmp_path,

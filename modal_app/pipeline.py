@@ -38,11 +38,9 @@ import subprocess
 import sys
 import time
 import traceback
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
-from typing import Optional
 
 import modal
 
@@ -52,96 +50,83 @@ for _p in (_baked, _local):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from modal_app.images import cpu_image as image
-from modal_app.resilience import ensure_resume_sha_compatible
+from modal_app.images import cpu_image as image  # noqa: E402
+from modal_app.resilience import ensure_resume_sha_compatible  # noqa: E402
+from modal_app.step_manifests.specs import (  # noqa: E402
+    BUILD_CALIBRATION_PACKAGE,
+    BUILD_DATASETS,
+    BUILD_OUTPUTS,
+    LOCAL_AREA_H5_NATIONAL,
+    LOCAL_AREA_H5_REGIONAL,
+    STAGE_BASE_DATASETS,
+    UPLOAD_DIAGNOSTICS,
+    VALIDATE_AND_PROMOTE_RELEASE,
+    WEIGHT_FITTING_NATIONAL,
+    WEIGHT_FITTING_REGIONAL,
+)
+from modal_app.step_manifests.state import (  # noqa: E402
+    PIPELINE_MOUNT,
+    RUNS_DIR,
+    RunMetadata,
+    STAGING_MOUNT,
+    apply_run_context_env as _apply_run_context_env,
+    artifact_identities as _artifact_identities,
+    artifacts_dir as _artifacts_dir,
+    artifacts_dir_for_run,
+    collect_diagnostics as _collect_diagnostics,
+    collect_staging_outputs as _collect_staging_outputs,
+    metadata_run_fields as _metadata_run_fields,
+    run_dir as _run_dir,
+)
+from modal_app.step_manifests.store import (  # noqa: E402
+    complete_step_manifest as _complete_step_manifest,
+    fail_step_manifest as _fail_step_manifest,
+    mark_step_reused as _mark_step_reused,
+    read_run_meta,
+    start_step_manifest as _start_step_manifest,
+    step_reusable as _step_reusable,
+    write_run_meta,
+)
+from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
+from policyengine_us_data.utils.step_manifest import (  # noqa: E402
+    ArtifactReference,
+    ReuseMeasurement,
+    StepManifest,
+    collect_artifacts,
+    collect_directory_artifacts,
+    completed_validated_outputs,
+    read_step_manifest,
+    run_manifest_path,
+)
+from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
+from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 
 # ── Modal resources ──────────────────────────────────────────────
 
-app = modal.App("policyengine-us-data-pipeline")
+app = modal.App(
+    os.environ.get("US_DATA_PIPELINE_APP_NAME")
+    or os.environ.get("US_DATA_MODAL_APP_NAME")
+    or "policyengine-us-data-pipeline"
+)
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
-pipeline_volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
-staging_volume = modal.Volume.from_name("local-area-staging", create_if_missing=True)
+pipeline_volume = modal.Volume.from_name(
+    os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
+    create_if_missing=True,
+)
+staging_volume = modal.Volume.from_name(
+    os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
+    create_if_missing=True,
+)
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
-PIPELINE_MOUNT = "/pipeline"
-STAGING_MOUNT = "/staging"
-ARTIFACTS_BASE = f"{PIPELINE_MOUNT}/artifacts"
-RUNS_DIR = f"{PIPELINE_MOUNT}/runs"
 
 
-def artifacts_dir_for_run(run_id: str) -> str:
-    """Return the run-scoped artifacts directory.
-
-    When run_id is empty, falls back to the flat base path
-    for backward compatibility with standalone invocations.
-    """
-    if run_id:
-        return f"{ARTIFACTS_BASE}/{run_id}"
-    return ARTIFACTS_BASE
-
-
-# ── Run metadata ─────────────────────────────────────────────────
-
-
-@dataclass
-class RunMetadata:
-    """Metadata for a pipeline run.
-
-    Tracks run identity, progress, and diagnostics for
-    auditability and resume support.
-    """
-
-    run_id: str
-    branch: str
-    sha: str
-    version: str
-    start_time: str
-    status: str  # running | completed | failed | promoted
-    step_timings: dict = field(default_factory=dict)
-    error: Optional[str] = None
-    resume_history: list = field(default_factory=list)
-    fingerprint: Optional[str] = None
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "RunMetadata":
-        return cls(**data)
-
-
-def generate_run_id(version: str, sha: str) -> str:
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return f"{version}_{sha[:8]}_{ts}"
-
-
-def write_run_meta(
-    meta: RunMetadata,
-    vol: modal.Volume,
-) -> None:
-    """Write run metadata to the pipeline volume."""
-    run_dir = Path(RUNS_DIR) / meta.run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    meta_path = run_dir / "meta.json"
-    with open(meta_path, "w") as f:
-        json.dump(meta.to_dict(), f, indent=2)
-    vol.commit()
-
-
-def read_run_meta(
-    run_id: str,
-    vol: modal.Volume,
-) -> RunMetadata:
-    """Read run metadata from the pipeline volume."""
-    vol.reload()
-    meta_path = Path(RUNS_DIR) / run_id / "meta.json"
-    if not meta_path.exists():
-        raise FileNotFoundError(f"No metadata found for run {run_id} at {meta_path}")
-    with open(meta_path) as f:
-        return RunMetadata.from_dict(json.load(f))
+def _python_cmd(*args: str) -> list[str]:
+    """Build a command that uses the current interpreter."""
+    return [sys.executable, *args]
 
 
 def get_pinned_sha(branch: str) -> str:
@@ -205,174 +190,40 @@ def archive_diagnostics(
     vol.commit()
 
 
-def _step_completed(meta: RunMetadata, step: str) -> bool:
-    """Check if a step is marked completed in metadata."""
-    timing = meta.step_timings.get(step, {})
-    return timing.get("status") == "completed"
-
-
-def find_resumable_run(branch: str, sha: str, vol: modal.Volume) -> Optional[str]:
-    """Find an existing running run for the same branch+sha."""
-    vol.reload()
-    runs_dir = Path(RUNS_DIR)
-    if not runs_dir.exists():
-        return None
-
-    best_run_id = None
-    best_start = ""
-
-    for entry in runs_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        meta_path = entry / "meta.json"
-        if not meta_path.exists():
-            continue
-        try:
-            with open(meta_path) as f:
-                data = json.load(f)
-            if (
-                data.get("branch") == branch
-                and data.get("sha") == sha
-                and data.get("status") == "running"
-            ):
-                start = data.get("start_time", "")
-                if start > best_start:
-                    best_start = start
-                    best_run_id = data.get("run_id")
-        except (json.JSONDecodeError, KeyError):
-            continue
-
-    return best_run_id
-
-
-def _record_step(
-    meta: RunMetadata,
-    step: str,
-    start: float,
-    vol: modal.Volume,
-    status: str = "completed",
-) -> None:
-    """Record step timing and status in metadata."""
-    meta.step_timings[step] = {
-        "start": datetime.fromtimestamp(start, tz=timezone.utc).isoformat(),
-        "end": datetime.now(timezone.utc).isoformat(),
-        "duration_s": round(time.time() - start, 1),
-        "status": status,
-    }
-    write_run_meta(meta, vol)
-
-
 # ── Include other Modal apps ─────────────────────────────────────
 # app.include() merges functions from other apps into this one,
 # ensuring Modal mounts their files and registers their functions
 # (with their GPU/memory/volume configs) in the ephemeral run.
 # sys.path setup is handled at the top of this file.
 
-from modal_app.data_build import app as _data_build_app
-from modal_app.data_build import build_datasets
+from modal_app.data_build import app as _data_build_app  # noqa: E402
+from modal_app.data_build import build_datasets  # noqa: E402
 
 app.include(_data_build_app)
 
-from modal_app.remote_calibration_runner import app as _calibration_app
-from modal_app.remote_calibration_runner import (
+from modal_app.remote_calibration_runner import app as _calibration_app  # noqa: E402
+from modal_app.remote_calibration_runner import (  # noqa: E402
     build_package_remote,
     PACKAGE_GPU_FUNCTIONS,
 )
 
 app.include(_calibration_app)
 
-from modal_app.local_area import app as _local_area_app
-from modal_app.local_area import (
+from modal_app.local_area import app as _local_area_app  # noqa: E402
+from modal_app.local_area import (  # noqa: E402
     coordinate_publish,
     coordinate_national_publish,
-    promote_publish,
-    promote_national_publish,
 )
 
 app.include(_local_area_app)
 
 
-# ── Stage base datasets ─────────────────────────────────────────
+# ── Upload helpers ──────────────────────────────────────────────
 
 
 def _setup_repo() -> None:
     """Change to the pre-baked repo directory."""
     os.chdir("/root/policyengine-us-data")
-
-
-def stage_base_datasets(
-    run_id: str,
-    version: str,
-    branch: str,
-) -> None:
-    """Upload source_imputed + policy_data.db from pipeline
-    volume to HF staging/.
-
-    Clones the repo and shells out to upload_to_staging_hf()
-    via subprocess, consistent with other Modal apps.
-
-    Args:
-        run_id: The current run ID (for logging).
-        version: Package version string for the commit.
-        branch: Git branch for repo clone.
-    """
-    artifacts = Path(artifacts_dir_for_run(run_id))
-
-    files_with_paths = []
-
-    # Stage all intermediate H5 datasets for lineage tracing
-    # source_imputed* goes to calibration/ (promote expects that path)
-    for h5_file in sorted(artifacts.glob("*.h5")):
-        if h5_file.name.startswith("source_imputed"):
-            repo_path = f"calibration/{h5_file.name}"
-        else:
-            repo_path = f"datasets/{h5_file.name}"
-        files_with_paths.append((str(h5_file), repo_path))
-        print(f"  {h5_file.name} -> {repo_path}: {h5_file.stat().st_size:,} bytes")
-
-    policy_db = artifacts / "policy_data.db"
-    if policy_db.exists():
-        files_with_paths.append((str(policy_db), "calibration/policy_data.db"))
-        print(f"  policy_data.db: {policy_db.stat().st_size:,} bytes")
-    else:
-        print("  WARNING: policy_data.db not found, skipping")
-
-    if not files_with_paths:
-        print("  No base datasets to stage")
-        return
-
-    _setup_repo()
-
-    # Build the upload script as a Python snippet
-    import json as _json
-
-    pairs_json = _json.dumps(files_with_paths)
-    result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
-            "-c",
-            f"""
-import json
-from policyengine_us_data.utils.data_upload import (
-    upload_to_staging_hf,
-)
-
-pairs = json.loads('''{pairs_json}''')
-files_with_paths = [(p, r) for p, r in pairs]
-count = upload_to_staging_hf(files_with_paths, "{version}", run_id="{run_id}")
-print(f"Staged {{count}} base dataset(s) to HF")
-""",
-        ],
-        cwd="/root/policyengine-us-data",
-        text=True,
-        capture_output=True,
-        env=os.environ.copy(),
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"Base dataset staging failed: {result.stderr}")
-    print(f"  {result.stdout.strip()}")
 
 
 def upload_run_diagnostics(
@@ -412,16 +263,32 @@ def upload_run_diagnostics(
     _setup_repo()
 
     result = subprocess.run(
-        [
-            "uv",
-            "run",
-            "python",
+        _python_cmd(
             "-c",
-            f"""
-import json, os
+            _build_diagnostics_upload_script(entries_json),
+        ),
+        cwd="/root/policyengine-us-data",
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
+    print(f"  {result.stdout.strip()}")
+
+
+def _build_diagnostics_upload_script(entries_json: str) -> str:
+    """Build the isolated diagnostics-upload script.
+
+    Keep this snippet syntactically self-contained: it is passed directly to
+    ``python -c`` inside the Modal orchestrator container.
+    """
+    return f"""
+import json
+import os
 from huggingface_hub import HfApi
 
-entries = json.loads('''{entries_json}''')
+entries = json.loads({entries_json!r})
 api = HfApi()
 token = os.environ.get("HUGGING_FACE_TOKEN")
 for local_path, repo_path in entries:
@@ -433,23 +300,287 @@ for local_path, repo_path in entries:
         token=token,
     )
     print(f"Uploaded {{repo_path}}")
-""",
-        ],
+"""
+
+
+def _run_required_promotion_subprocess(label: str, script: str) -> str:
+    """Run a promotion subprocess and fail the release step on error."""
+    result = subprocess.run(
+        _python_cmd("-c", script),
         cwd="/root/policyengine-us-data",
         capture_output=True,
         text=True,
         env=os.environ.copy(),
     )
     if result.returncode != 0:
-        raise RuntimeError(f"Diagnostics upload failed: {result.stderr}")
-    print(f"  {result.stdout.strip()}")
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(f"{label} failed: {detail}")
+    return result.stdout.strip()
+
+
+BASE_DATASET_STAGING_REL_PATHS = (
+    "cps_2024.h5",
+    "policy_data.db",
+    "enhanced_cps_2024.h5",
+    "small_enhanced_cps_2024.h5",
+)
+
+
+def _regional_h5_staging_rel_paths(run_id: str) -> list[str]:
+    """Read regional H5 staged paths from the Modal staging manifest."""
+    manifest_path = Path(STAGING_MOUNT) / run_id / "manifest.json"
+    if not manifest_path.exists():
+        return []
+    manifest = json.loads(manifest_path.read_text())
+    return list(manifest.get("files", {}).keys())
+
+
+def _full_release_staging_rel_paths(run_id: str) -> list[str]:
+    """Return the full set of staged production artifact paths for a run."""
+    return sorted(
+        {
+            *BASE_DATASET_STAGING_REL_PATHS,
+            *_regional_h5_staging_rel_paths(run_id),
+            "national/US.h5",
+        }
+    )
+
+
+def _full_release_manifest_files(
+    run_id: str, rel_paths: list[str]
+) -> list[tuple[str, str]]:
+    """Map staged release repo paths to local files for manifest checksums."""
+    base_dir = _artifacts_dir(run_id)
+    h5_dir = Path(STAGING_MOUNT) / run_id
+    files = []
+    for rel_path in rel_paths:
+        if rel_path in BASE_DATASET_STAGING_REL_PATHS:
+            local_path = base_dir / rel_path
+        else:
+            local_path = h5_dir / rel_path
+        files.append((str(local_path), rel_path))
+    return files
+
+
+def _promote_full_release_from_staging(
+    run_id: str,
+    version: str,
+    run_context: dict | None = None,
+) -> str:
+    """Promote all staged artifacts as one finalized release."""
+    rel_paths = _full_release_staging_rel_paths(run_id)
+    rel_paths_json = json.dumps(rel_paths)
+    files_json = json.dumps(_full_release_manifest_files(run_id, rel_paths))
+    run_context_json = json.dumps(run_context or {})
+    return _run_required_promotion_subprocess(
+        "Full release promotion",
+        f"""
+import json
+from policyengine_us_data.utils.data_upload import promote_full_release_from_staging
+
+rel_paths = json.loads({rel_paths_json!r})
+files_with_paths = json.loads({files_json!r})
+run_context = json.loads({run_context_json!r})
+result = promote_full_release_from_staging(
+    rel_paths=rel_paths,
+    version="{version}",
+    run_id="{run_id}",
+    run_context=run_context,
+    files_with_paths=files_with_paths,
+    extra_cleanup_paths=["_run_context.json"],
+)
+print(json.dumps(result, indent=2, sort_keys=True))
+""",
+    )
+
+
+@app.function(
+    image=image,
+    timeout=300,
+)
+@pipeline_node(
+    PipelineNode(
+        id="verify_runtime_seams",
+        label="Verify Modal Runtime Seams",
+        node_type="validation",
+        description="Check import, subprocess, baked-file, and Modal function seams before heavy pipeline execution.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration"],
+        validation_commands=["uv run pytest tests/unit/test_pipeline.py"],
+    )
+)
+def verify_runtime_seams() -> dict:
+    """Verify deployed-image imports and subprocess seams."""
+    import importlib
+
+    repo_root = "/root/policyengine-us-data"
+    expected_files = (
+        "pyproject.toml",
+        "uv.lock",
+        "modal_app/worker_script.py",
+        "modal_app/local_area.py",
+        "modal_app/h5_test_harness.py",
+        "modal_app/step_manifests/specs.py",
+        "modal_app/step_manifests/state.py",
+        "modal_app/step_manifests/store.py",
+        "modal_app/fixtures/h5_cases.py",
+        "tests/integration/test_fixture_50hh.h5",
+        "policyengine_us_data/calibration/target_config.yaml",
+        "policyengine_us_data/calibration/target_config_full.yaml",
+        "policyengine_us_data/utils/run_context.py",
+        "policyengine_us_data/utils/step_manifest.py",
+    )
+    result = {
+        "interpreter": {
+            "parent": sys.executable,
+        },
+        "imports": {},
+        "subprocess": {},
+        "paths": {
+            "cwd": os.getcwd(),
+            "repo_root_exists": os.path.isdir(repo_root),
+            "working_directory_is_repo_root": os.getcwd() == repo_root,
+            "target_config_exists": os.path.exists(
+                f"{repo_root}/policyengine_us_data/calibration/target_config.yaml"
+            ),
+            "expected_files": {
+                rel_path: os.path.exists(f"{repo_root}/{rel_path}")
+                for rel_path in expected_files
+            },
+        },
+    }
+    result["paths"]["all_expected_files_exist"] = all(
+        result["paths"]["expected_files"].values()
+    )
+
+    for module_name in (
+        "google.cloud.storage",
+        "h5py",
+        "huggingface_hub",
+        "modal_app.fixtures.h5_cases",
+        "modal_app.h5_test_harness",
+        "modal_app.local_area",
+        "modal_app.remote_calibration_runner",
+        "modal_app.step_manifests.specs",
+        "modal_app.step_manifests.state",
+        "modal_app.step_manifests.store",
+        "modal_app.worker_script",
+        "numpy",
+        "pandas",
+        "policyengine_us",
+        "policyengine_us_data",
+        "policyengine_us_data.utils.run_context",
+        "policyengine_us_data.utils.step_manifest",
+        "spm_calculator",
+        "sqlalchemy",
+    ):
+        try:
+            imported = importlib.import_module(module_name)
+            result["imports"][module_name] = {
+                "ok": True,
+                "version": getattr(imported, "__version__", None),
+            }
+        except Exception as exc:
+            result["imports"][module_name] = {
+                "ok": False,
+                "error": repr(exc),
+            }
+
+    child_python = subprocess.run(
+        _python_cmd(
+            "-c",
+            (
+                "import json, os, sys; "
+                "print(json.dumps({'executable': sys.executable, 'cwd': os.getcwd()}))"
+            ),
+        ),
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=repo_root,
+    )
+    child_runtime = json.loads(child_python.stdout)
+    child_exec = child_runtime["executable"]
+    result["interpreter"]["child"] = child_exec
+    result["interpreter"]["child_cwd"] = child_runtime["cwd"]
+    result["interpreter"]["child_matches_parent"] = child_exec == sys.executable
+    result["interpreter"]["child_cwd_is_repo_root"] = child_runtime["cwd"] == repo_root
+
+    for name, cmd in {
+        "worker_import": _python_cmd("-c", "import modal_app.worker_script"),
+        "worker_help": _python_cmd("-m", "modal_app.worker_script", "--help"),
+        "local_area_import": _python_cmd("-c", "import modal_app.local_area"),
+        "calibration_help": _python_cmd(
+            "-m",
+            "policyengine_us_data.calibration.unified_calibration",
+            "--help",
+        ),
+    }.items():
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        result["subprocess"][name] = {
+            "returncode": proc.returncode,
+            "stdout_tail": proc.stdout[-500:],
+            "stderr_tail": proc.stderr[-500:],
+        }
+
+    import modal_app.remote_calibration_runner as calibration_runner
+
+    runner_source = Path(calibration_runner.__file__).read_text()
+    result["calibration_optimizer_checkpoint_policy"] = {
+        "runner_exposes_checkpoint_name": "checkpoint_name" in runner_source,
+        "runner_passes_checkpoint_output": "--checkpoint-output" in runner_source,
+        "runner_collects_checkpoint_path": "CHECKPOINT_PATH:" in runner_source,
+    }
+
+    return result
+
+
+@app.function(
+    image=image,
+    timeout=28800,
+)
+def run_seeded_h5_publish_seam(
+    *,
+    branch: str,
+    run_id: str,
+    n_clones: int,
+    regional_work_items: list[dict],
+) -> dict:
+    """Run the pipeline-owned H5 publish seam against pre-seeded tiny artifacts."""
+
+    regional_handle = coordinate_publish.spawn(
+        branch=branch,
+        num_workers=1,
+        skip_upload=True,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        work_items_override=regional_work_items,
+    )
+    national_handle = coordinate_national_publish.spawn(
+        branch=branch,
+        n_clones=n_clones,
+        validate=False,
+        run_id=run_id,
+        skip_upload=True,
+    )
+    return {
+        "regional": regional_handle.get(),
+        "national": national_handle.get(),
+    }
 
 
 def _write_validation_diagnostics(
     run_id: str,
     regional_result,
     national_result,
-    meta: RunMetadata,
     vol: modal.Volume,
 ) -> None:
     """Aggregate validation rows into a diagnostics CSV.
@@ -457,7 +588,7 @@ def _write_validation_diagnostics(
     Extracts validation_rows from coordinate_publish and
     national_validation from coordinate_national_publish,
     writes them to runs/{run_id}/diagnostics/validation_results.csv,
-    and records a summary in meta.json.
+    and records a summary in diagnostics/validation_summary.json.
     """
     import csv
 
@@ -572,9 +703,9 @@ def _write_validation_diagnostics(
             f"mean RAE={mean_rae:.4f}"
         )
 
-        # Record in meta.json
-        meta.step_timings["validation"] = validation_summary
-        write_run_meta(meta, vol)
+        summary_path = diag_dir / "validation_summary.json"
+        summary_path.write_text(json.dumps(validation_summary, indent=2) + "\n")
+        print(f"  Wrote validation summary to {summary_path}")
 
     # Write national validation output
     if national_output:
@@ -601,6 +732,24 @@ def _write_validation_diagnostics(
     secrets=[hf_secret, gcp_secret],
     nonpreemptible=True,
 )
+@pipeline_node(
+    PipelineNode(
+        id="run_modal_pipeline",
+        label="Run Modal Pipeline",
+        node_type="entrypoint",
+        description="Coordinate data build, calibration package, weight fit, local H5 publishing, validation, and promotion.",
+        details="This is the current production orchestration surface. It remains documented as a bundled pathway while lower-level seams are migrated.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration"],
+        artifacts_out=["run metadata", "diagnostics", "published H5 artifacts"],
+        validation_commands=[
+            "uv run pytest tests/unit/test_pipeline.py",
+            "uv run pytest tests/integration/test_modal_pipeline_seams.py",
+        ],
+    )
+)
 def run_pipeline(
     branch: str = "main",
     gpu: str = "T4",
@@ -613,6 +762,11 @@ def run_pipeline(
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
     version_override: str = "",
+    sha_override: str = "",
+    run_id: str = "",
+    run_context: dict | None = None,
+    modal_app_name: str = "",
+    modal_environment: str = "",
 ) -> str:
     """Run the full pipeline end-to-end.
 
@@ -631,6 +785,13 @@ def run_pipeline(
             scoped by commit SHA, so stale ones from other commits
             are cleaned automatically. Use True only to force a
             full rebuild of the current commit.
+        sha_override: Exact source SHA deployed by GitHub Actions. When
+            provided, this is recorded instead of reading the current
+            branch tip.
+        run_id: Cross-system run ID created by GitHub.
+        run_context: Serialized run context from the launcher workflow.
+        modal_app_name: Deployed Modal app name for this run.
+        modal_environment: Modal environment used for this run.
 
     Returns:
         The run ID for use with promote.
@@ -644,20 +805,29 @@ def run_pipeline(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     # ── Initialize or resume run ──
-    sha = get_pinned_sha(branch)
+    sha = sha_override or get_pinned_sha(branch)
     version = version_override or get_version_from_branch(branch)
+    resolved_run_id = resolve_run_id(run_id)
+    current_run_context = RunContext.from_mapping(
+        run_context,
+        run_id=resolved_run_id,
+        modal_app_name=modal_app_name,
+        modal_environment=modal_environment,
+    )
 
     explicit_resume = bool(resume_run_id)
-
-    if not resume_run_id:
-        existing = find_resumable_run(branch, sha, pipeline_volume)
-        if existing:
-            print(f"Auto-resuming existing run {existing}")
-            resume_run_id = existing
 
     if resume_run_id:
         print(f"Resuming run {resume_run_id}...")
         meta = read_run_meta(resume_run_id, pipeline_volume)
+        current_run_context = RunContext.from_mapping(
+            meta.run_context,
+            run_id=meta.run_id,
+            modal_app_name=meta.modal_app_name or current_run_context.modal_app_name,
+            modal_environment=meta.modal_environment
+            or current_run_context.modal_environment,
+        )
+        _apply_run_context_env(current_run_context)
         current_sha = sha
         sha_match = ensure_resume_sha_compatible(
             branch=branch,
@@ -679,9 +849,24 @@ def run_pipeline(
             }
         )
         meta.status = "running"
+        if not meta.run_context:
+            meta.run_context = current_run_context.to_dict()
+        meta.modal_app_name = meta.modal_app_name or current_run_context.modal_app_name
+        meta.modal_environment = (
+            meta.modal_environment or current_run_context.modal_environment
+        )
+        meta.hf_staging_prefix = (
+            meta.hf_staging_prefix or current_run_context.hf_staging_prefix
+        )
         run_id = resume_run_id
     else:
-        run_id = generate_run_id(version, sha)
+        if not current_run_context.run_id:
+            raise RuntimeError(
+                "run_id is required. Production pipeline runs must receive the "
+                "GitHub-created run ID through workflow_dispatch."
+            )
+        _apply_run_context_env(current_run_context)
+        run_id = current_run_context.run_id
         meta = RunMetadata(
             run_id=run_id,
             branch=branch,
@@ -689,6 +874,7 @@ def run_pipeline(
             version=version,
             start_time=datetime.now(timezone.utc).isoformat(),
             status="running",
+            **_metadata_run_fields(current_run_context),
         )
 
     # Create run directory
@@ -705,6 +891,10 @@ def run_pipeline(
     print("PIPELINE RUN")
     print("=" * 60)
     print(f"  Run ID:  {run_id}")
+    if meta.modal_app_name:
+        print(f"  Modal app: {meta.modal_app_name}")
+    if meta.hf_staging_prefix:
+        print(f"  HF staging: {meta.hf_staging_prefix}")
     print(f"  Branch:  {branch}")
     print(f"  SHA:     {sha[:12]}")
     print(f"  Version: {version}")
@@ -715,49 +905,163 @@ def run_pipeline(
     print(f"  Workers: {num_workers}")
     print(f"  Clones:  {n_clones}")
     if resume_run_id:
-        completed = [
-            s for s, t in meta.step_timings.items() if t.get("status") == "completed"
-        ]
+        completed = _completed_step_manifest_ids(run_id)
         print(f"  Resume:  skipping {completed}")
     print("=" * 60)
 
+    active_step_manifest: StepManifest | None = None
+
     try:
         # ── Step 1: Build datasets ──
-        if not _step_completed(meta, "build_datasets"):
-            print("\n[Step 1/5] Building datasets...")
-            step_start = time.time()
+        build_dataset_inputs = {"source": {"branch": branch, "sha": sha}}
+        build_dataset_parameters = {
+            "upload": True,
+            "stage_only": True,
+            "sequential": False,
+            "clear_checkpoints": clear_checkpoints,
+            "skip_tests": False,
+            "skip_enhanced_cps": False,
+            "run_id": run_id,
+        }
+        build_dataset_reuse = _step_reusable(
+            meta,
+            BUILD_DATASETS,
+            expected_input_identities=build_dataset_inputs,
+            expected_parameters=build_dataset_parameters,
+        )
+        if build_dataset_reuse.reusable:
+            _mark_step_reused(
+                meta,
+                BUILD_DATASETS,
+                build_dataset_reuse,
+                vol=pipeline_volume,
+            )
+            print(f"\n[Step 1/5] {BUILD_DATASETS.title} (skipped - manifest valid)")
+        else:
+            print(f"\n[Step 1/5] {BUILD_DATASETS.title}...")
+            active_step_manifest = _start_step_manifest(
+                meta,
+                BUILD_DATASETS,
+                parameters=build_dataset_parameters,
+                input_identities=build_dataset_inputs,
+                vol=pipeline_volume,
+            )
 
             build_datasets.remote(
                 upload=True,
                 branch=branch,
                 sequential=False,
                 clear_checkpoints=clear_checkpoints,
-                skip_tests=True,
+                skip_tests=False,
                 skip_enhanced_cps=False,
+                stage_only=True,
                 run_id=run_id,
             )
 
-            # The build_datasets step produces files in its
-            # own volume. Key outputs (source_imputed,
-            # policy_data.db) are staged to HF in step 4.
-            # TODO(#617): When pipeline_artifacts.py lands,
-            # call mirror_to_pipeline() here for audit trail.
-            _record_step(
+            # Stage 1 uses the existing dataset upload machinery to validate
+            # and write canonical dataset paths under staging/{run_id}/.
+            # It also copies artifacts to the pipeline volume for downstream
+            # calibration, H5 building, and manifest traceability.
+            dataset_outputs = collect_directory_artifacts(
+                _artifacts_dir(run_id),
+                role="output",
+            )
+            build_manifest = active_step_manifest
+            stage_base_manifest = _start_step_manifest(
                 meta,
-                "build_datasets",
-                step_start,
-                pipeline_volume,
+                STAGE_BASE_DATASETS,
+                parameters={
+                    "version": version,
+                    "run_id": run_id,
+                    "stage_only": True,
+                },
+                input_identities={
+                    "dataset_outputs": [
+                        artifact.to_dict() for artifact in dataset_outputs
+                    ],
+                },
+                vol=pipeline_volume,
             )
-            print(
-                f"  Completed in {meta.step_timings['build_datasets']['duration_s']}s"
+            active_step_manifest = stage_base_manifest
+            _complete_step_manifest(
+                stage_base_manifest,
+                outputs=dataset_outputs,
+                reuse_decision="computed",
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=len(dataset_outputs),
+                    recomputed_outputs=len(dataset_outputs),
+                ),
+                vol=pipeline_volume,
             )
-        else:
-            print("\n[Step 1/5] Build datasets (skipped - completed)")
+            active_step_manifest = build_manifest
+            checkpoint_stats_path = (
+                _artifacts_dir(run_id) / "data_build_checkpoint_stats.json"
+            )
+            checkpoint_stats = (
+                json.loads(checkpoint_stats_path.read_text())
+                if checkpoint_stats_path.exists()
+                else {}
+            )
+            completed_build_manifest = _complete_step_manifest(
+                active_step_manifest,
+                outputs=dataset_outputs,
+                reuse_measurement=ReuseMeasurement(
+                    expected_outputs=checkpoint_stats.get(
+                        "expected_outputs", len(dataset_outputs)
+                    ),
+                    valid_reused_outputs=checkpoint_stats.get(
+                        "valid_reused_outputs", 0
+                    ),
+                    recomputed_outputs=checkpoint_stats.get(
+                        "recomputed_outputs", len(dataset_outputs)
+                    ),
+                    invalid_outputs=checkpoint_stats.get("invalid_outputs", 0),
+                ),
+                vol=pipeline_volume,
+            )
+            active_step_manifest = None
+            print(f"  Completed in {completed_build_manifest.duration_s}s")
 
         # ── Step 2: Build calibration package ──
-        if not _step_completed(meta, "build_package"):
-            print("\n[Step 2/5] Building calibration package...")
-            step_start = time.time()
+        package_inputs = _artifact_identities(
+            {
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+            }
+        )
+        package_parameters = {
+            "workers": num_workers,
+            "n_clones": n_clones,
+            "target_config": None,
+            "skip_county": True,
+        }
+        package_reuse = _step_reusable(
+            meta,
+            BUILD_CALIBRATION_PACKAGE,
+            expected_input_identities=package_inputs,
+            expected_parameters=package_parameters,
+        )
+        if package_reuse.reusable:
+            _mark_step_reused(
+                meta,
+                BUILD_CALIBRATION_PACKAGE,
+                package_reuse,
+                vol=pipeline_volume,
+            )
+            print(
+                f"\n[Step 2/5] {BUILD_CALIBRATION_PACKAGE.title} "
+                "(skipped - manifest valid)"
+            )
+        else:
+            print(f"\n[Step 2/5] {BUILD_CALIBRATION_PACKAGE.title}...")
+            active_step_manifest = _start_step_manifest(
+                meta,
+                BUILD_CALIBRATION_PACKAGE,
+                parameters=package_parameters,
+                input_identities=package_inputs,
+                vol=pipeline_volume,
+            )
 
             pkg_path = build_package_remote.remote(
                 branch=branch,
@@ -767,18 +1071,78 @@ def run_pipeline(
             )
             print(f"  Package at: {pkg_path}")
 
-            _record_step(
-                meta,
-                "build_package",
-                step_start,
-                pipeline_volume,
+            completed_package_manifest = _complete_step_manifest(
+                active_step_manifest,
+                outputs=collect_artifacts(
+                    [_artifacts_dir(run_id) / "calibration_package.pkl"],
+                    missing_ok=True,
+                ),
+                vol=pipeline_volume,
             )
-            print(f"  Completed in {meta.step_timings['build_package']['duration_s']}s")
-        else:
-            print("\n[Step 2/5] Build package (skipped - completed)")
+            active_step_manifest = None
+            print(f"  Completed in {completed_package_manifest.duration_s}s")
 
         # ── Step 3: Fit weights (parallel) ──
-        if not _step_completed(meta, "fit_weights"):
+        fit_inputs = _artifact_identities(
+            {
+                "calibration_package": _artifacts_dir(run_id)
+                / "calibration_package.pkl",
+            }
+        )
+        regional_fit_parameters = {
+            "gpu": gpu,
+            "epochs": epochs,
+            "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "beta": 0.65,
+            "lambda_l0": 1e-7,
+            "lambda_l2": 1e-8,
+            "log_freq": 100,
+        }
+        national_fit_parameters = {
+            "gpu": national_gpu,
+            "epochs": national_epochs,
+            "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "beta": 0.65,
+            "lambda_l0": 2e-2,
+            "lambda_l2": 1e-12,
+            "log_freq": 100,
+            "skip_national": skip_national,
+        }
+        regional_fit_reuse = _step_reusable(
+            meta,
+            WEIGHT_FITTING_REGIONAL,
+            expected_input_identities=fit_inputs,
+            expected_parameters=regional_fit_parameters,
+        )
+        national_fit_reuse = (
+            _step_reusable(
+                meta,
+                WEIGHT_FITTING_NATIONAL,
+                expected_input_identities=fit_inputs,
+                expected_parameters=national_fit_parameters,
+            )
+            if not skip_national
+            else None
+        )
+        fit_reusable = regional_fit_reuse.reusable and (
+            skip_national or national_fit_reuse.reusable
+        )
+        if fit_reusable:
+            _mark_step_reused(
+                meta,
+                WEIGHT_FITTING_REGIONAL,
+                regional_fit_reuse,
+                vol=pipeline_volume,
+            )
+            if national_fit_reuse is not None:
+                _mark_step_reused(
+                    meta,
+                    WEIGHT_FITTING_NATIONAL,
+                    national_fit_reuse,
+                    vol=pipeline_volume,
+                )
+            print("\n[Step 3/5] Fit weights (skipped - manifests valid)")
+        else:
             print("\n[Step 3/5] Fitting calibration weights...")
             step_start = time.time()
 
@@ -799,9 +1163,20 @@ def run_pipeline(
                 log_freq=100,
             )
             print(f"    → regional fit fc: {regional_handle.object_id}")
+            regional_fit_manifest = _start_step_manifest(
+                meta,
+                WEIGHT_FITTING_REGIONAL,
+                scope="regional",
+                parameters=regional_fit_parameters,
+                input_identities=fit_inputs,
+                modal_call_id=regional_handle.object_id,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_fit_manifest
 
             # Spawn national fit (if enabled)
             national_handle = None
+            national_fit_manifest = None
             if not skip_national:
                 national_func = PACKAGE_GPU_FUNCTIONS[national_gpu]
                 print(
@@ -820,6 +1195,15 @@ def run_pipeline(
                     log_freq=100,
                 )
                 print(f"    → national fit fc: {national_handle.object_id}")
+                national_fit_manifest = _start_step_manifest(
+                    meta,
+                    WEIGHT_FITTING_NATIONAL,
+                    scope="national",
+                    parameters=national_fit_parameters,
+                    input_identities=fit_inputs,
+                    modal_call_id=national_handle.object_id,
+                    vol=pipeline_volume,
+                )
 
             # Collect regional results
             print("  Waiting for regional fit...")
@@ -850,6 +1234,27 @@ def run_pipeline(
                 pipeline_volume,
                 prefix="",
             )
+            regional_outputs = collect_artifacts(
+                [
+                    _artifacts_dir(run_id) / "calibration_weights.npy",
+                    _artifacts_dir(run_id) / "geography_assignment.npz",
+                    _artifacts_dir(run_id) / "unified_run_config.json",
+                ],
+                missing_ok=True,
+            )
+            regional_fit_reuse_measurement = ReuseMeasurement(
+                expected_outputs=len(regional_outputs),
+                recomputed_outputs=len(regional_outputs),
+            )
+            _complete_step_manifest(
+                regional_fit_manifest,
+                outputs=regional_outputs,
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_decision="computed",
+                reuse_measurement=regional_fit_reuse_measurement,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = national_fit_manifest
 
             # Collect national results
             if national_handle is not None:
@@ -879,30 +1284,118 @@ def run_pipeline(
                     pipeline_volume,
                     prefix="national_",
                 )
+                national_outputs = collect_artifacts(
+                    [
+                        _artifacts_dir(run_id) / "national_calibration_weights.npy",
+                        _artifacts_dir(run_id) / "national_geography_assignment.npz",
+                        _artifacts_dir(run_id) / "national_unified_run_config.json",
+                    ],
+                    missing_ok=True,
+                )
+                _complete_step_manifest(
+                    national_fit_manifest,
+                    outputs=national_outputs,
+                    diagnostics=_collect_diagnostics(run_id),
+                    reuse_decision="computed",
+                    reuse_measurement=ReuseMeasurement(
+                        expected_outputs=len(national_outputs),
+                        recomputed_outputs=len(national_outputs),
+                    ),
+                    vol=pipeline_volume,
+                )
+                active_step_manifest = None
 
-            _record_step(
-                meta,
-                "fit_weights",
-                step_start,
-                pipeline_volume,
-            )
-            print(f"  Completed in {meta.step_timings['fit_weights']['duration_s']}s")
-        else:
-            print("\n[Step 3/5] Fit weights (skipped - completed)")
+            active_step_manifest = None
+            print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
-        # ── Step 4: Build H5s + stage + diagnostics (parallel) ──
+        # ── Step 4: Build H5s + diagnostics (parallel) ──
         #   4a. coordinate_publish (regional H5s)
         #   4b. coordinate_national_publish (national H5)
-        #   4c. stage_base_datasets (datasets → HF staging)
-        #   4d. upload_run_diagnostics (calibration diagnostics → HF)
-        #   4e. _write_validation_diagnostics (after H5 builds)
-        #   4f. upload_run_diagnostics (validation diagnostics → HF)
-        if not _step_completed(meta, "publish_and_stage"):
-            print(
-                "\n[Step 4/5] Building H5s, staging datasets, "
-                "uploading diagnostics (parallel)..."
+        #   4c. upload_run_diagnostics (calibration diagnostics → HF)
+        #   4d. _write_validation_diagnostics (after H5 builds)
+        #   4e. upload_run_diagnostics (validation diagnostics → HF)
+        regional_h5_inputs = _artifact_identities(
+            {
+                "weights": _artifacts_dir(run_id) / "calibration_weights.npy",
+                "geography": _artifacts_dir(run_id) / "geography_assignment.npz",
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+                "run_config": _artifacts_dir(run_id) / "unified_run_config.json",
+                "calibration_package": _artifacts_dir(run_id)
+                / "calibration_package.pkl",
+            }
+        )
+        regional_h5_parameters = {
+            "num_workers": num_workers,
+            "n_clones": n_clones,
+            "validate": True,
+            "skip_upload": False,
+        }
+        national_h5_inputs = _artifact_identities(
+            {
+                "weights": _artifacts_dir(run_id) / "national_calibration_weights.npy",
+                "geography": _artifacts_dir(run_id)
+                / "national_geography_assignment.npz",
+                "dataset": _artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                "database": _artifacts_dir(run_id) / "policy_data.db",
+                "run_config": _artifacts_dir(run_id)
+                / "national_unified_run_config.json",
+            }
+        )
+        national_h5_parameters = {
+            "n_clones": n_clones,
+            "validate": True,
+            "skip_upload": False,
+            "skip_national": skip_national,
+        }
+        regional_h5_reuse = _step_reusable(
+            meta,
+            LOCAL_AREA_H5_REGIONAL,
+            expected_input_identities=regional_h5_inputs,
+            expected_parameters=regional_h5_parameters,
+        )
+        national_h5_reuse = (
+            _step_reusable(
+                meta,
+                LOCAL_AREA_H5_NATIONAL,
+                expected_input_identities=national_h5_inputs,
+                expected_parameters=national_h5_parameters,
             )
-            step_start = time.time()
+            if not skip_national
+            else None
+        )
+        publish_reusable = regional_h5_reuse.reusable and (
+            skip_national or national_h5_reuse.reusable
+        )
+        step_start = time.time()
+        regional_h5_result = None
+        national_h5_result = None
+        if publish_reusable:
+            _mark_step_reused(
+                meta,
+                LOCAL_AREA_H5_REGIONAL,
+                regional_h5_reuse,
+                vol=pipeline_volume,
+            )
+            if national_h5_reuse is not None:
+                _mark_step_reused(
+                    meta,
+                    LOCAL_AREA_H5_NATIONAL,
+                    national_h5_reuse,
+                    vol=pipeline_volume,
+                )
+            print(
+                f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
+                "H5 outputs skipped - manifests valid; refreshing diagnostics..."
+            )
+        else:
+            print(
+                f"\n[Step 4/5] {BUILD_OUTPUTS.title}: "
+                "building H5s and uploading diagnostics "
+                "(parallel)..."
+            )
 
             # Spawn H5 builds (run on separate Modal containers)
             print(f"  Spawning regional H5 build ({num_workers} workers)...")
@@ -913,11 +1406,24 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
                 run_id=run_id,
-                expected_fingerprint=meta.fingerprint or "",
+                expected_fingerprint=(
+                    meta.regional_fingerprint or meta.fingerprint or ""
+                ),
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
+            regional_h5_manifest = _start_step_manifest(
+                meta,
+                LOCAL_AREA_H5_REGIONAL,
+                scope="regional",
+                parameters=regional_h5_parameters,
+                input_identities=regional_h5_inputs,
+                modal_call_id=regional_h5_handle.object_id,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = regional_h5_manifest
 
             national_h5_handle = None
+            national_h5_manifest = None
             if not skip_national:
                 print("  Spawning national H5 build...")
                 national_h5_handle = coordinate_national_publish.spawn(
@@ -929,12 +1435,17 @@ def run_pipeline(
                 print(
                     f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"
                 )
+                national_h5_manifest = _start_step_manifest(
+                    meta,
+                    LOCAL_AREA_H5_NATIONAL,
+                    scope="national",
+                    parameters=national_h5_parameters,
+                    input_identities=national_h5_inputs,
+                    modal_call_id=national_h5_handle.object_id,
+                    vol=pipeline_volume,
+                )
 
-            # While H5 builds run, stage base datasets in this container
             pipeline_volume.reload()
-
-            print("  Staging base datasets to HF...")
-            stage_base_datasets(run_id, version, branch)
 
             # Now wait for H5 builds to finish
             print("  Waiting for regional H5 build...")
@@ -949,8 +1460,30 @@ def run_pipeline(
             if isinstance(regional_h5_result, dict) and regional_h5_result.get(
                 "fingerprint"
             ):
+                meta.regional_fingerprint = regional_h5_result["fingerprint"]
                 meta.fingerprint = regional_h5_result["fingerprint"]
+                regional_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                    regional_h5_result["fingerprint"]
+                )
                 write_run_meta(meta, pipeline_volume)
+            regional_reuse_measurement = ReuseMeasurement.from_dict(
+                regional_h5_result.get("reuse_measurement", {})
+                if isinstance(regional_h5_result, dict)
+                else {}
+            )
+            _complete_step_manifest(
+                regional_h5_manifest,
+                outputs=_collect_staging_outputs(run_id, scope="regional"),
+                diagnostics=_collect_diagnostics(run_id),
+                reuse_decision=(
+                    "partially_reused"
+                    if regional_reuse_measurement.valid_reused_outputs
+                    else "computed"
+                ),
+                reuse_measurement=regional_reuse_measurement,
+                vol=pipeline_volume,
+            )
+            active_step_manifest = national_h5_manifest
 
             national_h5_result = None
             if national_h5_handle is not None:
@@ -962,32 +1495,69 @@ def run_pipeline(
                     else national_h5_result
                 )
                 print(f"  National H5: {national_msg}")
+                if isinstance(national_h5_result, dict) and national_h5_result.get(
+                    "fingerprint"
+                ):
+                    national_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                        national_h5_result["fingerprint"]
+                    )
+                national_reuse_measurement = ReuseMeasurement.from_dict(
+                    national_h5_result.get("reuse_measurement", {})
+                    if isinstance(national_h5_result, dict)
+                    else {}
+                )
+                _complete_step_manifest(
+                    national_h5_manifest,
+                    outputs=_collect_staging_outputs(run_id, scope="national"),
+                    diagnostics=_collect_diagnostics(run_id),
+                    reuse_decision=(
+                        "partially_reused"
+                        if national_reuse_measurement.valid_reused_outputs
+                        else "computed"
+                    ),
+                    reuse_measurement=national_reuse_measurement,
+                    vol=pipeline_volume,
+                )
+                active_step_manifest = None
 
-            # ── Aggregate validation results ──
-            _write_validation_diagnostics(
-                run_id=run_id,
-                regional_result=regional_h5_result,
-                national_result=national_h5_result,
-                meta=meta,
-                vol=pipeline_volume,
-            )
+        # ── Aggregate validation results ──
+        _write_validation_diagnostics(
+            run_id=run_id,
+            regional_result=regional_h5_result,
+            national_result=national_h5_result,
+            vol=pipeline_volume,
+        )
 
-            # Upload validation diagnostics (written after H5 builds)
-            print("  Uploading validation diagnostics...")
-            upload_run_diagnostics(run_id, branch)
+        # Upload validation diagnostics even when H5 outputs are reused.
+        print("  Uploading validation diagnostics...")
+        diagnostics_manifest = _start_step_manifest(
+            meta,
+            UPLOAD_DIAGNOSTICS,
+            parameters={"branch": branch, "run_id": run_id},
+            input_identities={
+                "diagnostics": [
+                    artifact.to_dict() for artifact in _collect_diagnostics(run_id)
+                ]
+            },
+            vol=pipeline_volume,
+        )
+        active_step_manifest = diagnostics_manifest
+        upload_run_diagnostics(run_id, branch)
+        diagnostic_outputs = _collect_diagnostics(run_id)
+        _complete_step_manifest(
+            diagnostics_manifest,
+            outputs=diagnostic_outputs,
+            diagnostics=diagnostic_outputs,
+            reuse_decision="computed",
+            reuse_measurement=ReuseMeasurement(
+                expected_outputs=len(diagnostic_outputs),
+                recomputed_outputs=len(diagnostic_outputs),
+            ),
+            vol=pipeline_volume,
+        )
 
-            _record_step(
-                meta,
-                "publish_and_stage",
-                step_start,
-                pipeline_volume,
-            )
-            print(
-                f"  Completed in "
-                f"{meta.step_timings['publish_and_stage']['duration_s']}s"
-            )
-        else:
-            print("\n[Step 4/5] Publish + stage (skipped - completed)")
+        active_step_manifest = None
+        print(f"  Completed in {round(time.time() - step_start, 1)}s")
 
         # ── Step 5: Finalize ──
         print("\n[Step 5/5] Finalizing run...")
@@ -999,7 +1569,7 @@ def run_pipeline(
         print("=" * 60)
         print(f"  Run ID: {run_id}")
         print(f"  Status: {meta.status}")
-        _print_step_timings(meta)
+        _print_step_manifests(run_id)
         print(
             f"\nTo promote, run:\n"
             f"  modal run modal_app/pipeline.py"
@@ -1011,6 +1581,7 @@ def run_pipeline(
         return run_id
 
     except Exception as e:
+        _fail_step_manifest(active_step_manifest, e, pipeline_volume)
         meta.status = "failed"
         meta.error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
         write_run_meta(meta, pipeline_volume)
@@ -1019,14 +1590,33 @@ def run_pipeline(
         raise
 
 
-def _print_step_timings(meta: RunMetadata) -> None:
-    """Print formatted step timings."""
+def _read_step_manifests(run_id: str) -> list[StepManifest]:
+    """Read all step manifests for a run."""
+    steps_dir = _run_dir(run_id) / "steps"
+    if not steps_dir.exists():
+        return []
+    return [read_step_manifest(path) for path in sorted(steps_dir.glob("*.json"))]
+
+
+def _completed_step_manifest_ids(run_id: str) -> list[str]:
+    """Return step IDs that have a completed/reusable manifest state."""
+    return [
+        manifest.step_id
+        for manifest in _read_step_manifests(run_id)
+        if manifest.status in {"completed", "reused", "partially_reused"}
+    ]
+
+
+def _print_step_manifests(run_id: str) -> None:
+    """Print formatted step-manifest durations."""
     total = 0.0
-    for step, timing in meta.step_timings.items():
-        dur = timing.get("duration_s", 0)
-        total += dur
-        status = timing.get("status", "unknown")
-        print(f"  {step}: {dur}s ({status})")
+    for manifest in _read_step_manifests(run_id):
+        duration = manifest.duration_s or 0.0
+        total += duration
+        print(
+            f"  {manifest.step_id}: "
+            f"{duration}s ({manifest.status}, {manifest.reuse_decision})"
+        )
     hours = total / 3600
     print(f"  TOTAL: {total:.0f}s ({hours:.1f}h)")
 
@@ -1046,6 +1636,21 @@ def _print_step_timings(meta: RunMetadata) -> None:
     secrets=[hf_secret, gcp_secret],
     nonpreemptible=True,
 )
+@pipeline_node(
+    PipelineNode(
+        id="promote_pipeline_run",
+        label="Promote Pipeline Run",
+        node_type="entrypoint",
+        description="Promote a completed staged pipeline run without re-running computation.",
+        source_file="modal_app/pipeline.py",
+        status="current",
+        stability="moving",
+        pathways=["orchestration", "local_h5"],
+        artifacts_in=["staged H5 files", "run metadata"],
+        artifacts_out=["production H5 release"],
+        validation_commands=["uv run pytest tests/unit/test_pipeline.py"],
+    )
+)
 def promote_run(
     run_id: str,
     version: str = None,
@@ -1053,10 +1658,11 @@ def promote_run(
     """Promote a completed pipeline run to production.
 
     1. Verify run status is "completed"
-    2. Promote H5s (regional + national) via existing
-       promote functions
-    3. Register version in version_manifest.json
-    4. Update run status to "promoted"
+    2. Promote every staged artifact in one Hugging Face commit
+    3. Upload/copy every artifact to GCS
+    4. Finalize release_manifest.json, tag the release, and update
+       version_manifest.json
+    5. Update run status to "promoted"
 
     Args:
         run_id: The run ID to promote.
@@ -1075,6 +1681,22 @@ def promote_run(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     meta = read_run_meta(run_id, pipeline_volume)
+    promotion_context = RunContext.from_mapping(
+        meta.run_context,
+        run_id=run_id,
+        modal_app_name=meta.modal_app_name,
+        modal_environment=meta.modal_environment,
+    )
+    _apply_run_context_env(promotion_context)
+    if not meta.run_context:
+        meta.run_context = promotion_context.to_dict()
+    meta.modal_app_name = meta.modal_app_name or promotion_context.modal_app_name
+    meta.modal_environment = (
+        meta.modal_environment or promotion_context.modal_environment
+    )
+    meta.hf_staging_prefix = (
+        meta.hf_staging_prefix or promotion_context.hf_staging_prefix
+    )
 
     if meta.status not in ("completed", "promoted"):
         raise RuntimeError(
@@ -1087,6 +1709,34 @@ def promote_run(
         print(f"WARNING: Run {run_id} was already promoted. Re-promoting...")
 
     version = version or meta.version
+    promote_inputs = {
+        "validated_step_outputs": [
+            artifact.to_dict()
+            for artifact in completed_validated_outputs(
+                _run_dir(run_id),
+                step_ids=[
+                    BUILD_DATASETS.id,
+                    LOCAL_AREA_H5_REGIONAL.id,
+                    LOCAL_AREA_H5_NATIONAL.id,
+                ],
+            )
+        ]
+    }
+    if (
+        run_manifest_path(_run_dir(run_id)).exists()
+        and not promote_inputs["validated_step_outputs"]
+    ):
+        raise RuntimeError(
+            "No validated completed step outputs found for release promotion. "
+            "Run Phase 3c pipeline steps before promoting this run."
+        )
+    promote_manifest = _start_step_manifest(
+        meta,
+        VALIDATE_AND_PROMOTE_RELEASE,
+        parameters={"version": version, "run_id": run_id},
+        input_identities=promote_inputs,
+        vol=pipeline_volume,
+    )
 
     print("=" * 60)
     print("PROMOTING PIPELINE RUN")
@@ -1100,106 +1750,31 @@ def promote_run(
     # Clone repo for subprocess calls
     _setup_repo()
 
-    # Promote base datasets from staging → production
-    print("\nPromoting base datasets (staging → production)...")
     try:
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-from policyengine_us_data.utils.data_upload import (
-    promote_staging_to_production_hf,
-)
+        rel_paths = _full_release_staging_rel_paths(run_id)
+        print(f"\nPromoting {len(rel_paths)} staged release artifact(s)...")
+        promotion_stdout = _promote_full_release_from_staging(
+            run_id,
+            version,
+            promotion_context.to_dict(),
+        )
+        print(f"  {promotion_stdout}")
 
-base_files = [
-    "calibration/source_imputed_stratified_extended_cps.h5",
-    "calibration/policy_data.db",
-]
-count = promote_staging_to_production_hf(base_files, "{version}", run_id="{run_id}")
-print(f"Promoted {{count}} base dataset(s)")
-""",
+        # Update run status only after all required promotion work succeeds.
+        meta.status = "promoted"
+        _complete_step_manifest(
+            promote_manifest,
+            outputs=[
+                ArtifactReference.from_dict(artifact)
+                for artifact in promote_inputs["validated_step_outputs"]
             ],
-            cwd="/root/policyengine-us-data",
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
+            reuse_decision="computed",
+            vol=pipeline_volume,
         )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-        print(f"  {result.stdout.strip()}")
-    except Exception as e:
-        print(f"  WARNING: Base dataset promotion: {e}")
-
-    # Promote H5s via existing functions
-    print("\nPromoting regional H5s...")
-    try:
-        regional_result = promote_publish.remote(
-            branch=meta.branch,
-            version=version,
-            run_id=run_id,
-        )
-        print(f"  {regional_result}")
-    except Exception as e:
-        print(f"  WARNING: Regional promote: {e}")
-
-    print("\nPromoting national H5...")
-    try:
-        national_result = promote_national_publish.remote(
-            branch=meta.branch,
-            run_id=run_id,
-        )
-        print(f"  {national_result}")
-    except Exception as e:
-        print(f"  WARNING: National promote: {e}")
-
-    # Register version in manifest
-    print("\nRegistering version in manifest...")
-    try:
-        result = subprocess.run(
-            [
-                "uv",
-                "run",
-                "python",
-                "-c",
-                f"""
-from policyengine_us_data.utils.version_manifest import (
-    build_manifest,
-    upload_manifest,
-)
-
-blob_names = [
-    "calibration/source_imputed_stratified_extended_cps.h5",
-    "calibration/policy_data.db",
-    "calibration/calibration_weights.npy",
-]
-manifest = build_manifest(
-    version="{version}",
-    blob_names=blob_names,
-)
-manifest.pipeline_run_id = "{run_id}"
-manifest.diagnostics_path = "calibration/runs/{run_id}/diagnostics/"
-upload_manifest(manifest)
-print("Registered version {version} in version_manifest.json")
-""",
-            ],
-            cwd="/root/policyengine-us-data",
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
-        )
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr)
-        print(f"  {result.stdout.strip()}")
-    except Exception as e:
-        print(f"  WARNING: Version registration failed: {e}")
-        print("  This can be done manually later via version_manifest.py")
-
-    # Update run status
-    meta.status = "promoted"
-    write_run_meta(meta, pipeline_volume)
+        write_run_meta(meta, pipeline_volume)
+    except Exception as exc:
+        _fail_step_manifest(promote_manifest, exc, pipeline_volume)
+        raise
 
     print("\n" + "=" * 60)
     print("PROMOTION COMPLETE")
@@ -1234,6 +1809,7 @@ def pipeline_status(
 
     if run_id:
         meta = read_run_meta(run_id, pipeline_volume)
+        steps_dir = _run_dir(run_id) / "steps"
         lines = [
             f"Run: {meta.run_id}",
             f"  Branch:  {meta.branch}",
@@ -1244,20 +1820,25 @@ def pipeline_status(
         ]
         if meta.error:
             lines.append(f"  Error:   {meta.error[:200]}")
-        if meta.step_timings:
-            lines.append("  Steps:")
-            for step, timing in meta.step_timings.items():
-                dur = timing.get("duration_s", "?")
-                status = timing.get("status", "unknown")
-                lines.append(f"    {step}: {dur}s ({status})")
+        if steps_dir.exists():
+            lines.append("  Step manifests:")
+            for manifest_path in sorted(steps_dir.glob("*.json")):
+                manifest = read_step_manifest(manifest_path)
+                duration = (
+                    manifest.duration_s if manifest.duration_s is not None else "?"
+                )
+                reuse = manifest.reuse_decision
+                lines.append(
+                    f"    {manifest.step_id}: {duration}s ({manifest.status}, {reuse})"
+                )
         return "\n".join(lines)
 
     # List all runs
     runs = []
     for entry in sorted(runs_dir.iterdir()):
-        meta_path = entry / "meta.json"
-        if meta_path.exists():
-            with open(meta_path) as f:
+        manifest_path = entry / "run_manifest.json"
+        if manifest_path.exists():
+            with open(manifest_path) as f:
                 data = json.load(f)
             runs.append(
                 f"  {data['run_id']}: "
@@ -1290,6 +1871,7 @@ def main(
     skip_national: bool = False,
     clear_checkpoints: bool = False,
     version: str = None,
+    sha_override: str = "",
 ):
     """Pipeline entrypoint.
 
@@ -1311,6 +1893,8 @@ def main(
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
             version_override=version or "",
+            sha_override=sha_override,
+            run_id=run_id or "",
         )
         print(f"\nPipeline run complete: {result}")
 

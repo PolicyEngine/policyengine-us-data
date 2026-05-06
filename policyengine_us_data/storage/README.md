@@ -11,12 +11,25 @@
   • Location: https://www.cms.gov/files/document/effectuated-enrollment-early-snapshot-2025-and-full-year-2024-average.pdf  
   • Notes: `enrollment` is APTC enrollment by state; `spending` is monthly APTC enrollment multiplied by average monthly APTC for APTC recipients
 
+- **aca_ptc_state.csv**
+  • Source: IRS SOI Historical Table 2, total premium tax credit columns `N85770` and `A85770`
+  • Date: tax year 2022
+  • Created by: `policyengine_us_data/storage/calibration_targets/refresh_aca_ptc_state_targets.py`
+  • Location: https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv
+  • Notes: used as the ACA PTC amount target because the model variable `aca_ptc` is total premium tax credit entitlement, not CMS advance PTC outlays. Target-year calibration applies checked-in 2022-to-target-year ACA PTC multipliers when available.
+
 - **agi_state.csv**
   • Source: IRS SOI state data file used by legacy local calibration
   • Date: tax year 2022
   • Created by: `policyengine_us_data/storage/calibration_targets/refresh_local_agi_state_targets.py`
   • Location: https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv
   • Notes: This file intentionally keeps the legacy `utils/loss.py` schema (`AL`, `DC`, etc.) instead of the newer `state_AL` geography naming used in `soi.csv`/database overlays. It is separate from `soi_targets.csv`, and it currently lags the national SOI refresh because IRS geographic state SOI files are only published through TY2022.
+
+- **eitc_claim_controls.csv**
+  • Source: IRS EITC Central, "2024 EITC tax returns by state processed in 2025"
+  • Date: tax year 2024
+  • Location: https://www.irs.gov/tax-professionals/eitc-central/statistics-for-tax-returns-with-the-earned-income-tax-credit-eitc
+  • Notes: Used as the EITC claim-level control for legacy loss-matrix calibration. The detailed 2022 SOI EITC AGI and child-count table is retained as a shape source and scaled to this claim control. Treasury and CBO EITC outlay series are not used as EITC claim calibration targets.
 
 - **medicaid_enrollment_2024.csv**  
   • Source: MACPAC Enrollment Tables, FFY 2024  

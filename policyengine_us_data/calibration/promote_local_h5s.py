@@ -21,11 +21,11 @@ Usage:
 
 import argparse
 import logging
-from importlib import metadata
 from pathlib import Path
 
 from huggingface_hub import HfApi, hf_hub_download
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.utils.data_upload import (
     upload_to_staging_hf,
     preflight_release_manifest_publish,
@@ -39,6 +39,8 @@ from policyengine_us_data.utils.version_manifest import (
     build_manifest,
     upload_manifest,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -91,12 +93,40 @@ def download_staged_files(rel_paths: list, run_id: str = "") -> list:
     return files
 
 
+@pipeline_node(
+    PipelineNode(
+        id="local_stage_upload",
+        label="Stage Local H5 Files",
+        node_type="entrypoint",
+        description="Upload locally built H5 files into Hugging Face staging paths.",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_in=["local_area_build/**/*.h5"],
+        validation_commands=["uv run pytest tests/unit/test_promote_local_h5s.py"],
+    )
+)
 def stage(files: list, version: str, run_id: str = ""):
     logger.info("Uploading %d files to HF staging/...", len(files))
     n = upload_to_staging_hf(files, version=version, run_id=run_id)
     logger.info("Staged %d files", n)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="atomic_promote",
+        label="Atomic Promote Local H5 Files",
+        node_type="entrypoint",
+        description="Promote staged H5 files to production storage and publish release manifests.",
+        source_file="policyengine_us_data/calibration/promote_local_h5s.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        artifacts_out=["production H5 release", "release manifest"],
+        validation_commands=["uv run pytest tests/unit/test_promote_local_h5s.py"],
+    )
+)
 def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
     manifest_files = (
         [(local_path, rel_path) for local_path, rel_path in files]
@@ -107,6 +137,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
         manifest_files,
         version=version,
         new_repo_paths=rel_paths,
+        pipeline_run_id=run_id,
     )
 
     logger.info(
@@ -122,6 +153,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
         manifest_files,
         version=version,
         create_tag=should_finalize,
+        pipeline_run_id=run_id,
     )
     if should_finalize:
         upload_manifest(
@@ -134,6 +166,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
                     repo="policyengine/policyengine-us-data",
                     commit=version,
                 ),
+                run_id=run_id or None,
             )
         )
     else:
@@ -196,7 +229,7 @@ def main(argv=None):
     args = parse_args(argv)
     local_dir = Path(args.local_dir)
     area_types = [t.strip() for t in args.area_types.split(",")]
-    version = args.version or metadata.version("policyengine-us-data")
+    version = args.version or DATA_PACKAGE_VERSION
 
     logger.info("Version: %s", version)
     logger.info("Local dir: %s", local_dir)

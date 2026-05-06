@@ -1,0 +1,246 @@
+name: Build Long-Run Projection Dataset
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: "Projection years/ranges to build"
+        required: true
+        default: "2026-2035,2040,2045,2050,2055,2060,2065,2070,2075,2080,2085,2090,2095,2100"
+        type: string
+      jobs:
+        description: "Parallel year subprocesses"
+        required: true
+        default: "4"
+        type: string
+      profile:
+        description: "Long-run calibration profile"
+        required: true
+        default: "ss-payroll-tob"
+        type: string
+      target_source:
+        description: "Named long-term target source"
+        required: true
+        default: "trustees_2025_current_law"
+        type: string
+      tax_assumption:
+        description: "Long-run federal tax assumption"
+        required: true
+        default: "trustees-2025-core-thresholds-v1"
+        type: string
+      base_dataset:
+        description: "Optional base H5 path or hf:// URL; blank uses runner default"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_profile:
+        description: "Optional late-year support augmentation profile"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_target_year:
+        description: "Optional fixed support augmentation target year"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_align_to_run_year:
+        description: "Rebuild support augmentation separately for each run year"
+        required: false
+        default: false
+        type: boolean
+      support_augmentation_start_year:
+        description: "Optional earliest support augmentation year"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_top_n_targets:
+        description: "Optional number of synthetic target types to map to donors"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_donors_per_target:
+        description: "Optional number of real donor tax units per target"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_max_distance:
+        description: "Optional maximum donor-match distance"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_clone_weight_scale:
+        description: "Optional baseline donor-clone weight multiplier"
+        required: false
+        default: ""
+        type: string
+      support_augmentation_blueprint_base_weight_scale:
+        description: "Optional donor-composite blueprint base-weight scale"
+        required: false
+        default: ""
+        type: string
+      allow_validation_failures:
+        description: "Allow invalid artifacts to be written for diagnostics"
+        required: false
+        default: false
+        type: boolean
+      upload_to_hf_staging:
+        description: "Upload generated H5s and metadata to run-scoped HF staging"
+        required: false
+        default: false
+        type: boolean
+      run_id:
+        description: "Optional run ID; blank derives one from the GitHub run"
+        required: false
+        default: ""
+        type: string
+      source_sha:
+        description: "Exact policyengine-us-data commit SHA or ref to checkout"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: long-run-projection-${{ github.run_id }}-${{ github.run_attempt }}
+  cancel-in-progress: false
+
+jobs:
+  build-long-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    env:
+      US_DATA_RUN_ID: ${{ inputs.run_id || '' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Resolve run context
+        id: run-context
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          echo "CHECKED_OUT_SHA=${checked_out_sha}" >> "$GITHUB_ENV"
+          GITHUB_SHA="${checked_out_sha}" python .github/scripts/resolve_run_context.py
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Build long-run projection artifacts
+        env:
+          ALLOW_VALIDATION_FAILURES: ${{ inputs.allow_validation_failures }}
+          BASE_DATASET: ${{ inputs.base_dataset }}
+          HUGGING_FACE_TOKEN: ${{ inputs.upload_to_hf_staging && secrets.HUGGING_FACE_TOKEN || '' }}
+          JOBS: ${{ inputs.jobs }}
+          OUTPUT_DIR: projected_long_term/${{ steps.run-context.outputs.run_id }}
+          PROFILE: ${{ inputs.profile }}
+          SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR: ${{ inputs.support_augmentation_align_to_run_year }}
+          SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE: ${{ inputs.support_augmentation_blueprint_base_weight_scale }}
+          SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE: ${{ inputs.support_augmentation_clone_weight_scale }}
+          SUPPORT_AUGMENTATION_DONORS_PER_TARGET: ${{ inputs.support_augmentation_donors_per_target }}
+          SUPPORT_AUGMENTATION_MAX_DISTANCE: ${{ inputs.support_augmentation_max_distance }}
+          SUPPORT_AUGMENTATION_PROFILE: ${{ inputs.support_augmentation_profile }}
+          SUPPORT_AUGMENTATION_START_YEAR: ${{ inputs.support_augmentation_start_year }}
+          SUPPORT_AUGMENTATION_TARGET_YEAR: ${{ inputs.support_augmentation_target_year }}
+          SUPPORT_AUGMENTATION_TOP_N_TARGETS: ${{ inputs.support_augmentation_top_n_targets }}
+          TARGET_SOURCE: ${{ inputs.target_source }}
+          TAX_ASSUMPTION: ${{ inputs.tax_assumption }}
+          UPLOAD_TO_HF_STAGING: ${{ inputs.upload_to_hf_staging }}
+          YEARS: ${{ inputs.years }}
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${CHECKED_OUT_SHA}"
+
+          cmd=(
+            uv run python policyengine_us_data/datasets/cps/long_term/run_long_term_production.py
+            --years "${YEARS}"
+            --jobs "${JOBS}"
+            --output-dir "${OUTPUT_DIR}"
+            --profile "${PROFILE}"
+            --target-source "${TARGET_SOURCE}"
+            --tax-assumption "${TAX_ASSUMPTION}"
+            --run-id "${{ steps.run-context.outputs.run_id }}"
+            --source-sha "${SOURCE_SHA}"
+          )
+
+          if [ -n "${BASE_DATASET}" ]; then
+            cmd+=(--base-dataset "${BASE_DATASET}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_PROFILE}" ]; then
+            cmd+=(--support-augmentation-profile "${SUPPORT_AUGMENTATION_PROFILE}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_TARGET_YEAR}" ]; then
+            cmd+=(--support-augmentation-target-year "${SUPPORT_AUGMENTATION_TARGET_YEAR}")
+          fi
+          if [ "${SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR}" = "true" ]; then
+            cmd+=(--support-augmentation-align-to-run-year)
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_START_YEAR}" ]; then
+            cmd+=(--support-augmentation-start-year "${SUPPORT_AUGMENTATION_START_YEAR}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_TOP_N_TARGETS}" ]; then
+            cmd+=(--support-augmentation-top-n-targets "${SUPPORT_AUGMENTATION_TOP_N_TARGETS}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_DONORS_PER_TARGET}" ]; then
+            cmd+=(--support-augmentation-donors-per-target "${SUPPORT_AUGMENTATION_DONORS_PER_TARGET}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_MAX_DISTANCE}" ]; then
+            cmd+=(--support-augmentation-max-distance "${SUPPORT_AUGMENTATION_MAX_DISTANCE}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE}" ]; then
+            cmd+=(--support-augmentation-clone-weight-scale "${SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE}")
+          fi
+          if [ -n "${SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}" ]; then
+            cmd+=(--support-augmentation-blueprint-base-weight-scale "${SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}")
+          fi
+          if [ "${ALLOW_VALIDATION_FAILURES}" = "true" ]; then
+            cmd+=(--allow-validation-failures)
+          fi
+          if [ "${UPLOAD_TO_HF_STAGING}" = "true" ]; then
+            cmd+=(--upload-to-hf-staging)
+          fi
+
+          "${cmd[@]}"
+
+      - name: Upload manifests and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-run-projection-manifests-${{ steps.run-context.outputs.run_id }}
+          if-no-files-found: warn
+          path: |
+            projected_long_term/${{ steps.run-context.outputs.run_id }}/long_run_production_manifest.json
+            projected_long_term/${{ steps.run-context.outputs.run_id }}/calibration_manifest.json
+            projected_long_term/${{ steps.run-context.outputs.run_id }}/*.h5.metadata.json
+            projected_long_term/${{ steps.run-context.outputs.run_id }}/support_augmentation_report*.json
+            projected_long_term/${{ steps.run-context.outputs.run_id }}/.parallel_logs/*.log
+
+      - name: Summarize run
+        if: always()
+        env:
+          PROFILE: ${{ inputs.profile }}
+          RUN_ID: ${{ steps.run-context.outputs.run_id }}
+          TARGET_SOURCE: ${{ inputs.target_source }}
+          TAX_ASSUMPTION: ${{ inputs.tax_assumption }}
+          UPLOAD_TO_HF_STAGING: ${{ inputs.upload_to_hf_staging }}
+          YEARS: ${{ inputs.years }}
+        run: |
+          {
+            echo "## Long-run projection build"
+            echo ""
+            echo "- Run ID: \`${RUN_ID}\`"
+            echo "- Years: \`${YEARS}\`"
+            echo "- Profile: \`${PROFILE}\`"
+            echo "- Target source: \`${TARGET_SOURCE}\`"
+            echo "- Tax assumption: \`${TAX_ASSUMPTION}\`"
+            echo "- HF staging upload: \`${UPLOAD_TO_HF_STAGING}\`"
+            if [ "${UPLOAD_TO_HF_STAGING}" = "true" ]; then
+              echo "- HF staging prefix: \`staging/${RUN_ID}/long_term/\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

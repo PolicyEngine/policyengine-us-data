@@ -3,7 +3,16 @@ from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
 import h5py
-from policyengine_us_data.datasets.cps.census_cps import *
+from policyengine_us_data.datasets.cps.census_cps import (
+    CensusCPS,
+    CensusCPS_2018,
+    CensusCPS_2019,
+    CensusCPS_2020,
+    CensusCPS_2021,
+    CensusCPS_2022,
+    CensusCPS_2023,
+    CensusCPS_2024,
+)
 from pandas import DataFrame, Series
 import numpy as np
 import pandas as pd
@@ -41,11 +50,8 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.utils.asset_imputation import (
     build_household_vehicle_receiver,
 )
-from policyengine_us_data.utils.policyengine import (
-    supports_medicare_enrollment_input,
-    supports_modeled_medicare_part_b_inputs,
-)
-
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -93,6 +99,82 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
         "reported_has_indian_health_service_coverage_at_interview"
     ),
 }
+
+ESI_POLICYHOLDER_VARIABLE = (
+    "reported_owns_employer_sponsored_health_insurance_at_interview"
+)
+ESI_SOURCE_COLUMNS = {"NOW_OWNGRP", "NOW_HIPAID", "NOW_GRPFTYP"}
+
+
+_ESI_PLAN_PRIORS_2024 = {
+    # AHRQ MEPS-IC Table IV.A.1 (private sector, 2024). These plan-type
+    # averages seed CPS policyholder records; national calibration later
+    # aligns the aggregate to the BEA full-economy employer premium total.
+    "family": {
+        "total_premium": 21_207.52589669509,
+        "employee_contribution": 6_490.205059544782,
+    },
+    "self_only": {
+        "total_premium": 8_389.275834815255,
+        "employee_contribution": 1_909.5781466113417,
+    },
+}
+_HAS_CURRENT_OWN_ESI = 1
+_EMPLOYER_PAYS_ALL = 1
+_EMPLOYER_PAYS_SOME = 2
+_ESI_FAMILY_PLAN = 1
+_ESI_SELF_ONLY_PLAN = 2
+
+
+def _person_column(person: DataFrame, column: str, default=0) -> np.ndarray:
+    if column in person:
+        return person[column].to_numpy()
+    return np.full(len(person), default)
+
+
+def impute_employer_sponsored_insurance_premiums(person: DataFrame) -> np.ndarray:
+    """Impute annual employer-paid ESI premiums for CPS policyholders."""
+
+    own_esi = _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    premium_status = _person_column(person, "NOW_HIPAID").astype(int)
+    plan_type = _person_column(person, "NOW_GRPFTYP").astype(int)
+    employee_paid = np.clip(person.PHIP_VAL.to_numpy(dtype=float), 0, None)
+
+    total_premium = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["total_premium"],
+        _ESI_PLAN_PRIORS_2024["family"]["total_premium"],
+    )
+    average_employee_contribution = np.where(
+        plan_type == _ESI_SELF_ONLY_PLAN,
+        _ESI_PLAN_PRIORS_2024["self_only"]["employee_contribution"],
+        _ESI_PLAN_PRIORS_2024["family"]["employee_contribution"],
+    )
+    employee_share = np.where(
+        employee_paid > 0,
+        employee_paid,
+        average_employee_contribution,
+    )
+    employer_paid_when_some = np.clip(
+        total_premium - employee_share,
+        0,
+        total_premium,
+    )
+
+    employer_paid = np.where(
+        premium_status == _EMPLOYER_PAYS_ALL,
+        total_premium,
+        np.where(
+            premium_status == _EMPLOYER_PAYS_SOME,
+            employer_paid_when_some,
+            0,
+        ),
+    )
+    valid_owner_with_plan = own_esi & np.isin(
+        plan_type,
+        [_ESI_FAMILY_PLAN, _ESI_SELF_ONLY_PLAN],
+    )
+    return np.where(valid_owner_with_plan, employer_paid, 0)
 
 
 @contextmanager
@@ -203,6 +285,7 @@ class CPS(Dataset):
             person, tax_unit, family, spm_unit, household = [
                 raw_data[entity] for entity in ENTITIES
             ]
+        _validate_raw_cps_schema(person, tax_unit, self.raw_cps.name)
 
         logging.info("Adding ID variables")
         add_id_variables(cps, person, tax_unit, family, spm_unit, household)
@@ -248,13 +331,33 @@ class CPS(Dataset):
         add_takeup(self)
         logging.info("Imputing Marketplace plan benchmark ratio")
         add_marketplace_plan_benchmark_ratio(self)
+        logging.info("Deriving other health insurance premiums")
+        derive_other_health_insurance_premiums(self)
         logging.info("Downsampling")
 
         # Downsample
         if self.frac is not None and self.frac < 1.0:
             self.downsample(frac=self.frac)
 
-    def downsample(self, frac: float):
+    @pipeline_node(
+        PipelineNode(
+            id="downsample",
+            label="Downsample CPS",
+            node_type="library",
+            description="Subsample CPS arrays for released CPS vintages while full variants skip this step.",
+            source_file="policyengine_us_data/datasets/cps/cps.py",
+            status="current",
+            stability="stable",
+            pathways=["data_build"],
+            validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+        )
+    )
+    def downsample(self, frac: float) -> None:
+        """Subsample the loaded CPS dataset and preserve downsampled arrays.
+
+        Args:
+            frac: Fraction of records to retain.
+        """
         from policyengine_us import Microsimulation
 
         original_data: dict = self.load_dataset()
@@ -269,6 +372,19 @@ class CPS(Dataset):
         )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_rent",
+        label="Rent Imputation",
+        node_type="library",
+        description="Impute rent and real estate taxes using ACS donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["tenure_type"] = household.H_TENURE.map(
         {
@@ -320,6 +436,19 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     ]
     IMPUTATIONS = ["rent", "real_estate_taxes"]
     train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS, map_to="person")
+    # TODO(PolicyEngine/policyengine-core#482): policyengine-core 3.24.0+
+    # silently drops user-supplied ETERNITY inputs on dataset reload because
+    # _user_input_keys records the user-supplied period instead of the
+    # canonicalized ETERNITY key. is_household_head therefore comes back as
+    # all False from calculate_dataframe and the household-head filter below
+    # produces an empty frame. For ACS we read it directly from the source
+    # H5; for CPS we use the in-memory dict (already populated upstream in
+    # add_id_variables). Remove both overrides once pyproject.toml's
+    # policyengine-core upper bound is lifted.
+    with h5py.File(ACS_2022.file_path, "r") as acs_h5:
+        train_df["is_household_head"] = np.asarray(
+            acs_h5["is_household_head"], dtype=bool
+        )
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
@@ -328,6 +457,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
     inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
+    inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 
@@ -356,6 +486,19 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_takeup",
+        label="Benefit Takeup",
+        node_type="library",
+        description="Apply stochastic takeup and reported-anchor alignment for benefit programs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_takeup(self):
     data = self.load_dataset()
 
@@ -588,6 +731,124 @@ def add_marketplace_plan_benchmark_ratio(self):
     self.save_dataset(data)
 
 
+OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS = {
+    "other_health_insurance_premiums": {
+        "reported_variable": "health_insurance_premiums_without_medicare_part_b",
+        "modeled_variables": (
+            "chip_premium",
+            "marketplace_net_premium",
+            "medicaid_premium",
+        ),
+    },
+}
+
+
+def derive_other_health_insurance_premiums(self):
+    """Create other premium inputs net of baseline computed premiums.
+
+    The model adds computed premiums back explicitly, so it needs a separate
+    other-premium input for the parts of CPS-reported non-Medicare premiums
+    not explained by baseline computed Marketplace, CHIP, or Medicaid
+    premiums. The original CPS-reported premium inputs remain unchanged as raw
+    source fields. The data package requires a policyengine-us release with
+    these modeled premium variables, so missing variables fail fast instead of
+    silently producing an incomplete decomposition.
+    """
+    from policyengine_us import Microsimulation
+
+    data = self.load_dataset()
+    baseline = Microsimulation(dataset=self)
+    tbs = baseline.tax_benefit_system
+    period = self.time_period
+    changed = False
+
+    for output_variable, config in OTHER_HEALTH_INSURANCE_PREMIUM_TARGETS.items():
+        reported_variable = config["reported_variable"]
+        premium_variables = config["modeled_variables"]
+
+        if reported_variable not in data:
+            continue
+
+        computed_premium = np.zeros(len(data[reported_variable]), dtype=float)
+        for variable in premium_variables:
+            values = np.asarray(
+                baseline.calculate(variable, period=period).values,
+                dtype=float,
+            )
+            computed_premium += _premium_values_to_person(
+                data=data,
+                source_entity=tbs.variables[variable].entity.key,
+                values=values,
+            )
+
+        data[output_variable] = compute_other_health_insurance_premiums(
+            reported_premium=data[reported_variable],
+            baseline_computed_premium=computed_premium,
+        )
+        logging.info(
+            "Created %s from %s by subtracting baseline computed premiums: %s",
+            output_variable,
+            reported_variable,
+            ", ".join(premium_variables),
+        )
+        changed = True
+
+    if changed:
+        self.save_dataset(data)
+
+
+def compute_other_health_insurance_premiums(
+    reported_premium: np.ndarray,
+    baseline_computed_premium: np.ndarray,
+) -> np.ndarray:
+    """Return other premiums after subtracting baseline computed premiums."""
+    return np.asarray(reported_premium, dtype=float) - np.asarray(
+        baseline_computed_premium, dtype=float
+    )
+
+
+def _premium_values_to_person(
+    data: dict,
+    source_entity: str,
+    values: np.ndarray,
+) -> np.ndarray:
+    """Map computed premiums to person rows for person-level premium accounting."""
+    person_ids = data["person_id"]
+    if source_entity == "person":
+        if len(values) != len(person_ids):
+            raise ValueError(
+                "Person-level computed premium length does not match person rows: "
+                f"got {len(values)}, expected {len(person_ids)}."
+            )
+        return values
+
+    entity_id_variable = f"{source_entity}_id"
+    person_entity_id_variable = f"person_{source_entity}_id"
+    if entity_id_variable not in data or person_entity_id_variable not in data:
+        raise ValueError(
+            f"Cannot allocate {source_entity}-level premiums to people: missing "
+            f"{entity_id_variable} or {person_entity_id_variable}."
+        )
+
+    entity_ids = data[entity_id_variable]
+    person_entity_ids = data[person_entity_id_variable]
+    if len(values) != len(entity_ids):
+        raise ValueError(
+            f"{source_entity}-level computed premium length does not match "
+            f"{source_entity} rows: got {len(values)}, expected {len(entity_ids)}."
+        )
+
+    entity_position = {entity_id: index for index, entity_id in enumerate(entity_ids)}
+    allocated = np.zeros(len(person_ids), dtype=float)
+    seen_entities = set()
+    for person_index, entity_id in enumerate(person_entity_ids):
+        if entity_id in seen_entities:
+            continue
+        allocated[person_index] = values[entity_position[entity_id]]
+        seen_entities.add(entity_id)
+    return allocated
+
+
 MARKETPLACE_PLAN_BENCHMARK_RATIO_MIN = 0.5
 MARKETPLACE_PLAN_BENCHMARK_RATIO_MAX = 1.5
 
@@ -641,6 +902,49 @@ def uprate_cps_data(data, from_period, to_period):
     return data
 
 
+def _validate_raw_cps_schema(
+    person: DataFrame,
+    tax_unit: DataFrame,
+    raw_cps_name: str,
+) -> None:
+    required_person_columns = {
+        "CENSUS_TAX_ID",
+        *ESI_SOURCE_COLUMNS,
+    }
+    required_tax_unit_columns = set()
+
+    missing_person = sorted(required_person_columns - set(person.columns))
+    missing_tax_unit = sorted(required_tax_unit_columns - set(tax_unit.columns))
+    if not missing_person and not missing_tax_unit:
+        return
+
+    missing_parts = []
+    if missing_person:
+        missing_parts.append("person: " + ", ".join(missing_person))
+    if missing_tax_unit:
+        missing_parts.append("tax_unit: " + ", ".join(missing_tax_unit))
+
+    raise ValueError(
+        f"Raw CPS dataset {raw_cps_name} is stale and must be regenerated; "
+        f"missing constructed tax-unit columns ({'; '.join(missing_parts)})."
+    )
+
+
+@pipeline_node(
+    PipelineNode(
+        id="add_id_variables",
+        label="Add ID Variables",
+        node_type="library",
+        description="Create person, household, tax-unit, SPM-unit, family, and marital-unit IDs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="stable",
+        pathways=["data_build"],
+        validation_commands=[
+            "uv run pytest tests/unit/datasets/test_cps_identification.py"
+        ],
+    )
+)
 def add_id_variables(
     cps: h5py.File,
     person: DataFrame,
@@ -690,6 +994,19 @@ def add_id_variables(
     cps["marital_unit_id"] = marital_unit_id.drop_duplicates().values
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_personal_variables",
+        label="Add Personal Variables",
+        node_type="library",
+        description="Populate CPS personal demographics and occupation-derived inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     """Add personal demographic variables.
 
@@ -796,8 +1113,12 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     cps["is_surviving_spouse"] = person.A_MARITL == 4
     cps["is_separated"] = person.A_MARITL == 6
     # High school or college/university enrollment status.
-    cps["is_full_time_college_student"] = person.A_HSCOL == 2
-
+    if "A_FTPT" in person.columns:
+        cps["is_full_time_college_student"] = (person.A_HSCOL == 2) & (
+            person.A_FTPT == 1
+        )
+    else:
+        cps["is_full_time_college_student"] = person.A_HSCOL == 2
     cps["detailed_occupation_recode"] = person.POCCU2
     cps["treasury_tipped_occupation_code"] = derive_treasury_tipped_occupation_code(
         person.PEIOOCC
@@ -805,6 +1126,19 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     add_overtime_occupation(cps, person)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_personal_income_variables",
+        label="Add Income Variables",
+        node_type="library",
+        description="Populate CPS income, transfer, retirement, and QBI-related personal inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     """Add income variables.
 
@@ -836,7 +1170,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         1 - p["taxable_interest_fraction"]
     )
     cps["self_employment_income"] = person.SEMP_VAL
-    cps["farm_income"] = person.FRSE_VAL
+    cps["farm_operations_income"] = person.FRSE_VAL
     cps["qualified_dividend_income"] = (
         person.DIV_VAL * (p["qualified_dividend_fraction"])
     )
@@ -1045,14 +1379,15 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # "What is the annual amount of child support paid?"
     cps["child_support_expense"] = person.CHSP_VAL
     cps["health_insurance_premiums_without_medicare_part_b"] = person.PHIP_VAL
+    cps[ESI_POLICYHOLDER_VARIABLE] = (
+        _person_column(person, "NOW_OWNGRP").astype(int) == _HAS_CURRENT_OWN_ESI
+    )
+    cps["employer_sponsored_insurance_premiums"] = (
+        impute_employer_sponsored_insurance_premiums(person)
+    )
     cps["over_the_counter_health_expenses"] = person.POTC_VAL
     cps["other_medical_expenses"] = person.PMED_VAL
-    if supports_medicare_enrollment_input():
-        cps["medicare_enrolled"] = person.MCARE == 1
-    if supports_modeled_medicare_part_b_inputs():
-        cps["medicare_part_b_premiums_reported"] = person.PEMCPREM
-    else:
-        cps["medicare_part_b_premiums"] = person.PEMCPREM
+    cps["medicare_enrolled"] = person.MCARE == 1
 
     # Get QBI simulation parameters ---
     yamlfilename = (
@@ -1067,6 +1402,19 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         cps[f"{var}_would_be_qualified"] = rng.random(len(person)) < prob
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_spm_variables",
+        label="Add SPM Variables",
+        node_type="library",
+        description="Populate CPS supplemental poverty measure variables and thresholds.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     from policyengine_us_data.utils.spm import (
         calculate_spm_thresholds_with_geoadj,
@@ -1116,7 +1464,26 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_household_variables",
+        label="Add Household Variables",
+        node_type="library",
+        description="Populate household geography variables including state, county, and NYC flag.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="stable",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
+    """Populate household-level geography variables used by PolicyEngine US.
+
+    Args:
+        cps: Output CPS H5 group receiving derived household variables.
+        household: Raw CPS household table.
+    """
     cps["state_fips"] = household.GESTFIPS
     cps["county_fips"] = household.GTCO
     state_county_fips = cps["state_fips"] * 1e3 + cps["county_fips"]
@@ -1139,12 +1506,27 @@ def add_household_variables(cps: h5py.File, household: DataFrame) -> None:
     cps["in_nyc"] = np.isin(state_county_fips, nyc_full_county_fips)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_previous_year_income",
+        label="Previous-Year Income",
+        node_type="library",
+        description="Link CPS records across adjacent years and populate prior-year income inputs.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_previous_year_income(self, cps: h5py.File) -> None:
     if self.previous_year_raw_cps is None:
         logging.info(
             "No previous year data available for this dataset, skipping previous year income imputation."
         )
         return
+
+    prior_year_income_sentinels = {-1, -9999}
 
     with (
         _open_dataset_read_only(self.raw_cps) as cps_current_year_data,
@@ -1175,19 +1557,48 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
 
         joined_data = cps_current_year.join(previous_year_data)[
             [
+                "WSAL_VAL",
+                "SEMP_VAL",
                 "employment_income_last_year",
                 "self_employment_income_last_year",
-                "I_ERNVAL",
-                "I_SEVAL",
             ]
-        ]
+        ].rename(
+            {
+                "WSAL_VAL": "current_year_employment_income",
+                "SEMP_VAL": "current_year_self_employment_income",
+            },
+            axis=1,
+        )
+
+    invalid_previous_year_income = joined_data.employment_income_last_year.isin(
+        prior_year_income_sentinels
+    ) | joined_data.self_employment_income_last_year.isin(prior_year_income_sentinels)
+    joined_data.loc[
+        invalid_previous_year_income,
+        ["employment_income_last_year", "self_employment_income_last_year"],
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_employment_income.isin(prior_year_income_sentinels),
+        "current_year_employment_income",
+    ] = np.nan
+    joined_data.loc[
+        joined_data.current_year_self_employment_income.isin(
+            prior_year_income_sentinels
+        ),
+        "current_year_self_employment_income",
+    ] = np.nan
+
     joined_data["previous_year_income_available"] = (
         ~joined_data.employment_income_last_year.isna()
         & ~joined_data.self_employment_income_last_year.isna()
-        & (joined_data.I_ERNVAL == 0)
-        & (joined_data.I_SEVAL == 0)
     )
-    joined_data = joined_data.fillna(-1).drop(["I_ERNVAL", "I_SEVAL"], axis=1)
+    joined_data["employment_income_last_year"] = joined_data[
+        "employment_income_last_year"
+    ].fillna(joined_data["current_year_employment_income"])
+    joined_data["self_employment_income_last_year"] = joined_data[
+        "self_employment_income_last_year"
+    ].fillna(joined_data["current_year_self_employment_income"])
+    joined_data = joined_data.fillna(0)
 
     # CPS already ordered by PERIDNUM, so the join wouldn't change the order.
     cps["employment_income_last_year"] = joined_data[
@@ -1201,6 +1612,19 @@ def add_previous_year_income(self, cps: h5py.File) -> None:
     ].values
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_ssn_card_type",
+        label="Add SSN Card Type",
+        node_type="library",
+        description="Classify SSN card type and immigration-related CPS inputs from ASEC conditions.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_ssn_card_type(
     cps: h5py.File,
     person: pd.DataFrame,
@@ -2087,6 +2511,19 @@ def _update_documentation_with_numbers(log_df, docs_dir):
     print(f"Documentation updated with population numbers: {doc_path}")
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_tips",
+        label="Tips And Asset Imputation",
+        node_type="library",
+        description="Impute tip income and household asset inputs from SIPP donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_tips(self, cps: h5py.File):
     self.save_dataset(cps)
 
@@ -2247,6 +2684,19 @@ def add_tips(self, cps: h5py.File):
     self.save_dataset(household_vehicle_data)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_org_inputs",
+        label="ORG Labor-Market Inputs",
+        node_type="library",
+        description="Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest tests/unit/datasets/test_org.py"],
+    )
+)
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
     """Impute ORG-derived wage and union inputs onto CPS persons."""
     n_persons = len(np.asarray(cps["age"]))
@@ -2350,6 +2800,19 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="add_auto_loan",
+        label="Auto Loan And Net Worth Imputation",
+        node_type="library",
+        description="Impute auto loan balance, auto loan interest, and net worth from SCF donor data.",
+        source_file="policyengine_us_data/datasets/cps/cps.py",
+        status="legacy",
+        stability="moving",
+        pathways=["data_build"],
+        validation_commands=["uv run pytest validation/stage_1/test_cps.py"],
+    )
+)
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     """ "Add auto loan balance, interest and net_worth variable."""
     self.save_dataset(cps)

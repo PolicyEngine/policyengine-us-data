@@ -1,3 +1,14 @@
+## [1.101.0] - 2026-05-06
+
+### Added
+
+- Added a manual long-run projection workflow with sampled-year controls, run manifests, and opt-in Hugging Face staging upload.
+
+### Fixed
+
+- Hardened CRFB long-run calibration so entropy solutions with large constraint misses are rejected before fallback, recorded richer provenance for Trustees threshold projection inputs, and routed the Trustees core-threshold reform through `policyengine-us`.
+
+
 ## [1.100.0] - 2026-05-06
 
 ### Added

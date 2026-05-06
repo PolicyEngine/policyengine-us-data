@@ -150,6 +150,391 @@ def _stage_contract(*, parameters=None) -> StageContract:
     )
 
 
+def _stage_artifact(
+    logical_name: str,
+    *,
+    uri: str | None = None,
+    sha256: str | None = None,
+    media_type: str | None = None,
+    metadata: dict | None = None,
+) -> ArtifactRef:
+    return ArtifactRef(
+        logical_name=logical_name,
+        uri=uri or f"hf://policyengine-us-data/stage-artifacts/{logical_name}",
+        sha256=sha256 or f"sha256:{logical_name}",
+        media_type=media_type,
+        metadata=metadata or {},
+    )
+
+
+def _sample_fingerprint(
+    *,
+    contract_type: str,
+    stage_id: str,
+    inputs: tuple[ArtifactRef, ...],
+    parameters: dict | None = None,
+) -> Fingerprint:
+    return fingerprint_material(
+        {
+            "contract_type": contract_type,
+            "stage_id": stage_id,
+            "inputs": {
+                artifact.logical_name: artifact.sha256
+                for artifact in inputs
+            },
+            "parameters": parameters or {},
+        }
+    )
+
+
+def make_dataset_build_contract() -> StageContract:
+    contract_type = "dataset_build_output"
+    stage_id = "1_build_datasets"
+    parameters = {"period": 2024, "dataset_release": "fixture"}
+    outputs = (
+        _stage_artifact("source_imputed_stratified_extended_cps"),
+        _stage_artifact(
+            "policy_data_db",
+            uri="hf://policyengine-us-data/policy_data.db",
+            media_type="application/vnd.sqlite3",
+        ),
+        _stage_artifact("cps_2024"),
+        _stage_artifact("enhanced_cps_2024"),
+    )
+    return StageContract(
+        contract_type=contract_type,
+        stage_id=stage_id,
+        created_at="2026-05-05T01:00:00Z",
+        package_version="1.98.2",
+        outputs=outputs,
+        parameters=parameters,
+        fingerprint=_sample_fingerprint(
+            contract_type=contract_type,
+            stage_id=stage_id,
+            inputs=(),
+            parameters=parameters,
+        ),
+        substages=(
+            SubstageRecord(
+                substage_id="1a_raw_data_download",
+                status="completed",
+                reuse_mode="checkpointable",
+                outputs=(_stage_artifact("raw_census_cps"),),
+            ),
+            SubstageRecord(
+                substage_id="1b_base_dataset_construction",
+                status="completed",
+                reuse_mode="checkpointable",
+                outputs=(_stage_artifact("base_cps_2024"),),
+            ),
+            SubstageRecord(
+                substage_id="1f_source_imputation",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("source_imputed_stratified_extended_cps"),),
+            ),
+            SubstageRecord(
+                substage_id="1g_stage_base_datasets",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=outputs,
+            ),
+        ),
+        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
+        metadata={
+            "dataset_schema": {
+                "households": "placeholder",
+                "people": "placeholder",
+            },
+            "entity_schema": {
+                "person": "placeholder",
+                "tax_unit": "placeholder",
+                "spm_unit": "placeholder",
+            },
+        },
+    )
+
+
+def make_calibration_package_contract() -> StageContract:
+    contract_type = "calibration_package"
+    stage_id = "2_build_calibration_package"
+    inputs = (
+        _stage_artifact("source_imputed_stratified_extended_cps"),
+        _stage_artifact("policy_data_db"),
+    )
+    parameters = {"n_clones": 430, "target_config": "target_config.yaml"}
+    return StageContract(
+        contract_type=contract_type,
+        stage_id=stage_id,
+        created_at="2026-05-05T02:00:00Z",
+        inputs=inputs,
+        outputs=(_stage_artifact("calibration_package"),),
+        parameters=parameters,
+        fingerprint=_sample_fingerprint(
+            contract_type=contract_type,
+            stage_id=stage_id,
+            inputs=inputs,
+            parameters=parameters,
+        ),
+        substages=(
+            SubstageRecord(
+                substage_id="2a_build_target_matrix",
+                status="completed",
+                reuse_mode="handoff",
+                inputs=inputs,
+                outputs=(_stage_artifact("clone_target_matrix"),),
+            ),
+            SubstageRecord(
+                substage_id="2b_package_calibration_inputs",
+                status="completed",
+                reuse_mode="handoff",
+                inputs=(_stage_artifact("clone_target_matrix"),),
+                outputs=(_stage_artifact("calibration_package"),),
+            ),
+        ),
+        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
+        metadata={
+            "matrix_shape": [184900, 304],
+            "nnz": 1245000,
+            "target_count": 304,
+            "n_clones": 430,
+            "base_n_records": 430,
+            "matrix_ordering": "clone_major",
+            "target_config_checksum": "sha256:target-config",
+            "geography_checksum": "sha256:geography",
+        },
+    )
+
+
+def make_fitted_weights_contract() -> StageContract:
+    contract_type = "fitted_weights"
+    stage_id = "3_fit_weights"
+    inputs = (_stage_artifact("calibration_package"),)
+    parameters = {"solver": "l0", "max_iterations": 1000}
+    diagnostics = (
+        _diagnostic(
+            artifact=_stage_artifact("regional_weight_fit_diagnostics")
+        ),
+    )
+    validation = ValidationReport(
+        status="pass",
+        findings=(
+            ValidationFinding(
+                check_id="weights_nonnegative",
+                status="pass",
+                message="All fitted weights are non-negative.",
+            ),
+        ),
+        diagnostics=diagnostics,
+    )
+    return StageContract(
+        contract_type=contract_type,
+        stage_id=stage_id,
+        created_at="2026-05-05T03:00:00Z",
+        inputs=inputs,
+        outputs=(
+            _stage_artifact("regional_weights"),
+            _stage_artifact("national_weights"),
+        ),
+        parameters=parameters,
+        fingerprint=_sample_fingerprint(
+            contract_type=contract_type,
+            stage_id=stage_id,
+            inputs=inputs,
+            parameters=parameters,
+        ),
+        substages=(
+            SubstageRecord(
+                substage_id="3a_weight_fitting_regional",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("regional_weights"),),
+                validation=validation,
+                diagnostics=diagnostics,
+            ),
+            SubstageRecord(
+                substage_id="3b_weight_fitting_national",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("national_weights"),),
+            ),
+        ),
+        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
+        validation=validation,
+        diagnostics=diagnostics,
+        metadata={
+            "solver_settings": {"solver": "l0", "max_iterations": 1000},
+            "regional_summary": {"areas": 3143, "max_abs_error": 0.01},
+            "national_summary": {"records": 430, "max_abs_error": 0.0},
+        },
+    )
+
+
+def make_output_build_contract() -> StageContract:
+    contract_type = "output_build"
+    stage_id = "4_build_outputs"
+    inputs = (
+        _stage_artifact("regional_weights"),
+        _stage_artifact("national_weights"),
+        _stage_artifact("source_imputed_stratified_extended_cps"),
+        _stage_artifact("geography"),
+        _stage_artifact("policy_data_db"),
+    )
+    parameters = {"h5_format": "policyengine-us-v1", "period": 2024}
+    diagnostics = (_diagnostic(artifact=_stage_artifact("diagnostics_manifest")),)
+    validation = ValidationReport(
+        status="warn",
+        findings=(
+            ValidationFinding(
+                check_id="regional_inventory_complete",
+                status="pass",
+                message="Expected regional H5 inventory is complete.",
+            ),
+            ValidationFinding(
+                check_id="diagnostics_uploaded",
+                status="warn",
+                message="Diagnostics are present but not yet promotion-blocking.",
+            ),
+        ),
+        diagnostics=diagnostics,
+    )
+    return StageContract(
+        contract_type=contract_type,
+        stage_id=stage_id,
+        created_at="2026-05-05T04:00:00Z",
+        inputs=inputs,
+        outputs=(
+            _stage_artifact("regional_h5_inventory"),
+            _stage_artifact("national_h5"),
+            _stage_artifact("diagnostics_manifest"),
+        ),
+        parameters=parameters,
+        fingerprint=_sample_fingerprint(
+            contract_type=contract_type,
+            stage_id=stage_id,
+            inputs=inputs,
+            parameters=parameters,
+        ),
+        substages=(
+            SubstageRecord(
+                substage_id="4a_local_area_h5_regional",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("regional_h5_inventory"),),
+            ),
+            SubstageRecord(
+                substage_id="4b_local_area_h5_national",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("national_h5"),),
+            ),
+            SubstageRecord(
+                substage_id="4d_upload_diagnostics",
+                status="completed",
+                reuse_mode="observed_only",
+                outputs=(_stage_artifact("diagnostics_manifest"),),
+                diagnostics=diagnostics,
+            ),
+        ),
+        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
+        validation=validation,
+        diagnostics=diagnostics,
+        metadata={
+            "h5_inventory": {
+                "regional_count": 3143,
+                "national_count": 1,
+                "missing": 0,
+            },
+            "validation_summary": {
+                "status": "warn",
+                "blocking_failures": 0,
+            },
+        },
+    )
+
+
+def make_release_promotion_contract() -> StageContract:
+    contract_type = "release_promotion"
+    stage_id = "5_validate_and_promote_release"
+    inputs = (_stage_artifact("output_build_release_candidate"),)
+    parameters = {
+        "hf_repo": "policyengine/policyengine-us-data",
+        "gcs_bucket": "policyengine-us-data",
+    }
+    validation = ValidationReport(
+        status="pass",
+        findings=(
+            ValidationFinding(
+                check_id="release_candidate_complete",
+                status="pass",
+                message="Release candidate contains all required artifacts.",
+            ),
+        ),
+    )
+    return StageContract(
+        contract_type=contract_type,
+        stage_id=stage_id,
+        created_at="2026-05-05T05:00:00Z",
+        inputs=inputs,
+        outputs=(
+            _stage_artifact("release_manifest"),
+            _stage_artifact("version_manifest"),
+        ),
+        parameters=parameters,
+        fingerprint=_sample_fingerprint(
+            contract_type=contract_type,
+            stage_id=stage_id,
+            inputs=inputs,
+            parameters=parameters,
+        ),
+        substages=(
+            SubstageRecord(
+                substage_id="5a_validate_outputs",
+                status="completed",
+                reuse_mode="observed_only",
+                validation=validation,
+            ),
+            SubstageRecord(
+                substage_id="5b_promote_huggingface",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("hf_release_refs"),),
+            ),
+            SubstageRecord(
+                substage_id="5c_promote_gcs",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("gcs_release_refs"),),
+            ),
+            SubstageRecord(
+                substage_id="5d_write_version_manifest",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("version_manifest"),),
+            ),
+        ),
+        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
+        validation=validation,
+        metadata={
+            "promotion_summary": {
+                "huggingface": "promoted",
+                "gcs": "promoted",
+                "version_manifest": "written",
+            }
+        },
+    )
+
+
+def _sample_stage_contracts() -> tuple[StageContract, ...]:
+    return (
+        make_dataset_build_contract(),
+        make_calibration_package_contract(),
+        make_fitted_weights_contract(),
+        make_output_build_contract(),
+        make_release_promotion_contract(),
+    )
+
+
 def test_artifact_ref_dict_round_trip():
     artifact = _artifact()
 
@@ -219,6 +604,85 @@ def test_stage_contract_dict_round_trip_with_substages():
     assert isinstance(restored.outputs, tuple)
     assert isinstance(restored.substages, tuple)
     assert restored.execution.status == "completed"
+
+
+def test_sample_stage_contract_builders_match_canonical_stage_shapes():
+    samples = _sample_stage_contracts()
+
+    assert [(item.stage_id, item.contract_type) for item in samples] == [
+        ("1_build_datasets", "dataset_build_output"),
+        ("2_build_calibration_package", "calibration_package"),
+        ("3_fit_weights", "fitted_weights"),
+        ("4_build_outputs", "output_build"),
+        ("5_validate_and_promote_release", "release_promotion"),
+    ]
+    assert [len(item.substages) for item in samples] == [4, 2, 2, 3, 4]
+    for contract in samples:
+        assert isinstance(contract, StageContract)
+        assert all(
+            isinstance(substage, SubstageRecord)
+            for substage in contract.substages
+        )
+
+
+def test_sample_stage_contracts_include_planned_artifacts_and_metadata():
+    dataset_build = make_dataset_build_contract()
+    calibration_package = make_calibration_package_contract()
+    fitted_weights = make_fitted_weights_contract()
+    output_build = make_output_build_contract()
+    release_promotion = make_release_promotion_contract()
+
+    assert {artifact.logical_name for artifact in dataset_build.outputs} == {
+        "source_imputed_stratified_extended_cps",
+        "policy_data_db",
+        "cps_2024",
+        "enhanced_cps_2024",
+    }
+    assert calibration_package.metadata["matrix_shape"] == (184900, 304)
+    assert calibration_package.metadata["target_config_checksum"]
+    assert {artifact.logical_name for artifact in fitted_weights.outputs} == {
+        "regional_weights",
+        "national_weights",
+    }
+    assert output_build.metadata["h5_inventory"]["regional_count"] == 3143
+    assert output_build.validation.status == "warn"
+    assert release_promotion.metadata["promotion_summary"] == {
+        "huggingface": "promoted",
+        "gcs": "promoted",
+        "version_manifest": "written",
+    }
+
+
+def test_sample_stage_contracts_dict_and_json_round_trip():
+    for contract in _sample_stage_contracts():
+        assert StageContract.from_dict(contract.to_dict()) == contract
+        assert contract_from_json(contract_to_json(contract)) == contract
+
+
+def test_sample_stage_contracts_write_only_to_explicit_paths(tmp_path):
+    expected_paths = set()
+    for contract in _sample_stage_contracts():
+        target = tmp_path / f"{contract.stage_id}.json"
+        expected_paths.add(target)
+
+        write_contract(contract, target)
+
+        assert read_contract(target) == contract
+
+    assert set(tmp_path.iterdir()) == expected_paths
+    assert not (tmp_path / "contracts").exists()
+
+
+def test_sample_stage_contract_fingerprints_are_reproducible():
+    for contract in _sample_stage_contracts():
+        rebuilt = fingerprint_material(contract.fingerprint.material)
+
+        assert rebuilt.value == contract.fingerprint.value
+        assert contract.fingerprint.material["stage_id"] == contract.stage_id
+        assert (
+            contract.fingerprint.material["contract_type"]
+            == contract.contract_type
+        )
 
 
 def test_diagnostic_ref_dict_round_trip_with_artifact_and_summary():

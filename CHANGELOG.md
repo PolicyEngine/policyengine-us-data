@@ -1,3 +1,14 @@
+## [1.102.0] - 2026-05-06
+
+### Added
+
+- Add national WIC calibration targets for FY 2024 food costs and average monthly participation.
+
+### Changed
+
+- Refined national ECPS calibration targets to remove circular survey/SPM constructs while keeping defensible rent, property tax, childcare, private-transfer balance constraints, structured EITC-by-AGI-and-child-count SOI targets, and taxable-filer AGI/count targets by AGI band and filing status. Added a national target parity manifest utility to classify legacy `build_loss_matrix()` labels against structured `policy_data.db` target rows.
+
+
 ## [1.101.1] - 2026-05-06
 
 ### Fixed

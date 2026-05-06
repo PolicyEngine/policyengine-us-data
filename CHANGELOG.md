@@ -1,3 +1,10 @@
+## [1.100.0] - 2026-05-06
+
+### Added
+
+- Add a run-scoped calibration comparison report and manual workflow for evaluating unified L0 outputs against legacy Enhanced CPS.
+
+
 ## [1.99.2] - 2026-05-06
 
 ### Changed

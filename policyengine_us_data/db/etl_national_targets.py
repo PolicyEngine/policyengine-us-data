@@ -16,6 +16,9 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_notes,
     get_beneficiary_paid_medicare_part_b_premiums_source,
     get_beneficiary_paid_medicare_part_b_premiums_target,
+    get_medicare_enrollment_notes,
+    get_medicare_enrollment_source,
+    get_medicare_enrollment_target,
 )
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
@@ -41,7 +44,9 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         - tax_expenditure_targets: Variables targeted via repeal-based tax expenditures
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
-        - treasury_targets: List of Treasury/JCT targets
+        - irs_soi_targets: List of IRS SOI aggregate targets
+        - treasury_targets: Empty compatibility list; EITC Treasury outlays are
+          diagnostics, not claim calibration targets.
         - time_period: The target year
     """
     from policyengine_us import CountryTaxBenefitSystem
@@ -52,8 +57,8 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     tax_benefit_system = CountryTaxBenefitSystem()
 
     # Hardcoded dollar targets are specific to 2024 and are labeled as
-    # `"year": 2024` throughout this file.  Only CBO/Treasury parameter
-    # lookups use the dynamic `time_period` derived from the dataset.
+    # `"year": 2024` throughout this file.  Only CBO parameter lookups
+    # use the dynamic `time_period` derived from the dataset.
     # See issue #515.
     if time_period != 2024:
         warnings.warn(
@@ -127,7 +132,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "medicare_part_b_premiums",
+            "variable": "medicare_part_b_premium",
             "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
             "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
             "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(2024),
@@ -247,7 +252,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     # Store with actual source year
     conditional_count_targets = [
         {
-            "constraint_variable": "medicaid",
+            "constraint_variable": "medicaid_enrolled",
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
@@ -258,6 +263,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "medicare_enrolled",
+            "person_count": get_medicare_enrollment_target(2024),
+            "source": get_medicare_enrollment_source(2024),
+            "notes": get_medicare_enrollment_notes(2024),
             "year": 2024,
         },
         {
@@ -357,23 +369,29 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
                 f"{variable_name} (param: {param_name}): {e}"
             )
 
-    # Treasury/JCT targets (EITC) - use time_period derived from dataset
+    # IRS SOI aggregate targets - use time_period derived from dataset.
+    irs_soi_targets = []
     try:
-        eitc_value = tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
+        value = tax_benefit_system.parameters(
             time_period
-        )
-        treasury_targets = [
+        ).calibration.gov.irs.soi._children["long_term_capital_gains"]
+        irs_soi_targets.append(
             {
-                "variable": "eitc",
-                "value": float(eitc_value),
-                "source": "Treasury/JCT Tax Expenditures",
-                "notes": "EITC tax expenditure",
+                "variable": "long_term_capital_gains",
+                "value": float(value),
+                "source": "IRS SOI",
+                "notes": (
+                    "IRS SOI total long-term capital gains, uprated by policyengine-us"
+                ),
                 "year": time_period,
             }
-        ]
+        )
     except (KeyError, AttributeError) as e:
-        print(f"Warning: Could not extract Treasury EITC parameter: {e}")
-        treasury_targets = []
+        print(f"Warning: Could not extract IRS SOI LTCG parameter: {e}")
+
+    # Treasury/CBO EITC figures are fiscal-year refundable-outlay concepts,
+    # not tax-year claim controls. Keep them out of calibration targets.
+    treasury_targets = []
 
     return {
         "direct_sum_targets": direct_sum_targets,
@@ -381,6 +399,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "tax_expenditure_targets": tax_expenditure_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
+        "irs_soi_targets": irs_soi_targets,
         "treasury_targets": treasury_targets,
         "time_period": time_period,
     }
@@ -406,8 +425,7 @@ def transform_national_targets(raw_targets):
     """
 
     # Process direct sum targets (non-tax items and some CBO items)
-    # Note: income_tax_positive from CBO and eitc from Treasury need
-    # filer constraint
+    # Note: income_tax_positive from CBO needs a filer constraint.
     cbo_non_tax = [
         t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax_positive"
     ]
@@ -415,14 +433,14 @@ def transform_national_targets(raw_targets):
         t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax_positive"
     ]
 
-    all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax
+    all_direct_targets = (
+        raw_targets["direct_sum_targets"]
+        + cbo_non_tax
+        + raw_targets.get("irs_soi_targets", [])
+    )
 
     # Tax-related targets that need filer constraint
-    all_tax_filer_targets = (
-        raw_targets["tax_filer_targets"]
-        + cbo_tax
-        + raw_targets["treasury_targets"]  # EITC
-    )
+    all_tax_filer_targets = raw_targets["tax_filer_targets"] + cbo_tax
 
     direct_df = (
         pd.DataFrame(all_direct_targets) if all_direct_targets else pd.DataFrame()
@@ -674,7 +692,7 @@ def load_national_targets(
             target_value = cond_target.get(target_variable)
 
             # Determine constraint details
-            if constraint_var == "medicaid":
+            if constraint_var == "medicaid_enrolled":
                 stratum_notes = "National Medicaid Enrollment"
                 constraint_operation = ">"
                 constraint_value = "0"
@@ -808,7 +826,7 @@ def main():
     print("Extracting national targets...")
     raw_targets = extract_national_targets(year=year)
     time_period = raw_targets["time_period"]
-    print(f"Using time_period={time_period} for CBO/Treasury targets")
+    print(f"Using time_period={time_period} for dynamic CBO targets")
 
     # Transform
     print("Transforming targets...")

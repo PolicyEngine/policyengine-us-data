@@ -1,6 +1,9 @@
+import inspect
+
 import pandas as pd
 from sqlmodel import Session, select
 
+from policyengine_us_data.db import etl_national_targets
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -11,6 +14,36 @@ from policyengine_us_data.db.etl_national_targets import (
     extract_national_targets,
     load_national_targets,
 )
+
+
+def test_national_targets_do_not_extract_treasury_eitc():
+    source = inspect.getsource(etl_national_targets.extract_national_targets)
+
+    assert "tax_expenditures.eitc" not in source
+
+
+def test_transform_national_targets_ignores_treasury_eitc_compat_key():
+    raw_targets = {
+        "direct_sum_targets": [],
+        "tax_filer_targets": [],
+        "tax_expenditure_targets": [],
+        "conditional_count_targets": [],
+        "cbo_targets": [],
+        "irs_soi_targets": [],
+        "treasury_targets": [
+            {
+                "variable": "eitc",
+                "value": 67.33e9,
+                "source": "Treasury/JCT Tax Expenditures",
+                "notes": "EITC tax expenditure",
+                "year": 2024,
+            }
+        ],
+    }
+
+    _, tax_filer_df, _, _ = etl_national_targets.transform_national_targets(raw_targets)
+
+    assert tax_filer_df.empty
 
 
 def _make_stratum(session, parent_id=None, notes=None, constraints=None):
@@ -212,15 +245,22 @@ def test_extract_national_targets_drops_survey_spm_targets():
         "alimony_expense",
         "child_support_expense",
         "child_support_received",
+        "employer_sponsored_insurance_premiums",
         "health_insurance_premiums_without_medicare_part_b",
         "other_medical_expenses",
         "over_the_counter_health_expenses",
+        "spm_unit_spm_threshold",
         "spm_unit_capped_housing_subsidy",
         "spm_unit_capped_work_childcare_expenses",
     }
 
     assert removed_targets.isdisjoint(direct_sum_variables)
-    assert {"rent", "real_estate_taxes", "childcare_expenses"} <= direct_sum_variables
+    assert {
+        "rent",
+        "real_estate_taxes",
+        "childcare_expenses",
+        "medicare_part_b_premium",
+    } <= direct_sum_variables
 
     direct_sum_targets = {
         target["variable"]: target for target in targets["direct_sum_targets"]
@@ -228,3 +268,127 @@ def test_extract_national_targets_drops_survey_spm_targets():
     assert direct_sum_targets["rent"]["value"] == 764_925_694_800
     assert direct_sum_targets["real_estate_taxes"]["value"] == 370_014_207_400
     assert direct_sum_targets["childcare_expenses"]["value"] == 63_092e6
+
+
+def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        {
+            "constraint_variable": "medicaid_enrolled",
+            "person_count": 72_429_055,
+            "source": "CMS/HHS administrative data",
+            "notes": "Medicaid enrollment count",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        medicaid_stratum = session.exec(
+            select(Stratum).where(Stratum.notes == "National Medicaid Enrollment")
+        ).first()
+        assert medicaid_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in medicaid_stratum.constraints_rel
+        }
+        assert ("medicaid_enrolled", ">", "0") in constraints
+
+        medicaid_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == medicaid_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert medicaid_target is not None
+        assert medicaid_target.value == 72_429_055
+
+
+def test_load_national_targets_supports_medicare_enrollment_counts(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        {
+            "constraint_variable": "medicare_enrolled",
+            "person_count": 68_030_000,
+            "source": "CMS 2024 Medicare Trustees Report Table V.B3",
+            "notes": "Total Medicare enrollment count",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        medicare_stratum = session.exec(
+            select(Stratum).where(
+                Stratum.notes == "National medicare_enrolled Recipients"
+            )
+        ).first()
+        assert medicare_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in medicare_stratum.constraints_rel
+        }
+        assert ("medicare_enrolled", ">", "0") in constraints
+
+        medicare_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == medicare_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert medicare_target is not None
+        assert medicare_target.value == 68_030_000

@@ -39,3 +39,22 @@ The raw SIPP CSVs (`pu2023.csv` and the slim variant `pu2023_slim.csv`)
 are mirrored on the `PolicyEngine/policyengine-us-data` HuggingFace model
 repo and downloaded on demand when a training run is needed. They are
 not vendored in this Git repository.
+
+## Licensing
+
+SIPP public-use files are, as the name implies, **public-use data** — no
+per-user license, data-use agreement, or registration is required to
+download or redistribute them. We mirror them on our HuggingFace model
+repo purely as a caching convenience (Census's own hosting is slow and
+occasionally unavailable), not to work around any access restriction.
+
+This matters because PolicyEngine's enhanced CPS pipeline ingests several
+different upstream microdata sources, and only **one** of them —
+**IRS Public Use File (PUF)** — has any genuine access restriction. PUF
+requires agreeing to IRS's terms of use before download, even though the
+file is itself intended for public release. CPS, ACS, SCF, ORG, and SIPP
+are all unrestricted public-use. If you are writing about the pipeline's
+licensing posture (for a paper, replication packet, or TRACE TRO), only
+IRS-PUF should appear in the restricted column.
+
+See issue #808 for the background on this correction.

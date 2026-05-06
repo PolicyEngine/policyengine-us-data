@@ -9,11 +9,15 @@ from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
     STATE_ABBR_TO_FIPS,
 )
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
 from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
+    get_medicare_enrollment_target,
 )
 from policyengine_us_data.db.etl_irs_soi import (
     get_national_geography_soi_target,
@@ -21,6 +25,9 @@ from policyengine_us_data.db.etl_irs_soi import (
 )
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi
+
+
+MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to
@@ -30,8 +37,8 @@ from policyengine_us_data.utils.soi import pe_to_soi, get_soi
 # database so this dict can be deleted.  See PR #488.
 
 HARD_CODED_TOTALS = {
-    "medicare_part_b_premiums": get_beneficiary_paid_medicare_part_b_premiums_target(
-        2024
+    MEDICARE_PART_B_PREMIUM_VARIABLE: (
+        get_beneficiary_paid_medicare_part_b_premiums_target(2024)
     ),
     "tanf": 7_788_317_474.55,
     # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
@@ -99,7 +106,9 @@ HARD_CODED_TOTALS = {
     ],
 }
 
-AGE_BUCKETED_HEALTH_TARGETS = ("medicare_part_b_premiums",)
+AGE_BUCKETED_HEALTH_TARGETS = (
+    (MEDICARE_PART_B_PREMIUM_VARIABLE, "medicare_part_b_premiums"),
+)
 
 BLS_CE_TOTALS = {
     # BLS Consumer Expenditure Surveys, CE LABSTAT series
@@ -128,6 +137,17 @@ ABSOLUTE_ERROR_SCALE_TARGETS = {
     for target in TRANSFER_BALANCE_TARGETS
 }
 
+
+def _add_medicare_enrollment_target(loss_matrix, targets_array, sim, time_period):
+    label = "nation/cms/medicare_enrollment"
+    enrolled = sim.calculate(
+        "medicare_enrolled", map_to="person", period=time_period
+    ).values
+    loss_matrix[label] = sim.map_result(enrolled.astype(float), "person", "household")
+    targets_array.append(get_medicare_enrollment_target(time_period))
+    return targets_array, loss_matrix
+
+
 ACA_SPENDING_TARGETS = {
     2024: 98e9,
 }
@@ -147,6 +167,58 @@ MEDICAID_SPENDING_TARGETS = {
 MEDICAID_ENROLLMENT_TARGETS = {
     2024: 72_429_055,
 }
+
+LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "qualified_dividends",
+    "taxable_interest_income",
+}
+
+AGI_LEVEL_TARGETED_VARIABLES = (
+    "adjusted_gross_income",
+    "count",
+    "employment_income",
+    "business_net_profits",
+    "capital_gains_gross",
+    "ordinary_dividends",
+    "partnership_and_s_corp_income",
+    "qualified_dividends",
+    "taxable_interest_income",
+    "total_pension_income",
+    "total_social_security",
+)
+
+AGGREGATE_LEVEL_TARGETED_VARIABLES = (
+    "business_net_losses",
+    "capital_gains_distributions",
+    "capital_gains_losses",
+    "estate_income",
+    "estate_losses",
+    "exempt_interest",
+    "ira_distributions",
+    "partnership_and_s_corp_losses",
+    "rent_and_royalty_net_income",
+    "rent_and_royalty_net_losses",
+    # The current SOI source only exposes taxable-only aggregate targets for
+    # mortgage-interest deductions, not the AGI-bin detail used above.
+    "mortgage_interest_deductions",
+    # Keep the legacy loss matrix aligned with the national QBI amount and
+    # claimant-count controls used by the target-config calibration path.
+    "qualified_business_income_deduction",
+    "taxable_pension_income",
+    "taxable_social_security",
+    "unemployment_compensation",
+)
+
+IRS_SOI_AGGREGATE_TARGETS = [
+    # This complements the net capital gains target with the source-specific
+    # control used by downstream preferential-rate reforms.
+    ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
+]
+
+EITC_NATIONAL_GEO_ID = "0100000US"
+EITC_INTERNATIONAL_GEO_ID = "INTL"
 
 
 def fmt(x):
@@ -318,6 +390,10 @@ def _load_aca_spending_and_enrollment_targets(
     return _load_yeared_target_csv("aca_spending_and_enrollment", requested_year)
 
 
+def _load_aca_ptc_state_targets(requested_year: int) -> pd.DataFrame | None:
+    return load_aca_ptc_state_targets(requested_year)
+
+
 def _load_medicaid_enrollment_targets(
     requested_year: int,
 ) -> tuple[pd.DataFrame, int]:
@@ -326,6 +402,14 @@ def _load_medicaid_enrollment_targets(
 
 def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
     targets, data_year = _load_aca_spending_and_enrollment_targets(requested_year)
+    aca_ptc_state = _load_aca_ptc_state_targets(requested_year)
+    if aca_ptc_state is not None:
+        return (
+            float(aca_ptc_state["TotalPTCAmount"].sum()),
+            float(targets["enrollment"].sum()),
+            data_year,
+        )
+
     if data_year in ACA_SPENDING_TARGETS and data_year in ACA_ENROLLMENT_TARGETS:
         return (
             ACA_SPENDING_TARGETS[data_year],
@@ -377,26 +461,124 @@ def _skip_unverified_target(value) -> bool:
     return False
 
 
+def _load_eitc_claim_controls(requested_year: int) -> tuple[pd.DataFrame, int]:
+    """Load the best available IRS EITC claim controls for a target year.
+
+    The checked-in control file uses the IRS EITC Central state table, whose
+    latest release can lead detailed SOI geography workbooks. It measures net
+    EITC credited on returns, which is the claim concept closest to the
+    microsim's ``eitc`` variable.
+    """
+
+    requested_year = int(requested_year)
+    path = CALIBRATION_FOLDER / "eitc_claim_controls.csv"
+    controls = pd.read_csv(path, comment="#")
+    years = {int(year): year for year in controls["year"].unique()}
+    data_year = _best_available_year(years, requested_year)
+    return controls[controls["year"] == data_year].copy(), data_year
+
+
+def _domestic_eitc_claim_totals(controls: pd.DataFrame) -> tuple[float, float]:
+    """Return national EITC controls excluding the international row.
+
+    The local calibration universe assigns US states and DC, but not the IRS
+    table's separate "International" row. Subtract it from the published
+    national line so state and AGI-shape targets describe the same universe.
+    """
+
+    national = controls[controls["GEO_ID"] == EITC_NATIONAL_GEO_ID]
+    if national.empty:
+        state_rows = controls[controls["GEO_ID"].str.startswith("0400000US")]
+        return float(state_rows["Returns"].sum()), float(state_rows["Amount"].sum())
+
+    returns = float(national["Returns"].iloc[0])
+    amount = float(national["Amount"].iloc[0])
+
+    international = controls[controls["GEO_ID"] == EITC_INTERNATIONAL_GEO_ID]
+    if not international.empty:
+        returns -= float(international["Returns"].iloc[0])
+        amount -= float(international["Amount"].iloc[0])
+
+    return returns, amount
+
+
+def _get_eitc_claim_targets(
+    requested_year: int,
+    sim,
+) -> tuple[pd.DataFrame, float, float, int]:
+    """Return state rows and national totals for EITC claim calibration.
+
+    For the latest IRS EITC Central year, use the published claim controls.
+    For later years, roll the control year forward transparently: counts by
+    total population and dollar amounts by CPI-U. Do not use Treasury or CBO
+    outlay series here; those are fiscal-year refundable-outlay concepts.
+    """
+
+    requested_year = int(requested_year)
+    controls, data_year = _load_eitc_claim_controls(requested_year)
+    params = sim.tax_benefit_system.parameters
+    population = params.calibration.gov.census.populations.total
+    cpi = params.gov.bls.cpi.cpi_u
+
+    returns_uprating = float(population(requested_year) / population(data_year))
+    amount_uprating = float(cpi(requested_year) / cpi(data_year))
+    national_returns, national_amount = _domestic_eitc_claim_totals(controls)
+    national_returns *= returns_uprating
+    national_amount *= amount_uprating
+
+    state_targets = controls[controls["GEO_ID"].str.startswith("0400000US")].copy()
+    state_returns = float(state_targets["Returns"].sum())
+    state_amount = float(state_targets["Amount"].sum())
+    if state_returns:
+        state_targets["Returns"] = (
+            state_targets["Returns"].astype(float) * national_returns / state_returns
+        )
+    if state_amount:
+        state_targets["Amount"] = (
+            state_targets["Amount"].astype(float) * national_amount / state_amount
+        )
+
+    return state_targets, national_returns, national_amount, data_year
+
+
+def _get_eitc_shape_scaling(
+    national_returns: float,
+    national_amount: float,
+) -> tuple[float, float]:
+    """Scale detailed TY2022 SOI EITC shape cells to claim controls."""
+
+    eitc_agi_path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    eitc_by_agi = pd.read_csv(eitc_agi_path, comment="#")
+    returns_total = float(eitc_by_agi["returns"].sum())
+    amount_total = float(eitc_by_agi["amount"].sum())
+    returns_scaling = national_returns / returns_total if returns_total else 1.0
+    amount_scaling = national_amount / amount_total if amount_total else 1.0
+    return returns_scaling, amount_scaling
+
+
 def _add_state_eitc_targets(
     loss_matrix: pd.DataFrame,
     targets_list: list,
     sim,
-    eitc_spending_uprating: float,
-    population_uprating: float,
+    amount_uprating: float,
+    returns_uprating: float,
+    state_targets: pd.DataFrame | None = None,
 ):
     """Add per-state EITC returns and amount targets.
 
-    Sourced from IRS SOI Historical Table 2 (``eitc_state.csv``). Returns
-    counts are uprated by population; amount targets are uprated by the
-    Treasury EITC trajectory (same uprating used for the existing
-    per-child-count EITC targets so state and child-count signals move
-    together).
+    By default this consumes IRS SOI Historical Table 2 (``eitc_state.csv``).
+    ``build_loss_matrix`` passes the newer IRS EITC Central state controls
+    instead, with the rounded state rows normalized to the published domestic
+    national control. ``amount_uprating`` and ``returns_uprating`` are generic
+    scale factors; they are not tied to Treasury outlays.
     """
-    eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
-    if not eitc_state_path.exists():
-        return targets_list, loss_matrix
-
-    eitc_state = pd.read_csv(eitc_state_path, comment="#")
+    if state_targets is None:
+        eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
+        if not eitc_state_path.exists():
+            return targets_list, loss_matrix
+        eitc_state = pd.read_csv(eitc_state_path, comment="#")
+    else:
+        eitc_state = state_targets.copy()
 
     eitc = sim.calculate("eitc").values  # tax-unit level
     eitc_returns_tu = (eitc > 0).astype(float)
@@ -415,7 +597,7 @@ def _add_state_eitc_targets(
         returns_label = f"nation/irs/eitc/returns/state_{fips}"
         loss_matrix[returns_label] = np.where(in_state, eitc_returns_hh, 0.0)
         if not _skip_unverified_target(row["Returns"]):
-            targets_list.append(float(row["Returns"]) * population_uprating)
+            targets_list.append(float(row["Returns"]) * returns_uprating)
         else:
             # Remove the column we just added since we aren't appending a
             # target for it; otherwise loss_matrix/targets_array go out of
@@ -425,7 +607,52 @@ def _add_state_eitc_targets(
         amount_label = f"nation/irs/eitc/amount/state_{fips}"
         loss_matrix[amount_label] = np.where(in_state, eitc_amount_hh, 0.0)
         if not _skip_unverified_target(row["Amount"]):
-            targets_list.append(float(row["Amount"]) * eitc_spending_uprating)
+            targets_list.append(float(row["Amount"]) * amount_uprating)
+        else:
+            del loss_matrix[amount_label]
+
+    return targets_list, loss_matrix
+
+
+def _add_state_aca_ptc_targets(
+    loss_matrix: pd.DataFrame,
+    targets_list: list,
+    sim,
+    time_period: int,
+):
+    """Add per-state total ACA PTC return and amount targets from IRS SOI."""
+    aca_ptc_state = _load_aca_ptc_state_targets(time_period)
+    if aca_ptc_state is None:
+        return targets_list, loss_matrix
+
+    aca_ptc = sim.calculate("aca_ptc", period=time_period).values
+    aca_ptc_returns_tu = (aca_ptc > 0).astype(float)
+    aca_ptc_returns_hh = sim.map_result(
+        aca_ptc_returns_tu,
+        "tax_unit",
+        "household",
+    )
+    aca_ptc_amount_hh = sim.map_result(aca_ptc, "tax_unit", "household")
+
+    state = sim.calculate("state_code", map_to="person").values
+    state = sim.map_result(state, "person", "household", how="value_from_first_person")
+    state_fips = pd.Series(state).apply(lambda s: STATE_ABBR_TO_FIPS.get(s, None))
+
+    for row in aca_ptc_state.itertuples(index=False):
+        fips = str(row.GEO_ID)[-2:]
+        in_state = (state_fips == fips).to_numpy()
+
+        returns_label = f"nation/irs/aca_ptc/returns/state_{fips}"
+        loss_matrix[returns_label] = np.where(in_state, aca_ptc_returns_hh, 0.0)
+        if not _skip_unverified_target(row.Returns):
+            targets_list.append(float(row.Returns))
+        else:
+            del loss_matrix[returns_label]
+
+        amount_label = f"nation/irs/aca_ptc/amount/state_{fips}"
+        loss_matrix[amount_label] = np.where(in_state, aca_ptc_amount_hh, 0.0)
+        if not _skip_unverified_target(row.TotalPTCAmount):
+            targets_list.append(float(row.TotalPTCAmount))
         else:
             del loss_matrix[amount_label]
 
@@ -436,8 +663,8 @@ def _add_eitc_by_agi_and_children_targets(
     loss_matrix: pd.DataFrame,
     targets_list: list,
     sim,
-    eitc_spending_uprating: float,
-    population_uprating: float,
+    amount_uprating: float,
+    returns_uprating: float,
 ):
     """Add per-(qualifying-children x AGI bucket) EITC returns and amount
     targets.
@@ -486,7 +713,7 @@ def _add_eitc_by_agi_and_children_targets(
             "household",
         )
         if not _skip_unverified_target(row["returns"]):
-            targets_list.append(float(row["returns"]) * population_uprating)
+            targets_list.append(float(row["returns"]) * returns_uprating)
         else:
             del loss_matrix[returns_label]
 
@@ -497,7 +724,7 @@ def _add_eitc_by_agi_and_children_targets(
             "household",
         )
         if not _skip_unverified_target(row["amount"]):
-            targets_list.append(float(row["amount"]) * eitc_spending_uprating)
+            targets_list.append(float(row["amount"]) * amount_uprating)
         else:
             del loss_matrix[amount_label]
 
@@ -600,6 +827,26 @@ def _add_real_estate_tax_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _sum_household_variables(sim, variable_names):
+    return sum(
+        sim.calculate(variable_name, map_to="household").values
+        for variable_name in variable_names
+    )
+
+
+def _add_irs_soi_aggregate_targets(loss_matrix, targets_list, sim, time_period):
+    soi = sim.tax_benefit_system.parameters(time_period).calibration.gov.irs.soi
+
+    for label_suffix, pe_variables, soi_param_name in IRS_SOI_AGGREGATE_TARGETS:
+        label = f"nation/irs/soi/{label_suffix}"
+        loss_matrix[label] = _sum_household_variables(sim, pe_variables)
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(soi._children[soi_param_name])
+
+    return targets_list, loss_matrix
+
+
 def _add_acs_housing_cost_targets(loss_matrix, targets_list, sim, time_period):
     """Add ACS component targets for rent and all-owner property taxes."""
     targets, _ = _load_yeared_target_csv("acs_housing_costs", time_period)
@@ -689,6 +936,20 @@ def get_target_error_normalisation(target_names, targets_array):
     return numerator_shift, denominator
 
 
+def _should_skip_soi_agi_row(row) -> bool:
+    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    if row["AGI upper bound"] > 10_000:
+        return False
+    return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+
+def _should_skip_soi_taxability_row(row) -> bool:
+    """Use all-return SOI rows only for investment-income controls."""
+    if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
+        return row["Taxable only"]
+    return not row["Taxable only"]
+
+
 def build_loss_matrix(dataset: type, time_period):
     loss_matrix = pd.DataFrame()
     df = pe_to_soi(dataset, time_period)
@@ -697,44 +958,13 @@ def build_loss_matrix(dataset: type, time_period):
     taxable = df["total_income_tax"].values > 0
     soi_subset = get_soi(time_period)
     targets_array = []
-    agi_level_targeted_variables = [
-        "adjusted_gross_income",
-        "count",
-        "employment_income",
-        "business_net_profits",
-        "capital_gains_gross",
-        "ordinary_dividends",
-        "partnership_and_s_corp_income",
-        "qualified_dividends",
-        "taxable_interest_income",
-        "total_pension_income",
-        "total_social_security",
-    ]
-    aggregate_level_targeted_variables = [
-        "business_net_losses",
-        "capital_gains_distributions",
-        "capital_gains_losses",
-        "estate_income",
-        "estate_losses",
-        "exempt_interest",
-        "ira_distributions",
-        "partnership_and_s_corp_losses",
-        "rent_and_royalty_net_income",
-        "rent_and_royalty_net_losses",
-        # The current SOI source only exposes taxable-only aggregate targets for
-        # mortgage-interest deductions, not the AGI-bin detail used above.
-        "mortgage_interest_deductions",
-        "taxable_pension_income",
-        "taxable_social_security",
-        "unemployment_compensation",
-    ]
     aggregate_level_targeted_variables = [
         variable
-        for variable in aggregate_level_targeted_variables
+        for variable in AGGREGATE_LEVEL_TARGETED_VARIABLES
         if variable in df.columns
     ]
     soi_subset = soi_subset[
-        soi_subset.Variable.isin(agi_level_targeted_variables)
+        soi_subset.Variable.isin(AGI_LEVEL_TARGETED_VARIABLES)
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)
@@ -742,10 +972,10 @@ def build_loss_matrix(dataset: type, time_period):
         )
     ]
     for _, row in soi_subset.iterrows():
-        if not row["Taxable only"]:
-            continue  # exclude non "taxable returns" statistics
+        if _should_skip_soi_taxability_row(row):
+            continue  # exclude non "taxable returns" statistics by default
 
-        if row["AGI upper bound"] <= 10_000:
+        if _should_skip_soi_agi_row(row):
             continue
 
         mask = (
@@ -859,6 +1089,51 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[param_name]
         )
 
+    # CBO income-by-source aggregate targets.
+    # Without these, the per-AGI-bracket SOI targets fail to constrain the
+    # *aggregate* (the optimizer can satisfy bracket-level totals while
+    # concentrating weight on a few records and blowing up the national sum).
+    # See issues #555 and #866 — single records with $60M+ raw LTCG were
+    # ending up with calibration weights of 50k-70k, inflating the national
+    # net_capital_gains aggregate to 12x the CBO target.
+    #
+    # Each entry maps a PolicyEngine variable (or sum of variables) to the
+    # corresponding CBO `income_by_source` parameter.
+    CBO_INCOME_BY_SOURCE_TARGETS = [
+        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
+        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
+        (
+            "qualified_dividend_income",
+            ["qualified_dividend_income"],
+            "qualified_dividend_income",
+        ),
+        (
+            "taxable_interest_and_ordinary_dividends",
+            ["taxable_interest_income", "non_qualified_dividend_income"],
+            "taxable_interest_and_ordinary_dividends",
+        ),
+    ]
+
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+
+    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
+        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
+        loss_matrix[label] = values
+        targets_array.append(income_by_source._children[cbo_param_name])
+
+    # IRS SOI aggregate capital-gains targets. This adds a long-term gains
+    # control on top of the CBO net capital gains aggregate, which is important
+    # for reforms that change preferential LTCG rates.
+    targets_array, loss_matrix = _add_irs_soi_aggregate_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
     # 1. Medicaid Spending
     medicaid_spending_target, medicaid_enrollment_target, _ = (
         _get_medicaid_national_targets(time_period)
@@ -872,7 +1147,7 @@ def build_loss_matrix(dataset: type, time_period):
     label = "nation/hhs/medicaid_enrollment"
     on_medicaid = (
         sim.calculate(
-            "medicaid",  # or your enrollee flag
+            "medicaid_enrolled",
             map_to="person",
             period=time_period,
         ).values
@@ -901,52 +1176,56 @@ def build_loss_matrix(dataset: type, time_period):
 
     targets_array.append(aca_enrollment_target)
 
+    targets_array, loss_matrix = _add_medicare_enrollment_target(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
+
     # EITC targets.
     #
-    # Authoritative source: IRS SOI TY2022 tables. Treasury's
-    # ``tax_expenditures.eitc`` parameter ($67B in 2024) is the
-    # *outlay* measure (refundable portion with tax-expenditure
-    # methodology) and is not directly comparable to the total EITC
-    # claimed on tax returns that the ``eitc`` variable computes
-    # ($59B per SOI). Previously the loss function targeted Treasury's
-    # $67B number as the national aggregate, which contradicted the
-    # ~$59B implied by the per-state and per-child-count rows we also
-    # targeted, and contradicted reality: the optimizer couldn't
-    # satisfy both definitions simultaneously.
-    #
-    # v2: drop the Treasury aggregate and the legacy ``eitc.csv``
-    # (TY2020, stale) per-child-count targets entirely. Rely on the
-    # new SOI TY2022 sources below, which provide better geographic
-    # and AGI-shape coverage AND a coherent total.
-    #
-    # Treasury's EITC parameter is still used to derive the dollar
-    # uprating trajectory — its year-over-year growth captures the
-    # expected EITC evolution, even if its level is defined
-    # differently from what we target.
-    eitc_spending = (
-        sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
+    # Use IRS EITC Central claim controls for the aggregate state/national
+    # level. They are tax-year return-claim statistics, so they match the
+    # ``eitc`` variable's concept better than Treasury or CBO refundable
+    # outlays. The detailed TY2022 SOI AGI x child-count table is retained as
+    # a shape source, then scaled to the same IRS claim control.
+    (
+        state_eitc_targets,
+        national_eitc_returns,
+        national_eitc_amount,
+        eitc_control_year,
+    ) = _get_eitc_claim_targets(time_period, sim)
+    (
+        eitc_returns_shape_scaling,
+        eitc_amount_shape_scaling,
+    ) = _get_eitc_shape_scaling(
+        national_eitc_returns,
+        national_eitc_amount,
     )
-    population = (
-        sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
+    logging.info(
+        "Using IRS EITC claim controls from TY%s for %s targets: returns=%s, amount=%s",
+        eitc_control_year,
+        time_period,
+        f"{national_eitc_returns:,.0f}",
+        f"${national_eitc_amount:,.0f}",
     )
-    # Source CSVs use TY2022 data; uprate to ``time_period`` from 2022.
-    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2022)
-    population_uprating = population(time_period) / population(2022)
 
     targets_array, loss_matrix = _add_state_eitc_targets(
         loss_matrix,
         targets_array,
         sim,
-        eitc_spending_uprating,
-        population_uprating,
+        amount_uprating=1.0,
+        returns_uprating=1.0,
+        state_targets=state_eitc_targets,
     )
 
     targets_array, loss_matrix = _add_eitc_by_agi_and_children_targets(
         loss_matrix,
         targets_array,
         sim,
-        eitc_spending_uprating,
-        population_uprating,
+        amount_uprating=eitc_amount_shape_scaling,
+        returns_uprating=eitc_returns_shape_scaling,
     )
 
     targets_array, loss_matrix = _add_ctc_targets(
@@ -1059,13 +1338,13 @@ def build_loss_matrix(dataset: type, time_period):
         else:
             in_age_range = (age >= age_lower_bound) * (age < age_lower_bound + 10)
             label_suffix = f"age_{age_lower_bound}_to_{age_lower_bound + 9}"
-        for expense_type in AGE_BUCKETED_HEALTH_TARGETS:
+        for expense_type, target_column in AGE_BUCKETED_HEALTH_TARGETS:
             label = f"nation/census/{expense_type}/{label_suffix}"
             value = sim.calculate(expense_type).values
             loss_matrix[label] = sim.map_result(
                 in_age_range * value, "person", "household"
             )
-            targets_array.append(row[expense_type])
+            targets_array.append(row[target_column])
 
     # Population by state and population under 5 by state
 
@@ -1140,35 +1419,38 @@ def build_loss_matrix(dataset: type, time_period):
 
         targets_array.append(target_count)
 
-    # ACA spending by state
-    spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
-    # Monthly to yearly
-    spending_by_state["spending"] = spending_by_state["spending"] * 12
-    # Adjust to match national target
-    spending_by_state["spending"] = spending_by_state["spending"] * (
-        aca_spending_target / spending_by_state["spending"].sum()
-    )
-
-    for _, row in spending_by_state.iterrows():
-        # Households located in this state
-        in_state = (
-            sim.calculate("state_code", map_to="household").values == row["state"]
+    # ACA PTC by state. Prefer IRS SOI total PTC claimed (A85770/N85770),
+    # because ``aca_ptc`` computes gross PTC entitlement rather than CMS APTC
+    # outlays. Fall back to the legacy CMS APTC state distribution if the SOI
+    # state file is absent.
+    if _load_aca_ptc_state_targets(time_period) is not None:
+        targets_array, loss_matrix = _add_state_aca_ptc_targets(
+            loss_matrix,
+            targets_array,
+            sim,
+            time_period,
+        )
+    else:
+        spending_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
+        # Monthly to yearly
+        spending_by_state["spending"] = spending_by_state["spending"] * 12
+        # Adjust to match national target
+        spending_by_state["spending"] = spending_by_state["spending"] * (
+            aca_spending_target / spending_by_state["spending"].sum()
         )
 
-        # ACA PTC amounts for every household at time_period.
-        aca_value = sim.calculate(
-            "aca_ptc", map_to="household", period=time_period
-        ).values
-
-        # Add a loss-matrix entry and matching target. Prefix `state/`
-        # so `reweight()` correctly classifies this as a state-level
-        # (non-national) target via `startswith("nation/")`.
-        label = f"state/irs/aca_spending/{row['state'].lower()}"
-        loss_matrix[label] = aca_value * in_state
-        annual_target = row["spending"]
-        if any(loss_matrix[label].isna()):
-            raise ValueError(f"Missing values for {label}")
-        targets_array.append(annual_target)
+        for _, row in spending_by_state.iterrows():
+            in_state = (
+                sim.calculate("state_code", map_to="household").values == row["state"]
+            )
+            aca_value = sim.calculate(
+                "aca_ptc", map_to="household", period=time_period
+            ).values
+            label = f"state/irs/aca_spending/{row['state'].lower()}"
+            loss_matrix[label] = aca_value * in_state
+            if any(loss_matrix[label].isna()):
+                raise ValueError(f"Missing values for {label}")
+            targets_array.append(row["spending"])
 
     # Marketplace enrollment by state (targets in thousands)
     enrollment_by_state, _ = _load_aca_spending_and_enrollment_targets(time_period)
@@ -1372,6 +1654,7 @@ def _add_agi_metric_columns(
     soi_targets = pd.read_csv(CALIBRATION_FOLDER / "agi_state.csv")
 
     agi = sim.calculate("adjusted_gross_income").values
+    is_filer = sim.calculate("tax_unit_is_filer").values > 0
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(state, "person", "tax_unit", how="value_from_first_person")
 
@@ -1384,11 +1667,12 @@ def _add_agi_metric_columns(
         # loop in build_loss_matrix() (the SOI targets use half-open bands
         # starting at the lower bound).
         in_band = (agi >= lower) & (agi < upper)
+        in_scope = in_state & in_band & is_filer
 
         if r.IS_COUNT:
-            metric = (in_state & in_band & (agi > 0)).astype(float)
+            metric = in_scope.astype(float)
         else:
-            metric = np.where(in_state & in_band, agi, 0.0)
+            metric = np.where(in_scope, agi, 0.0)
 
         metric = sim.map_result(metric, "tax_unit", "household")
 

@@ -3,16 +3,16 @@ Household-level projection pathway for income tax revenue 2025-2100.
 
 
 Usage:
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--tax-assumption ASSUMPTION] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-synthetic-v1] [--support-augmentation-target-year YEAR]
-    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile donor-backed-composite-v1] [--support-augmentation-target-year YEAR] [--support-augmentation-align-to-run-year] [--support-augmentation-blueprint-base-weight-scale SCALE]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--tax-assumption ASSUMPTION] [--base-dataset PATH] [--output-dir DIR] [--save-h5] [--allow-validation-failures]
+    python run_household_projection.py [START_YEAR] [END_YEAR] [--profile PROFILE] [--target-source SOURCE] [--support-augmentation-profile PROFILE] [--support-augmentation-target-year YEAR]
     python run_household_projection.py [START_YEAR] [END_YEAR] [--greg] [--use-ss] [--use-payroll] [--use-h6-reform] [--use-tob] [--save-h5]
 
     START_YEAR: Optional starting year (default: 2025)
     END_YEAR: Optional ending year (default: 2035)
     --profile: Named calibration contract (recommended)
     --target-source: Named long-term target source package
-    --tax-assumption: Long-run federal tax assumption (`trustees-core-thresholds-v1` by default)
+    --tax-assumption: Long-run federal tax assumption (`trustees-2025-core-thresholds-v1` by default)
+    --base-dataset: Base H5 dataset path or hf:// URL (default: enhanced_cps_2024 HF artifact)
     --output-dir: Output directory for generated H5 files and metadata
     --allow-validation-failures: Record validation issues in metadata and continue instead of aborting the run
     --support-augmentation-profile: Experimental late-year support expansion profile
@@ -52,7 +52,14 @@ from ssa_data import (
     load_taxable_payroll_projections,
     set_long_term_target_source,
 )
-from calibration import build_calibration_audit, calibrate_weights
+from calibration import (
+    build_calibration_audit,
+    build_clone_donor_component_weight_concentration_audit,
+    build_clone_donor_family_weight_concentration_audit,
+    build_group_weight_concentration_audit,
+    build_target_contribution_support_audit,
+    calibrate_weights,
+)
 from calibration_artifacts import (
     update_dataset_manifest,
     write_support_augmentation_report,
@@ -75,13 +82,15 @@ from projection_utils import (
 )
 from tax_assumptions import (
     TRUSTEES_CORE_THRESHOLD_ASSUMPTION,
-    create_wage_indexed_core_thresholds_reform,
+    create_trustees_core_thresholds_reform,
     get_long_run_tax_assumption_metadata,
 )
-from prototype_synthetic_2100_support import (
-    build_role_composite_calibration_blueprint,
-    build_donor_backed_augmented_dataset,
-    build_role_composite_augmented_dataset,
+from support_augmentation import (
+    build_augmented_dataset,
+    build_targeted_donor_augmented_dataset,
+    build_targeted_role_composite_calibration_blueprint,
+    is_targeted_donor_support_augmentation_profile,
+    valid_support_augmentation_profile_names,
 )
 
 
@@ -271,14 +280,196 @@ SELECTED_DATASET = "enhanced_cps_2024"
 BASE_DATASET_PATH = DATASET_OPTIONS[SELECTED_DATASET]["path"]
 BASE_YEAR = DATASET_OPTIONS[SELECTED_DATASET]["base_year"]
 
-SUPPORTED_AUGMENTATION_PROFILES = {
-    "donor-backed-synthetic-v1",
-    "donor-backed-composite-v1",
-}
+SUPPORTED_AUGMENTATION_PROFILES = set(valid_support_augmentation_profile_names())
 SUPPORTED_TAX_ASSUMPTIONS = {
     "current-law-literal",
     TRUSTEES_CORE_THRESHOLD_ASSUMPTION["name"],
 }
+INCOME_GUARD_GROUPS = {
+    "preferential_investment_income": (
+        "long_term_capital_gains_before_response",
+        "long_term_capital_gains_on_collectibles",
+        "qualified_dividend_income",
+    ),
+    "ordinary_nonpayroll_income": (
+        "short_term_capital_gains",
+        "non_sch_d_capital_gains",
+        "non_qualified_dividend_income",
+        "taxable_interest_income",
+        "tax_exempt_interest_income",
+        "partnership_s_corp_income",
+        "partnership_se_income",
+        "estate_income",
+        "rental_income",
+        "farm_income",
+        "farm_operations_income",
+        "farm_rent_income",
+        "miscellaneous_income",
+        "salt_refund_income",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "taxable_ira_distributions",
+        "taxable_private_pension_income",
+        "taxable_sep_distributions",
+        "tax_exempt_ira_distributions",
+        "tax_exempt_private_pension_income",
+        "qualified_bdc_income",
+        "qualified_reit_and_ptp_income",
+    ),
+}
+
+
+def _constraint_audit(constraints: dict[str, tuple[np.ndarray, float]], weights):
+    audit = {}
+    for name, (values, target) in constraints.items():
+        achieved = float(np.sum(np.asarray(values, dtype=float) * weights))
+        target = float(target)
+        error = achieved - target
+        audit[name] = {
+            "target": target,
+            "achieved": achieved,
+            "error": error,
+            "pct_error": 0.0 if target == 0 else error / target * 100,
+        }
+    return audit
+
+
+def _income_guard_provenance(
+    *,
+    hard_constraints: dict[str, tuple[np.ndarray, float]],
+    audit_only_constraints: dict[str, tuple[np.ndarray, float]],
+) -> dict[str, dict[str, str]]:
+    provenance: dict[str, dict[str, str]] = {}
+    for name in hard_constraints:
+        provenance[name] = {
+            "classification": "hard",
+            "source": "policyengine_formula_on_realized_rows",
+            "scoring_contract": "not directly consumed by reform scoring",
+        }
+    for name in audit_only_constraints:
+        provenance[name] = {
+            "classification": "audit_only",
+            "source": "policyengine_formula_on_realized_rows",
+            "scoring_contract": "not hard-calibrated in donor-composite blueprint mode",
+        }
+    return provenance
+
+
+def _donor_family_ids(
+    household_ids: np.ndarray,
+    augmentation_report: dict[str, object] | None,
+) -> np.ndarray:
+    family_ids = np.asarray(
+        [f"household:{int(value)}" for value in household_ids],
+        dtype=object,
+    )
+    if not augmentation_report:
+        return family_ids
+
+    clone_reports = augmentation_report.get("clone_household_reports", [])
+    donor_lookup = {}
+    for clone_report in clone_reports:
+        clone_household_id = clone_report.get("clone_household_id")
+        if clone_household_id is None:
+            continue
+        older_donor = clone_report.get("older_donor_tax_unit_id")
+        worker_donor = clone_report.get("worker_donor_tax_unit_id")
+        donor_lookup[int(clone_household_id)] = (
+            f"donor_family:older={older_donor};worker={worker_donor}"
+        )
+
+    for idx, household_id in enumerate(household_ids):
+        donor_family_id = donor_lookup.get(int(household_id))
+        if donor_family_id is not None:
+            family_ids[idx] = donor_family_id
+    return family_ids
+
+
+def _support_augmentation_family(profile: str) -> str:
+    if is_targeted_donor_support_augmentation_profile(profile):
+        return "targeted_donor"
+    return "rule_based"
+
+
+def _support_report_clone_household_count(augmentation_report: dict) -> int:
+    if "clone_household_count" in augmentation_report:
+        return int(augmentation_report["clone_household_count"])
+    clone_count = 0
+    for rule_report in augmentation_report.get("rules", []):
+        clone_count += int(
+            rule_report.get(
+                "clone_household_count",
+                rule_report.get("synthetic_household_count", 0),
+            )
+        )
+    return clone_count
+
+
+def _support_report_successful_target_count(augmentation_report: dict) -> int | None:
+    target_reports = augmentation_report.get("target_reports")
+    if target_reports is None:
+        return None
+    return int(
+        sum(report.get("successful_clone_count", 0) > 0 for report in target_reports)
+    )
+
+
+def _support_report_summary(augmentation_report: dict) -> dict[str, object]:
+    summary = {
+        "base_household_count": augmentation_report["base_household_count"],
+        "augmented_household_count": augmentation_report["augmented_household_count"],
+        "base_person_count": augmentation_report["base_person_count"],
+        "augmented_person_count": augmentation_report["augmented_person_count"],
+        "clone_household_count": _support_report_clone_household_count(
+            augmentation_report
+        ),
+    }
+    successful_target_count = _support_report_successful_target_count(
+        augmentation_report
+    )
+    if successful_target_count is not None:
+        summary["successful_target_count"] = successful_target_count
+        summary["skipped_target_count"] = len(
+            augmentation_report.get("skipped_targets", [])
+        )
+    if "rules" in augmentation_report:
+        summary["rule_count"] = len(augmentation_report["rules"])
+    return summary
+
+
+def _support_augmentation_metadata(
+    *,
+    target_year: int,
+    report_path,
+    augmentation_report: dict,
+    include_report_file: bool,
+) -> dict[str, object]:
+    profile = SUPPORT_AUGMENTATION_PROFILE
+    assert profile is not None
+    metadata = {
+        "name": profile,
+        "family": _support_augmentation_family(profile),
+        "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
+        "target_year": int(target_year),
+        "target_year_strategy": (
+            "run_year" if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else "fixed"
+        ),
+        "report_file": report_path.name if include_report_file else None,
+        "report_summary": _support_report_summary(augmentation_report),
+    }
+    if is_targeted_donor_support_augmentation_profile(profile):
+        metadata.update(
+            {
+                "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+                "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+                "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
+                "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+                "blueprint_base_weight_scale": (
+                    SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
+                ),
+            }
+        )
+    return metadata
 
 
 PROFILE_NAME = None
@@ -288,6 +479,13 @@ if "--profile" in sys.argv:
         raise ValueError("--profile requires a profile name")
     PROFILE_NAME = sys.argv[profile_index + 1]
     del sys.argv[profile_index : profile_index + 2]
+
+if "--base-dataset" in sys.argv:
+    base_dataset_index = sys.argv.index("--base-dataset")
+    if base_dataset_index + 1 >= len(sys.argv):
+        raise ValueError("--base-dataset requires a path or hf:// URL")
+    BASE_DATASET_PATH = sys.argv[base_dataset_index + 1]
+    del sys.argv[base_dataset_index : base_dataset_index + 2]
 
 TARGET_SOURCE = None
 if "--target-source" in sys.argv:
@@ -447,7 +645,9 @@ if SUPPORT_AUGMENTATION_TARGET_YEAR is None:
 if SUPPORT_AUGMENTATION_PROFILE is not None:
     if SUPPORT_AUGMENTATION_PROFILE not in SUPPORTED_AUGMENTATION_PROFILES:
         raise ValueError(
-            f"Unsupported support augmentation profile: {SUPPORT_AUGMENTATION_PROFILE}"
+            "Unsupported support augmentation profile: "
+            f"{SUPPORT_AUGMENTATION_PROFILE}. Valid profiles: "
+            f"{sorted(SUPPORTED_AUGMENTATION_PROFILES)}"
         )
     if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
         raise ValueError(
@@ -486,6 +686,8 @@ def _compose_reforms(*reforms):
     return reforms
 
 
+LONG_RUN_TAX_ASSUMPTION_END_YEAR = max(int(END_YEAR), 2100)
+
 if TAX_ASSUMPTION == "current-law-literal":
     ACTIVE_LONG_RUN_TAX_REFORM = None
     LONG_RUN_TAX_ASSUMPTION_METADATA = {
@@ -499,13 +701,13 @@ if TAX_ASSUMPTION == "current-law-literal":
         "end_year": int(END_YEAR),
     }
 else:
-    ACTIVE_LONG_RUN_TAX_REFORM = create_wage_indexed_core_thresholds_reform(
+    ACTIVE_LONG_RUN_TAX_REFORM = create_trustees_core_thresholds_reform(
         start_year=TRUSTEES_CORE_THRESHOLD_ASSUMPTION["start_year"],
-        end_year=END_YEAR,
+        end_year=LONG_RUN_TAX_ASSUMPTION_END_YEAR,
     )
     LONG_RUN_TAX_ASSUMPTION_METADATA = get_long_run_tax_assumption_metadata(
         TAX_ASSUMPTION,
-        end_year=END_YEAR,
+        end_year=LONG_RUN_TAX_ASSUMPTION_END_YEAR,
     )
 
 BASE_DATASET = BASE_DATASET_PATH
@@ -542,10 +744,10 @@ else:
 print("=" * 70)
 print(f"HOUSEHOLD-LEVEL INCOME TAX PROJECTION: {START_YEAR}-{END_YEAR}")
 print("=" * 70)
-print(f"\nConfiguration:")
+print("\nConfiguration:")
 print(f"  Base year: {BASE_YEAR} (CPS microdata)")
 print(f"  Projection: {START_YEAR}-{END_YEAR}")
-print(f"  Calculation level: HOUSEHOLD ONLY (simplified)")
+print("  Calculation level: HOUSEHOLD ONLY (simplified)")
 print(f"  Calibration profile: {PROFILE.name}")
 print(f"  Profile description: {PROFILE.description}")
 print(f"  Target source: {TARGET_SOURCE}")
@@ -557,25 +759,26 @@ if SUPPORT_AUGMENTATION_PROFILE:
         print("  Support augmentation target year: each run year")
     else:
         print(f"  Support augmentation target year: {SUPPORT_AUGMENTATION_TARGET_YEAR}")
-    print(
-        "  Support augmentation blueprint base-weight scale: "
-        f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
-    )
+    if is_targeted_donor_support_augmentation_profile(SUPPORT_AUGMENTATION_PROFILE):
+        print(
+            "  Support augmentation blueprint base-weight scale: "
+            f"{SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}"
+        )
 if USE_SS:
-    print(f"  Including Social Security benefits constraint: Yes")
+    print("  Including Social Security benefits constraint: Yes")
 if USE_PAYROLL:
-    print(f"  Including taxable payroll constraint: Yes")
+    print("  Including taxable payroll constraint: Yes")
 if USE_H6_REFORM:
-    print(f"  Including H6 reform income impact constraint: Yes")
+    print("  Including H6 reform income impact constraint: Yes")
 if USE_TOB:
-    print(f"  Including TOB revenue constraint: Yes")
+    print("  Including TOB revenue constraint: Yes")
 elif BENCHMARK_TOB:
-    print(f"  Benchmarking TOB after calibration: Yes")
+    print("  Benchmarking TOB after calibration: Yes")
 if SAVE_H5:
     print(f"  Saving year-specific .h5 files: Yes (to {OUTPUT_DIR}/)")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 else:
-    print(f"  Saving year-specific .h5 files: No (use --save-h5 to enable)")
+    print("  Saving year-specific .h5 files: No (use --save-h5 to enable)")
 print(f"  Years to process: {END_YEAR - START_YEAR + 1}")
 est_time = (END_YEAR - START_YEAR + 1) * (3 if SAVE_H5 else 2)
 print(f"  Estimated time: ~{est_time:.0f} minutes")
@@ -589,27 +792,25 @@ def _build_support_augmentation(
     if SUPPORT_AUGMENTATION_PROFILE is None:
         return BASE_DATASET_PATH, None, None, None
 
-    if SUPPORT_AUGMENTATION_PROFILE == "donor-backed-synthetic-v1":
-        augmented_dataset, augmentation_report = build_donor_backed_augmented_dataset(
+    if is_targeted_donor_support_augmentation_profile(SUPPORT_AUGMENTATION_PROFILE):
+        augmented_dataset, augmentation_report = build_targeted_donor_augmented_dataset(
             base_dataset=BASE_DATASET_PATH,
             base_year=BASE_YEAR,
             target_year=target_year,
+            profile=SUPPORT_AUGMENTATION_PROFILE,
             top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
             donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
             max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
             clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
         )
     else:
-        augmented_dataset, augmentation_report = build_role_composite_augmented_dataset(
+        augmented_dataset, augmentation_report = build_augmented_dataset(
             base_dataset=BASE_DATASET_PATH,
             base_year=BASE_YEAR,
-            target_year=target_year,
-            top_n_targets=SUPPORT_AUGMENTATION_TOP_N_TARGETS,
-            donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
-            max_older_distance=SUPPORT_AUGMENTATION_MAX_DISTANCE,
-            max_worker_distance=SUPPORT_AUGMENTATION_MAX_DISTANCE,
-            clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+            profile=SUPPORT_AUGMENTATION_PROFILE,
         )
+        augmentation_report["target_year"] = int(target_year)
+        augmentation_report["support_augmentation_family"] = "rule_based"
 
     report_path = write_support_augmentation_report(
         OUTPUT_DIR,
@@ -620,58 +821,20 @@ def _build_support_augmentation(
             else "support_augmentation_report.json"
         ),
     )
-    year_metadata = {
-        "name": SUPPORT_AUGMENTATION_PROFILE,
-        "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
-        "target_year": int(target_year),
-        "target_year_strategy": (
-            "run_year" if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else "fixed"
-        ),
-        "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
-        "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
-        "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
-        "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
-        "blueprint_base_weight_scale": (
-            SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
-        ),
-        "report_file": report_path.name,
-        "report_summary": {
-            "base_household_count": augmentation_report["base_household_count"],
-            "augmented_household_count": augmentation_report[
-                "augmented_household_count"
-            ],
-            "base_person_count": augmentation_report["base_person_count"],
-            "augmented_person_count": augmentation_report["augmented_person_count"],
-            "clone_household_count": augmentation_report.get(
-                "clone_household_count", 0
-            ),
-            "successful_target_count": sum(
-                report["successful_clone_count"] > 0
-                for report in augmentation_report["target_reports"]
-            ),
-            "skipped_target_count": len(augmentation_report["skipped_targets"]),
-        },
-    }
-    manifest_metadata = {
-        "name": SUPPORT_AUGMENTATION_PROFILE,
-        "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
-        "target_year": (
-            int(target_year) if not SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else None
-        ),
-        "target_year_strategy": (
-            "run_year" if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else "fixed"
-        ),
-        "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
-        "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
-        "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
-        "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
-        "blueprint_base_weight_scale": (
-            SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
-        ),
-        "report_file": (
-            None if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR else report_path.name
-        ),
-    }
+    year_metadata = _support_augmentation_metadata(
+        target_year=target_year,
+        report_path=report_path,
+        augmentation_report=augmentation_report,
+        include_report_file=True,
+    )
+    manifest_metadata = _support_augmentation_metadata(
+        target_year=target_year,
+        report_path=report_path,
+        augmentation_report=augmentation_report,
+        include_report_file=not SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR,
+    )
+    if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR:
+        manifest_metadata["target_year"] = None
     return augmented_dataset, augmentation_report, year_metadata, manifest_metadata
 
 
@@ -687,10 +850,20 @@ def _print_support_augmentation_summary(augmentation_report: dict) -> None:
         f"{augmentation_report['augmented_person_count']:,}"
     )
     print(
-        "  Successful target clones: "
-        f"{sum(report['successful_clone_count'] > 0 for report in augmentation_report['target_reports'])}"
+        "  Augmented clone/synthetic households: "
+        f"{_support_report_clone_household_count(augmentation_report):,}"
     )
-    print(f"  Skipped synthetic targets: {len(augmentation_report['skipped_targets'])}")
+    successful_target_count = _support_report_successful_target_count(
+        augmentation_report
+    )
+    if successful_target_count is not None:
+        print(f"  Successful target clones: {successful_target_count}")
+        print(
+            "  Skipped synthetic targets: "
+            f"{len(augmentation_report.get('skipped_targets', []))}"
+        )
+    if "rules" in augmentation_report:
+        print(f"  Applied support rules: {len(augmentation_report['rules'])}")
 
 
 # =========================================================================
@@ -705,7 +878,7 @@ n_years = target_matrix.shape[1]
 n_ages = target_matrix.shape[0]
 
 print(f"\nLoaded SSA projections: {n_ages} ages x {n_years} years")
-print(f"\nPopulation projections:")
+print("\nPopulation projections:")
 
 display_years = [
     y
@@ -728,16 +901,13 @@ n_households = None
 household_ids_unique = None
 aggregated_age_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
 
-if SUPPORT_AUGMENTATION_PROFILE in {
-    "donor-backed-synthetic-v1",
-    "donor-backed-composite-v1",
-}:
+if SUPPORT_AUGMENTATION_PROFILE is not None:
     print("\n" + "=" * 70)
-    print("STEP 1B: BUILD DONOR-BACKED LATE-YEAR SUPPORT")
+    print("STEP 1B: BUILD LATE-YEAR SUPPORT AUGMENTATION")
     print("=" * 70)
     if SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR:
         print(
-            "  Dynamic mode: donor-backed support will be rebuilt separately for "
+            "  Dynamic mode: support augmentation will be rebuilt separately for "
             "each run year."
         )
     else:
@@ -760,18 +930,24 @@ if SUPPORT_AUGMENTATION_PROFILE in {
 if SUPPORT_AUGMENTATION_PROFILE is not None and SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR:
     MANIFEST_SUPPORT_AUGMENTATION_METADATA = {
         "name": SUPPORT_AUGMENTATION_PROFILE,
+        "family": _support_augmentation_family(SUPPORT_AUGMENTATION_PROFILE),
         "activation_start_year": SUPPORT_AUGMENTATION_START_YEAR,
         "target_year": None,
         "target_year_strategy": "run_year",
-        "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
-        "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
-        "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
-        "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
-        "blueprint_base_weight_scale": (
-            SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
-        ),
         "report_file": None,
     }
+    if is_targeted_donor_support_augmentation_profile(SUPPORT_AUGMENTATION_PROFILE):
+        MANIFEST_SUPPORT_AUGMENTATION_METADATA.update(
+            {
+                "top_n_targets": SUPPORT_AUGMENTATION_TOP_N_TARGETS,
+                "donors_per_target": SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
+                "max_distance_for_clone": SUPPORT_AUGMENTATION_MAX_DISTANCE,
+                "clone_weight_scale": SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+                "blueprint_base_weight_scale": (
+                    SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE
+                ),
+            }
+        )
 
 # =========================================================================
 # STEP 2: BUILD HOUSEHOLD AGE MATRIX
@@ -865,6 +1041,37 @@ for year_idx in range(n_years):
     household_microseries = sim.calculate("household_id", map_to="household")
     baseline_weights = household_microseries.weights.values
     household_ids_hh = household_microseries.values
+
+    income_guard_constraints = {}
+    if year >= SUPPORT_AUGMENTATION_START_YEAR:
+        for group_name, components in INCOME_GUARD_GROUPS.items():
+            group_values = np.zeros(len(baseline_weights), dtype=float)
+            included_components = []
+            for component in components:
+                if component not in sim.tax_benefit_system.variables:
+                    continue
+                component_hh = sim.calculate(component, period=year, map_to="household")
+                group_values += np.asarray(component_hh.values, dtype=float)
+                included_components.append(component)
+            if not included_components:
+                continue
+            group_target = float(np.sum(group_values * baseline_weights))
+            if abs(group_target) <= 1e-6:
+                continue
+            income_guard_constraints[f"income_guard_{group_name}"] = (
+                group_values,
+                group_target,
+            )
+
+    if year in display_years and income_guard_constraints:
+        income_guard_total = sum(
+            target for _, target in income_guard_constraints.values()
+        )
+        print(
+            f"  [DEBUG {year}] Income guard baseline: "
+            f"${income_guard_total / 1e9:.1f}B across "
+            f"{len(income_guard_constraints)} groups"
+        )
 
     if not (
         SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR
@@ -1023,13 +1230,15 @@ for year_idx in range(n_years):
     payroll_values_calibration = (
         None if payroll_values_actual is None else payroll_values_actual.copy()
     )
+    income_guard_calibration_constraints = income_guard_constraints
+    income_guard_audit_only_constraints: dict[str, tuple[np.ndarray, float]] = {}
     blueprint_summary = None
     if (
         SUPPORT_AUGMENTATION_PROFILE == "donor-backed-composite-v1"
         and current_support_augmentation_report is not None
         and year >= SUPPORT_AUGMENTATION_START_YEAR
     ):
-        calibration_blueprint = build_role_composite_calibration_blueprint(
+        calibration_blueprint = build_targeted_role_composite_calibration_blueprint(
             current_support_augmentation_report,
             year=year,
             age_bins=build_age_bins(n_ages=n_ages, bucket_size=age_bucket_size),
@@ -1042,13 +1251,11 @@ for year_idx in range(n_years):
             for idx, age_vector in calibration_blueprint["age_overrides"].items():
                 X_calibration[idx] = age_vector
             if ss_values_calibration is not None:
-                for idx, target_value in calibration_blueprint["ss_overrides"].items():
-                    ss_values_calibration[idx] = target_value
+                for idx, value in calibration_blueprint["ss_overrides"].items():
+                    ss_values_calibration[idx] = value
             if payroll_values_calibration is not None:
-                for idx, target_value in calibration_blueprint[
-                    "payroll_overrides"
-                ].items():
-                    payroll_values_calibration[idx] = target_value
+                for idx, value in calibration_blueprint["payroll_overrides"].items():
+                    payroll_values_calibration[idx] = value
             blueprint_summary = calibration_blueprint["summary"]
             if year in display_years:
                 print(
@@ -1073,6 +1280,7 @@ for year_idx in range(n_years):
         oasdi_tob_target=oasdi_tob_target if USE_TOB else None,
         hi_tob_values=hi_tob_values if USE_TOB else None,
         hi_tob_target=hi_tob_target if USE_TOB else None,
+        extra_constraints=income_guard_calibration_constraints,
         n_ages=X_current.shape[1],
         max_iters=100,
         tol=1e-6,
@@ -1102,7 +1310,97 @@ for year_idx in range(n_years):
         oasdi_tob_target=oasdi_tob_target if USE_TOB else None,
         hi_tob_values=hi_tob_values if USE_TOB else None,
         hi_tob_target=hi_tob_target if USE_TOB else None,
+        extra_constraints=income_guard_calibration_constraints,
     )
+    calibration_audit["constraint_provenance"] = {
+        "age_targets": {
+            "classification": "hard",
+            "source": TARGET_SOURCE,
+            "scoring_contract": "population calibration target",
+        },
+        "ss_total": {
+            "classification": "hard" if USE_SS else "unused",
+            "source": "policyengine_formula_on_scored_h5",
+            "scoring_contract": "same formula path used by production scoring",
+        },
+        "payroll_total": {
+            "classification": "hard" if USE_PAYROLL else "unused",
+            "source": "policyengine_formula_on_scored_h5",
+            "scoring_contract": "same formula path used by production scoring",
+        },
+        "oasdi_tob": {
+            "classification": "hard" if USE_TOB else "benchmark",
+            "source": "policyengine_formula_on_scored_h5",
+            "scoring_contract": "same formula path used by production scoring",
+        },
+        "hi_tob": {
+            "classification": "hard" if USE_TOB else "benchmark",
+            "source": "policyengine_formula_on_scored_h5",
+            "scoring_contract": "same formula path used by production scoring",
+        },
+        **_income_guard_provenance(
+            hard_constraints=income_guard_calibration_constraints,
+            audit_only_constraints=income_guard_audit_only_constraints,
+        ),
+    }
+    if income_guard_audit_only_constraints:
+        calibration_audit["audit_only_constraints"] = _constraint_audit(
+            income_guard_audit_only_constraints,
+            w_new,
+        )
+    target_support_specs = [
+        ("ss_total", ss_values_actual if USE_SS else None),
+        ("payroll_total", payroll_values_actual if USE_PAYROLL else None),
+        ("oasdi_tob", oasdi_tob_values if USE_TOB else None),
+        ("hi_tob", hi_tob_values if USE_TOB else None),
+    ]
+    for target_prefix, target_values in target_support_specs:
+        if target_values is None:
+            continue
+        calibration_audit.update(
+            build_target_contribution_support_audit(
+                weights=w_new,
+                values=target_values,
+                prefix=target_prefix,
+            )
+        )
+    if current_support_augmentation_report is not None:
+        clone_household_reports = current_support_augmentation_report.get(
+            "clone_household_reports", []
+        )
+        donor_family_audit = build_group_weight_concentration_audit(
+            weights=w_new,
+            group_ids=_donor_family_ids(
+                household_ids_hh,
+                current_support_augmentation_report,
+            ),
+            prefix="donor_family",
+        )
+        calibration_audit.update(donor_family_audit)
+        clone_donor_family_audit = build_clone_donor_family_weight_concentration_audit(
+            weights=w_new,
+            household_ids=household_ids_hh,
+            clone_household_reports=clone_household_reports,
+        )
+        calibration_audit.update(clone_donor_family_audit)
+        calibration_audit.update(
+            build_clone_donor_component_weight_concentration_audit(
+                weights=w_new,
+                household_ids=household_ids_hh,
+                clone_household_reports=clone_household_reports,
+                donor_key="older_donor_tax_unit_id",
+                prefix="clone_older_donor",
+            )
+        )
+        calibration_audit.update(
+            build_clone_donor_component_weight_concentration_audit(
+                weights=w_new,
+                household_ids=household_ids_hh,
+                clone_household_reports=clone_household_reports,
+                donor_key="worker_donor_tax_unit_id",
+                prefix="clone_worker_donor",
+            )
+        )
     if blueprint_summary is not None:
         calibration_audit["support_blueprint"] = blueprint_summary
     if BENCHMARK_TOB and oasdi_tob_values is not None and hi_tob_values is not None:

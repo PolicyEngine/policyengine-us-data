@@ -8,7 +8,7 @@ authoritative aggregate sources.
 """
 
 HARD_CODED_TOTALS = {
-    "medicare_part_b_premiums": 112e9,
+    "medicare_part_b_premium": 112e9,
     "tanf": 7_788_317_474.55,
     # Table 5A from https://www.irs.gov/statistics/soi-tax-stats-individual-information-return-form-w2-statistics
     # shows $38,316,190,000 in Box 7: Social security tips (2018)

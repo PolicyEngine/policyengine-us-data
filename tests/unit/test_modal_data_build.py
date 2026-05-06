@@ -35,6 +35,32 @@ def _load_data_build_module():
     return importlib.import_module("modal_app.data_build")
 
 
+def test_checkpoint_stats_are_per_instance():
+    data_build = _load_data_build_module()
+    first = data_build.CheckpointStats()
+    second = data_build.CheckpointStats()
+
+    first.record(
+        expected_outputs=3,
+        valid_reused_outputs=1,
+        recomputed_outputs=2,
+        invalid_outputs=2,
+    )
+
+    assert first.snapshot() == {
+        "expected_outputs": 3,
+        "valid_reused_outputs": 1,
+        "recomputed_outputs": 2,
+        "invalid_outputs": 2,
+    }
+    assert second.snapshot() == {
+        "expected_outputs": 0,
+        "valid_reused_outputs": 0,
+        "recomputed_outputs": 0,
+        "invalid_outputs": 0,
+    }
+
+
 def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch):
     data_build = _load_data_build_module()
     calls = []
@@ -142,6 +168,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
         args=None,
         env=None,
         log_file=None,
+        checkpoint_stats=None,
     ):
         calls.append(
             (
@@ -152,6 +179,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
                 args,
                 env,
                 log_file,
+                checkpoint_stats,
             )
         )
         return script_path
@@ -179,6 +207,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
             None,
             env,
             log_file,
+            None,
         ),
         (
             data_build.PUF_BUILD_SCRIPT,
@@ -188,5 +217,6 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
             None,
             env,
             log_file,
+            None,
         ),
     ]

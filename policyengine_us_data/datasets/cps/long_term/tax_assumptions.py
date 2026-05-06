@@ -3,27 +3,13 @@ from __future__ import annotations
 import math
 from typing import Any
 
-
-TRUSTEES_CORE_THRESHOLD_ASSUMPTION = {
-    "name": "trustees-core-thresholds-v1",
-    "description": (
-        "Best-public Trustees tax-side approximation: keep Social Security "
-        "benefit-tax thresholds fixed, but wage-index core ordinary federal "
-        "tax thresholds after 2034."
-    ),
-    "source": "SSA 2025 Trustees Report V.C.7",
-    "start_year": 2035,
-    "parameter_groups": [
-        "ordinary_income_brackets",
-        "standard_deduction",
-        "aged_blind_standard_deduction",
-        "capital_gains_thresholds",
-        "amt_thresholds",
-    ],
-}
+from policyengine_us.reforms.ssa.trustees_core_thresholds import (
+    TRUSTEES_CORE_THRESHOLD_ASSUMPTION,
+    create_trustees_core_thresholds_reform as create_trustees_core_thresholds_reform,
+)
 
 
-def round_amount(amount: float, rounding: dict | None) -> float:
+def _round_amount(amount: float, rounding: dict | None) -> float:
     if not rounding:
         return amount
 
@@ -46,7 +32,7 @@ def _uprating_parameter_name(parameter) -> str | None:
     return uprating
 
 
-def iter_updatable_parameters(
+def _iter_updatable_parameters(
     root,
     *,
     uprating_parameter: str | None = None,
@@ -68,7 +54,7 @@ def iter_updatable_parameters(
     return result
 
 
-def apply_wage_growth_to_parameter(
+def _apply_wage_growth_to_parameter(
     parameter,
     *,
     nawi,
@@ -84,52 +70,11 @@ def apply_wage_growth_to_parameter(
         wage_growth = float(nawi(f"{year - 1}-01-01")) / float(
             nawi(f"{year - 2}-01-01")
         )
-        updated_value = round_amount(previous_value * wage_growth, rounding)
+        updated_value = _round_amount(previous_value * wage_growth, rounding)
         parameter.update(
             period=f"year:{year}-01-01:1",
             value=updated_value,
         )
-
-
-def create_wage_indexed_core_thresholds_reform(
-    *,
-    start_year: int = 2035,
-    end_year: int = 2100,
-):
-    from policyengine_us.model_api import Reform
-
-    def modify_parameters(parameters):
-        nawi = parameters.gov.ssa.nawi
-        roots = [
-            parameters.gov.irs.income.bracket.thresholds,
-            parameters.gov.irs.deductions.standard.amount,
-            parameters.gov.irs.deductions.standard.aged_or_blind.amount,
-            parameters.gov.irs.capital_gains.thresholds,
-            parameters.gov.irs.income.amt.brackets,
-            parameters.gov.irs.income.amt.exemption.amount,
-            parameters.gov.irs.income.amt.exemption.phase_out.start,
-            parameters.gov.irs.income.amt.exemption.separate_limit,
-        ]
-
-        seen = set()
-        for root in roots:
-            for parameter in iter_updatable_parameters(root):
-                if parameter.name in seen:
-                    continue
-                seen.add(parameter.name)
-                apply_wage_growth_to_parameter(
-                    parameter,
-                    nawi=nawi,
-                    start_year=start_year,
-                    end_year=end_year,
-                )
-        return parameters
-
-    class reform(Reform):
-        def apply(self):
-            self.modify_parameters(modify_parameters)
-
-    return reform
 
 
 def create_wage_indexed_full_irs_uprating_reform(
@@ -137,19 +82,20 @@ def create_wage_indexed_full_irs_uprating_reform(
     start_year: int = 2035,
     end_year: int = 2100,
 ):
+    """Diagnostic sensitivity: wage-index every IRS parameter on the IRS CPI path."""
     from policyengine_us.model_api import Reform
 
     def modify_parameters(parameters):
         nawi = parameters.gov.ssa.nawi
         seen = set()
-        for parameter in iter_updatable_parameters(
+        for parameter in _iter_updatable_parameters(
             parameters.gov.irs,
             uprating_parameter="gov.irs.uprating",
         ):
             if parameter.name in seen:
                 continue
             seen.add(parameter.name)
-            apply_wage_growth_to_parameter(
+            _apply_wage_growth_to_parameter(
                 parameter,
                 nawi=nawi,
                 start_year=start_year,

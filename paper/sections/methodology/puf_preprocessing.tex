@@ -18,15 +18,19 @@ Total medical expenses are decomposed into specific categories using fixed ratio
 Key derived variables include:
 
 \paragraph{Qualified Business Income (QBI)}
-Calculated as the maximum of zero and the sum of:
+QBI-related inputs are simulated from source-level PUF income fields using the assumptions in \texttt{qbi\_assumptions.yaml}. The model first draws whether each source would be qualified business income, with source-specific probabilities for:
 \begin{itemize}
-    \item Schedule E income (E00900)
-    \item Partnership and S-corporation income (E26270)
-    \item Farm income (E02100)
-    \item Rental income (E27200)
+    \item Schedule C self-employment income
+    \item Partnership and S-corporation income
+    \item Farm operations income
+    \item Farm rent income
+    \item Rental income
+    \item Estate income
 \end{itemize}
 
-W2 wages from qualified business are then computed as 16\% of QBI.
+The persisted \texttt{*\_would\_be\_qualified} flags are then used consistently when constructing the QBI base for downstream imputation. W-2 wages from qualified business are simulated from positive qualified QBI by drawing source-weighted profit margins, gross receipts, employee presence, and source-weighted labor shares. UBIA is drawn for capital-intensive records using source-weighted capital-intensity probabilities and a lognormal amount scaled to positive QBI.
+
+Specified service trade or business (SSTB) status is drawn from positive qualified mapped SSTB source amounts. When a record is classified as SSTB, Schedule C self-employment income and allocable W-2/UBIA inputs are split into SSTB-specific variables. Qualified REIT/PTP income and qualified BDC income are simulated from observed dividend and pass-through exposure bases rather than assigned independently to all records.
 
 \paragraph{Filing Status}
 Mapped from MARS codes:

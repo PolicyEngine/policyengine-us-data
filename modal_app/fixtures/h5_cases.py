@@ -161,8 +161,6 @@ def _write_run_config(
     *,
     weights_path: Path,
     geography_path: Path | None = None,
-    checkpoint_key: str | None = None,
-    checkpoint_path: Path | None = None,
 ) -> Path:
     payload = {
         "git_commit": "deadbeefcafebabe",
@@ -175,8 +173,6 @@ def _write_run_config(
     }
     if geography_path is not None:
         payload["artifacts"]["geography_assignment.npz"] = _sha256(geography_path)
-    if checkpoint_key is not None and checkpoint_path is not None:
-        payload["artifacts"][checkpoint_key] = _sha256(checkpoint_path)
 
     config_path = artifact_dir / "unified_run_config.json"
     config_path.write_text(json.dumps(payload, indent=2))
@@ -216,18 +212,6 @@ def seed_case(
         package_path = _write_calibration_package(artifact_dir, n_records=n_records)
         _write_run_config(artifact_dir, weights_path=weights_path)
         calibration_inputs["calibration_package"] = str(package_path)
-    elif case_name == "checkpoint_name_mismatch":
-        geography_path = _write_saved_geography(artifact_dir, n_records=n_records)
-        checkpoint_path = artifact_dir / "calibration_weights.checkpoint.pt"
-        checkpoint_path.write_bytes(b"checkpoint")
-        _write_run_config(
-            artifact_dir,
-            weights_path=weights_path,
-            geography_path=geography_path,
-            checkpoint_key="calibration_checkpoint.pt",
-            checkpoint_path=checkpoint_path,
-        )
-        calibration_inputs["geography"] = str(geography_path)
     elif case_name == "misnamed_package":
         _write_misnamed_package(artifact_dir, n_records=n_records)
         _write_run_config(artifact_dir, weights_path=weights_path)

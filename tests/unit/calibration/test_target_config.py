@@ -206,6 +206,178 @@ class TestLoadTargetConfig:
             "domain_variable": "adjusted_gross_income,non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_national_capital_income_agi_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        variables = [
+            "long_term_capital_gains",
+            "net_capital_gains",
+            "dividend_income",
+            "qualified_dividend_income",
+            "tax_exempt_interest_income",
+            "taxable_interest_income",
+        ]
+        for variable in variables:
+            domain_variable = f"adjusted_gross_income,{variable}"
+            assert {
+                "variable": variable,
+                "geo_level": "national",
+                "domain_variable": domain_variable,
+            } in include_rules
+            assert {
+                "variable": "tax_unit_count",
+                "geo_level": "national",
+                "domain_variable": domain_variable,
+            } in include_rules
+
+    def test_training_config_includes_national_qbi_deduction_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "qualified_business_income_deduction",
+            "geo_level": "national",
+            "domain_variable": "qualified_business_income_deduction",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "qualified_business_income_deduction",
+        } in include_rules
+
+    def test_training_config_includes_national_charitable_deduction_targets(
+        self,
+    ):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "charitable_deduction",
+            "geo_level": "national",
+            "domain_variable": "charitable_deduction",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "charitable_deduction",
+        } in include_rules
+
+    def test_training_config_includes_national_miscellaneous_income_targets(
+        self,
+    ):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "miscellaneous_income",
+            "geo_level": "national",
+            "domain_variable": "miscellaneous_income",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "miscellaneous_income",
+        } in include_rules
+
+    def test_training_config_includes_medicare_part_b_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "medicare_part_b_premium",
+            "geo_level": "national",
+        } in config["include"]
+
+    def test_training_config_includes_soi_ltcg_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "long_term_capital_gains",
+            "geo_level": "national",
+        } in config["include"]
+
+    def test_training_config_excludes_national_undifferentiated_eitc_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {"variable": "eitc", "geo_level": "national"} not in include_rules
+        assert {
+            "variable": "eitc",
+            "geo_level": "national",
+            "domain_variable": "eitc_child_count",
+        } in include_rules
+
+    def test_training_config_uses_enrollment_flag_for_medicaid_count_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "medicaid_enrolled",
+        } in include_rules
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "medicaid",
+        } not in include_rules
+
     def test_training_config_includes_district_non_refundable_ctc_target(self):
         config = load_target_config(
             str(

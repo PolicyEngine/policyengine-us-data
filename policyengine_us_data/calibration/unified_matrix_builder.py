@@ -34,6 +34,8 @@ from policyengine_us_data.calibration.calibration_utils import (
     apply_op,
     get_geo_level,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +196,21 @@ def _merged_person_constraint_dtype(
     return merged_dtype
 
 
+@pipeline_node(
+    PipelineNode(
+        id="state_precomp",
+        label="Per-State Simulation Precomputation",
+        node_type="library",
+        description="Run state-specific Microsimulations used to assemble calibration matrix columns.",
+        source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+        ],
+    )
+)
 def _compute_single_state(
     dataset_path: str,
     time_period: int,
@@ -558,6 +575,23 @@ def _init_clone_worker(shared_data: dict) -> None:
     _CLONE_SHARED.update(shared_data)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="clone_assembly",
+        label="Clone Value Assembly",
+        node_type="library",
+        description="Assemble target values for clone-household columns across assigned geographies.",
+        source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        artifacts_out=["sparse calibration COO/CSR shards"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py",
+            "uv run pytest tests/integration/test_chunked_matrix_builder.py",
+        ],
+    )
+)
 def _assemble_clone_values_standalone(
     state_values: dict,
     clone_states: np.ndarray,
@@ -1269,6 +1303,21 @@ def _process_single_clone(
     return clone_idx, len(cv)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="unified_matrix_builder",
+        label="UnifiedMatrixBuilder",
+        node_type="library",
+        description="Database-backed sparse matrix builder for national and local-area calibration.",
+        source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+        ],
+    )
+)
 class UnifiedMatrixBuilder:
     """Build sparse calibration matrix for cloned CPS records.
 
@@ -2360,6 +2409,22 @@ class UnifiedMatrixBuilder:
     # Main build method
     # ---------------------------------------------------------------
 
+    @pipeline_node(
+        PipelineNode(
+            id="build_matrix",
+            label="Build Calibration Matrix",
+            node_type="library",
+            description="Build the in-memory sparse matrix for calibration targets and clone households.",
+            source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+            status="current",
+            stability="moving",
+            pathways=["calibration_package"],
+            artifacts_out=["X_sparse", "targets_df", "target_names"],
+            validation_commands=[
+                "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+            ],
+        )
+    )
     def build_matrix(
         self,
         geography,
@@ -3062,6 +3127,22 @@ class UnifiedMatrixBuilder:
 
         return targets_df, X_csr, target_names
 
+    @pipeline_node(
+        PipelineNode(
+            id="build_matrix_chunked",
+            label="Build Calibration Matrix In Chunks",
+            node_type="library",
+            description="Stream matrix construction through clone-household chunks with resumable shard caches.",
+            source_file="policyengine_us_data/calibration/unified_matrix_builder.py",
+            status="current",
+            stability="experimental",
+            pathways=["calibration_package"],
+            artifacts_out=["chunked COO shards", "X_sparse"],
+            validation_commands=[
+                "uv run pytest tests/integration/test_chunked_matrix_builder.py"
+            ],
+        )
+    )
     def build_matrix_chunked(
         self,
         geography,

@@ -1,7 +1,9 @@
 from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
+    ABSOLUTE_ERROR_SCALE_TARGETS,
     build_loss_matrix,
+    get_target_error_normalisation,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -15,9 +17,15 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS_2024_Half,
     CPS_2024,
 )
+from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
+    load_aca_ptc_state_targets,
+)
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     ACA_POST_CALIBRATION_PERSON_TARGETS,
+    adjust_aca_takeup_to_state_targets,
     extend_aca_takeup_to_match_target,
 )
 import logging
@@ -68,6 +76,77 @@ def _set_period_array(
     period_values[period] = values
 
 
+def _load_aca_enrollment_targets(period: int) -> dict[str, float] | None:
+    path = (
+        STORAGE_FOLDER
+        / "calibration_targets"
+        / f"aca_spending_and_enrollment_{period}.csv"
+    )
+    if not path.exists():
+        return None
+    targets = pd.read_csv(path)
+    return {
+        str(row.state): float(row.enrollment) for row in targets.itertuples(index=False)
+    }
+
+
+def _load_aca_spending_targets(period: int) -> dict[str, float] | None:
+    soi_targets = load_aca_ptc_state_targets(period, storage_folder=STORAGE_FOLDER)
+    if soi_targets is not None:
+        return {
+            str(row.state): float(row.TotalPTCAmount)
+            for row in soi_targets.itertuples(index=False)
+        }
+
+    path = (
+        STORAGE_FOLDER
+        / "calibration_targets"
+        / f"aca_spending_and_enrollment_{period}.csv"
+    )
+    if not path.exists():
+        return None
+    targets = pd.read_csv(path)
+    return {
+        str(row.state): float(row.spending) * 12
+        for row in targets.itertuples(index=False)
+    }
+
+
+def _normalise_state_code(value) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8")
+    return str(value)
+
+
+def _tax_unit_state_codes(
+    person_state_codes: np.ndarray,
+    person_tax_unit_idx: np.ndarray,
+    tax_unit_count: int,
+) -> np.ndarray:
+    state_codes = np.full(tax_unit_count, "", dtype=object)
+    for state_code, tax_unit_idx in zip(person_state_codes, person_tax_unit_idx):
+        if state_codes[tax_unit_idx] == "":
+            state_codes[tax_unit_idx] = _normalise_state_code(state_code)
+    return state_codes
+
+
+@pipeline_node(
+    PipelineNode(
+        id="aca_2025_override",
+        label="ACA 2025 Take-Up Override",
+        node_type="process",
+        description=(
+            "Adds synthetic 2025 ACA take-up assignments until calibrated "
+            "person-level APTC enrollment reaches the target."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["extended_cps_2024"],
+        artifacts_out=["aca_2025_takeup"],
+        pydoc=True,
+    )
+)
 def create_aca_2025_takeup_override(
     base_takeup: np.ndarray,
     person_enrolled_if_takeup: np.ndarray,
@@ -75,8 +154,13 @@ def create_aca_2025_takeup_override(
     person_tax_unit_ids: np.ndarray,
     tax_unit_ids: np.ndarray,
     target_people: float = ACA_POST_CALIBRATION_PERSON_TARGETS[2025],
+    person_state_codes: np.ndarray | None = None,
+    target_people_by_state: dict[str, float] | None = None,
+    tax_unit_aca_ptc: np.ndarray | None = None,
+    tax_unit_weights: np.ndarray | None = None,
+    target_spending_by_state: dict[str, float] | None = None,
 ) -> np.ndarray:
-    """Add 2025 ACA takers until weighted APTC enrollment hits target."""
+    """Set 2025 ACA take-up to match APTC enrollment targets."""
     tax_unit_id_to_idx = {
         int(tax_unit_id): idx for idx, tax_unit_id in enumerate(tax_unit_ids)
     }
@@ -92,6 +176,35 @@ def create_aca_2025_takeup_override(
     )
     draws = seeded_rng("takes_up_aca_if_eligible").random(len(tax_unit_ids))
 
+    if target_people_by_state is not None:
+        if person_state_codes is None:
+            raise ValueError(
+                "person_state_codes are required for state-level ACA targets"
+            )
+        assigned_spending_weights = None
+        if target_spending_by_state is not None:
+            if tax_unit_aca_ptc is None or tax_unit_weights is None:
+                raise ValueError(
+                    "tax_unit_aca_ptc and tax_unit_weights are required for "
+                    "state-level ACA spending targets"
+                )
+            assigned_spending_weights = np.asarray(
+                tax_unit_aca_ptc, dtype=np.float64
+            ) * np.asarray(tax_unit_weights, dtype=np.float64)
+        return adjust_aca_takeup_to_state_targets(
+            base_takeup=np.asarray(base_takeup, dtype=bool),
+            entity_draws=draws,
+            enrolled_person_weights=enrolled_person_weights,
+            entity_state_codes=_tax_unit_state_codes(
+                person_state_codes=person_state_codes,
+                person_tax_unit_idx=person_tax_unit_idx,
+                tax_unit_count=len(tax_unit_ids),
+            ),
+            target_people_by_state=target_people_by_state,
+            assigned_spending_weights=assigned_spending_weights,
+            target_spending_by_state=target_spending_by_state,
+        )
+
     return extend_aca_takeup_to_match_target(
         base_takeup=np.asarray(base_takeup, dtype=bool),
         entity_draws=draws,
@@ -100,6 +213,23 @@ def create_aca_2025_takeup_override(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="reweight",
+        label="Enhanced CPS Reweighting",
+        node_type="process",
+        description=(
+            "Fits enhanced CPS weights against calibration targets with the "
+            "hard-concrete loss machinery."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["loss_matrix", "calibration_targets"],
+        artifacts_out=["enhanced_cps_weights"],
+        pydoc=True,
+    )
+)
 def reweight(
     original_weights,
     loss_matrix,
@@ -113,6 +243,10 @@ def reweight(
 ):
     target_names = np.array(loss_matrix.columns)
     is_national = loss_matrix.columns.str.startswith("nation/")
+    numerator_shift_np, error_denominator_np = get_target_error_normalisation(
+        target_names,
+        targets_array,
+    )
     loss_matrix = torch.tensor(loss_matrix.values, dtype=torch.float32)
     nation_normalisation_factor = is_national * (1 / is_national.sum())
     state_normalisation_factor = ~is_national * (1 / (~is_national).sum())
@@ -121,6 +255,8 @@ def reweight(
     )
     normalisation_factor = torch.tensor(normalisation_factor, dtype=torch.float32)
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
+    numerator_shift = torch.tensor(numerator_shift_np, dtype=torch.float32)
+    error_denominator = torch.tensor(error_denominator_np, dtype=torch.float32)
 
     inv_mean_normalisation = 1 / np.mean(normalisation_factor.numpy())
 
@@ -132,7 +268,9 @@ def reweight(
         estimate = weights @ loss_matrix
         if torch.isnan(estimate).any():
             raise ValueError("Estimate contains NaNs")
-        rel_error = (((estimate - targets_array) + 1) / (targets_array + 1)) ** 2
+        rel_error = (
+            (estimate - targets_array + numerator_shift) / error_denominator
+        ) ** 2
         rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
@@ -176,7 +314,10 @@ def reweight(
             )
             df["epoch"] = i
             df["error"] = df.estimate - df.target
-            df["rel_error"] = df.error / df.target
+            df["error_denominator"] = error_denominator.detach().numpy()
+            df["rel_error"] = (
+                df.error + numerator_shift.detach().numpy()
+            ) / df.error_denominator
             df["abs_error"] = df.error.abs()
             df["rel_abs_error"] = df.rel_error.abs()
             df["loss"] = df.rel_abs_error**2
@@ -203,6 +344,7 @@ def reweight(
         loss_matrix,
         targets_array,
         "L0 Sparse Solution",
+        target_names=target_names,
     )
 
     return final_weights_sparse
@@ -248,7 +390,12 @@ class EnhancedCPS(Dataset):
         # Run the optimization procedure to get (close to) minimum loss weights
         for year in range(self.start_year, self.end_year + 1):
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
-            zero_mask = np.isclose(targets_array, 0.0, atol=0.1)
+            scaled_zero_target_mask = loss_matrix.columns.isin(
+                ABSOLUTE_ERROR_SCALE_TARGETS.keys()
+            )
+            zero_mask = np.isclose(targets_array, 0.0, atol=0.1) & (
+                ~scaled_zero_target_mask
+            )
             bad_mask = loss_matrix.columns.isin(bad_targets)
             keep_mask_bool = ~(zero_mask | bad_mask)
             keep_idx = np.where(keep_mask_bool)[0]
@@ -342,6 +489,30 @@ class EnhancedCPS(Dataset):
                         base_year,
                     ),
                     tax_unit_ids=_get_period_array(data["tax_unit_id"], base_year),
+                    person_state_codes=np.asarray(
+                        sim.calculate(
+                            "state_code",
+                            map_to="person",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    target_people_by_state=_load_aca_enrollment_targets(2025),
+                    tax_unit_aca_ptc=np.asarray(
+                        sim.calculate(
+                            "aca_ptc",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    tax_unit_weights=np.asarray(
+                        sim.calculate(
+                            "tax_unit_weight",
+                            period=2025,
+                            use_weights=False,
+                        )
+                    ),
+                    target_spending_by_state=_load_aca_spending_targets(2025),
                 ),
             )
 

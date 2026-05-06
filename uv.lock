@@ -2095,7 +2095,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-core"
-version = "3.23.6"
+version = "3.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dpath" },
@@ -2115,30 +2115,31 @@ dependencies = [
     { name = "standard-imghdr" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/de/5bc5b02626703ea7d288c84c474ec51e823aa726d55ebabafe7c85e7285f/policyengine_core-3.23.6.tar.gz", hash = "sha256:81bb4057f5d6380f2d7f1af2fe4932bd3bd37fdfda7b841f7ee38b30aa5cc8e6", size = 163499, upload-time = "2026-01-25T14:04:43.233Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4e/69/adb6407c97de5260a938344f9eafa9979bf8f97aec8c628538d906ecdec2/policyengine_core-3.26.0.tar.gz", hash = "sha256:a571026ef418653ec18f087463cf37e9be730e90ad4376cb10997f0ddf9f8eda", size = 468190, upload-time = "2026-05-04T19:26:27.707Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/7a/b47b239fb0a85a36b36b47e7665db981800fcac3384aeec6dadf92a9e548/policyengine_core-3.23.6-py3-none-any.whl", hash = "sha256:f0834107335de6f2452d39e53db7a72a57088ed26d3703a4c4eaded55a4e7bce", size = 225309, upload-time = "2026-01-25T14:04:41.844Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/f3/0e98b30d4eb7b309c3f1f1d8c2354595f78319ce2442eda069f02a47f4d1/policyengine_core-3.26.0-py3-none-any.whl", hash = "sha256:d63a4622233b61c4c5fc64d4f65030d65b2564ac63ac87b17d545d63cdf17194", size = 232135, upload-time = "2026-05-04T19:26:25.693Z" },
 ]
 
 [[package]]
 name = "policyengine-us"
-version = "1.637.0"
+version = "1.686.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
     { name = "pandas" },
     { name = "policyengine-core" },
+    { name = "spm-calculator" },
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/3f/d72af00833f1e9dffed558ee6c5e3e74561ea582badb241fdc9b524af49d/policyengine_us-1.637.0.tar.gz", hash = "sha256:d1dbd2aba6dfd5fb1083f4deb2c75ae3bf10ba6933330cfcde137e6abb76714a", size = 8962293, upload-time = "2026-04-17T01:46:12.824Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/06/d0a23255386fbef24aecc9e583a86dcb797ea791d526b5a4ef90d12a12af/policyengine_us-1.686.1.tar.gz", hash = "sha256:476e4f10c00c2deb0ba250e92ac75d845ec941afd576be599a38efe281216b54", size = 9459480, upload-time = "2026-05-05T16:20:50.665Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/19/358ef7d32f0dbf701b1a5d91b352ad939984eca4d81908b534009b020989/policyengine_us-1.637.0-py3-none-any.whl", hash = "sha256:292f8c3e8c2c4b29336ef2fe045f8d3f333fdd130303e7f1df3a11bf333be24f", size = 8963845, upload-time = "2026-04-17T01:46:09.269Z" },
+    { url = "https://files.pythonhosted.org/packages/d4/51/2ac9ac4685740e45a14db451531de151d20283bc344776a42abf54223ca8/policyengine_us-1.686.1-py3-none-any.whl", hash = "sha256:f947c284357545033ab98d9cdef215603aefdd85cfb80ca9f6c05afd5663e935", size = 9939597, upload-time = "2026-05-05T16:20:47.615Z" },
 ]
 
 [[package]]
 name = "policyengine-us-data"
-version = "1.88.0"
+version = "1.101.1"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },
@@ -2184,6 +2185,7 @@ dev = [
     { name = "mystmd" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml" },
     { name = "quantile-forest" },
     { name = "ruff" },
     { name = "tabulate" },
@@ -2201,8 +2203,8 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
-    { name = "policyengine-core", specifier = ">=3.23.6" },
-    { name = "policyengine-us", specifier = ">=1.637.0" },
+    { name = "policyengine-core", specifier = ">=3.26.0,<3.27" },
+    { name = "policyengine-us", specifier = ">=1.683.0" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },
@@ -2231,6 +2233,7 @@ dev = [
     { name = "mystmd", specifier = ">=1.7.0" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "quantile-forest" },
     { name = "ruff", specifier = ">=0.9.0" },
     { name = "tabulate" },

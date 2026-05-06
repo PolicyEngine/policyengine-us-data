@@ -4,7 +4,18 @@ from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
 
+import pytest
+
 _DATA_UPLOAD_MODULE = None
+_RUN_CONTEXT_ENV_KEYS = (
+    "US_DATA_RUN_ID",
+    "US_DATA_MODAL_APP_NAME",
+    "MODAL_APP_NAME",
+    "US_DATA_MODAL_ENVIRONMENT",
+    "MODAL_ENVIRONMENT",
+    "US_DATA_HF_STAGING_PREFIX",
+    "US_DATA_GITHUB_RUN_URL",
+)
 
 
 def _install_fake_google_modules():
@@ -51,6 +62,11 @@ def _load_data_upload_module():
         )
 
     return _DATA_UPLOAD_MODULE
+
+
+def _track_run_context_env(monkeypatch):
+    for key in _RUN_CONTEXT_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
 
 
 def _install_fake_hf(monkeypatch, tmp_path):
@@ -123,7 +139,8 @@ def test_upload_to_staging_hf_accepts_run_id_kwarg(monkeypatch, tmp_path):
     )
 
     assert n == 1
-    assert len(captured_ops) == 1
+    assert len(captured_ops) == 2
+    assert captured_ops[0].path_in_repo == ("staging/abc123/_run_context.json")
 
 
 def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path):
@@ -133,6 +150,7 @@ def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path
     data_upload.upload_to_staging_hf(files, version="1.73.0", run_id="abc123")
 
     assert [op.path_in_repo for op in captured_ops] == [
+        "staging/abc123/_run_context.json",
         "staging/abc123/states/AL.h5",
         "staging/abc123/states/CA.h5",
     ]
@@ -147,6 +165,19 @@ def test_upload_to_staging_hf_without_run_id_uses_bare_staging_prefix(
     data_upload.upload_to_staging_hf(files, version="1.73.0")
 
     assert [op.path_in_repo for op in captured_ops] == ["staging/states/AL.h5"]
+
+
+def test_upload_to_staging_hf_uses_run_id_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("US_DATA_RUN_ID", "run-123")
+    data_upload, captured_ops = _install_fake_hf(monkeypatch, tmp_path)
+    files = _make_files(tmp_path, ["states/AL.h5"])
+
+    data_upload.upload_to_staging_hf(files, version="1.73.0")
+
+    assert [op.path_in_repo for op in captured_ops] == [
+        "staging/run-123/_run_context.json",
+        "staging/run-123/states/AL.h5",
+    ]
 
 
 def test_promote_staging_to_production_hf_uses_run_scoped_source_only(monkeypatch):
@@ -206,6 +237,31 @@ def test_cleanup_staging_hf_deletes_run_scoped_staging_paths(monkeypatch):
     ]
 
 
+def test_cleanup_staging_hf_skips_missing_staged_paths(monkeypatch):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(list_repo_files=lambda **kwargs: [])
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+    monkeypatch.setattr(
+        data_upload, "CommitOperationDelete", _FakeCommitOperationDelete
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "hf_create_commit_with_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("cleanup should not create an empty commit")
+        ),
+    )
+
+    deleted = data_upload.cleanup_staging_hf(
+        ["states/AL.h5"],
+        version="1.73.0",
+        run_id="run-123",
+    )
+
+    assert deleted == 0
+
+
 def test_upload_from_hf_staging_to_gcs_uses_run_scoped_hf_source_only(
     monkeypatch,
 ):
@@ -251,3 +307,200 @@ def test_upload_from_hf_staging_to_gcs_uses_run_scoped_hf_source_only(
     assert blob.uploaded_from == "/tmp/AL.h5"
     assert blob.metadata == {"version": "1.73.0"}
     assert blob.patch_called is True
+
+
+def test_promote_staging_to_production_hf_allows_noop_for_release_retry(
+    monkeypatch,
+):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(repo_info=lambda **kwargs: SimpleNamespace(sha="same"))
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+    monkeypatch.setattr(data_upload, "CommitOperationCopy", _FakeCommitOperationCopy)
+    monkeypatch.setattr(
+        data_upload,
+        "hf_create_commit_with_retry",
+        lambda **kwargs: SimpleNamespace(oid="same"),
+    )
+
+    promoted = data_upload.promote_staging_to_production_hf(
+        ["states/AL.h5"],
+        version="1.73.0",
+        run_id="run-123",
+        allow_noop=True,
+    )
+
+    assert promoted == 1
+
+
+def test_promote_full_release_fails_before_writes_when_staging_missing(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    files = _make_files(tmp_path, ["states/AL.h5"])
+
+    monkeypatch.setattr(
+        data_upload,
+        "list_missing_staged_artifacts",
+        lambda *args, **kwargs: ["staging/run-123/states/AL.h5"],
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "get_matching_finalized_release_manifest",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "promote_staging_to_production_hf",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("promotion should not run when staging is incomplete")
+        ),
+    )
+
+    with pytest.raises(FileNotFoundError, match="Missing staged release artifacts"):
+        data_upload.promote_full_release_from_staging(
+            rel_paths=["states/AL.h5"],
+            version="1.73.0",
+            run_id="run-123",
+            files_with_paths=files,
+        )
+
+
+def test_promote_full_release_orders_full_release_operations(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    rel_paths = ["cps_2024.h5", "states/AL.h5", "national/US.h5"]
+    files = _make_files(tmp_path, rel_paths)
+    calls = []
+    _track_run_context_env(monkeypatch)
+
+    monkeypatch.setattr(
+        data_upload,
+        "list_missing_staged_artifacts",
+        lambda *args, **kwargs: calls.append("validate_staging") or [],
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "get_matching_finalized_release_manifest",
+        lambda *args, **kwargs: calls.append("check_finalized") or None,
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "preflight_release_manifest_publish",
+        lambda *args, **kwargs: calls.append("preflight_manifest") or (True, []),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "promote_staging_to_production_hf",
+        lambda paths, **kwargs: calls.append("promote_hf") or len(paths),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_from_hf_staging_to_gcs",
+        lambda paths, **kwargs: calls.append("upload_gcs") or len(paths),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "publish_release_manifest_to_hf",
+        lambda files_with_paths, **kwargs: (
+            calls.append("release_manifest")
+            or {
+                "artifacts": {
+                    Path(repo_path).with_suffix("").as_posix(): {"path": repo_path}
+                    for _, repo_path in files_with_paths
+                }
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_final_version_manifest",
+        lambda **kwargs: calls.append(("version_manifest", kwargs.get("run_id"))),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "cleanup_staging_hf",
+        lambda paths, **kwargs: calls.append("cleanup_staging") or len(paths),
+    )
+
+    result = data_upload.promote_full_release_from_staging(
+        rel_paths=rel_paths,
+        version="1.73.0",
+        run_id="run-123",
+        files_with_paths=files,
+        extra_cleanup_paths=["_run_context.json"],
+        run_context={"github_run_id": "12345"},
+    )
+
+    assert calls == [
+        "check_finalized",
+        "validate_staging",
+        "preflight_manifest",
+        "promote_hf",
+        "upload_gcs",
+        "release_manifest",
+        ("version_manifest", "run-123"),
+        "cleanup_staging",
+    ]
+    assert data_upload.os.environ["US_DATA_RUN_ID"] == "run-123"
+    assert result["artifact_count"] == 3
+    assert result["hf_promoted"] == 3
+    assert result["gcs_uploaded"] == 3
+    assert result["release_manifest_artifacts"] == 3
+
+
+def test_promote_full_release_can_finish_registry_after_finalized_release(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    files = _make_files(tmp_path, ["states/AL.h5"])
+    calls = []
+    _track_run_context_env(monkeypatch)
+
+    monkeypatch.setattr(
+        data_upload,
+        "get_matching_finalized_release_manifest",
+        lambda *args, **kwargs: {"artifacts": {"states/AL": {"path": "states/AL.h5"}}},
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "list_missing_staged_artifacts",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("already-finalized retries should not require staging")
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_final_version_manifest",
+        lambda **kwargs: calls.append(
+            (
+                "version_manifest",
+                kwargs["released_paths"],
+                kwargs.get("run_id"),
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "cleanup_staging_hf",
+        lambda paths, **kwargs: calls.append(("cleanup", list(paths))) or 0,
+    )
+
+    result = data_upload.promote_full_release_from_staging(
+        rel_paths=["states/AL.h5"],
+        version="1.73.0",
+        run_id="run-123",
+        files_with_paths=files,
+    )
+
+    assert result["already_finalized"] is True
+    assert result["hf_promoted"] == 0
+    assert result["gcs_uploaded"] == 0
+    assert calls == [
+        ("version_manifest", ["states/AL.h5"], "run-123"),
+        ("cleanup", ["states/AL.h5"]),
+    ]

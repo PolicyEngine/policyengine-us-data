@@ -31,7 +31,7 @@ not the latter.
 
 ## Current contract decision
 
-As of `2026-04-02`, the branch adopts the `trustees-core-thresholds-v1`
+As of `2026-04-02`, the branch adopts the `trustees-2025-core-thresholds-v1`
 tax-side assumption for long-run TOB work and re-enables TOB as a hard target
 in the `ss-payroll-tob` profiles.
 

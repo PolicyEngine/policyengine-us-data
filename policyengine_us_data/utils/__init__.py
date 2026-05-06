@@ -9,8 +9,10 @@ _LAZY_MODULES = (
 )
 
 __all__ = [
+    "ABSOLUTE_ERROR_SCALE_TARGETS",
     "HardConcrete",
     "build_loss_matrix",
+    "get_target_error_normalisation",
     "print_reweighting_diagnostics",
     "set_seeds",
 ]

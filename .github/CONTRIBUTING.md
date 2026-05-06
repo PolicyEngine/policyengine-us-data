@@ -5,14 +5,15 @@ See the [shared PolicyEngine contribution guide](https://github.com/PolicyEngine
 ## Commands
 
 ```bash
-make install                 # install deps (uv)
-make format                  # format (required)
-make test-unit               # unit tests (synthetic / mocked, seconds)
-make test-integration        # integration tests (need built H5 datasets)
-make test                    # both
-make data                    # full dataset build (long)
-make push-pr-branch          # push to upstream with correct tracking (use before opening PRs)
+make install                                      # install deps (uv)
+make format                                       # format (required)
+make test-unit                                    # unit tests (synthetic / mocked, seconds)
+make test-integration                             # integration tests (need built H5 datasets)
+make test                                         # both
+make data                                         # full dataset build (long)
+make push-pr-branch                               # push to upstream with correct tracking (use before opening PRs)
 uv run pytest tests/unit/datasets/ -v
+uv run --no-sync --with "mystmd>=1.7.0" make documentation
 ```
 
 Python 3.12–3.14. Default branch: `main`.
@@ -43,7 +44,14 @@ If your change is a non-bugfix update to a cloud-hosted dataset (CPS, enhanced C
 make push-pr-branch
 ```
 
-pushes the current branch to `upstream` with the correct tracking so `gh pr create` just works.
+pushes the current branch to `upstream` with the correct tracking so `gh pr create` just works. Then create and verify the PR explicitly:
+
+```bash
+gh pr create --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main
+gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository
+```
+
+The PR is valid only if the head repository is `PolicyEngine/policyengine-us-data`. If you cannot push to that repository, ask for access instead of opening a fork PR.
 
 ## Repo-specific anti-patterns
 
@@ -55,9 +63,10 @@ pushes the current branch to `upstream` with the correct tracking so `gh pr crea
 
 ## CI workflows
 
-Five workflow files in `.github/workflows/`:
+Six workflow files in `.github/workflows/`:
 
-- `pr.yaml` — fork check, lint, uv.lock freshness, towncrier fragment check, unit tests, smoke test, docs build. Integration tests trigger when files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/` change. ~2–3 min for the unit path.
+- `pr.yaml` — fork check, lint, uv.lock freshness, towncrier fragment check, unit tests, smoke test, independent docs build, and quality guards. Integration tests trigger when files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/` change. ~2–3 min for the unit path.
 - `push.yaml` — on push to main: either version-bump + PyPI publish (on `Update package version` commits), or a full Modal data build with integration tests (on everything else).
 - `pipeline.yaml` — dispatch only, spawns the H5 generation pipeline on Modal with configurable GPU/epochs/workers.
-- `local_area_publish.yaml` / `local_area_promote.yaml` — manual dispatch to build/stage and then promote local-area H5 files.
+- `long_run_projection.yaml` — dispatch only, builds long-run CPS projection H5 files for explicit sampled years and can optionally upload them to a run-scoped Hugging Face staging prefix.
+- `local_area_publish.yaml` / `local_area_promote.yaml` — manual dispatch to build/stage local-area H5 files and promote a run-scoped US data release.

@@ -2,7 +2,15 @@ import h5py
 import numpy as np
 import pytest
 
-from policyengine_us_data.datasets.puf.puf import PUF
+from policyengine_us_data.datasets.puf.puf import (
+    PUF,
+    QBI_SIMULATION_VERSION,
+    QBI_SIMULATION_VERSION_ATTR,
+)
+
+
+def _mark_current_qbi_simulation(file_handle):
+    file_handle.attrs[QBI_SIMULATION_VERSION_ATTR] = QBI_SIMULATION_VERSION
 
 
 @pytest.mark.skip(reason="This test requires private data.")
@@ -35,6 +43,7 @@ def test_puf_load_dataset_backfills_sstb_split_inputs(tmp_path):
             "unadjusted_basis_qualified_property", data=np.array([5.0, 6.0])
         )
         file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+        _mark_current_qbi_simulation(file_handle)
 
     dataset = DummyPUF()
     arrays = dataset.load_dataset()
@@ -65,6 +74,7 @@ def test_puf_load_key_backfills_sstb_split_inputs(tmp_path):
             "self_employment_income", data=np.array([100.0, 200.0])
         )
         file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+        _mark_current_qbi_simulation(file_handle)
 
     dataset = DummyPUF()
 
@@ -91,6 +101,7 @@ def test_puf_load_key_repairs_partially_migrated_sstb_split_inputs(tmp_path):
             "sstb_self_employment_income", data=np.array([100.0, 0.0])
         )
         file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+        _mark_current_qbi_simulation(file_handle)
 
     dataset = DummyPUF()
 
@@ -130,6 +141,7 @@ def test_puf_load_read_only_backfilled_file_does_not_reopen_for_writes(tmp_path)
             data=np.array([5.0, 0.0]),
         )
         file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+        _mark_current_qbi_simulation(file_handle)
 
     DummyPUF.file_path.chmod(0o444)
     dataset = DummyPUF()
@@ -162,6 +174,7 @@ def test_puf_load_read_only_partially_migrated_file_uses_overrides(tmp_path):
             "sstb_self_employment_income", data=np.array([100.0, 0.0])
         )
         file_handle.create_dataset("business_is_sstb", data=np.array([1, 0]))
+        _mark_current_qbi_simulation(file_handle)
 
     DummyPUF.file_path.chmod(0o444)
     dataset = DummyPUF()

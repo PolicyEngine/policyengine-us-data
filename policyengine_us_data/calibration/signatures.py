@@ -107,15 +107,22 @@ def build_checkpoint_signature(
     beta: float,
     lambda_l2: float,
     learning_rate: float,
+    target_groups: np.ndarray | None = None,
 ) -> dict:
     """Build a compact signature to validate calibration checkpoint resume."""
     targets_arr = np.asarray(targets, dtype=np.float64)
+    target_groups_arr = (
+        np.array([], dtype=np.int64)
+        if target_groups is None
+        else np.asarray(target_groups, dtype=np.int64)
+    )
     return {
         "n_features": int(X_sparse.shape[1]),
         "n_targets": int(len(targets_arr)),
         "x_sparse_sha256": hash_sparse_matrix(X_sparse),
         "target_names_sha256": hash_string_list(target_names),
         "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
+        "target_groups_sha256": hash_numpy_array(target_groups_arr),
         "lambda_l0": float(lambda_l0),
         "beta": float(beta),
         "lambda_l2": float(lambda_l2),

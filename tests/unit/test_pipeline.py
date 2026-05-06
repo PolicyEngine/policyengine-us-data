@@ -1,20 +1,22 @@
 """Tests for pipeline orchestrator metadata and helpers."""
 
 import json
-import time
+import sys
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 modal = pytest.importorskip("modal")
 
-from modal_app.pipeline import (
-    RunMetadata,
-    _step_completed,
-    _record_step,
-    generate_run_id,
-    write_run_meta,
+from modal_app.pipeline import (  # noqa: E402
+    _build_diagnostics_upload_script,
+    _run_required_promotion_subprocess,
+)
+from modal_app.step_manifests.state import RunMetadata  # noqa: E402
+from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
+    write_run_meta,
 )
 
 
@@ -38,7 +40,6 @@ class TestRunMetadata:
         assert d["sha"] == "abc12345deadbeef"
         assert d["version"] == "1.72.3"
         assert d["status"] == "running"
-        assert d["step_timings"] == {}
         assert d["error"] is None
 
     def test_from_dict(self):
@@ -49,19 +50,45 @@ class TestRunMetadata:
             "version": "1.72.3",
             "start_time": "2026-03-19T12:00:00Z",
             "status": "completed",
-            "step_timings": {
-                "build_datasets": {
-                    "status": "completed",
-                    "duration_s": 100.0,
-                }
-            },
             "error": None,
         }
         meta = RunMetadata.from_dict(data)
 
         assert meta.run_id == ("1.72.3_abc12345_20260319_120000")
         assert meta.status == "completed"
-        assert meta.step_timings["build_datasets"]["status"] == "completed"
+
+    def test_from_dict_maps_legacy_fingerprint_to_regional_scope(self):
+        meta = RunMetadata.from_dict(
+            {
+                "run_id": "test",
+                "branch": "main",
+                "sha": "abc12345deadbeef",
+                "version": "1.72.3",
+                "start_time": "2026-03-19T12:00:00Z",
+                "status": "running",
+                "fingerprint": "legacy-fingerprint",
+            }
+        )
+
+        assert meta.fingerprint == "legacy-fingerprint"
+        assert meta.regional_fingerprint == "legacy-fingerprint"
+
+    def test_from_dict_keeps_explicit_regional_fingerprint_when_both_present(self):
+        meta = RunMetadata.from_dict(
+            {
+                "run_id": "test",
+                "branch": "main",
+                "sha": "abc12345deadbeef",
+                "version": "1.72.3",
+                "start_time": "2026-03-19T12:00:00Z",
+                "status": "running",
+                "fingerprint": "legacy-fingerprint",
+                "regional_fingerprint": "regional-fingerprint",
+            }
+        )
+
+        assert meta.fingerprint == "legacy-fingerprint"
+        assert meta.regional_fingerprint == "regional-fingerprint"
 
     def test_roundtrip(self):
         meta = RunMetadata(
@@ -79,7 +106,7 @@ class TestRunMetadata:
         assert roundtripped.status == meta.status
         assert roundtripped.error == meta.error
 
-    def test_step_timings_default_empty(self):
+    def test_to_dict_keeps_legacy_fingerprint_alias_in_sync(self):
         meta = RunMetadata(
             run_id="test",
             branch="main",
@@ -87,43 +114,15 @@ class TestRunMetadata:
             version="1.0.0",
             start_time="now",
             status="running",
+            regional_fingerprint="regional-fp",
         )
-        assert meta.step_timings == {}
 
+        payload = meta.to_dict()
 
-# -- generate_run_id tests -------------------------------------
+        assert payload["fingerprint"] == "regional-fp"
+        assert payload["regional_fingerprint"] == "regional-fp"
 
-
-class TestGenerateRunId:
-    def test_format(self):
-        run_id = generate_run_id("1.72.3", "abc12345deadbeef")
-
-        parts = run_id.split("_")
-        assert parts[0] == "1.72.3"
-        assert parts[1] == "abc12345"
-        assert len(parts) == 4  # version_sha_date_time
-
-    def test_sha_truncated_to_8(self):
-        run_id = generate_run_id("1.0.0", "abcdef1234567890")
-        sha_part = run_id.split("_")[1]
-        assert sha_part == "abcdef12"
-        assert len(sha_part) == 8
-
-    def test_unique_ids(self):
-        id1 = generate_run_id("1.0.0", "abc123")
-        time.sleep(0.01)
-        id2 = generate_run_id("1.0.0", "abc123")
-        # Timestamps should differ (or at least
-        # the function doesn't reuse)
-        assert isinstance(id1, str)
-        assert isinstance(id2, str)
-
-
-# -- _step_completed tests ------------------------------------
-
-
-class TestStepCompleted:
-    def test_completed_step(self):
+    def test_to_dict_preserves_distinct_explicit_regional_fingerprint(self):
         meta = RunMetadata(
             run_id="test",
             branch="main",
@@ -131,90 +130,14 @@ class TestStepCompleted:
             version="1.0.0",
             start_time="now",
             status="running",
-            step_timings={
-                "build_datasets": {
-                    "status": "completed",
-                    "duration_s": 50.0,
-                }
-            },
+            fingerprint="legacy-fp",
+            regional_fingerprint="regional-fp",
         )
-        assert _step_completed(meta, "build_datasets")
 
-    def test_incomplete_step(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-            step_timings={
-                "build_datasets": {
-                    "status": "failed",
-                    "duration_s": 10.0,
-                }
-            },
-        )
-        assert not _step_completed(meta, "build_datasets")
+        payload = meta.to_dict()
 
-    def test_missing_step(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        assert not _step_completed(meta, "build_datasets")
-
-
-# -- _record_step tests ----------------------------------------
-
-
-class TestRecordStep:
-    def test_records_timing(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        mock_vol = MagicMock()
-        start = time.time() - 5.0
-
-        with patch("modal_app.pipeline.write_run_meta"):
-            _record_step(meta, "build_datasets", start, mock_vol)
-
-        timing = meta.step_timings["build_datasets"]
-        assert timing["status"] == "completed"
-        assert timing["duration_s"] >= 5.0
-        assert "start" in timing
-        assert "end" in timing
-
-    def test_records_custom_status(self):
-        meta = RunMetadata(
-            run_id="test",
-            branch="main",
-            sha="abc",
-            version="1.0.0",
-            start_time="now",
-            status="running",
-        )
-        mock_vol = MagicMock()
-
-        with patch("modal_app.pipeline.write_run_meta"):
-            _record_step(
-                meta,
-                "build_datasets",
-                time.time(),
-                mock_vol,
-                status="failed",
-            )
-
-        assert meta.step_timings["build_datasets"]["status"] == "failed"
+        assert payload["fingerprint"] == "legacy-fp"
+        assert payload["regional_fingerprint"] == "regional-fp"
 
 
 # -- write/read_run_meta tests --------------------------------
@@ -235,27 +158,96 @@ class TestRunMetaIO:
         runs_dir = tmp_path / "runs"
 
         with patch(
-            "modal_app.pipeline.RUNS_DIR",
+            "modal_app.step_manifests.state.RUNS_DIR",
             str(runs_dir),
         ):
             write_run_meta(meta, mock_vol)
             mock_vol.commit.assert_called_once()
 
-            # Verify file was written
-            meta_path = runs_dir / "test_run" / "meta.json"
-            assert meta_path.exists()
+            manifest_path = runs_dir / "test_run" / "run_manifest.json"
+            assert manifest_path.exists()
+            assert not (runs_dir / "test_run" / "meta.json").exists()
 
-            with open(meta_path) as f:
+            with open(manifest_path) as f:
                 data = json.load(f)
             assert data["run_id"] == "test_run"
             assert data["status"] == "running"
+            assert data["known_step_ids"]
+
+            roundtripped = read_run_meta("test_run", mock_vol)
+            assert roundtripped.run_id == meta.run_id
+            assert roundtripped.start_time == meta.start_time
 
     def test_read_nonexistent_raises(self):
         mock_vol = MagicMock()
 
         with patch(
-            "modal_app.pipeline.RUNS_DIR",
+            "modal_app.step_manifests.state.RUNS_DIR",
             "/nonexistent",
         ):
             with pytest.raises(FileNotFoundError):
                 read_run_meta("fake_run", mock_vol)
+
+
+def test_diagnostics_upload_script_is_valid_python(monkeypatch, capsys):
+    entries = [
+        (
+            "/pipeline/runs/test/diagnostics/unified_diagnostics.csv",
+            "calibration/runs/test/diagnostics/unified_diagnostics.csv",
+        )
+    ]
+    entries_json = json.dumps(entries)
+
+    script = _build_diagnostics_upload_script(entries_json)
+
+    compile(script, "<diagnostics-upload>", "exec")
+    assert "\t" not in script
+    assert "api.upload_file(" in script
+
+    calls = []
+
+    class FakeHfApi:
+        def upload_file(self, **kwargs):
+            calls.append(kwargs)
+
+    fake_hub = ModuleType("huggingface_hub")
+    fake_hub.HfApi = FakeHfApi
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
+    monkeypatch.setenv("HUGGING_FACE_TOKEN", "token")
+
+    exec(compile(script, "<diagnostics-upload>", "exec"), {})
+
+    assert calls == [
+        {
+            "path_or_fileobj": entries[0][0],
+            "path_in_repo": entries[0][1],
+            "repo_id": "policyengine/policyengine-us-data",
+            "repo_type": "model",
+            "token": "token",
+        }
+    ]
+    assert capsys.readouterr().out == f"Uploaded {entries[0][1]}\n"
+
+
+def test_required_promotion_subprocess_raises_on_failure(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="missing staged files",
+        )
+
+    monkeypatch.setattr("modal_app.pipeline.subprocess.run", fake_run)
+
+    with pytest.raises(
+        RuntimeError,
+        match="Base dataset promotion failed: missing staged files",
+    ):
+        _run_required_promotion_subprocess("Base dataset promotion", "print('x')")
+
+    assert captured["cmd"][-1] == "print('x')"
+    assert captured["kwargs"]["capture_output"] is True

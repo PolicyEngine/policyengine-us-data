@@ -8,12 +8,12 @@ from pathlib import Path
 
 try:
     from .tax_assumptions import (
-        create_wage_indexed_core_thresholds_reform,
+        create_trustees_core_thresholds_reform,
         create_wage_indexed_full_irs_uprating_reform,
     )
 except ImportError:  # pragma: no cover - script execution fallback
     from tax_assumptions import (
-        create_wage_indexed_core_thresholds_reform,
+        create_trustees_core_thresholds_reform,
         create_wage_indexed_full_irs_uprating_reform,
     )
 
@@ -126,7 +126,7 @@ def _compute_reformed_shares(
             end_year=end_year,
         )
     elif scenario == "core-thresholds":
-        reform = create_wage_indexed_core_thresholds_reform(
+        reform = create_trustees_core_thresholds_reform(
             start_year=start_year,
             end_year=end_year,
         )

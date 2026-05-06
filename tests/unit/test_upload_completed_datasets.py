@@ -442,6 +442,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
                 "create_tag": False,
+                "pipeline_run_id": "run-123",
             },
         )
     ]

@@ -2,6 +2,8 @@ import numpy as np
 import pytest
 
 from tests.support.build_outputs.source_dataset import (
+    FakeHolder,
+    FakeSimulation,
     load_source_dataset_exports,
     make_entity_graph_arrays,
 )
@@ -9,6 +11,7 @@ from tests.support.build_outputs.source_dataset import (
 
 exports = load_source_dataset_exports()
 EntityGraph = exports["EntityGraph"]
+MicrosimulationVariableProvider = exports["MicrosimulationVariableProvider"]
 
 
 def _tuple_map(mapping):
@@ -98,3 +101,60 @@ def test_entity_graph_round_trips_through_entity_maps():
     assert _tuple_map(
         roundtrip.household_to_subentity_indices["tax_unit"]
     ) == _tuple_map(graph.household_to_subentity_indices["tax_unit"])
+
+
+def test_variable_provider_does_not_load_variables_on_construction():
+    simulation = FakeSimulation(
+        {
+            "household_id": FakeHolder({2023: np.array([1, 2])}),
+            "age": FakeHolder({2023: np.array([40, 12, 8])}),
+        }
+    )
+
+    provider = MicrosimulationVariableProvider(simulation)
+
+    assert provider.input_variables == frozenset({"household_id", "age"})
+    assert simulation.get_holder_calls == []
+    assert simulation.holders["household_id"].get_array_calls == []
+    assert simulation.holders["age"].get_array_calls == []
+
+
+def test_variable_provider_loads_and_caches_requested_array():
+    holder = FakeHolder({2023: np.array([40, 12, 8])})
+    simulation = FakeSimulation({"age": holder})
+    provider = MicrosimulationVariableProvider(simulation)
+
+    first = provider.get_array("age", 2023)
+    second = provider.get_array("age", 2023)
+
+    assert np.array_equal(first, np.array([40, 12, 8]))
+    assert first is second
+    assert simulation.get_holder_calls == ["age", "age"]
+    assert holder.get_array_calls == [2023]
+    with pytest.raises(ValueError, match="read-only"):
+        first[0] = 99
+
+
+def test_variable_provider_uses_first_known_period_when_period_is_omitted():
+    holder = FakeHolder({2023: np.array([1, 2]), 2024: np.array([3, 4])})
+    provider = MicrosimulationVariableProvider(FakeSimulation({"household_id": holder}))
+
+    values = provider.get_array("household_id")
+
+    assert np.array_equal(values, np.array([1, 2]))
+    assert holder.known_period_calls == 1
+    assert holder.get_array_calls == [2023]
+
+
+def test_variable_provider_rejects_missing_variables():
+    provider = MicrosimulationVariableProvider(FakeSimulation({}))
+
+    with pytest.raises(KeyError, match="missing"):
+        provider.get_array("missing", 2023)
+
+
+def test_variable_provider_rejects_variables_without_periods():
+    provider = MicrosimulationVariableProvider(FakeSimulation({"age": FakeHolder({})}))
+
+    with pytest.raises(ValueError, match="no known periods"):
+        provider.get_array("age")

@@ -55,6 +55,9 @@ def load_source_dataset_exports():
     return {
         "module": source_dataset_module,
         "EntityGraph": source_dataset_module.EntityGraph,
+        "MicrosimulationVariableProvider": (
+            source_dataset_module.MicrosimulationVariableProvider
+        ),
     }
 
 
@@ -73,3 +76,35 @@ def make_entity_graph_arrays():
             "spm_unit": np.array([300, 300, 400], dtype=np.int64),
         },
     }
+
+
+class FakeHolder:
+    """Small holder test double for lazy-provider tests."""
+
+    def __init__(self, arrays_by_period):
+        self.arrays_by_period = dict(arrays_by_period)
+        self.known_period_calls = 0
+        self.get_array_calls = []
+
+    def get_known_periods(self):
+        self.known_period_calls += 1
+        return tuple(self.arrays_by_period)
+
+    def get_array(self, period):
+        self.get_array_calls.append(period)
+        return self.arrays_by_period[period]
+
+
+class FakeSimulation:
+    """Small simulation test double for lazy-provider tests."""
+
+    def __init__(self, holders):
+        self.holders = dict(holders)
+        self.input_variables = frozenset(holders)
+        self.get_holder_calls = []
+
+    def get_holder(self, variable):
+        self.get_holder_calls.append(variable)
+        if variable not in self.holders:
+            raise KeyError(variable)
+        return self.holders[variable]

@@ -7,15 +7,15 @@ workers may still reconstruct source state directly from raw dataset paths.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Mapping
+from dataclasses import dataclass, field
+from typing import Any, Mapping
 
 import numpy as np
 from numpy.typing import ArrayLike
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
-__all__ = ["EntityGraph"]
+__all__ = ["EntityGraph", "MicrosimulationVariableProvider"]
 
 
 DEFAULT_SUBENTITIES = ("tax_unit", "spm_unit", "family", "marital_unit")
@@ -315,3 +315,90 @@ def _normalized_id(value) -> object:
     if isinstance(value, np.generic):
         return value.item()
     return value
+
+
+@pipeline_node(
+    id="local_h5_microsimulation_variable_provider",
+    label="MicrosimulationVariableProvider",
+    node_type="library",
+    description=("Lazy source variable access wrapper for local H5 source snapshots."),
+    source_file="policyengine_us_data/calibration/local_h5/source_dataset.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_source_dataset.py"
+    ],
+)
+@dataclass
+class MicrosimulationVariableProvider:
+    """Lazy holder-backed variable reader for a source microsimulation.
+
+    The provider intentionally reads arrays only when callers request a
+    variable/period pair. It caches the normalized array for repeated access
+    while keeping construction lightweight.
+
+    Attributes:
+        simulation: Source `policyengine_us.Microsimulation` or a compatible
+            test double with `input_variables` and `get_holder(...)`.
+    """
+
+    simulation: Any
+    _array_cache: dict[tuple[str, str], np.ndarray] = field(
+        default_factory=dict,
+        init=False,
+        repr=False,
+    )
+
+    @property
+    def input_variables(self) -> frozenset[str]:
+        """Return the source simulation input variable inventory."""
+
+        return frozenset(str(variable) for variable in self.simulation.input_variables)
+
+    def known_periods(self, variable: str) -> tuple[Any, ...]:
+        """Return periods known to the source holder for `variable`.
+
+        Args:
+            variable: Variable name to inspect.
+
+        Returns:
+            Tuple of holder periods.
+        """
+
+        holder = self._get_holder(variable)
+        return tuple(holder.get_known_periods())
+
+    def get_array(self, variable: str, period: Any | None = None) -> np.ndarray:
+        """Return one source variable array, loading and caching it lazily.
+
+        Args:
+            variable: Variable name to load.
+            period: Holder period. If omitted, the first known period is used.
+
+        Returns:
+            A read-only numpy array copy of the holder values.
+        """
+
+        holder = self._get_holder(variable)
+        if period is None:
+            periods = tuple(holder.get_known_periods())
+            if not periods:
+                raise ValueError(f"Variable {variable!r} has no known periods")
+            period = periods[0]
+
+        cache_key = (str(variable), str(period))
+        if cache_key not in self._array_cache:
+            array = np.array(holder.get_array(period), copy=True)
+            array.setflags(write=False)
+            self._array_cache[cache_key] = array
+        return self._array_cache[cache_key]
+
+    def _get_holder(self, variable: str):
+        try:
+            holder = self.simulation.get_holder(variable)
+        except Exception as exc:
+            raise KeyError(f"Variable {variable!r} is not available") from exc
+        if holder is None:
+            raise KeyError(f"Variable {variable!r} is not available")
+        return holder

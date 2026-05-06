@@ -31,6 +31,7 @@ from policyengine_us_data.utils.takeup import (
     adjust_aca_takeup_to_match_target,
     adjust_aca_takeup_to_state_targets,
     apply_block_takeup_to_arrays,
+    compute_voluntary_filing_takeup_for_tax_units,
     compute_block_takeup_draws_for_entities,
     compute_block_takeup_for_entities,
     extend_aca_takeup_to_match_target,
@@ -201,6 +202,44 @@ class TestBlockSaltedDraws:
         assert len(result) == 2
         assert result[0]
 
+    def test_nested_rate_table_cannot_use_state_rate_fallback(self):
+        with pytest.raises(ValueError, match="Cell-based take-up rates"):
+            compute_block_takeup_for_entities(
+                "would_file_taxes_voluntarily",
+                {"no_children": {"low": {"under_65": 0.24}}},
+                np.array(["370010001001001"]),
+                np.array([1], dtype=np.int64),
+                np.array([0], dtype=np.int64),
+            )
+
+    def test_voluntary_filing_uses_demographic_rates(self):
+        rates = {
+            "no_children": {
+                "zero": {"under_65": 0.0, "age_65_plus": 0.0},
+                "low": {"under_65": 0.0, "age_65_plus": 0.0},
+                "medium": {"under_65": 0.0, "age_65_plus": 0.0},
+                "high": {"under_65": 0.0, "age_65_plus": 0.0},
+            },
+            "with_children": {
+                "zero": {"under_65": 1.0, "age_65_plus": 1.0},
+                "low": {"under_65": 1.0, "age_65_plus": 1.0},
+                "medium": {"under_65": 1.0, "age_65_plus": 1.0},
+                "high": {"under_65": 1.0, "age_65_plus": 1.0},
+            },
+        }
+
+        result = compute_voluntary_filing_takeup_for_tax_units(
+            rates,
+            np.array(["370010001001001", "370010001001001"]),
+            np.array([1, 2], dtype=np.int64),
+            np.array([0, 0], dtype=np.int64),
+            tax_unit_child_dependents=np.array([0, 1]),
+            tax_unit_wage_income=np.array([10_000, 10_000], dtype=np.float32),
+            age_head=np.array([40, 40]),
+        )
+
+        np.testing.assert_array_equal(result, np.array([False, True]))
+
 
 class TestApplyBlockTakeupToArrays:
     """Verify apply_block_takeup_to_arrays returns correct
@@ -236,33 +275,75 @@ class TestApplyBlockTakeupToArrays:
 
     def test_returns_all_takeup_vars(self):
         args = self._make_arrays(10, 3, 2, 1)
-        result = apply_block_takeup_to_arrays(*args, time_period=2024)
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            voluntary_filing_inputs={
+                "tax_unit_child_dependents": np.zeros(20),
+                "tax_unit_wage_income": np.zeros(20, dtype=np.float32),
+                "age_head": np.full(20, 40),
+            },
+        )
         for spec in SIMPLE_TAKEUP_VARS:
             assert spec["variable"] in result
             assert result[spec["variable"]].dtype == bool
 
     def test_correct_entity_counts(self):
         args = self._make_arrays(20, 10, 4, 3)
-        result = apply_block_takeup_to_arrays(*args, time_period=2024)
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            voluntary_filing_inputs={
+                "tax_unit_child_dependents": np.zeros(80),
+                "tax_unit_wage_income": np.zeros(80, dtype=np.float32),
+                "age_head": np.full(80, 40),
+            },
+        )
         assert len(result["takes_up_snap_if_eligible"]) == 60
         assert len(result["takes_up_aca_if_eligible"]) == 80
         assert len(result["takes_up_ssi_if_eligible"]) == 200
 
     def test_reproducible(self):
         args = self._make_arrays(10, 3, 2, 1)
-        r1 = apply_block_takeup_to_arrays(*args, time_period=2024)
-        r2 = apply_block_takeup_to_arrays(*args, time_period=2024)
+        voluntary_filing_inputs = {
+            "tax_unit_child_dependents": np.zeros(20),
+            "tax_unit_wage_income": np.zeros(20, dtype=np.float32),
+            "age_head": np.full(20, 40),
+        }
+        r1 = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            voluntary_filing_inputs=voluntary_filing_inputs,
+        )
+        r2 = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            voluntary_filing_inputs=voluntary_filing_inputs,
+        )
         for var in r1:
             np.testing.assert_array_equal(r1[var], r2[var])
 
     def test_different_blocks_different_result(self):
         args_a = self._make_arrays(10, 3, 2, 1)
-        r1 = apply_block_takeup_to_arrays(*args_a, time_period=2024)
+        voluntary_filing_inputs = {
+            "tax_unit_child_dependents": np.zeros(20),
+            "tax_unit_wage_income": np.zeros(20, dtype=np.float32),
+            "age_head": np.full(20, 40),
+        }
+        r1 = apply_block_takeup_to_arrays(
+            *args_a,
+            time_period=2024,
+            voluntary_filing_inputs=voluntary_filing_inputs,
+        )
 
         args_b = list(self._make_arrays(10, 3, 2, 1))
         args_b[0] = np.array(["480010002002002"] * 10)
         args_b[1] = np.array([48] * 10, dtype=np.int32)
-        r2 = apply_block_takeup_to_arrays(*args_b, time_period=2024)
+        r2 = apply_block_takeup_to_arrays(
+            *args_b,
+            time_period=2024,
+            voluntary_filing_inputs=voluntary_filing_inputs,
+        )
 
         differs = any(not np.array_equal(r1[v], r2[v]) for v in r1)
         assert differs
@@ -281,6 +362,55 @@ class TestApplyBlockTakeupToArrays:
         np.testing.assert_array_equal(
             result["takes_up_aca_if_eligible"],
             [True, False, False, False],
+        )
+
+    def test_voluntary_filing_requires_demographics(self):
+        args = self._make_arrays(4, 1, 1, 1)
+
+        with pytest.raises(ValueError, match="voluntary_filing_inputs"):
+            apply_block_takeup_to_arrays(
+                *args,
+                time_period=2024,
+                takeup_filter=["would_file_taxes_voluntarily"],
+                precomputed_rates={
+                    "voluntary_filing": {
+                        "no_children": {"zero": {"under_65": 0.0}},
+                    },
+                },
+            )
+
+    def test_apply_block_takeup_uses_voluntary_filing_demographics(self):
+        args = self._make_arrays(2, 1, 1, 1)
+        rates = {
+            "no_children": {
+                "zero": {"under_65": 0.0, "age_65_plus": 0.0},
+                "low": {"under_65": 0.0, "age_65_plus": 0.0},
+                "medium": {"under_65": 0.0, "age_65_plus": 0.0},
+                "high": {"under_65": 0.0, "age_65_plus": 0.0},
+            },
+            "with_children": {
+                "zero": {"under_65": 1.0, "age_65_plus": 1.0},
+                "low": {"under_65": 1.0, "age_65_plus": 1.0},
+                "medium": {"under_65": 1.0, "age_65_plus": 1.0},
+                "high": {"under_65": 1.0, "age_65_plus": 1.0},
+            },
+        }
+
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            takeup_filter=["would_file_taxes_voluntarily"],
+            precomputed_rates={"voluntary_filing": rates},
+            voluntary_filing_inputs={
+                "tax_unit_child_dependents": np.array([0, 1]),
+                "tax_unit_wage_income": np.array([10_000, 10_000], dtype=np.float32),
+                "age_head": np.array([40, 40]),
+            },
+        )
+
+        np.testing.assert_array_equal(
+            result["would_file_taxes_voluntarily"],
+            np.array([False, True]),
         )
 
 

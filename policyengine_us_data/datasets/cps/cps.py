@@ -44,6 +44,11 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_is_tipped_occupation,
 )
 from policyengine_us_data.utils.takeup import (
+    _sum_person_values_to_tax_units,
+    _voluntary_filing_age_bin,
+    _voluntary_filing_children_bin,
+    _voluntary_filing_rate_by_tax_unit,
+    _voluntary_filing_wage_income_bin,
     assign_takeup_with_reported_anchors,
     reported_subsidized_marketplace_by_tax_unit,
 )
@@ -204,71 +209,6 @@ def _open_dataset_read_only(dataset_source):
 
     with closing(dataset.load()) as store:
         yield store
-
-
-def _sum_person_values_to_tax_units(
-    person_values: np.ndarray,
-    person_tax_unit_ids: np.ndarray,
-    tax_unit_ids: np.ndarray,
-) -> np.ndarray:
-    tax_unit_index = {
-        int(tax_unit_id): index for index, tax_unit_id in enumerate(tax_unit_ids)
-    }
-    person_tax_unit_index = np.array(
-        [tax_unit_index[int(tax_unit_id)] for tax_unit_id in person_tax_unit_ids],
-        dtype=np.int64,
-    )
-    tax_unit_values = np.zeros(len(tax_unit_ids), dtype=np.float32)
-    np.add.at(
-        tax_unit_values,
-        person_tax_unit_index,
-        np.asarray(person_values, dtype=np.float32),
-    )
-    return tax_unit_values
-
-
-def _voluntary_filing_children_bin(
-    tax_unit_child_dependents: np.ndarray,
-) -> np.ndarray:
-    return np.where(
-        np.asarray(tax_unit_child_dependents) > 0,
-        "with_children",
-        "no_children",
-    )
-
-
-def _voluntary_filing_wage_income_bin(
-    tax_unit_wage_income: np.ndarray,
-) -> np.ndarray:
-    wage_income = np.asarray(tax_unit_wage_income, dtype=np.float32)
-    return np.select(
-        [
-            wage_income <= 0,
-            wage_income < 15_000,
-            wage_income < 30_000,
-        ],
-        ["zero", "low", "medium"],
-        default="high",
-    )
-
-
-def _voluntary_filing_age_bin(age_head: np.ndarray) -> np.ndarray:
-    return np.where(np.asarray(age_head) >= 65, "age_65_plus", "under_65")
-
-
-def _voluntary_filing_rate_by_tax_unit(
-    voluntary_filing_rates: dict,
-    children_bin: np.ndarray,
-    wage_income_bin: np.ndarray,
-    age_bin: np.ndarray,
-) -> np.ndarray:
-    return np.array(
-        [
-            voluntary_filing_rates[children][wage][age]
-            for children, wage, age in zip(children_bin, wage_income_bin, age_bin)
-        ],
-        dtype=np.float32,
-    )
 
 
 class CPS(Dataset):

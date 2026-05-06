@@ -1,6 +1,6 @@
 import numpy as np
 
-from policyengine_us_data.datasets.cps.cps import (
+from policyengine_us_data.utils.takeup import (
     _sum_person_values_to_tax_units,
     _voluntary_filing_age_bin,
     _voluntary_filing_children_bin,

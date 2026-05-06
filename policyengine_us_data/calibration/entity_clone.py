@@ -25,6 +25,7 @@ from policyengine_us_data.calibration.calibration_utils import (
     load_cd_geoadj_values,
 )
 from policyengine_us_data.utils.takeup import (
+    _sum_person_values_to_tax_units,
     apply_block_takeup_to_arrays,
     reported_subsidized_marketplace_by_tax_unit,
 )
@@ -435,6 +436,27 @@ def materialize_clone_household_chunk(
             "spm_unit": len(entity_clone_idx["spm_unit"]),
         }
         reported_anchors = _build_reported_takeup_anchors(data, time_period)
+        voluntary_filing_inputs = {
+            "tax_unit_child_dependents": sim.calculate(
+                "tax_unit_child_dependents",
+                time_period,
+                map_to="tax_unit",
+            ).values[entity_clone_idx["tax_unit"]],
+            "tax_unit_wage_income": _sum_person_values_to_tax_units(
+                sim.calculate(
+                    "employment_income",
+                    time_period,
+                    map_to="person",
+                ).values[person_clone_idx],
+                new_person_entity_ids["tax_unit"],
+                new_entity_ids["tax_unit"],
+            ),
+            "age_head": sim.calculate(
+                "age_head",
+                time_period,
+                map_to="tax_unit",
+            ).values[entity_clone_idx["tax_unit"]],
+        }
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,
             hh_state_fips=clone_geo["state_fips"].astype(np.int32),
@@ -445,6 +467,7 @@ def materialize_clone_household_chunk(
             time_period=time_period,
             takeup_filter=takeup_filter,
             reported_anchors=reported_anchors,
+            voluntary_filing_inputs=voluntary_filing_inputs,
         )
         for variable, values in takeup_results.items():
             data[variable] = {time_period: values}

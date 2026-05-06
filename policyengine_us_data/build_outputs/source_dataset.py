@@ -8,6 +8,7 @@ workers may still reconstruct source state directly from raw dataset paths.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
@@ -15,10 +16,25 @@ from numpy.typing import ArrayLike
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
-__all__ = ["EntityGraph", "MicrosimulationVariableProvider"]
+__all__ = [
+    "EntityGraph",
+    "MicrosimulationVariableProvider",
+    "SourceDatasetSnapshot",
+]
 
 
 DEFAULT_SUBENTITIES = ("tax_unit", "spm_unit", "family", "marital_unit")
+
+
+@dataclass(frozen=True)
+class _EntityMapsView:
+    time_period: int
+    household_ids: np.ndarray
+    person_hh_ids: np.ndarray
+    hh_to_persons: dict[int, list[int]]
+    hh_to_entity: dict[str, dict[int, list[int]]]
+    entity_id_arrays: dict[str, np.ndarray]
+    person_entity_id_arrays: dict[str, np.ndarray]
 
 
 @pipeline_node(
@@ -32,17 +48,6 @@ DEFAULT_SUBENTITIES = ("tax_unit", "spm_unit", "family", "marital_unit")
     pathways=["local_h5"],
     validation_commands=["uv run pytest tests/unit/build_outputs/test_source_dataset.py"],
 )
-@dataclass(frozen=True)
-class _EntityMapsView:
-    time_period: int
-    household_ids: np.ndarray
-    person_hh_ids: np.ndarray
-    hh_to_persons: dict[int, list[int]]
-    hh_to_entity: dict[str, dict[int, list[int]]]
-    entity_id_arrays: dict[str, np.ndarray]
-    person_entity_id_arrays: dict[str, np.ndarray]
-
-
 @dataclass(frozen=True)
 class EntityGraph:
     """Structural relationships between source dataset entities.
@@ -136,25 +141,33 @@ class EntityGraph:
             A validated `EntityGraph`.
         """
 
-        household_ids = simulation.calculate(
-            "household_id",
-            map_to="household",
-        ).values
-        person_household_ids = simulation.calculate(
-            "household_id",
-            map_to="person",
-        ).values
+        household_ids = _calculation_values(
+            simulation.calculate(
+                "household_id",
+                map_to="household",
+            )
+        )
+        person_household_ids = _calculation_values(
+            simulation.calculate(
+                "household_id",
+                map_to="person",
+            )
+        )
         subentity_ids = {}
         person_subentity_ids = {}
         for entity_key in subentities:
-            subentity_ids[entity_key] = simulation.calculate(
-                f"{entity_key}_id",
-                map_to=entity_key,
-            ).values
-            person_subentity_ids[entity_key] = simulation.calculate(
-                f"person_{entity_key}_id",
-                map_to="person",
-            ).values
+            subentity_ids[entity_key] = _calculation_values(
+                simulation.calculate(
+                    f"{entity_key}_id",
+                    map_to=entity_key,
+                )
+            )
+            person_subentity_ids[entity_key] = _calculation_values(
+                simulation.calculate(
+                    f"person_{entity_key}_id",
+                    map_to="person",
+                )
+            )
         return cls(
             household_ids=household_ids,
             person_household_ids=person_household_ids,
@@ -315,6 +328,16 @@ def _normalized_id(value) -> object:
     return value
 
 
+def _calculation_values(calculation) -> np.ndarray:
+    if hasattr(calculation, "__array__"):
+        return np.asarray(calculation)
+    if hasattr(calculation, "to_numpy"):
+        return calculation.to_numpy()
+    if hasattr(calculation, "values"):
+        return calculation.values
+    return np.asarray(calculation)
+
+
 @pipeline_node(
     id="local_h5_microsimulation_variable_provider",
     label="MicrosimulationVariableProvider",
@@ -398,3 +421,97 @@ class MicrosimulationVariableProvider:
         if holder is None:
             raise KeyError(f"Variable {variable!r} is not available")
         return holder
+
+
+@pipeline_node(
+    id="local_h5_source_dataset_snapshot",
+    label="SourceDatasetSnapshot",
+    node_type="library",
+    description=("In-memory source H5 dataset contract for local H5 worker setup."),
+    source_file="policyengine_us_data/calibration/local_h5/source_dataset.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_source_dataset.py"
+    ],
+)
+@dataclass
+class SourceDatasetSnapshot:
+    """Explicit in-memory worker view of a source H5 dataset.
+
+    The snapshot groups source dataset structure and lazy variable access. It
+    does not serialize artifacts or change current worker execution paths.
+
+    Attributes:
+        dataset_path: Source H5 dataset path.
+        time_period: Default source calculation period.
+        entity_graph: Source entity relationship graph.
+        input_variables: Input variable names available from the source.
+        variable_provider: Lazy variable reader for the source simulation.
+    """
+
+    dataset_path: Path
+    time_period: int
+    entity_graph: EntityGraph
+    input_variables: frozenset[str]
+    variable_provider: MicrosimulationVariableProvider
+
+    def __post_init__(self) -> None:
+        self.dataset_path = Path(self.dataset_path)
+        self.time_period = int(self.time_period)
+        self.input_variables = frozenset(str(item) for item in self.input_variables)
+
+    @property
+    def household_ids(self) -> np.ndarray:
+        """Return source household IDs from the entity graph."""
+
+        return self.entity_graph.household_ids
+
+    @property
+    def n_households(self) -> int:
+        """Return the number of source households."""
+
+        return int(len(self.household_ids))
+
+    @classmethod
+    def from_dataset_path(cls, dataset_path: Path) -> "SourceDatasetSnapshot":
+        """Build a snapshot by opening a source H5 dataset path.
+
+        Args:
+            dataset_path: Source H5 dataset path.
+
+        Returns:
+            A `SourceDatasetSnapshot` backed by a microsimulation.
+        """
+
+        from policyengine_us import Microsimulation
+
+        path = Path(dataset_path)
+        simulation = Microsimulation(dataset=str(path))
+        return cls.from_simulation(path, simulation)
+
+    @classmethod
+    def from_simulation(
+        cls,
+        dataset_path: Path,
+        simulation,
+    ) -> "SourceDatasetSnapshot":
+        """Build a snapshot from an existing source simulation.
+
+        Args:
+            dataset_path: Source H5 dataset path.
+            simulation: Source `Microsimulation` or compatible test double.
+
+        Returns:
+            A `SourceDatasetSnapshot` using the provided simulation.
+        """
+
+        provider = MicrosimulationVariableProvider(simulation)
+        return cls(
+            dataset_path=Path(dataset_path),
+            time_period=int(simulation.default_calculation_period),
+            entity_graph=EntityGraph.from_simulation(simulation),
+            input_variables=provider.input_variables,
+            variable_provider=provider,
+        )

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -12,6 +14,9 @@ from tests.support.build_outputs.source_dataset import (
 exports = load_source_dataset_exports()
 EntityGraph = exports["EntityGraph"]
 MicrosimulationVariableProvider = exports["MicrosimulationVariableProvider"]
+SourceDatasetSnapshot = exports["SourceDatasetSnapshot"]
+
+FIXTURE_PATH = Path(__file__).parents[2] / "integration" / "test_fixture_50hh.h5"
 
 
 def _tuple_map(mapping):
@@ -158,3 +163,51 @@ def test_variable_provider_rejects_variables_without_periods():
 
     with pytest.raises(ValueError, match="no known periods"):
         provider.get_array("age")
+
+
+def test_source_dataset_snapshot_builds_from_existing_simulation():
+    simulation = FakeSimulation(
+        {
+            "household_id": FakeHolder({2023: np.array([10, 20])}),
+            "person_household_id": FakeHolder({2023: np.array([10, 10, 20])}),
+            "tax_unit_id": FakeHolder({2023: np.array([100, 200])}),
+            "spm_unit_id": FakeHolder({2023: np.array([300, 400])}),
+            "family_id": FakeHolder({2023: np.array([500, 600])}),
+            "marital_unit_id": FakeHolder({2023: np.array([700, 800, 900])}),
+            "person_tax_unit_id": FakeHolder({2023: np.array([100, 100, 200])}),
+            "person_spm_unit_id": FakeHolder({2023: np.array([300, 300, 400])}),
+            "person_family_id": FakeHolder({2023: np.array([500, 500, 600])}),
+            "person_marital_unit_id": FakeHolder({2023: np.array([700, 800, 900])}),
+        }
+    )
+
+    snapshot = SourceDatasetSnapshot.from_simulation(
+        Path("source.h5"),
+        simulation,
+    )
+
+    assert snapshot.dataset_path == Path("source.h5")
+    assert snapshot.time_period == 2023
+    assert snapshot.n_households == 2
+    assert np.array_equal(snapshot.household_ids, np.array([10, 20]))
+    assert "household_id" in snapshot.input_variables
+    assert snapshot.variable_provider.get_array("household_id", 2023).shape == (2,)
+
+
+def test_source_dataset_snapshot_builds_from_tiny_h5_fixture():
+    pytest.importorskip("policyengine_us")
+    from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
+
+    snapshot = SourceDatasetSnapshot.from_dataset_path(FIXTURE_PATH)
+    weights = CloneWeightMatrix.from_vector(
+        np.ones(snapshot.n_households, dtype=np.float32),
+        n_records=snapshot.n_households,
+    )
+
+    assert snapshot.dataset_path == FIXTURE_PATH
+    assert snapshot.time_period == 2023
+    assert snapshot.n_households == 50
+    assert "household_id" in snapshot.input_variables
+    assert snapshot.entity_graph.person_household_ids.shape[0] > snapshot.n_households
+    assert weights.n_clones == 1
+    assert snapshot.variable_provider.get_array("household_id", 2023).shape == (50,)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import is_dataclass
 from hashlib import sha256
+from math import isfinite
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -29,7 +30,11 @@ def canonicalize_for_fingerprint(value: Any) -> Any:
         }
     if isinstance(value, tuple | list):
         return [canonicalize_for_fingerprint(item) for item in value]
-    if isinstance(value, str | int | float | bool) or value is None:
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise ValueError("Fingerprint material floats must be finite")
+        return value
+    if isinstance(value, str | int | bool) or value is None:
         return value
     raise TypeError(
         f"Unsupported fingerprint material value: {type(value).__name__}"
@@ -42,6 +47,7 @@ def fingerprint_material(material: Mapping[str, Any]) -> Fingerprint:
     canonical_material = canonicalize_for_fingerprint(material)
     payload = json.dumps(
         canonical_material,
+        allow_nan=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode()

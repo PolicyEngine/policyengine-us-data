@@ -218,6 +218,58 @@ def test_from_dict_rejects_none_required_string_fields():
         StageContract.from_dict(payload)
 
 
+def test_contract_numeric_fields_reject_non_numeric_constructor_values():
+    with pytest.raises(ValueError, match="size_bytes"):
+        ArtifactRef(
+            logical_name="policy_data_db",
+            uri="file:///policy_data.db",
+            size_bytes="128",
+        )
+
+    with pytest.raises(ValueError, match="expected_outputs"):
+        ReuseSummary(expected_outputs=True)
+
+    with pytest.raises(ValueError, match="saved_duration_s"):
+        ReuseSummary(saved_duration_s="1.5")
+
+    with pytest.raises(ValueError, match="attempt"):
+        ExecutionRecord(attempt="1")
+
+    with pytest.raises(ValueError, match="duration_s"):
+        ExecutionRecord(duration_s="3.0")
+
+
+def test_from_dict_rejects_invalid_numeric_fields():
+    with pytest.raises(ValueError, match="size_bytes"):
+        ArtifactRef.from_dict(
+            {
+                "logical_name": "policy_data_db",
+                "uri": "file:///policy_data.db",
+                "size_bytes": "128",
+            }
+        )
+
+    with pytest.raises(ValueError, match="expected_outputs"):
+        ReuseSummary.from_dict({"expected_outputs": "1"})
+
+    with pytest.raises(ValueError, match="valid_reused_outputs"):
+        ReuseSummary.from_dict({"valid_reused_outputs": True})
+
+    with pytest.raises(ValueError, match="attempt"):
+        ExecutionRecord.from_dict({"attempt": "1"})
+
+    with pytest.raises(ValueError, match="duration_s"):
+        ExecutionRecord.from_dict({"duration_s": "3.0"})
+
+
+def test_contract_float_fields_reject_non_finite_values():
+    with pytest.raises(ValueError, match="saved_duration_s"):
+        ReuseSummary(saved_duration_s=float("inf"))
+
+    with pytest.raises(ValueError, match="duration_s"):
+        ExecutionRecord.from_dict({"duration_s": float("nan")})
+
+
 def test_mapping_fields_are_defensively_frozen():
     parameters = {"seed": 42, "nested": {"n_clones": 430}}
     metadata = {"target_count": 304}
@@ -355,6 +407,12 @@ def test_canonicalize_for_fingerprint_rejects_plain_dataclasses():
 def test_canonicalize_for_fingerprint_rejects_unsupported_values():
     with pytest.raises(TypeError, match="Unsupported fingerprint material"):
         canonicalize_for_fingerprint(object())
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_canonicalize_for_fingerprint_rejects_non_finite_floats(value):
+    with pytest.raises(ValueError, match="finite"):
+        canonicalize_for_fingerprint({"duration_s": value})
 
 
 def test_stage_contract_package_exports_public_api():

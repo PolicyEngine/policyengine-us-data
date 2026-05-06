@@ -77,11 +77,27 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["policyengine_us_data"]
 include-package-data = true
 
+[tool.setuptools.packages.find]
+include = ["policyengine_us_data*"]
+namespaces = false
+
 [tool.setuptools.package-data]
-"policyengine_us_data" = ["**/*"]
+"policyengine_us_data" = [
+    "**/*.csv",
+    "**/*.csv.gz",
+    "**/*.json",
+    "**/*.json.gz",
+    "**/*.md",
+    "**/*.txt",
+    "**/*.yaml",
+    "**/*.yml",
+    "**/*.zip",
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["**/__pycache__/*", "**/*.py[cod]"]
 
 [tool.pytest.ini_options]
 addopts = "-v"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from math import isfinite
 from types import MappingProxyType
 from typing import Any, Literal, get_args
 
@@ -124,6 +125,53 @@ def _optional_mapping_value(
     return value
 
 
+def _validate_int(value: Any, field_name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} must be an integer")
+
+
+def _validate_optional_int(value: Any, field_name: str) -> None:
+    if value is not None:
+        _validate_int(value, field_name)
+
+
+def _validate_optional_float(value: Any, field_name: str) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field_name} must be numeric")
+    if not isfinite(value):
+        raise ValueError(f"{field_name} must be finite")
+
+
+def _int_value(
+    data: Mapping[str, Any],
+    field_name: str,
+    default: int,
+) -> int:
+    value = data.get(field_name, default)
+    _validate_int(value, field_name)
+    return value
+
+
+def _optional_int_value(
+    data: Mapping[str, Any],
+    field_name: str,
+) -> int | None:
+    value = data.get(field_name)
+    _validate_optional_int(value, field_name)
+    return value
+
+
+def _optional_float_value(
+    data: Mapping[str, Any],
+    field_name: str,
+) -> float | None:
+    value = data.get(field_name)
+    _validate_optional_float(value, field_name)
+    return float(value) if value is not None else None
+
+
 def _freeze_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         return MappingProxyType(
@@ -168,6 +216,7 @@ class ArtifactRef:
         _validate_schema_version(self.schema_version, self.__class__.__name__)
         _require_non_empty(self.logical_name, "logical_name")
         _require_non_empty(self.uri, "uri")
+        _validate_optional_int(self.size_bytes, "size_bytes")
         if self.size_bytes is not None and self.size_bytes < 0:
             raise ValueError("size_bytes must be non-negative")
         object.__setattr__(
@@ -193,7 +242,7 @@ class ArtifactRef:
             logical_name=_required_string(data, "logical_name"),
             uri=_required_string(data, "uri"),
             sha256=_optional_string(data, "sha256"),
-            size_bytes=data.get("size_bytes"),
+            size_bytes=_optional_int_value(data, "size_bytes"),
             media_type=_optional_string(data, "media_type"),
             schema_version=_schema_version(data),
             metadata=_mapping_value(data, "metadata"),
@@ -260,8 +309,11 @@ class ReuseSummary:
             "recomputed_outputs",
             "invalid_outputs",
         ):
-            if getattr(self, field_name) < 0:
+            value = getattr(self, field_name)
+            _validate_int(value, field_name)
+            if value < 0:
                 raise ValueError(f"{field_name} must be non-negative")
+        _validate_optional_float(self.saved_duration_s, "saved_duration_s")
         if self.saved_duration_s is not None and self.saved_duration_s < 0:
             raise ValueError("saved_duration_s must be non-negative")
 
@@ -278,14 +330,12 @@ class ReuseSummary:
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ReuseSummary":
         return cls(
-            expected_outputs=int(data.get("expected_outputs", 0)),
-            valid_reused_outputs=int(data.get("valid_reused_outputs", 0)),
-            recomputed_outputs=int(data.get("recomputed_outputs", 0)),
-            invalid_outputs=int(data.get("invalid_outputs", 0)),
-            saved_duration_s=data.get("saved_duration_s"),
-            schema_version=str(
-                data.get("schema_version", CONTRACT_SCHEMA_VERSION)
-            ),
+            expected_outputs=_int_value(data, "expected_outputs", 0),
+            valid_reused_outputs=_int_value(data, "valid_reused_outputs", 0),
+            recomputed_outputs=_int_value(data, "recomputed_outputs", 0),
+            invalid_outputs=_int_value(data, "invalid_outputs", 0),
+            saved_duration_s=_optional_float_value(data, "saved_duration_s"),
+            schema_version=_schema_version(data),
         )
 
 
@@ -312,8 +362,10 @@ class ExecutionRecord:
             raise ValueError(f"Invalid execution status: {self.status!r}")
         if self.reuse_decision not in REUSE_DECISIONS:
             raise ValueError(f"Invalid reuse decision: {self.reuse_decision!r}")
+        _validate_int(self.attempt, "attempt")
         if self.attempt < 0:
             raise ValueError("attempt must be non-negative")
+        _validate_optional_float(self.duration_s, "duration_s")
         if self.duration_s is not None and self.duration_s < 0:
             raise ValueError("duration_s must be non-negative")
         object.__setattr__(
@@ -351,10 +403,10 @@ class ExecutionRecord:
     def from_dict(cls, data: Mapping[str, Any]) -> "ExecutionRecord":
         return cls(
             status=data.get("status", "pending"),
-            attempt=int(data.get("attempt", 0)),
+            attempt=_int_value(data, "attempt", 0),
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
-            duration_s=data.get("duration_s"),
+            duration_s=_optional_float_value(data, "duration_s"),
             modal_call_id=data.get("modal_call_id"),
             reuse_decision=data.get("reuse_decision", "not_applicable"),
             reuse_reason=data.get("reuse_reason"),

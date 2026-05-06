@@ -34,7 +34,7 @@
     "docstring": "Impute rent and real_estate_taxes from ACS with state.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "acs_qrf",
     "kind": "function",
-    "line": 312,
+    "line": 334,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_acs"
@@ -61,7 +61,7 @@
     "docstring": "\"Add auto loan balance, interest and net_worth variable.",
     "id": "add_auto_loan",
     "kind": "function",
-    "line": 2737,
+    "line": 2754,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
@@ -88,7 +88,7 @@
     "docstring": "Populate household-level geography variables used by PolicyEngine US.\n\nArgs:\n    cps: Output CPS H5 group receiving derived household variables.\n    household: Raw CPS household table.",
     "id": "add_household_variables",
     "kind": "function",
-    "line": 1401,
+    "line": 1416,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_household_variables"
@@ -115,7 +115,7 @@
     "docstring": "Add basic ID and weight variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The person table of the ASEC.\n    tax_unit (DataFrame): The tax unit table created from the person table\n        of the ASEC.\n    family (DataFrame): The family table of the ASEC.\n    spm_unit (DataFrame): The SPM unit table created from the person table\n        of the ASEC.\n    household (DataFrame): The household table of the ASEC.",
     "id": "add_id_variables",
     "kind": "function",
-    "line": 869,
+    "line": 884,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_id_variables"
@@ -142,7 +142,7 @@
     "docstring": "Impute ORG-derived wage and union inputs onto CPS persons.",
     "id": "add_org_inputs",
     "kind": "function",
-    "line": 2621,
+    "line": 2638,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
@@ -169,7 +169,7 @@
     "docstring": "Add income variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.\n    year (int): The CPS year",
     "id": "add_personal_income_variables",
     "kind": "function",
-    "line": 1063,
+    "line": 1078,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_income_variables"
@@ -196,7 +196,7 @@
     "docstring": "Add personal demographic variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.",
     "id": "add_personal_variables",
     "kind": "function",
-    "line": 931,
+    "line": 946,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_variables"
@@ -223,7 +223,7 @@
     "docstring": "",
     "id": "add_previous_year_income",
     "kind": "function",
-    "line": 1443,
+    "line": 1458,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_previous_year_income"
@@ -250,7 +250,7 @@
     "docstring": "",
     "id": "add_rent",
     "kind": "function",
-    "line": 323,
+    "line": 338,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_rent"
@@ -277,7 +277,7 @@
     "docstring": "",
     "id": "add_spm_variables",
     "kind": "function",
-    "line": 1339,
+    "line": 1354,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_spm_variables"
@@ -304,7 +304,7 @@
     "docstring": "Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.\nCodes:\n- 0: \"NONE\" - Likely undocumented immigrants\n- 1: \"CITIZEN\" - US citizens (born or naturalized)\n- 2: \"NON_CITIZEN_VALID_EAD\" - Non-citizens with work/study authorization\n- 3: \"OTHER_NON_CITIZEN\" - Non-citizens with indicators of legal status",
     "id": "add_ssn_card_type",
     "kind": "function",
-    "line": 1549,
+    "line": 1564,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_ssn_card_type"
@@ -331,7 +331,7 @@
     "docstring": "",
     "id": "add_takeup",
     "kind": "function",
-    "line": 437,
+    "line": 452,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_takeup"
@@ -358,7 +358,7 @@
     "docstring": "",
     "id": "add_tips",
     "kind": "function",
-    "line": 2448,
+    "line": 2463,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_tips"
@@ -996,7 +996,7 @@
     "docstring": "Subsample the loaded CPS dataset and preserve downsampled arrays.\n\nArgs:\n    frac: Fraction of records to retain.",
     "id": "downsample",
     "kind": "function",
-    "line": 290,
+    "line": 305,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.CPS.downsample"
@@ -1983,7 +1983,7 @@
     "docstring": "Impute net_worth and auto_loan from SCF.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "scf_qrf",
     "kind": "function",
-    "line": 797,
+    "line": 819,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_scf"
@@ -2037,7 +2037,7 @@
     "docstring": "Impute tip_income, liquid assets, and vehicle signals from SIPP.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "sipp_qrf",
     "kind": "function",
-    "line": 413,
+    "line": 435,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_sipp"
@@ -2064,7 +2064,7 @@
     "docstring": "Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.\n\nOverwrites existing imputed values in data. ACS uses\nstate_fips as a QRF predictor; ORG uses state plus labor-market\npredictors; SIPP and SCF use only demographic and financial\npredictors (no state data).\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n    skip_acs: Skip ACS imputation.\n    skip_sipp: Skip SIPP imputation.\n    skip_org: Skip ORG imputation.\n    skip_scf: Skip SCF imputation.\n\nReturns:\n    Updated data dict with re-imputed variables.",
     "id": "source_impute",
     "kind": "function",
-    "line": 165,
+    "line": 187,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute.impute_source_variables"

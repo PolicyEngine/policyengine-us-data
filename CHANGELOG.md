@@ -1,3 +1,10 @@
+## [1.103.1] - 2026-05-06
+
+### Changed
+
+- Compute CPS net worth from SCF-anchored balance-sheet components, including SCF/SIPP-blended vehicle values, instead of an SCF aggregate residual.
+
+
 ## [1.103.0] - 2026-05-06
 
 ### Added

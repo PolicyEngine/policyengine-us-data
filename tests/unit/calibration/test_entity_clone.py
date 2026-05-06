@@ -12,6 +12,7 @@ from policyengine_us_data.calibration.entity_clone import (
     build_household_entity_maps,
     materialize_clone_household_chunk,
 )
+from policyengine_us_data.calibration.local_h5.source_dataset import EntityGraph
 
 
 FIXTURE_PATH = Path(__file__).parents[2] / "integration" / "test_fixture_50hh.h5"
@@ -112,6 +113,23 @@ def test_materialize_clone_household_chunk_preserves_entity_joins(
             person_entity_ids = h5[f"person_{entity_key}_id"]["2023"][:]
             assert len(entity_ids) == len(set(entity_ids))
             assert set(person_entity_ids).issubset(set(entity_ids))
+
+
+def test_entity_graph_adapter_matches_household_entity_maps(fixture_entity_maps):
+    graph = EntityGraph.from_entity_maps(fixture_entity_maps)
+    roundtrip = graph.to_entity_maps(time_period=fixture_entity_maps.time_period)
+
+    assert np.array_equal(roundtrip.household_ids, fixture_entity_maps.household_ids)
+    assert np.array_equal(roundtrip.person_hh_ids, fixture_entity_maps.person_hh_ids)
+    assert roundtrip.hh_to_persons == {
+        key: list(value) for key, value in graph.household_to_person_indices.items()
+    }
+    for entity_key, entity_ids in fixture_entity_maps.entity_id_arrays.items():
+        assert np.array_equal(roundtrip.entity_id_arrays[entity_key], entity_ids)
+        assert roundtrip.hh_to_entity[entity_key] == {
+            key: list(value)
+            for key, value in graph.household_to_subentity_indices[entity_key].items()
+        }
 
 
 def test_materialize_clone_household_chunk_keeps_clone_specific_block_geoids(

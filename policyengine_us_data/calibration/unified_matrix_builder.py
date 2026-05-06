@@ -985,6 +985,36 @@ def _build_entity_index_maps(
     return entity_hh_idx_map, person_to_entity_idx_map
 
 
+def _build_voluntary_filing_inputs(sim, time_period, entity_rel):
+    """Build tax-unit demographic arrays for voluntary filing draws."""
+    from policyengine_us_data.utils.takeup import _sum_person_values_to_tax_units
+
+    tax_unit_ids = sim.calculate("tax_unit_id", map_to="tax_unit").values
+    person_tax_unit_ids = entity_rel["tax_unit_id"].values
+    person_wage_income = sim.calculate(
+        "employment_income",
+        time_period,
+        map_to="person",
+    ).values
+    return {
+        "tax_unit_child_dependents": sim.calculate(
+            "tax_unit_child_dependents",
+            time_period,
+            map_to="tax_unit",
+        ).values,
+        "tax_unit_wage_income": _sum_person_values_to_tax_units(
+            person_wage_income,
+            person_tax_unit_ids,
+            tax_unit_ids,
+        ),
+        "age_head": sim.calculate(
+            "age_head",
+            time_period,
+            map_to="tax_unit",
+        ).values,
+    }
+
+
 def _process_single_clone(
     clone_idx: int,
     col_start: int,
@@ -1040,6 +1070,7 @@ def _process_single_clone(
     ]
     precomputed_rates = sd.get("precomputed_rates", {})
     reported_takeup_anchors = sd.get("reported_takeup_anchors", {})
+    voluntary_filing_inputs = sd.get("voluntary_filing_inputs")
 
     # Slice geography for this clone
     clone_states = geo_states[col_start:col_end]
@@ -1079,6 +1110,7 @@ def _process_single_clone(
         from policyengine_us_data.utils.takeup import (
             SIMPLE_TAKEUP_VARS,
             compute_block_takeup_for_entities,
+            compute_voluntary_filing_takeup_for_tax_units,
         )
 
         clone_blocks = geo_blocks[col_start:col_end]
@@ -1097,13 +1129,26 @@ def _process_single_clone(
             ent_blocks = clone_blocks[ent_hh]
             ent_hh_ids = household_ids[ent_hh]
             ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
-            draws = compute_block_takeup_for_entities(
-                var_name,
-                precomputed_rates[rate_key],
-                ent_blocks,
-                ent_hh_ids,
-                ent_ci,
-            )
+            if var_name == "would_file_taxes_voluntarily":
+                if voluntary_filing_inputs is None:
+                    continue
+                draws = compute_voluntary_filing_takeup_for_tax_units(
+                    precomputed_rates[rate_key],
+                    ent_blocks,
+                    ent_hh_ids,
+                    ent_ci,
+                    voluntary_filing_inputs["tax_unit_child_dependents"],
+                    voluntary_filing_inputs["tax_unit_wage_income"],
+                    voluntary_filing_inputs["age_head"],
+                )
+            else:
+                draws = compute_block_takeup_for_entities(
+                    var_name,
+                    precomputed_rates[rate_key],
+                    ent_blocks,
+                    ent_hh_ids,
+                    ent_ci,
+                )
             wf_draws[entity] = draws
             if var_name in person_vars:
                 pidx = person_to_entity_idx_map[entity]
@@ -2608,6 +2653,7 @@ class UnifiedMatrixBuilder:
             from policyengine_us_data.utils.takeup import (
                 TAKEUP_AFFECTED_TARGETS,
                 compute_block_takeup_for_entities,
+                compute_voluntary_filing_takeup_for_tax_units,
                 reported_subsidized_marketplace_by_tax_unit,
             )
             from policyengine_us_data.parameters import (
@@ -2673,6 +2719,12 @@ class UnifiedMatrixBuilder:
             self.precomputed_rates = precomputed_rates
             self.affected_target_info = affected_target_info
             self.reported_takeup_anchors = reported_takeup_anchors
+            voluntary_filing_inputs = _build_voluntary_filing_inputs(
+                sim,
+                self.time_period,
+                entity_rel,
+            )
+            self.voluntary_filing_inputs = voluntary_filing_inputs
 
         # 5d. Clone loop
         from pathlib import Path
@@ -2726,6 +2778,7 @@ class UnifiedMatrixBuilder:
             if rerandomize_takeup and affected_target_info:
                 shared_data["precomputed_rates"] = precomputed_rates
                 shared_data["reported_takeup_anchors"] = reported_takeup_anchors
+                shared_data["voluntary_filing_inputs"] = voluntary_filing_inputs
 
             logger.info(
                 "Starting parallel clone processing: %d clones, %d workers",
@@ -2858,13 +2911,24 @@ class UnifiedMatrixBuilder:
                         ent_blocks = clone_blocks[ent_hh]
                         ent_hh_ids = household_ids[ent_hh]
                         ent_ci = np.full(len(ent_hh), clone_idx, dtype=np.int64)
-                        draws = compute_block_takeup_for_entities(
-                            var_name,
-                            precomputed_rates[rate_key],
-                            ent_blocks,
-                            ent_hh_ids,
-                            ent_ci,
-                        )
+                        if var_name == "would_file_taxes_voluntarily":
+                            draws = compute_voluntary_filing_takeup_for_tax_units(
+                                precomputed_rates[rate_key],
+                                ent_blocks,
+                                ent_hh_ids,
+                                ent_ci,
+                                voluntary_filing_inputs["tax_unit_child_dependents"],
+                                voluntary_filing_inputs["tax_unit_wage_income"],
+                                voluntary_filing_inputs["age_head"],
+                            )
+                        else:
+                            draws = compute_block_takeup_for_entities(
+                                var_name,
+                                precomputed_rates[rate_key],
+                                ent_blocks,
+                                ent_hh_ids,
+                                ent_ci,
+                            )
                         wf_draws[entity] = draws
                         if var_name in person_vars:
                             pidx = person_to_entity_idx_map[entity]

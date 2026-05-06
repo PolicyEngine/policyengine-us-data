@@ -1,6 +1,43 @@
-description: Percentage of tax units (not taking up EITC) who file taxes voluntarily.
+description: Probability that a non-EITC-claiming tax unit files taxes voluntarily, by children, wage income, and head age.
 metadata:
-  label: Voluntary filing rate
+  label: Voluntary filing probability
   unit: /1
-values:
-  2018-01-01: 0.05
+  breakdown:
+    num_children:
+      no_children: tax_unit_child_dependents == 0
+      with_children: tax_unit_child_dependents >= 1
+    wage_income:
+      zero: wage income == $0
+      low: $0 < wage income < $15,000
+      medium: $15,000 <= wage income < $30,000
+      high: wage income >= $30,000
+    age_head:
+      under_65: age_head < 65
+      age_65_plus: age_head >= 65
+rates:
+  no_children:
+    zero:
+      under_65: 0.2
+      age_65_plus: 0.05
+    low:
+      under_65: 0.24
+      age_65_plus: 0.04
+    medium:
+      under_65: 0.0
+      age_65_plus: 0.0
+    high:
+      under_65: 0.0
+      age_65_plus: 0.005
+  with_children:
+    zero:
+      under_65: 0.5
+      age_65_plus: 0.075
+    low:
+      under_65: 0.6
+      age_65_plus: 0.06
+    medium:
+      under_65: 0.0
+      age_65_plus: 0.0
+    high:
+      under_65: 0.025
+      age_65_plus: 0.0037

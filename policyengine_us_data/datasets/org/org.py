@@ -12,6 +12,7 @@ from io import BytesIO
 from io import TextIOWrapper
 from pathlib import Path
 import fcntl
+import time
 import zipfile
 
 from microimpute.models.qrf import QRF
@@ -272,13 +273,14 @@ def _load_cps_basic_org_month_from_csv(
     year: int,
     month: str,
     *,
-    max_attempts: int = 3,
+    max_attempts: int = 6,
+    retry_delay_seconds: float = 1.0,
 ) -> pd.DataFrame:
     """Load one CPS basic-month file from the CSV endpoint."""
     url = _cps_basic_org_month_url(year, month)
     last_error: Exception | None = None
 
-    for _ in range(max_attempts):
+    for attempt in range(1, max_attempts + 1):
         try:
             response = requests.get(url, timeout=60)
             response.raise_for_status()
@@ -295,6 +297,8 @@ def _load_cps_basic_org_month_from_csv(
             )
         except Exception as error:
             last_error = error
+            if attempt < max_attempts and retry_delay_seconds > 0:
+                time.sleep(retry_delay_seconds * attempt)
 
     raise ValueError(
         f"Failed to load CPS basic ORG month {month} {year} from CSV after "
@@ -361,6 +365,7 @@ def _load_cps_basic_org_month(
     month: str,
     *,
     max_attempts: int = 3,
+    retry_delay_seconds: float = 1.0,
 ) -> pd.DataFrame:
     """Load one CPS basic-month file, preferring CSV and falling back to ZIP."""
     try:
@@ -368,6 +373,7 @@ def _load_cps_basic_org_month(
             year,
             month,
             max_attempts=max_attempts,
+            retry_delay_seconds=retry_delay_seconds,
         )
     except Exception as csv_error:
         try:

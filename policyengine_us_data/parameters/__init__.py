@@ -19,8 +19,8 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
         year: Year for which to get the rate
 
     Returns:
-        float, dict (EITC rates_by_children), or dict (Medicaid
-        rates_by_state)
+        float, dict (EITC rates_by_children), dict (Medicaid
+        rates_by_state), or nested dict (cell-based rates)
     """
     yaml_path = PARAMETERS_DIR / "take_up" / f"{variable_name}.yaml"
 
@@ -48,6 +48,10 @@ def load_take_up_rate(variable_name: str, year: int = 2018):
             if applicable_value is not None:
                 result[category] = applicable_value
         return result
+
+    # Cell-based tables (for example, voluntary filing by demographics)
+    if "rates" in data:
+        return data["rates"]
 
     # Standard time-series values
     values = data["values"]

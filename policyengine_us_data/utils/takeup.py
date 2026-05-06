@@ -252,12 +252,123 @@ def _resolve_rate(
 ) -> float:
     """Resolve a scalar or state-keyed rate to a single float."""
     if isinstance(rate_or_dict, dict):
+        if _is_cell_based_rate_table(rate_or_dict):
+            raise ValueError(
+                "Cell-based take-up rates require demographic inputs; "
+                "use the variable-specific take-up helper instead."
+            )
         code = _FIPS_TO_STATE_CODE.get(state_fips, "")
         return rate_or_dict.get(
             code,
             rate_or_dict.get(str(state_fips), 0.8),
         )
     return float(rate_or_dict)
+
+
+def _is_cell_based_rate_table(rate_or_dict) -> bool:
+    """Return true for nested demographic take-up tables."""
+    return isinstance(rate_or_dict, dict) and any(
+        isinstance(value, dict) for value in rate_or_dict.values()
+    )
+
+
+def _sum_person_values_to_tax_units(
+    person_values: np.ndarray,
+    person_tax_unit_ids: np.ndarray,
+    tax_unit_ids: np.ndarray,
+) -> np.ndarray:
+    tax_unit_index = {
+        int(tax_unit_id): index for index, tax_unit_id in enumerate(tax_unit_ids)
+    }
+    person_tax_unit_index = np.array(
+        [tax_unit_index[int(tax_unit_id)] for tax_unit_id in person_tax_unit_ids],
+        dtype=np.int64,
+    )
+    tax_unit_values = np.zeros(len(tax_unit_ids), dtype=np.float32)
+    np.add.at(
+        tax_unit_values,
+        person_tax_unit_index,
+        np.asarray(person_values, dtype=np.float32),
+    )
+    return tax_unit_values
+
+
+def _voluntary_filing_children_bin(
+    tax_unit_child_dependents: np.ndarray,
+) -> np.ndarray:
+    return np.where(
+        np.asarray(tax_unit_child_dependents) > 0,
+        "with_children",
+        "no_children",
+    )
+
+
+def _voluntary_filing_wage_income_bin(
+    tax_unit_wage_income: np.ndarray,
+) -> np.ndarray:
+    wage_income = np.asarray(tax_unit_wage_income, dtype=np.float32)
+    return np.select(
+        [
+            wage_income <= 0,
+            wage_income < 15_000,
+            wage_income < 30_000,
+        ],
+        ["zero", "low", "medium"],
+        default="high",
+    )
+
+
+def _voluntary_filing_age_bin(age_head: np.ndarray) -> np.ndarray:
+    return np.where(np.asarray(age_head) >= 65, "age_65_plus", "under_65")
+
+
+def _voluntary_filing_rate_by_tax_unit(
+    voluntary_filing_rates: dict,
+    children_bin: np.ndarray,
+    wage_income_bin: np.ndarray,
+    age_bin: np.ndarray,
+) -> np.ndarray:
+    return np.array(
+        [
+            voluntary_filing_rates[children][wage][age]
+            for children, wage, age in zip(children_bin, wage_income_bin, age_bin)
+        ],
+        dtype=np.float32,
+    )
+
+
+def compute_voluntary_filing_takeup_for_tax_units(
+    voluntary_filing_rates: dict,
+    tax_unit_blocks: np.ndarray,
+    tax_unit_hh_ids: np.ndarray,
+    tax_unit_clone_ids: np.ndarray | None,
+    tax_unit_child_dependents: np.ndarray,
+    tax_unit_wage_income: np.ndarray,
+    age_head: np.ndarray,
+) -> np.ndarray:
+    """Compute tax-unit voluntary filing with demographic rates."""
+    n_tax_units = len(tax_unit_blocks)
+    for name, values in {
+        "tax_unit_child_dependents": tax_unit_child_dependents,
+        "tax_unit_wage_income": tax_unit_wage_income,
+        "age_head": age_head,
+    }.items():
+        if len(values) != n_tax_units:
+            raise ValueError(f"{name} must align to tax_unit_blocks")
+
+    draws = compute_block_takeup_draws_for_entities(
+        "would_file_taxes_voluntarily",
+        tax_unit_blocks,
+        tax_unit_hh_ids,
+        tax_unit_clone_ids,
+    )
+    rates = _voluntary_filing_rate_by_tax_unit(
+        voluntary_filing_rates,
+        _voluntary_filing_children_bin(tax_unit_child_dependents),
+        _voluntary_filing_wage_income_bin(tax_unit_wage_income),
+        _voluntary_filing_age_bin(age_head),
+    )
+    return draws < rates
 
 
 def compute_block_takeup_draws_for_entities(
@@ -543,6 +654,7 @@ def apply_block_takeup_to_arrays(
     takeup_filter: List[str] = None,
     precomputed_rates: Optional[Dict[str, Any]] = None,
     reported_anchors: Optional[Dict[str, np.ndarray]] = None,
+    voluntary_filing_inputs: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
     """Compute takeup draws from raw arrays.
 
@@ -598,14 +710,30 @@ def apply_block_takeup_to_arrays(
         reported_mask = reported_anchors.get(var_name)
         if reported_mask is not None and len(reported_mask) != n_ent:
             raise ValueError(f"reported anchor for {var_name} has wrong length")
-        bools = compute_block_takeup_for_entities(
-            var_name,
-            rate_or_dict,
-            ent_blocks,
-            ent_hh_ids,
-            ent_clone_indices,
-            reported_mask=reported_mask,
-        )
+        if var_name == "would_file_taxes_voluntarily":
+            if voluntary_filing_inputs is None:
+                raise ValueError(
+                    "voluntary_filing_inputs are required for "
+                    "would_file_taxes_voluntarily take-up"
+                )
+            bools = compute_voluntary_filing_takeup_for_tax_units(
+                rate_or_dict,
+                ent_blocks,
+                ent_hh_ids,
+                ent_clone_indices,
+                voluntary_filing_inputs["tax_unit_child_dependents"],
+                voluntary_filing_inputs["tax_unit_wage_income"],
+                voluntary_filing_inputs["age_head"],
+            )
+        else:
+            bools = compute_block_takeup_for_entities(
+                var_name,
+                rate_or_dict,
+                ent_blocks,
+                ent_hh_ids,
+                ent_clone_indices,
+                reported_mask=reported_mask,
+            )
         result[var_name] = bools
 
     return result

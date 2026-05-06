@@ -1,5 +1,8 @@
 import pytest
 
+from dataclasses import dataclass
+from pathlib import Path
+
 from policyengine_us_data.stage_contracts.core import (
     CONTRACT_FINGERPRINT_ALGORITHM,
     CONTRACT_SCHEMA_VERSION,
@@ -15,6 +18,10 @@ from policyengine_us_data.stage_contracts.io import (
     contract_to_json,
     read_contract,
     write_contract,
+)
+from policyengine_us_data.stage_contracts.fingerprints import (
+    canonicalize_for_fingerprint,
+    fingerprint_material,
 )
 
 
@@ -288,3 +295,60 @@ def test_contract_json_top_level_keys_are_sorted():
 
     assert lines[0] == "{"
     assert lines[1].strip().startswith('"code_sha"')
+
+
+def test_fingerprint_material_is_stable_across_mapping_order():
+    first = fingerprint_material(
+        {
+            "stage_id": "2_build_calibration_package",
+            "parameters": {"seed": 42, "n_clones": 430},
+        }
+    )
+    second = fingerprint_material(
+        {
+            "parameters": {"n_clones": 430, "seed": 42},
+            "stage_id": "2_build_calibration_package",
+        }
+    )
+
+    assert first == second
+    assert first.algorithm == CONTRACT_FINGERPRINT_ALGORITHM
+    assert first.value.startswith("sha256:")
+
+
+def test_fingerprint_material_changes_when_semantic_value_changes():
+    first = fingerprint_material({"stage_id": "3_fit_weights", "seed": 42})
+    second = fingerprint_material({"stage_id": "3_fit_weights", "seed": 43})
+
+    assert first.value != second.value
+
+
+def test_canonicalize_for_fingerprint_converts_paths_to_strings():
+    material = canonicalize_for_fingerprint(
+        {"artifact": Path("contracts") / "2_build_calibration_package.json"}
+    )
+
+    assert material == {"artifact": "contracts/2_build_calibration_package.json"}
+
+
+def test_canonicalize_for_fingerprint_uses_to_dict_objects():
+    artifact = _artifact()
+
+    material = canonicalize_for_fingerprint({"artifact": artifact})
+
+    assert material["artifact"]["logical_name"] == "policy_data_db"
+    assert material["artifact"]["metadata"] == {"source": "stage_1"}
+
+
+def test_canonicalize_for_fingerprint_rejects_plain_dataclasses():
+    @dataclass(frozen=True)
+    class PlainRecord:
+        value: int
+
+    with pytest.raises(TypeError, match="to_dict"):
+        canonicalize_for_fingerprint(PlainRecord(value=1))
+
+
+def test_canonicalize_for_fingerprint_rejects_unsupported_values():
+    with pytest.raises(TypeError, match="Unsupported fingerprint material"):
+        canonicalize_for_fingerprint(object())

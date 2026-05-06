@@ -10,11 +10,14 @@ from policyengine_us_data.stage_contracts.core import (
     CONTRACT_FINGERPRINT_ALGORITHM,
     CONTRACT_SCHEMA_VERSION,
     ArtifactRef,
+    DiagnosticRef,
     ExecutionRecord,
     Fingerprint,
     ReuseSummary,
     StageContract,
     SubstageRecord,
+    ValidationFinding,
+    ValidationReport,
 )
 from policyengine_us_data.stage_contracts.io import (
     contract_from_json,
@@ -65,6 +68,49 @@ def _execution() -> ExecutionRecord:
             invalid_outputs=0,
         ),
         metadata={"worker": "modal"},
+    )
+
+
+def _diagnostic(*, artifact=None) -> DiagnosticRef:
+    return DiagnosticRef(
+        name="weight_fit_summary",
+        kind="json",
+        artifact=artifact,
+        summary={"max_abs_error": 0.02, "rows": 12},
+        severity="warning",
+    )
+
+
+def _validation_report() -> ValidationReport:
+    return ValidationReport(
+        status="warn",
+        findings=(
+            ValidationFinding(
+                check_id="artifact_exists",
+                status="pass",
+                message="Output artifact exists.",
+                metric="exists",
+                value=True,
+                threshold=True,
+            ),
+            ValidationFinding(
+                check_id="target_error",
+                status="warn",
+                message="Target error is within warning range.",
+                metric="max_abs_error",
+                value=0.02,
+                threshold=0.01,
+                metadata={"target": "employment_income"},
+            ),
+            ValidationFinding(
+                check_id="optional_check",
+                status="fail",
+                message="Optional check failed.",
+                metadata={"blocking": False},
+            ),
+        ),
+        diagnostics=(_diagnostic(artifact=_artifact()),),
+        metadata={"validator": "stage_contracts"},
     )
 
 
@@ -175,6 +221,99 @@ def test_stage_contract_dict_round_trip_with_substages():
     assert restored.execution.status == "completed"
 
 
+def test_diagnostic_ref_dict_round_trip_with_artifact_and_summary():
+    diagnostic = _diagnostic(artifact=_artifact())
+
+    restored = DiagnosticRef.from_dict(diagnostic.to_dict())
+
+    assert restored == diagnostic
+    assert restored.artifact == _artifact()
+    assert restored.summary["rows"] == 12
+
+
+def test_diagnostic_ref_dict_round_trip_with_embedded_summary_only():
+    diagnostic = DiagnosticRef(
+        name="calibration_summary",
+        kind="table_summary",
+        summary={
+            "rows": 3,
+            "columns": ("target", "actual", "error"),
+        },
+        severity="info",
+    )
+
+    restored = DiagnosticRef.from_dict(diagnostic.to_dict())
+
+    assert restored == diagnostic
+    assert restored.artifact is None
+    assert restored.summary["columns"] == ("target", "actual", "error")
+
+
+def test_validation_finding_dict_round_trip():
+    finding = ValidationFinding(
+        check_id="max_abs_error",
+        status="fail",
+        message="Maximum absolute error exceeded the promotion threshold.",
+        metric="max_abs_error",
+        value={"observed": 0.12},
+        threshold={"maximum": 0.05},
+        metadata={"blocking": True},
+    )
+
+    restored = ValidationFinding.from_dict(finding.to_dict())
+
+    assert restored == finding
+    assert restored.value["observed"] == 0.12
+    assert restored.threshold["maximum"] == 0.05
+
+
+def test_validation_report_dict_round_trip_with_mixed_findings():
+    report = _validation_report()
+
+    restored = ValidationReport.from_dict(report.to_dict())
+
+    assert restored == report
+    assert [finding.status for finding in restored.findings] == [
+        "pass",
+        "warn",
+        "fail",
+    ]
+    assert restored.diagnostics[0].artifact == _artifact()
+
+
+def test_substage_record_dict_round_trip_with_validation_and_diagnostics():
+    substage = SubstageRecord(
+        substage_id="3b_validate_weights",
+        status="completed",
+        validation=_validation_report(),
+        diagnostics=(_diagnostic(),),
+    )
+
+    restored = SubstageRecord.from_dict(substage.to_dict())
+
+    assert restored == substage
+    assert restored.validation.status == "warn"
+    assert restored.diagnostics[0].name == "weight_fit_summary"
+
+
+def test_stage_contract_dict_round_trip_with_validation_and_diagnostics():
+    contract = StageContract(
+        contract_type="fitted_weights",
+        stage_id="3_fit_weights",
+        created_at="2026-05-05T10:00:03Z",
+        fingerprint=_fingerprint(),
+        execution=_execution(),
+        validation=_validation_report(),
+        diagnostics=(_diagnostic(artifact=_artifact()),),
+    )
+
+    restored = StageContract.from_dict(contract.to_dict())
+
+    assert restored == contract
+    assert restored.validation.status == "warn"
+    assert restored.diagnostics[0].artifact == _artifact()
+
+
 def test_invalid_execution_status_raises():
     with pytest.raises(ValueError, match="Invalid execution status"):
         ExecutionRecord(status="done")
@@ -206,6 +345,39 @@ def test_invalid_schema_version_raises():
             uri="file:///policy_data.db",
             schema_version="0",
         )
+
+
+def test_invalid_validation_status_raises():
+    with pytest.raises(ValueError, match="Invalid validation finding status"):
+        ValidationFinding(
+            check_id="check",
+            status="not_run",
+            message="Finding statuses cannot be not_run.",
+        )
+
+    with pytest.raises(ValueError, match="Invalid validation report status"):
+        ValidationReport(status="unknown")
+
+
+def test_invalid_diagnostic_severity_raises():
+    with pytest.raises(ValueError, match="Invalid diagnostic severity"):
+        DiagnosticRef(name="summary", kind="json", severity="debug")
+
+
+def test_contracts_without_validation_or_diagnostics_remain_valid():
+    contract = _stage_contract()
+    payload = contract.to_dict()
+    payload.pop("validation")
+    payload.pop("diagnostics")
+    payload["substages"][0].pop("validation")
+    payload["substages"][0].pop("diagnostics")
+
+    restored = StageContract.from_dict(payload)
+
+    assert restored.validation is None
+    assert restored.diagnostics == ()
+    assert restored.substages[0].validation is None
+    assert restored.substages[0].diagnostics == ()
 
 
 def test_from_dict_rejects_none_required_string_fields():
@@ -419,7 +591,10 @@ def test_stage_contract_package_exports_public_api():
     import policyengine_us_data.stage_contracts as contracts
 
     assert contracts.ArtifactRef is ArtifactRef
+    assert contracts.DiagnosticRef is DiagnosticRef
     assert contracts.Fingerprint is Fingerprint
+    assert contracts.ValidationFinding is ValidationFinding
+    assert contracts.ValidationReport is ValidationReport
     assert contracts.ReuseSummary is ReuseSummary
     assert contracts.ExecutionRecord is ExecutionRecord
     assert contracts.SubstageRecord is SubstageRecord
@@ -432,7 +607,10 @@ def test_stage_contract_package_exports_public_api():
     assert contracts.fingerprint_material is fingerprint_material
     assert set(contracts.__all__) >= {
         "ArtifactRef",
+        "DiagnosticRef",
         "Fingerprint",
+        "ValidationFinding",
+        "ValidationReport",
         "ReuseSummary",
         "ExecutionRecord",
         "SubstageRecord",

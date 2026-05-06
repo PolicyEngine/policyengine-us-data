@@ -237,12 +237,26 @@ as a predictor, which allows the imputed values to reflect geographic variation 
 rates and rent levels.
 
 **SIPP (Survey of Income and Program Participation)**: Tip income, bank account assets, stock
-assets, bond assets. The SIPP lacks state identifiers, so these imputations are state-blind at the
-microdata level — geographic variation in tip income and assets enters only through calibration
-weights, not through the imputed values themselves.
+assets, bond assets, household vehicle counts, and household vehicle values. The SIPP lacks state
+identifiers, so these imputations are state-blind at the microdata level - geographic variation in
+tip income and assets enters only through calibration weights, not through the imputed values
+themselves.
 
-**SCF (Survey of Consumer Finances)**: Net worth, auto loan balances, auto loan interest. The SCF
-also lacks state identifiers, so these imputations are likewise state-blind.
+**SCF (Survey of Consumer Finances)**: Aggregate net worth, auto loan balances, auto loan interest,
+and balance-sheet components needed to express net worth as a formula. The SCF also lacks state
+identifiers, so these imputations are likewise state-blind.
+
+The asset fields are a mixed-source balance sheet. The SIPP liquid-asset and vehicle fields are
+policy-relevant inputs in their own right. For overlapping bank-account, stock, bond, and vehicle
+value variables, we use a stable household-level 50/50 source-model draw between the SIPP QRF
+prediction and the comparable SCF QRF prediction, with a single draw shared across the asset block.
+We then impute the non-overlapping SCF balance-sheet components - home value, mortgage debt,
+retirement assets, business equity, other real estate, other financial assets, other debts, and
+related categories including vehicle, student, and other installment debt. Because independently
+imputed leaves do not preserve the SCF balance-sheet covariance exactly, we impute a direct SCF net
+worth anchor and proportionally rebalance the SCF-only leaves to that anchor. This gives downstream
+code a direct component formula without an accounting residual while preserving resource-tested
+policy leaves.
 
 The output of this stage is the source-imputed stratified CPS
 (`source_imputed_stratified_extended_cps_2024.h5`), which serves as the input to the

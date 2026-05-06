@@ -48,7 +48,22 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_NET_WORTH_TARGET,
+    SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
+    SCF_NET_WORTH_COMPONENT_VARIABLES,
+    add_scf_financial_asset_targets,
+    add_scf_household_asset_targets,
+    add_scf_net_worth_target,
+    add_scf_net_worth_component_targets,
+    aggregate_person_values_to_reference_households,
+    align_household_values_to_reference_households,
     build_household_vehicle_receiver,
+    combine_sipp_and_scf_financial_assets,
+    combine_sipp_and_scf_household_assets,
+    compute_net_worth_from_components,
+    rebalance_scf_net_worth_components,
+    require_scf_net_worth_formula_targets,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -2552,7 +2567,9 @@ def add_tips(self, cps: h5py.File):
         mean_quantile=0.5,
     ).tip_income.values
 
-    # Impute liquid assets from SIPP (bank accounts, stocks, bonds)
+    # Impute SIPP liquid assets used directly by resource-tested policy rules.
+    # The SCF step below applies a stable 50/50 source-model draw for the
+    # overlapping bank, stock, and bond leaves.
 
     from policyengine_us_data.datasets.sipp import get_asset_model
 
@@ -2737,7 +2754,8 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
 def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     """ "Add auto loan balance, interest and net_worth variable."""
     self.save_dataset(cps)
-    cps_data = self.load_dataset()
+    full_cps_data = self.load_dataset()
+    cps_data = dict(full_cps_data)
 
     # Access raw CPS for additional variables
     with _open_dataset_read_only(self.raw_cps) as raw_data:
@@ -2895,6 +2913,7 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
 
     mask = create_scf_reference_person_mask(cps_data, person_data)
     mask_len = mask.shape[0]
+    original_person_household_ids = np.asarray(cps_data["person_household_id"])
 
     cps_data = {
         var: data[mask] if data.shape[0] == mask_len else data
@@ -2965,7 +2984,9 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     reference_persons = person_data[mask]
     receiver_data["is_married"] = reference_persons.A_MARITL.isin([1, 2]).values
 
-    # Impute auto loan balance from the SCF
+    # Impute selected auto-loan fields, SCF equivalents for overlapping
+    # financial asset leaves, and SCF-only balance-sheet leaves. We compute
+    # net_worth from those components rather than storing an SCF aggregate.
     from policyengine_us_data.datasets.scf.scf import SCF_2022
 
     scf_dataset = SCF_2022()
@@ -2982,7 +3003,26 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
         "interest_dividend_income",
         "social_security_pension_income",
     ]
-    IMPUTED_VARIABLES = ["networth", "auto_loan_balance", "auto_loan_interest"]
+    scf_net_worth_targets = add_scf_net_worth_target(scf_data)
+    scf_financial_asset_targets = add_scf_financial_asset_targets(scf_data)
+    scf_household_asset_targets = add_scf_household_asset_targets(scf_data)
+    scf_component_targets = add_scf_net_worth_component_targets(scf_data)
+    require_scf_net_worth_formula_targets(
+        scf_financial_asset_targets=scf_financial_asset_targets,
+        scf_household_asset_targets=scf_household_asset_targets,
+        scf_component_targets=scf_component_targets,
+        scf_net_worth_targets=scf_net_worth_targets,
+    )
+    IMPUTED_VARIABLES = (
+        list(scf_net_worth_targets)
+        + [
+            "auto_loan_balance",
+            "auto_loan_interest",
+        ]
+        + list(scf_financial_asset_targets)
+        + list(scf_household_asset_targets)
+        + list(scf_component_targets)
+    )
     weights = ["wgt"]
 
     donor_data = scf_data[PREDICTORS + IMPUTED_VARIABLES + weights].copy()
@@ -3009,10 +3049,86 @@ def add_auto_loan_interest_and_net_worth(self, cps: h5py.File) -> None:
     imputations = fitted_model.predict(X_test=receiver_data)
 
     for var in IMPUTED_VARIABLES:
+        if var == SCF_NET_WORTH_TARGET:
+            continue
         cps[var] = imputations[var]
 
-    cps["net_worth"] = cps["networth"]
-    del cps["networth"]
+    for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
+        if scf_var not in imputations or policy_var not in full_cps_data:
+            continue
+        blended_values = combine_sipp_and_scf_financial_assets(
+            sipp_values=full_cps_data[policy_var],
+            scf_household_values=imputations[scf_var].values,
+            person_household_ids=original_person_household_ids,
+            reference_person_mask=mask,
+            time_period=self.time_period,
+        )
+        full_cps_data[policy_var] = blended_values
+        if policy_var in cps:
+            del cps[policy_var]
+        cps[policy_var] = blended_values
+        if scf_var in cps:
+            del cps[scf_var]
+
+    reference_household_ids = original_person_household_ids[mask]
+    for scf_var, policy_var in SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES.items():
+        if (
+            scf_var not in imputations
+            or policy_var not in full_cps_data
+            or "household_id" not in full_cps_data
+        ):
+            continue
+        blended_values = combine_sipp_and_scf_household_assets(
+            sipp_household_values=full_cps_data[policy_var],
+            scf_household_values=imputations[scf_var].values,
+            household_ids=full_cps_data["household_id"],
+            reference_household_ids=reference_household_ids,
+            time_period=self.time_period,
+        )
+        full_cps_data[policy_var] = blended_values
+        if policy_var in cps:
+            del cps[policy_var]
+        cps[policy_var] = blended_values
+        if scf_var in cps:
+            del cps[scf_var]
+
+    net_worth_components = {}
+    for variable in ("bank_account_assets", "stock_assets", "bond_assets"):
+        if variable in full_cps_data:
+            net_worth_components[variable] = (
+                aggregate_person_values_to_reference_households(
+                    full_cps_data[variable],
+                    original_person_household_ids,
+                    mask,
+                )
+            )
+    if "household_vehicles_value" in full_cps_data and "household_id" in full_cps_data:
+        net_worth_components["household_vehicles_value"] = (
+            align_household_values_to_reference_households(
+                full_cps_data["household_vehicles_value"],
+                full_cps_data["household_id"],
+                reference_household_ids,
+            )
+        )
+    for variable in SCF_NET_WORTH_COMPONENT_VARIABLES:
+        if variable in cps:
+            net_worth_components[variable] = cps[variable]
+    if SCF_NET_WORTH_TARGET in imputations:
+        net_worth_components = rebalance_scf_net_worth_components(
+            components=net_worth_components,
+            target_net_worth=imputations[SCF_NET_WORTH_TARGET].values,
+        )
+        for variable in SCF_NET_WORTH_COMPONENT_VARIABLES:
+            if variable not in net_worth_components:
+                continue
+            if variable in cps:
+                del cps[variable]
+            cps[variable] = net_worth_components[variable]
+    if "net_worth" in cps:
+        del cps["net_worth"]
+    cps["net_worth"] = compute_net_worth_from_components(
+        components=net_worth_components
+    )
 
     self.save_dataset(cps)
 

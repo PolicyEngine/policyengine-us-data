@@ -12,7 +12,9 @@ Sources and variables:
             household_vehicles_value  (no state predictor)
     ORG  -> hourly_wage, is_paid_hourly,
             is_union_member_or_covered
-    SCF  -> net_worth, auto_loan_balance, auto_loan_interest
+    SCF  -> net_worth, auto_loan_balance, auto_loan_interest,
+            SCF-only balance-sheet components, and
+            50/50 source-model averaging for overlapping financial assets
             (no state predictor)
 
 Usage in unified calibration pipeline:
@@ -45,7 +47,22 @@ from policyengine_us_data.datasets.org import (
     predict_org_features,
 )
 from policyengine_us_data.utils.asset_imputation import (
+    SCF_NET_WORTH_TARGET,
+    SCF_FINANCIAL_ASSET_POLICY_VARIABLES,
+    SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES,
+    SCF_NET_WORTH_COMPONENT_VARIABLES,
+    add_scf_financial_asset_targets,
+    add_scf_household_asset_targets,
+    add_scf_net_worth_target,
+    add_scf_net_worth_component_targets,
+    aggregate_person_values_to_reference_households,
+    align_household_values_to_reference_households,
     build_household_vehicle_receiver,
+    combine_sipp_and_scf_financial_assets,
+    combine_sipp_and_scf_household_assets,
+    compute_net_worth_from_components,
+    rebalance_scf_net_worth_components,
+    require_scf_net_worth_formula_targets,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -66,10 +83,15 @@ SIPP_IMPUTED_VARIABLES = [
     "household_vehicles_value",
 ]
 
-SCF_IMPUTED_VARIABLES = [
-    "net_worth",
+SCF_CORE_IMPUTED_VARIABLES = [
     "auto_loan_balance",
     "auto_loan_interest",
+]
+
+SCF_IMPUTED_VARIABLES = [
+    "net_worth",
+    *SCF_CORE_IMPUTED_VARIABLES,
+    *SCF_NET_WORTH_COMPONENT_VARIABLES,
 ]
 
 ALL_SOURCE_VARIABLES = (
@@ -827,17 +849,32 @@ def _impute_scf(
         logger.warning("SCF missing predictors: %s", missing_preds)
         scf_predictors = available_preds
 
-    if "networth" in scf_df.columns and "net_worth" not in scf_df.columns:
-        scf_df["net_worth"] = scf_df["networth"]
+    scf_net_worth_targets = add_scf_net_worth_target(scf_df)
+    scf_financial_asset_targets = add_scf_financial_asset_targets(scf_df)
+    scf_household_asset_targets = add_scf_household_asset_targets(scf_df)
+    scf_component_targets = add_scf_net_worth_component_targets(scf_df)
+    require_scf_net_worth_formula_targets(
+        scf_financial_asset_targets=scf_financial_asset_targets,
+        scf_household_asset_targets=scf_household_asset_targets,
+        scf_component_targets=scf_component_targets,
+        scf_net_worth_targets=scf_net_worth_targets,
+    )
 
-    available_vars = [v for v in SCF_IMPUTED_VARIABLES if v in scf_df.columns]
-    if not available_vars:
+    available_vars = [v for v in SCF_CORE_IMPUTED_VARIABLES if v in scf_df.columns]
+    qrf_vars = (
+        [v for v in scf_net_worth_targets if v in scf_df.columns]
+        + available_vars
+        + [v for v in scf_financial_asset_targets if v in scf_df.columns]
+        + [v for v in scf_household_asset_targets if v in scf_df.columns]
+        + [v for v in scf_component_targets if v in scf_df.columns]
+    )
+    if not qrf_vars:
         logger.warning("No SCF imputed variables available. Skipping.")
         return data
 
     weights = scf_df.get("wgt")
 
-    donor = scf_df[scf_predictors + available_vars].copy()
+    donor = scf_df[scf_predictors + qrf_vars].copy()
     if weights is not None:
         donor["wgt"] = weights
     donor = donor.dropna(subset=scf_predictors)
@@ -898,12 +935,12 @@ def _impute_scf(
         "SCF QRF: %d train, %d test, vars=%s",
         len(donor),
         len(cps_df),
-        available_vars,
+        qrf_vars,
     )
     fitted = qrf.fit(
         X_train=donor,
         predictors=scf_predictors,
-        imputed_variables=available_vars,
+        imputed_variables=qrf_vars,
         weight_col="wgt" if weights is not None else None,
         tune_hyperparameters=False,
     )
@@ -934,10 +971,82 @@ def _impute_scf(
         else:
             data[var] = {time_period: person_vals}
 
+    person_hh_ids = data.get("person_household_id", {}).get(time_period)
+    if person_hh_ids is not None:
+        first_person_mask = ~pd.Series(person_hh_ids).duplicated().values
+        reference_household_ids = person_hh_ids[first_person_mask]
+        for var in SCF_NET_WORTH_COMPONENT_VARIABLES:
+            if var in preds:
+                data[var] = {
+                    time_period: preds.loc[first_person_mask, var].values.astype(
+                        np.float32
+                    )
+                }
+        for scf_var, policy_var in SCF_FINANCIAL_ASSET_POLICY_VARIABLES.items():
+            if scf_var not in preds or policy_var not in data:
+                continue
+            data[policy_var] = {
+                time_period: combine_sipp_and_scf_financial_assets(
+                    sipp_values=data[policy_var][time_period],
+                    scf_household_values=preds.loc[first_person_mask, scf_var].values,
+                    person_household_ids=person_hh_ids,
+                    reference_person_mask=first_person_mask,
+                    time_period=time_period,
+                )
+            }
+        for scf_var, policy_var in SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES.items():
+            if scf_var not in preds or policy_var not in data:
+                continue
+            data[policy_var] = {
+                time_period: combine_sipp_and_scf_household_assets(
+                    sipp_household_values=data[policy_var][time_period],
+                    scf_household_values=preds.loc[first_person_mask, scf_var].values,
+                    household_ids=hh_ids,
+                    reference_household_ids=reference_household_ids,
+                    time_period=time_period,
+                )
+            }
+        net_worth_components = {}
+        for var in ("bank_account_assets", "stock_assets", "bond_assets"):
+            if var in data:
+                net_worth_components[var] = (
+                    aggregate_person_values_to_reference_households(
+                        data[var][time_period],
+                        person_hh_ids,
+                        first_person_mask,
+                    )
+                )
+        if "household_vehicles_value" in data:
+            net_worth_components["household_vehicles_value"] = (
+                align_household_values_to_reference_households(
+                    data["household_vehicles_value"][time_period],
+                    hh_ids,
+                    reference_household_ids,
+                )
+            )
+        for var in SCF_NET_WORTH_COMPONENT_VARIABLES:
+            if var in data:
+                net_worth_components[var] = data[var][time_period]
+        if SCF_NET_WORTH_TARGET in preds:
+            net_worth_components = rebalance_scf_net_worth_components(
+                components=net_worth_components,
+                target_net_worth=preds.loc[
+                    first_person_mask, SCF_NET_WORTH_TARGET
+                ].values.astype(np.float32),
+            )
+            for var in SCF_NET_WORTH_COMPONENT_VARIABLES:
+                if var in net_worth_components:
+                    data[var] = {time_period: net_worth_components[var]}
+        data["net_worth"] = {
+            time_period: compute_net_worth_from_components(
+                components=net_worth_components,
+            )
+        }
+
     del fitted, preds
     gc.collect()
 
-    logger.info("SCF imputation complete: %s", available_vars)
+    logger.info("SCF imputation complete: %s", SCF_IMPUTED_VARIABLES)
     return data
 
 

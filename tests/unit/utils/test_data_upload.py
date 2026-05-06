@@ -438,10 +438,12 @@ def test_promote_full_release_orders_full_release_operations(
     monkeypatch.setattr(
         data_upload,
         "upload_release_completion_marker_to_hf",
-        lambda **kwargs: calls.append(("release_complete", kwargs.get("create_tag")))
-        or {
-            "marker_path": "releases/1.73.0/release-complete.json",
-        },
+        lambda **kwargs: (
+            calls.append(("release_complete", kwargs.get("create_tag")))
+            or {
+                "marker_path": "releases/1.73.0/release-complete.json",
+            }
+        ),
     )
     monkeypatch.setattr(
         data_upload,

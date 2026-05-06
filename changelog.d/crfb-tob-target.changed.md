@@ -1,0 +1,1 @@
+Hardened long-run TOB target metadata with the CRFB Post-OBBBA scenario contract and hash validation, kept full production pipeline runs manual-only, and added unit-level coverage that the manual 2100 production command carries the expected long-run contract inputs.

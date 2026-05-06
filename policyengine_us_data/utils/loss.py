@@ -198,6 +198,9 @@ IRS_SOI_AGGREGATE_TARGETS = [
     ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
 ]
 
+EITC_NATIONAL_GEO_ID = "0100000US"
+EITC_INTERNATIONAL_GEO_ID = "INTL"
+
 
 def fmt(x):
     if x == -np.inf:
@@ -439,26 +442,124 @@ def _skip_unverified_target(value) -> bool:
     return False
 
 
+def _load_eitc_claim_controls(requested_year: int) -> tuple[pd.DataFrame, int]:
+    """Load the best available IRS EITC claim controls for a target year.
+
+    The checked-in control file uses the IRS EITC Central state table, whose
+    latest release can lead detailed SOI geography workbooks. It measures net
+    EITC credited on returns, which is the claim concept closest to the
+    microsim's ``eitc`` variable.
+    """
+
+    requested_year = int(requested_year)
+    path = CALIBRATION_FOLDER / "eitc_claim_controls.csv"
+    controls = pd.read_csv(path, comment="#")
+    years = {int(year): year for year in controls["year"].unique()}
+    data_year = _best_available_year(years, requested_year)
+    return controls[controls["year"] == data_year].copy(), data_year
+
+
+def _domestic_eitc_claim_totals(controls: pd.DataFrame) -> tuple[float, float]:
+    """Return national EITC controls excluding the international row.
+
+    The local calibration universe assigns US states and DC, but not the IRS
+    table's separate "International" row. Subtract it from the published
+    national line so state and AGI-shape targets describe the same universe.
+    """
+
+    national = controls[controls["GEO_ID"] == EITC_NATIONAL_GEO_ID]
+    if national.empty:
+        state_rows = controls[controls["GEO_ID"].str.startswith("0400000US")]
+        return float(state_rows["Returns"].sum()), float(state_rows["Amount"].sum())
+
+    returns = float(national["Returns"].iloc[0])
+    amount = float(national["Amount"].iloc[0])
+
+    international = controls[controls["GEO_ID"] == EITC_INTERNATIONAL_GEO_ID]
+    if not international.empty:
+        returns -= float(international["Returns"].iloc[0])
+        amount -= float(international["Amount"].iloc[0])
+
+    return returns, amount
+
+
+def _get_eitc_claim_targets(
+    requested_year: int,
+    sim,
+) -> tuple[pd.DataFrame, float, float, int]:
+    """Return state rows and national totals for EITC claim calibration.
+
+    For the latest IRS EITC Central year, use the published claim controls.
+    For later years, roll the control year forward transparently: counts by
+    total population and dollar amounts by CPI-U. Do not use Treasury or CBO
+    outlay series here; those are fiscal-year refundable-outlay concepts.
+    """
+
+    requested_year = int(requested_year)
+    controls, data_year = _load_eitc_claim_controls(requested_year)
+    params = sim.tax_benefit_system.parameters
+    population = params.calibration.gov.census.populations.total
+    cpi = params.gov.bls.cpi.cpi_u
+
+    returns_uprating = float(population(requested_year) / population(data_year))
+    amount_uprating = float(cpi(requested_year) / cpi(data_year))
+    national_returns, national_amount = _domestic_eitc_claim_totals(controls)
+    national_returns *= returns_uprating
+    national_amount *= amount_uprating
+
+    state_targets = controls[controls["GEO_ID"].str.startswith("0400000US")].copy()
+    state_returns = float(state_targets["Returns"].sum())
+    state_amount = float(state_targets["Amount"].sum())
+    if state_returns:
+        state_targets["Returns"] = (
+            state_targets["Returns"].astype(float) * national_returns / state_returns
+        )
+    if state_amount:
+        state_targets["Amount"] = (
+            state_targets["Amount"].astype(float) * national_amount / state_amount
+        )
+
+    return state_targets, national_returns, national_amount, data_year
+
+
+def _get_eitc_shape_scaling(
+    national_returns: float,
+    national_amount: float,
+) -> tuple[float, float]:
+    """Scale detailed TY2022 SOI EITC shape cells to claim controls."""
+
+    eitc_agi_path = CALIBRATION_FOLDER / "eitc_by_agi_and_children.csv"
+    eitc_by_agi = pd.read_csv(eitc_agi_path, comment="#")
+    returns_total = float(eitc_by_agi["returns"].sum())
+    amount_total = float(eitc_by_agi["amount"].sum())
+    returns_scaling = national_returns / returns_total if returns_total else 1.0
+    amount_scaling = national_amount / amount_total if amount_total else 1.0
+    return returns_scaling, amount_scaling
+
+
 def _add_state_eitc_targets(
     loss_matrix: pd.DataFrame,
     targets_list: list,
     sim,
-    eitc_spending_uprating: float,
-    population_uprating: float,
+    amount_uprating: float,
+    returns_uprating: float,
+    state_targets: pd.DataFrame | None = None,
 ):
     """Add per-state EITC returns and amount targets.
 
-    Sourced from IRS SOI Historical Table 2 (``eitc_state.csv``). Returns
-    counts are uprated by population; amount targets are uprated by the
-    Treasury EITC trajectory (same uprating used for the existing
-    per-child-count EITC targets so state and child-count signals move
-    together).
+    By default this consumes IRS SOI Historical Table 2 (``eitc_state.csv``).
+    ``build_loss_matrix`` passes the newer IRS EITC Central state controls
+    instead, with the rounded state rows normalized to the published domestic
+    national control. ``amount_uprating`` and ``returns_uprating`` are generic
+    scale factors; they are not tied to Treasury outlays.
     """
-    eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
-    if not eitc_state_path.exists():
-        return targets_list, loss_matrix
-
-    eitc_state = pd.read_csv(eitc_state_path, comment="#")
+    if state_targets is None:
+        eitc_state_path = CALIBRATION_FOLDER / "eitc_state.csv"
+        if not eitc_state_path.exists():
+            return targets_list, loss_matrix
+        eitc_state = pd.read_csv(eitc_state_path, comment="#")
+    else:
+        eitc_state = state_targets.copy()
 
     eitc = sim.calculate("eitc").values  # tax-unit level
     eitc_returns_tu = (eitc > 0).astype(float)
@@ -477,7 +578,7 @@ def _add_state_eitc_targets(
         returns_label = f"nation/irs/eitc/returns/state_{fips}"
         loss_matrix[returns_label] = np.where(in_state, eitc_returns_hh, 0.0)
         if not _skip_unverified_target(row["Returns"]):
-            targets_list.append(float(row["Returns"]) * population_uprating)
+            targets_list.append(float(row["Returns"]) * returns_uprating)
         else:
             # Remove the column we just added since we aren't appending a
             # target for it; otherwise loss_matrix/targets_array go out of
@@ -487,7 +588,7 @@ def _add_state_eitc_targets(
         amount_label = f"nation/irs/eitc/amount/state_{fips}"
         loss_matrix[amount_label] = np.where(in_state, eitc_amount_hh, 0.0)
         if not _skip_unverified_target(row["Amount"]):
-            targets_list.append(float(row["Amount"]) * eitc_spending_uprating)
+            targets_list.append(float(row["Amount"]) * amount_uprating)
         else:
             del loss_matrix[amount_label]
 
@@ -543,8 +644,8 @@ def _add_eitc_by_agi_and_children_targets(
     loss_matrix: pd.DataFrame,
     targets_list: list,
     sim,
-    eitc_spending_uprating: float,
-    population_uprating: float,
+    amount_uprating: float,
+    returns_uprating: float,
 ):
     """Add per-(qualifying-children x AGI bucket) EITC returns and amount
     targets.
@@ -593,7 +694,7 @@ def _add_eitc_by_agi_and_children_targets(
             "household",
         )
         if not _skip_unverified_target(row["returns"]):
-            targets_list.append(float(row["returns"]) * population_uprating)
+            targets_list.append(float(row["returns"]) * returns_uprating)
         else:
             del loss_matrix[returns_label]
 
@@ -604,7 +705,7 @@ def _add_eitc_by_agi_and_children_targets(
             "household",
         )
         if not _skip_unverified_target(row["amount"]):
-            targets_list.append(float(row["amount"]) * eitc_spending_uprating)
+            targets_list.append(float(row["amount"]) * amount_uprating)
         else:
             del loss_matrix[amount_label]
 
@@ -867,7 +968,7 @@ def build_loss_matrix(dataset: type, time_period):
     label = "nation/hhs/medicaid_enrollment"
     on_medicaid = (
         sim.calculate(
-            "medicaid",  # or your enrollee flag
+            "medicaid_enrolled",
             map_to="person",
             period=time_period,
         ).values
@@ -905,50 +1006,48 @@ def build_loss_matrix(dataset: type, time_period):
 
     # EITC targets.
     #
-    # Authoritative source: IRS SOI TY2022 tables. Treasury's
-    # ``tax_expenditures.eitc`` parameter ($67B in 2024) is the
-    # *outlay* measure (refundable portion with tax-expenditure
-    # methodology) and is not directly comparable to the total EITC
-    # claimed on tax returns that the ``eitc`` variable computes
-    # ($59B per SOI). Previously the loss function targeted Treasury's
-    # $67B number as the national aggregate, which contradicted the
-    # ~$59B implied by the per-state and per-child-count rows we also
-    # targeted, and contradicted reality: the optimizer couldn't
-    # satisfy both definitions simultaneously.
-    #
-    # v2: drop the Treasury aggregate and the legacy ``eitc.csv``
-    # (TY2020, stale) per-child-count targets entirely. Rely on the
-    # new SOI TY2022 sources below, which provide better geographic
-    # and AGI-shape coverage AND a coherent total.
-    #
-    # Treasury's EITC parameter is still used to derive the dollar
-    # uprating trajectory — its year-over-year growth captures the
-    # expected EITC evolution, even if its level is defined
-    # differently from what we target.
-    eitc_spending = (
-        sim.tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc
+    # Use IRS EITC Central claim controls for the aggregate state/national
+    # level. They are tax-year return-claim statistics, so they match the
+    # ``eitc`` variable's concept better than Treasury or CBO refundable
+    # outlays. The detailed TY2022 SOI AGI x child-count table is retained as
+    # a shape source, then scaled to the same IRS claim control.
+    (
+        state_eitc_targets,
+        national_eitc_returns,
+        national_eitc_amount,
+        eitc_control_year,
+    ) = _get_eitc_claim_targets(time_period, sim)
+    (
+        eitc_returns_shape_scaling,
+        eitc_amount_shape_scaling,
+    ) = _get_eitc_shape_scaling(
+        national_eitc_returns,
+        national_eitc_amount,
     )
-    population = (
-        sim.tax_benefit_system.parameters.calibration.gov.census.populations.total
+    logging.info(
+        "Using IRS EITC claim controls from TY%s for %s targets: "
+        "returns=%s, amount=%s",
+        eitc_control_year,
+        time_period,
+        f"{national_eitc_returns:,.0f}",
+        f"${national_eitc_amount:,.0f}",
     )
-    # Source CSVs use TY2022 data; uprate to ``time_period`` from 2022.
-    eitc_spending_uprating = eitc_spending(time_period) / eitc_spending(2022)
-    population_uprating = population(time_period) / population(2022)
 
     targets_array, loss_matrix = _add_state_eitc_targets(
         loss_matrix,
         targets_array,
         sim,
-        eitc_spending_uprating,
-        population_uprating,
+        amount_uprating=1.0,
+        returns_uprating=1.0,
+        state_targets=state_eitc_targets,
     )
 
     targets_array, loss_matrix = _add_eitc_by_agi_and_children_targets(
         loss_matrix,
         targets_array,
         sim,
-        eitc_spending_uprating,
-        population_uprating,
+        amount_uprating=eitc_amount_shape_scaling,
+        returns_uprating=eitc_returns_shape_scaling,
     )
 
     targets_array, loss_matrix = _add_ctc_targets(

@@ -338,6 +338,46 @@ class TestLoadTargetConfig:
             "geo_level": "national",
         } in config["include"]
 
+    def test_training_config_excludes_national_undifferentiated_eitc_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {"variable": "eitc", "geo_level": "national"} not in include_rules
+        assert {
+            "variable": "eitc",
+            "geo_level": "national",
+            "domain_variable": "eitc_child_count",
+        } in include_rules
+
+    def test_training_config_uses_enrollment_flag_for_medicaid_count_target(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "medicaid_enrolled",
+        } in include_rules
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "medicaid",
+        } not in include_rules
+
     def test_training_config_includes_district_non_refundable_ctc_target(self):
         config = load_target_config(
             str(

@@ -25,6 +25,12 @@
   • Location: https://www.irs.gov/pub/irs-soi/22in55cmcsv.csv
   • Notes: This file intentionally keeps the legacy `utils/loss.py` schema (`AL`, `DC`, etc.) instead of the newer `state_AL` geography naming used in `soi.csv`/database overlays. It is separate from `soi_targets.csv`, and it currently lags the national SOI refresh because IRS geographic state SOI files are only published through TY2022.
 
+- **eitc_claim_controls.csv**
+  • Source: IRS EITC Central, "2024 EITC tax returns by state processed in 2025"
+  • Date: tax year 2024
+  • Location: https://www.irs.gov/tax-professionals/eitc-central/statistics-for-tax-returns-with-the-earned-income-tax-credit-eitc
+  • Notes: Used as the EITC claim-level control for legacy loss-matrix calibration. The detailed 2022 SOI EITC AGI and child-count table is retained as a shape source and scaled to this claim control. Treasury and CBO EITC outlay series are not used as EITC claim calibration targets.
+
 - **medicaid_enrollment_2024.csv**  
   • Source: MACPAC Enrollment Tables, FFY 2024  
   • Date: 2024  

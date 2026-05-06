@@ -1,6 +1,9 @@
+import inspect
+
 import pandas as pd
 from sqlmodel import Session, select
 
+from policyengine_us_data.db import etl_national_targets
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -10,6 +13,38 @@ from policyengine_us_data.db.create_database_tables import (
 from policyengine_us_data.db.etl_national_targets import (
     load_national_targets,
 )
+
+
+def test_national_targets_do_not_extract_treasury_eitc():
+    source = inspect.getsource(etl_national_targets.extract_national_targets)
+
+    assert "tax_expenditures.eitc" not in source
+
+
+def test_transform_national_targets_ignores_treasury_eitc_compat_key():
+    raw_targets = {
+        "direct_sum_targets": [],
+        "tax_filer_targets": [],
+        "tax_expenditure_targets": [],
+        "conditional_count_targets": [],
+        "cbo_targets": [],
+        "irs_soi_targets": [],
+        "treasury_targets": [
+            {
+                "variable": "eitc",
+                "value": 67.33e9,
+                "source": "Treasury/JCT Tax Expenditures",
+                "notes": "EITC tax expenditure",
+                "year": 2024,
+            }
+        ],
+    }
+
+    _, tax_filer_df, _, _ = etl_national_targets.transform_national_targets(
+        raw_targets
+    )
+
+    assert tax_filer_df.empty
 
 
 def _make_stratum(session, parent_id=None, notes=None, constraints=None):
@@ -199,6 +234,67 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646
+
+
+def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        assert national is not None
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        {
+            "constraint_variable": "medicaid_enrolled",
+            "person_count": 72_429_055,
+            "source": "CMS/HHS administrative data",
+            "notes": "Medicaid enrollment count",
+            "year": 2024,
+        }
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        medicaid_stratum = session.exec(
+            select(Stratum).where(Stratum.notes == "National Medicaid Enrollment")
+        ).first()
+        assert medicaid_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in medicaid_stratum.constraints_rel
+        }
+        assert ("medicaid_enrolled", ">", "0") in constraints
+
+        medicaid_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == medicaid_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert medicaid_target is not None
+        assert medicaid_target.value == 72_429_055
 
 
 def test_load_national_targets_supports_medicare_enrollment_counts(

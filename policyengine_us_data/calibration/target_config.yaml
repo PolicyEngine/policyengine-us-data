@@ -49,7 +49,7 @@ include:
   # Restore old loss.py's national Medicaid enrollment count target.
   - variable: person_count
     geo_level: national
-    domain_variable: medicaid
+    domain_variable: medicaid_enrolled
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
@@ -115,8 +115,6 @@ include:
   - variable: child_support_expense
     geo_level: national
   - variable: child_support_received
-    geo_level: national
-  - variable: eitc
     geo_level: national
   - variable: employer_sponsored_insurance_premiums
     geo_level: national

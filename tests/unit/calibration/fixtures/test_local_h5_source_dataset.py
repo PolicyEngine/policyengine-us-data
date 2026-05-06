@@ -63,6 +63,7 @@ def load_source_dataset_exports():
         "MicrosimulationVariableProvider": (
             source_dataset_module.MicrosimulationVariableProvider
         ),
+        "SourceDatasetSnapshot": source_dataset_module.SourceDatasetSnapshot,
     }
 
 
@@ -106,6 +107,7 @@ class FakeSimulation:
     def __init__(self, holders):
         self.holders = dict(holders)
         self.input_variables = frozenset(holders)
+        self.default_calculation_period = 2023
         self.get_holder_calls = []
 
     def get_holder(self, variable):
@@ -113,3 +115,20 @@ class FakeSimulation:
         if variable not in self.holders:
             raise KeyError(variable)
         return self.holders[variable]
+
+    def calculate(self, variable, map_to=None):
+        holder_variable = (
+            "person_household_id"
+            if variable == "household_id" and map_to == "person"
+            else variable
+        )
+        holder = self.get_holder(holder_variable)
+        period = next(iter(holder.arrays_by_period))
+        return FakeCalculation(holder.arrays_by_period[period])
+
+
+class FakeCalculation:
+    """Small calculation result object with a ``values`` attribute."""
+
+    def __init__(self, values):
+        self.values = np.asarray(values)

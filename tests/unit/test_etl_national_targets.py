@@ -40,9 +40,7 @@ def test_transform_national_targets_ignores_treasury_eitc_compat_key():
         ],
     }
 
-    _, tax_filer_df, _, _ = etl_national_targets.transform_national_targets(
-        raw_targets
-    )
+    _, tax_filer_df, _, _ = etl_national_targets.transform_national_targets(raw_targets)
 
     assert tax_filer_df.empty
 

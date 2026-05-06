@@ -1025,8 +1025,7 @@ def build_loss_matrix(dataset: type, time_period):
         national_eitc_amount,
     )
     logging.info(
-        "Using IRS EITC claim controls from TY%s for %s targets: "
-        "returns=%s, amount=%s",
+        "Using IRS EITC claim controls from TY%s for %s targets: returns=%s, amount=%s",
         eitc_control_year,
         time_period,
         f"{national_eitc_returns:,.0f}",

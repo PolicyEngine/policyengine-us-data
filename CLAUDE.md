@@ -13,6 +13,9 @@ rules here.
 
 ## Required skill lookup
 
+Before opening, replacing, or sharing a PR, read
+`docs/engineering/skills/github-prs.md`.
+
 When adding, moving, or reviewing tests, read
 `docs/engineering/skills/testing.md` before editing. Then run
 `uv run --no-sync --with pyyaml python scripts/run_quality_guards.py` before

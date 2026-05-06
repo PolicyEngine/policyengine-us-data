@@ -160,7 +160,17 @@ push-pr-branch:
 		echo "Refusing to push main as a PR branch."; \
 		exit 1; \
 	fi
-	@git push -u upstream $(BRANCH)
+	@REMOTE_URL=$$(git remote get-url upstream 2>/dev/null || true); \
+	if [ -z "$$REMOTE_URL" ]; then \
+		echo "Missing upstream remote. Add PolicyEngine/policyengine-us-data as upstream before opening PRs."; \
+		exit 1; \
+	fi; \
+	case "$$REMOTE_URL" in \
+		*PolicyEngine/policyengine-us-data*) ;; \
+		*) echo "Refusing to push: upstream ($$REMOTE_URL) is not PolicyEngine/policyengine-us-data."; exit 1 ;; \
+	esac
+	@git push -u upstream HEAD:$(BRANCH)
+	@echo "Create the PR with: gh pr create --repo PolicyEngine/policyengine-us-data --head $(BRANCH) --base main"
 
 upload-calibration:
 	python -c "from policyengine_us_data.utils.huggingface import upload_calibration_artifacts; \

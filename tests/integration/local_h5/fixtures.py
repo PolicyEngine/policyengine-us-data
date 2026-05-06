@@ -51,7 +51,8 @@ def fixture_household_count() -> int:
 
     sim = Microsimulation(dataset=str(FIXTURE_DATASET_PATH))
     try:
-        return int(len(sim.calculate("household_id", map_to="household").values))
+        household_ids = np.asarray(sim.calculate("household_id", map_to="household"))
+        return int(len(household_ids))
     finally:
         del sim
 

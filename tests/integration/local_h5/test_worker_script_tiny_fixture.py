@@ -5,8 +5,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from policyengine_us_data.calibration.local_h5.source_dataset import (
+    DEFAULT_SUBENTITIES,
+    SourceDatasetSnapshot,
+)
+from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
 from tests.integration.local_h5.fixtures import (
     build_request,
     seed_local_h5_artifacts,
@@ -14,8 +20,12 @@ from tests.integration.local_h5.fixtures import (
 
 pytestmark = pytest.mark.integration
 
-pytest.importorskip("scipy")
-pytest.importorskip("spm_calculator")
+pytest.importorskip("policyengine_us")
+
+
+def _require_worker_dependencies() -> None:
+    pytest.importorskip("scipy")
+    pytest.importorskip("spm_calculator")
 
 
 def _run_worker(
@@ -29,6 +39,7 @@ def _run_worker(
     target_config: Path | None = None,
     validation_config: Path | None = None,
 ) -> dict:
+    _require_worker_dependencies()
     if not isinstance(requests, (list, tuple)):
         requests = (requests,)
     cmd = [
@@ -71,6 +82,34 @@ def _run_worker(
         check=True,
     )
     return json.loads(result.stdout)
+
+
+def test_tiny_fixture_source_snapshot_matches_worker_artifacts(tmp_path):
+    artifacts = seed_local_h5_artifacts(tmp_path / "source-snapshot")
+
+    snapshot = SourceDatasetSnapshot.from_dataset_path(artifacts.dataset_path)
+    weights = CloneWeightMatrix.from_vector(
+        np.load(artifacts.weights_path),
+        n_records=snapshot.n_households,
+    )
+
+    assert snapshot.n_households == artifacts.n_records
+    assert snapshot.variable_provider.get_array(
+        "household_id",
+        snapshot.time_period,
+    ).shape == (artifacts.n_records,)
+    assert weights.n_records == snapshot.n_households
+    assert weights.n_clones == artifacts.n_clones
+
+    assert set(snapshot.entity_graph.subentity_ids) == set(DEFAULT_SUBENTITIES)
+    assert len(snapshot.entity_graph.household_to_person_indices) == (
+        artifacts.n_records
+    )
+    for entity_key in DEFAULT_SUBENTITIES:
+        assert (
+            len(snapshot.entity_graph.household_to_subentity_indices[entity_key])
+            == artifacts.n_records
+        )
 
 
 def test_worker_builds_district_h5_from_saved_geography(tmp_path):

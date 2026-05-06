@@ -12,11 +12,6 @@ include:
   - variable: household_count
     geo_level: district
 
-  # === DISTRICT — SNAP household counts (ACS S2201) ===
-  - variable: household_count
-    geo_level: district
-    domain_variable: snap
-
   # === DISTRICT — dollar targets ===
   - variable: adjusted_gross_income
     geo_level: district

@@ -1,3 +1,10 @@
+## [1.103.0] - 2026-05-06
+
+### Added
+
+- Preserve Forbes top-tail residence states through PUF local geography assignment.
+
+
 ## [1.102.0] - 2026-05-06
 
 ### Added

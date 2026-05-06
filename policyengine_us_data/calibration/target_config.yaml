@@ -158,6 +158,8 @@ include:
     geo_level: national
   - variable: unemployment_compensation
     geo_level: national
+  - variable: wic
+    geo_level: national
 
   # === NATIONAL — retirement contribution targets ===
   - variable: traditional_ira_contributions
@@ -319,6 +321,9 @@ include:
   - variable: person_count
     geo_level: national
     domain_variable: ssn_card_type
+  - variable: person_count
+    geo_level: national
+    domain_variable: wic
 
   # === NATIONAL — SOI deduction totals (non-reform) ===
   - variable: charitable_deduction

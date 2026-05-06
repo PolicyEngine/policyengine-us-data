@@ -25,6 +25,10 @@ from policyengine_us_data.utils.db import (
     etl_argparser,
 )
 
+WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
+    "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
+)
+
 
 def extract_national_targets(year: int = DEFAULT_YEAR):
     """
@@ -160,6 +164,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
+            "variable": "wic",
+            "value": 4_911_500_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC food costs, excluding nutrition services and administration; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
+            "year": 2024,
+        },
+        {
             "variable": "tip_income",
             "value": 53.2e9,
             "source": "IRS Form W-2 Box 7 statistics",
@@ -270,6 +281,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": get_medicare_enrollment_target(2024),
             "source": get_medicare_enrollment_source(2024),
             "notes": get_medicare_enrollment_notes(2024),
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC average monthly participation; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -702,6 +720,10 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "spm_unit_energy_subsidy_reported":
                 stratum_notes = "National LIHEAP Recipient Households"
+                constraint_operation = ">"
+                constraint_value = "0"
+            elif constraint_var == "wic":
+                stratum_notes = "National WIC Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":

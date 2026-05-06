@@ -9,6 +9,7 @@ from policyengine_core.data.dataset import Dataset
 from policyengine_us_data.calibration.puf_impute import CLONE_ORIGIN_FLAGS
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.h5 import to_h5_values
 
 
 def _load_saved_period_array(
@@ -108,18 +109,16 @@ def create_small_ecps():
     data = {}
     for variable in simulation.tax_benefit_system.variables:
         data[variable] = {}
+        is_string_like = simulation.tax_benefit_system.variables.get(
+            variable
+        ).value_type in (Enum, str)
         for time_period in simulation.get_holder(variable).get_known_periods():
             values = simulation.get_holder(variable).get_array(time_period)
-            if simulation.tax_benefit_system.variables.get(variable).value_type in (
-                Enum,
-                str,
-            ):
-                if hasattr(values, "decode_to_str"):
-                    values = values.decode_to_str().astype("S")
-                else:
-                    values = values.astype("S")
-            else:
-                values = np.array(values)
+            values = to_h5_values(
+                values,
+                is_string_like=is_string_like,
+                variable=variable,
+            )
             if values is not None:
                 data[variable][time_period] = values
 
@@ -184,17 +183,17 @@ def create_sparse_ecps():
     data = {}
     for variable in sim.tax_benefit_system.variables:
         data[variable] = {}
+        is_string_like = sim.tax_benefit_system.variables.get(variable).value_type in (
+            Enum,
+            str,
+        )
         for time_period in sim.get_holder(variable).get_known_periods():
             values = sim.get_holder(variable).get_array(time_period)
-            if (
-                sim.tax_benefit_system.variables.get(variable).value_type in (Enum, str)
-                and variable != "county_fips"
-            ):
-                values = values.decode_to_str().astype("S")
-            elif variable == "county_fips":
-                values = values.astype("int32")
-            else:
-                values = np.array(values)
+            values = to_h5_values(
+                values,
+                is_string_like=is_string_like,
+                variable=variable,
+            )
             if values is not None:
                 data[variable][time_period] = values
 

@@ -1,5 +1,503 @@
+from dataclasses import dataclass
+import hashlib
+from typing import Mapping, Sequence
+
 import numpy as np
 import pandas as pd
+
+
+SIPP_LIQUID_ASSET_VARIABLES = (
+    "bank_account_assets",
+    "stock_assets",
+    "bond_assets",
+)
+SIPP_VEHICLE_ASSET_VARIABLES = ("household_vehicles_value",)
+SCF_NET_WORTH_VARIABLE = "net_worth"
+SCF_NET_WORTH_TARGET = "scf_net_worth"
+SCF_NET_WORTH_TARGETS = {
+    SCF_NET_WORTH_TARGET: ("networth",),
+}
+SCF_FINANCIAL_ASSET_TARGETS = {
+    "scf_bank_account_assets": ("liq",),
+    "scf_stock_assets": ("stocks", "nmmf"),
+    "scf_bond_assets": ("bond",),
+}
+SCF_FINANCIAL_ASSET_POLICY_VARIABLES = {
+    "scf_bank_account_assets": "bank_account_assets",
+    "scf_stock_assets": "stock_assets",
+    "scf_bond_assets": "bond_assets",
+}
+SCF_HOUSEHOLD_ASSET_TARGETS = {
+    "scf_household_vehicles_value": ("vehic",),
+}
+SCF_HOUSEHOLD_ASSET_POLICY_VARIABLES = {
+    "scf_household_vehicles_value": "household_vehicles_value",
+}
+SCF_NET_WORTH_COMPONENT_TARGETS = {
+    "scf_certificates_of_deposit": ("cds",),
+    "scf_savings_bonds": ("savbnd",),
+    "scf_retirement_assets": ("retqliq",),
+    "scf_cash_value_life_insurance": ("cashli",),
+    "scf_other_managed_assets": ("othma",),
+    "scf_other_financial_assets": ("othfin",),
+    "scf_primary_residence_value": ("houses",),
+    "scf_other_residential_real_estate": ("oresre",),
+    "scf_nonresidential_real_estate_equity": ("nnresre",),
+    "scf_business_equity": ("bus",),
+    "scf_other_nonfinancial_assets": ("othnfin",),
+    "scf_mortgage_debt": ("mrthel",),
+    "scf_other_residential_debt": ("resdbt",),
+    "scf_other_lines_of_credit": ("othloc",),
+    "scf_credit_card_debt": ("ccbal",),
+    "scf_vehicle_installment_debt": ("veh_inst",),
+    "scf_student_loan_debt": ("edn_inst",),
+    "scf_other_installment_debt": ("oth_inst",),
+    "scf_other_debt": ("odebt",),
+}
+SCF_NET_WORTH_COMPONENT_VARIABLES = tuple(SCF_NET_WORTH_COMPONENT_TARGETS)
+SCF_OTHER_ASSET_COMPONENT = "scf_other_financial_assets"
+SCF_OTHER_DEBT_COMPONENT = "scf_other_debt"
+
+EXPOSED_NET_WORTH_COMPONENT_VARIABLES = (
+    SIPP_LIQUID_ASSET_VARIABLES
+    + SIPP_VEHICLE_ASSET_VARIABLES
+    + SCF_NET_WORTH_COMPONENT_VARIABLES
+)
+NET_WORTH_COMPONENT_SIGNS = {
+    "auto_loan_balance": -1.0,
+    "scf_mortgage_debt": -1.0,
+    "scf_other_residential_debt": -1.0,
+    "scf_other_lines_of_credit": -1.0,
+    "scf_credit_card_debt": -1.0,
+    "scf_vehicle_installment_debt": -1.0,
+    "scf_student_loan_debt": -1.0,
+    "scf_other_installment_debt": -1.0,
+    "scf_other_debt": -1.0,
+}
+UNOBSERVED_NET_WORTH_COMPONENT_GROUPS = ()
+NET_WORTH_COMPONENTS_ARE_COMPLETE = True
+FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY = 0.5
+
+
+@dataclass(frozen=True)
+class NetWorthReconciliationReport:
+    """Summary of a household-level net worth reconciliation check."""
+
+    components_are_complete: bool
+    available_component_variables: tuple[str, ...]
+    missing_component_variables: tuple[str, ...]
+    unobserved_component_groups: tuple[str, ...]
+    max_abs_difference: float | None
+    is_reconciled: bool | None
+    message: str
+
+
+def check_household_net_worth_reconciliation(
+    data: Mapping[str, Sequence[float]],
+    *,
+    component_variables: Sequence[str] = EXPOSED_NET_WORTH_COMPONENT_VARIABLES,
+    net_worth_variable: str = SCF_NET_WORTH_VARIABLE,
+    component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
+    components_are_complete: bool = NET_WORTH_COMPONENTS_ARE_COMPLETE,
+    rtol: float = 1e-6,
+    atol: float = 1.0,
+) -> NetWorthReconciliationReport:
+    """Check whether household net worth equals signed balance-sheet components.
+
+    The current CPS asset fields use blended SIPP/SCF liquid assets plus SCF-only
+    balance-sheet components. They are intended to reconstruct net worth without
+    an accounting residual when aligned to household rows.
+    """
+    component_variables = tuple(component_variables)
+    available_components = tuple(
+        variable for variable in component_variables if variable in data
+    )
+    missing_components = tuple(
+        variable for variable in component_variables if variable not in data
+    )
+
+    if not components_are_complete:
+        return NetWorthReconciliationReport(
+            components_are_complete=False,
+            available_component_variables=available_components,
+            missing_component_variables=missing_components,
+            unobserved_component_groups=UNOBSERVED_NET_WORTH_COMPONENT_GROUPS,
+            max_abs_difference=None,
+            is_reconciled=None,
+            message=(
+                "Net worth component reconciliation was skipped because the "
+                "component set was marked incomplete."
+            ),
+        )
+
+    if net_worth_variable not in data:
+        raise KeyError(f"Missing net worth variable: {net_worth_variable}")
+    if missing_components:
+        raise KeyError(
+            "Cannot reconcile net worth with a complete component set because "
+            f"these component variables are missing: {', '.join(missing_components)}"
+        )
+
+    net_worth = np.asarray(data[net_worth_variable], dtype=float)
+    component_total = np.zeros_like(net_worth, dtype=float)
+
+    for variable in component_variables:
+        values = np.asarray(data[variable], dtype=float)
+        if values.shape != net_worth.shape:
+            raise ValueError(
+                f"{variable} has shape {values.shape}, but {net_worth_variable} "
+                f"has shape {net_worth.shape}. Reconciliation data must already "
+                "be aligned to household rows."
+            )
+        component_total += component_signs.get(variable, 1.0) * values
+
+    difference = net_worth - component_total
+    max_abs_difference = (
+        float(np.nanmax(np.abs(difference))) if difference.size else 0.0
+    )
+    is_reconciled = bool(
+        np.allclose(net_worth, component_total, rtol=rtol, atol=atol, equal_nan=True)
+    )
+
+    return NetWorthReconciliationReport(
+        components_are_complete=True,
+        available_component_variables=available_components,
+        missing_component_variables=(),
+        unobserved_component_groups=(),
+        max_abs_difference=max_abs_difference,
+        is_reconciled=is_reconciled,
+        message=(
+            "Net worth reconciles to the signed component variables."
+            if is_reconciled
+            else "Net worth does not reconcile to the signed component variables."
+        ),
+    )
+
+
+def add_scf_financial_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add SCF financial asset targets comparable to SIPP policy leaves."""
+    return _add_scf_targets(scf, SCF_FINANCIAL_ASSET_TARGETS)
+
+
+def add_scf_net_worth_target(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add a direct SCF net worth anchor target for component rebalancing."""
+    return _add_scf_targets(scf, SCF_NET_WORTH_TARGETS)
+
+
+def add_scf_net_worth_component_targets(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add SCF-only balance-sheet targets needed for a net worth formula."""
+    return _add_scf_targets(scf, SCF_NET_WORTH_COMPONENT_TARGETS)
+
+
+def add_scf_household_asset_targets(scf: pd.DataFrame) -> tuple[str, ...]:
+    """Add SCF asset targets comparable to household-level SIPP leaves."""
+    return _add_scf_targets(scf, SCF_HOUSEHOLD_ASSET_TARGETS)
+
+
+def require_scf_net_worth_formula_targets(
+    *,
+    scf_financial_asset_targets: Sequence[str],
+    scf_household_asset_targets: Sequence[str],
+    scf_component_targets: Sequence[str],
+    scf_net_worth_targets: Sequence[str] = (),
+) -> None:
+    """Fail loudly if the SCF source cannot supply the formula leaves."""
+    available_targets = (
+        set(scf_financial_asset_targets)
+        | set(scf_household_asset_targets)
+        | set(scf_component_targets)
+        | set(scf_net_worth_targets)
+    )
+    missing_targets = [
+        target
+        for target in (
+            *SCF_NET_WORTH_TARGETS,
+            *SCF_FINANCIAL_ASSET_TARGETS,
+            *SCF_HOUSEHOLD_ASSET_TARGETS,
+            *SCF_NET_WORTH_COMPONENT_TARGETS,
+        )
+        if target not in available_targets
+    ]
+    if missing_targets:
+        raise KeyError(
+            "SCF data is missing source columns needed to build these net "
+            f"worth formula targets: {', '.join(missing_targets)}"
+        )
+
+
+def _add_scf_targets(
+    scf: pd.DataFrame,
+    target_map: Mapping[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    added_targets = []
+    for target, source_columns in target_map.items():
+        if all(column in scf.columns for column in source_columns):
+            scf[target] = sum(scf[column].fillna(0) for column in source_columns)
+            added_targets.append(target)
+    return tuple(added_targets)
+
+
+def _stable_unit_interval(key: str) -> float:
+    digest = hashlib.blake2b(key.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big") / 2**64
+
+
+def financial_asset_source_is_scf(
+    household_ids: Sequence,
+    *,
+    time_period: int,
+    probability: float = FINANCIAL_ASSET_SOURCE_SCF_PROBABILITY,
+) -> np.ndarray:
+    """Return a stable 50/50 source-model draw for overlapping assets.
+
+    The draw is at the household asset-block level, so bank accounts, stocks,
+    bonds, and vehicle value all come from the same source for a household.
+    """
+    if not 0 <= probability <= 1:
+        raise ValueError("probability must be between 0 and 1")
+
+    household_ids = np.asarray(household_ids)
+    draws_by_household = {
+        household_id: (
+            _stable_unit_interval(
+                f"financial_asset_source:{time_period}:{household_id}"
+            )
+            < probability
+        )
+        for household_id in pd.unique(household_ids)
+    }
+    return np.array(
+        [draws_by_household[household_id] for household_id in household_ids],
+        dtype=bool,
+    )
+
+
+def combine_sipp_and_scf_financial_assets(
+    *,
+    sipp_values: Sequence[float],
+    scf_household_values: Sequence[float],
+    person_household_ids: Sequence,
+    reference_person_mask: Sequence[bool],
+    time_period: int,
+) -> np.ndarray:
+    """Apply a stable 50/50 SIPP/SCF source draw to a person-level asset leaf."""
+    sipp_values = np.asarray(sipp_values, dtype=np.float32)
+    scf_household_values = np.asarray(scf_household_values, dtype=np.float32)
+    person_household_ids = np.asarray(person_household_ids)
+    reference_person_mask = np.asarray(reference_person_mask, dtype=bool)
+
+    if sipp_values.shape != person_household_ids.shape:
+        raise ValueError(
+            "sipp_values and person_household_ids must have the same shape"
+        )
+    if reference_person_mask.shape != person_household_ids.shape:
+        raise ValueError(
+            "reference_person_mask and person_household_ids must have the same shape"
+        )
+    if scf_household_values.shape[0] != reference_person_mask.sum():
+        raise ValueError(
+            "scf_household_values must contain one value per reference person"
+        )
+
+    scf_person_values = np.zeros_like(sipp_values, dtype=np.float32)
+    scf_person_values[reference_person_mask] = scf_household_values
+    use_scf = financial_asset_source_is_scf(
+        person_household_ids,
+        time_period=time_period,
+    )
+    return np.where(use_scf, scf_person_values, sipp_values).astype(np.float32)
+
+
+def combine_sipp_and_scf_household_assets(
+    *,
+    sipp_household_values: Sequence[float],
+    scf_household_values: Sequence[float],
+    household_ids: Sequence,
+    reference_household_ids: Sequence,
+    time_period: int,
+) -> np.ndarray:
+    """Apply the stable SIPP/SCF source draw to a household-level asset leaf."""
+    sipp_household_values = np.asarray(sipp_household_values, dtype=np.float32)
+    scf_household_values = np.asarray(scf_household_values, dtype=np.float32)
+    household_ids = np.asarray(household_ids)
+    reference_household_ids = np.asarray(reference_household_ids)
+
+    if sipp_household_values.shape != household_ids.shape:
+        raise ValueError("sipp_household_values and household_ids must align")
+    if scf_household_values.shape != reference_household_ids.shape:
+        raise ValueError("scf_household_values and reference_household_ids must align")
+
+    scf_values = (
+        pd.Series(scf_household_values, index=reference_household_ids)
+        .reindex(household_ids)
+        .fillna(0)
+        .to_numpy(dtype=np.float32)
+    )
+    use_scf = financial_asset_source_is_scf(
+        household_ids,
+        time_period=time_period,
+    )
+    return np.where(use_scf, scf_values, sipp_household_values).astype(np.float32)
+
+
+def aggregate_person_values_to_reference_households(
+    person_values: Sequence[float],
+    person_household_ids: Sequence,
+    reference_person_mask: Sequence[bool],
+) -> np.ndarray:
+    """Aggregate person values to households in reference-person order."""
+    person_values = np.asarray(person_values, dtype=np.float32)
+    person_household_ids = np.asarray(person_household_ids)
+    reference_person_mask = np.asarray(reference_person_mask, dtype=bool)
+    reference_household_ids = person_household_ids[reference_person_mask]
+    totals = pd.Series(person_values).groupby(person_household_ids).sum()
+    return totals.reindex(reference_household_ids).fillna(0).to_numpy(dtype=np.float32)
+
+
+def align_household_values_to_reference_households(
+    household_values: Sequence[float],
+    household_ids: Sequence,
+    reference_household_ids: Sequence,
+) -> np.ndarray:
+    """Align household values from household-id order to reference-person order."""
+    household_values = np.asarray(household_values, dtype=np.float32)
+    household_ids = np.asarray(household_ids)
+    reference_household_ids = np.asarray(reference_household_ids)
+    values = pd.Series(household_values, index=household_ids)
+    return values.reindex(reference_household_ids).fillna(0).to_numpy(dtype=np.float32)
+
+
+def compute_net_worth_from_components(
+    *,
+    components: Mapping[str, Sequence[float]],
+    component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
+) -> np.ndarray:
+    """Compute household net worth from signed balance-sheet components."""
+    iterator = iter(components.items())
+    try:
+        first_variable, first_values = next(iterator)
+    except StopIteration:
+        return np.array([], dtype=np.float32)
+
+    first_values = np.asarray(first_values, dtype=np.float32)
+    component_total = (component_signs.get(first_variable, 1.0) * first_values).astype(
+        np.float32
+    )
+
+    for variable, values in iterator:
+        values = np.asarray(values, dtype=np.float32)
+        if values.shape != component_total.shape:
+            raise ValueError(
+                f"{variable} has shape {values.shape}, but expected "
+                f"{component_total.shape}."
+            )
+        component_total += component_signs.get(variable, 1.0) * values
+
+    return component_total.astype(np.float32)
+
+
+def rebalance_scf_net_worth_components(
+    *,
+    components: Mapping[str, Sequence[float]],
+    target_net_worth: Sequence[float],
+    adjustable_variables: Sequence[str] = SCF_NET_WORTH_COMPONENT_VARIABLES,
+    protected_variables: Sequence[str] = (
+        SIPP_LIQUID_ASSET_VARIABLES + SIPP_VEHICLE_ASSET_VARIABLES
+    ),
+    component_signs: Mapping[str, float] = NET_WORTH_COMPONENT_SIGNS,
+) -> dict[str, np.ndarray]:
+    """Rebalance SCF-only leaves so the component formula matches net worth.
+
+    Component QRFs are fit sequentially but still predict each leaf separately,
+    so their sum can drift from the direct SCF net worth distribution. Preserve
+    the final SIPP/SCF-blended policy leaves and proportionally scale SCF-only
+    same-sign leaves to the direct SCF net worth anchor.
+    """
+    adjusted = {
+        variable: np.asarray(values, dtype=np.float32).copy()
+        for variable, values in components.items()
+    }
+    if not adjusted:
+        return adjusted
+
+    target_net_worth = np.asarray(target_net_worth, dtype=np.float32)
+    first_shape = target_net_worth.shape
+    for variable, values in adjusted.items():
+        if values.shape != first_shape:
+            raise ValueError(
+                f"{variable} has shape {values.shape}, but target_net_worth "
+                f"has shape {first_shape}."
+            )
+
+    protected_variables = set(protected_variables)
+    adjustable_variables = tuple(
+        variable
+        for variable in adjustable_variables
+        if variable in adjusted and variable not in protected_variables
+    )
+    if not adjustable_variables:
+        return adjusted
+
+    fixed_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable, values in adjusted.items():
+        if variable not in adjustable_variables:
+            fixed_total += component_signs.get(variable, 1.0) * values
+
+    asset_variables = [
+        variable
+        for variable in adjustable_variables
+        if component_signs.get(variable, 1.0) >= 0
+    ]
+    debt_variables = [
+        variable
+        for variable in adjustable_variables
+        if component_signs.get(variable, 1.0) < 0
+    ]
+
+    asset_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable in asset_variables:
+        asset_total += adjusted[variable]
+
+    debt_total = np.zeros_like(target_net_worth, dtype=np.float32)
+    for variable in debt_variables:
+        debt_total += adjusted[variable]
+
+    desired_adjustable_total = target_net_worth - fixed_total
+    positive_target = desired_adjustable_total >= 0
+
+    required_assets = np.maximum(desired_adjustable_total + debt_total, 0)
+    asset_scale = np.divide(
+        required_assets,
+        asset_total,
+        out=np.ones_like(required_assets, dtype=np.float32),
+        where=(asset_total > 0) & positive_target,
+    )
+    for variable in asset_variables:
+        adjusted[variable][positive_target] *= asset_scale[positive_target]
+
+    needs_asset_fallback = positive_target & (asset_total <= 0) & (required_assets > 0)
+    if needs_asset_fallback.any() and SCF_OTHER_ASSET_COMPONENT in adjusted:
+        adjusted[SCF_OTHER_ASSET_COMPONENT][needs_asset_fallback] = required_assets[
+            needs_asset_fallback
+        ]
+
+    required_debts = np.maximum(asset_total - desired_adjustable_total, 0)
+    debt_scale = np.divide(
+        required_debts,
+        debt_total,
+        out=np.ones_like(required_debts, dtype=np.float32),
+        where=(debt_total > 0) & ~positive_target,
+    )
+    for variable in debt_variables:
+        adjusted[variable][~positive_target] *= debt_scale[~positive_target]
+
+    needs_debt_fallback = (~positive_target) & (debt_total <= 0) & (required_debts > 0)
+    if needs_debt_fallback.any() and SCF_OTHER_DEBT_COMPONENT in adjusted:
+        adjusted[SCF_OTHER_DEBT_COMPONENT][needs_debt_fallback] = required_debts[
+            needs_debt_fallback
+        ]
+
+    return adjusted
 
 
 def build_household_vehicle_receiver(

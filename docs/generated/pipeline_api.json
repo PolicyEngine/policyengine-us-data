@@ -3,7 +3,7 @@
     "docstring": "Set 2025 ACA take-up to match APTC enrollment targets.",
     "id": "aca_2025_override",
     "kind": "function",
-    "line": 148,
+    "line": 150,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override"
@@ -1085,7 +1085,7 @@
     "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
   },
   "geo_assign": {
-    "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
+    "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n    fixed_state_fips: Optional state FIPS per base record. Positive\n        values constrain every clone of that record to blocks in the\n        requested state; zero or missing values remain unrestricted.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
     "id": "geo_assign",
     "kind": "function",
     "line": 163,
@@ -1112,7 +1112,7 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration.clone_and_assign.assign_random_geography",
-    "signature": "def assign_random_geography(n_records: int, n_clones: int = 10, seed: int = 42, household_agi: np.ndarray = None, cd_agi_targets: dict = None, agi_threshold_pctile: float = 90.0) -> GeographyAssignment",
+    "signature": "def assign_random_geography(n_records: int, n_clones: int = 10, seed: int = 42, household_agi: np.ndarray = None, cd_agi_targets: dict = None, agi_threshold_pctile: float = 90.0, fixed_state_fips: np.ndarray = None) -> GeographyAssignment",
     "source_file": "policyengine_us_data/calibration/clone_and_assign.py"
   },
   "geo_derive": {
@@ -1147,7 +1147,7 @@
     "docstring": "",
     "id": "impute_puf_demographics",
     "kind": "function",
-    "line": 455,
+    "line": 469,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.impute_missing_demographics"
@@ -1174,7 +1174,7 @@
     "docstring": "",
     "id": "impute_puf_pension",
     "kind": "function",
-    "line": 399,
+    "line": 413,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf"
@@ -1616,7 +1616,7 @@
     "docstring": "",
     "id": "preprocess_puf",
     "kind": "function",
-    "line": 575,
+    "line": 589,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.preprocess_puf"
@@ -1821,7 +1821,7 @@
     "docstring": "",
     "id": "reweight",
     "kind": "function",
-    "line": 231,
+    "line": 233,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.enhanced_cps.reweight"
@@ -1853,7 +1853,7 @@
     "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1137,
+    "line": 1211,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"
@@ -2010,7 +2010,7 @@
     "docstring": "Simulate two Section 199A guard-rail quantities for every record\n  - W-2 wages paid by the business\n  - Unadjusted basis immediately after acquisition (UBIA) of property\n\nParameters\n----------\npuf : pandas.DataFrame\n    Must contain the income columns created in your preprocessing block.\nseed : int, optional\n    For reproducible random draws.\ndiagnostics : bool, default True\n    Print high-level checks after the simulation runs.\n\nReturns\n-------\nw2_wages : 1-D NumPy array\nubia     : 1-D NumPy array",
     "id": "simulate_qbi",
     "kind": "function",
-    "line": 295,
+    "line": 309,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.simulate_w2_and_ubia_from_puf"

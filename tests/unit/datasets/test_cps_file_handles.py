@@ -10,6 +10,10 @@ from policyengine_us_data.datasets.cps.cps import (
     add_auto_loan_interest_and_net_worth,
     add_previous_year_income,
 )
+from policyengine_us_data.utils.asset_imputation import (
+    combine_sipp_and_scf_financial_assets,
+    financial_asset_source_is_scf,
+)
 
 
 class _FakeStore:
@@ -212,17 +216,23 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
         def __init__(self):
             self.raw_cps = FakeRawCPS()
             self.saved_dataset = None
+            self.time_period = 2024
 
         def save_dataset(self, data):
             self.saved_dataset = data
 
         def load_dataset(self):
             return {
+                "household_id": np.array([10, 20]),
                 "person_household_id": np.array([10, 20]),
                 "age": np.array([35, 40]),
                 "is_female": np.array([False, True]),
                 "cps_race": np.array([1, 2]),
                 "own_children_in_household": np.array([0, 1]),
+                "bank_account_assets": np.array([1_000.0, 2_000.0]),
+                "stock_assets": np.array([300.0, 400.0]),
+                "bond_assets": np.array([50.0, 60.0]),
+                "household_vehicles_value": np.array([5_000.0, 1_000.0]),
                 "employment_income": np.array([40_000.0, 25_000.0]),
                 "taxable_interest_income": np.array([100.0, 0.0]),
                 "tax_exempt_interest_income": np.array([0.0, 0.0]),
@@ -244,7 +254,31 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
                 "employment_income": np.array([35_000.0, 20_000.0]),
                 "interest_dividend_income": np.array([100.0, 50.0]),
                 "social_security_pension_income": np.array([0.0, 0.0]),
-                "networth": np.array([10_000.0, 5_000.0]),
+                "networth": np.array([100_000.0, 80_000.0]),
+                "liq": np.array([10_000.0, 20_000.0]),
+                "stocks": np.array([100.0, 200.0]),
+                "nmmf": np.array([1.0, 2.0]),
+                "bond": np.array([10.0, 20.0]),
+                "vehic": np.array([3_000.0, 2_000.0]),
+                "cds": np.array([12_000.0, 6_000.0]),
+                "savbnd": np.array([0.0, 0.0]),
+                "retqliq": np.array([0.0, 0.0]),
+                "cashli": np.array([0.0, 0.0]),
+                "othma": np.array([0.0, 0.0]),
+                "othfin": np.array([0.0, 0.0]),
+                "houses": np.array([0.0, 0.0]),
+                "oresre": np.array([0.0, 0.0]),
+                "nnresre": np.array([0.0, 0.0]),
+                "bus": np.array([0.0, 0.0]),
+                "othnfin": np.array([0.0, 0.0]),
+                "mrthel": np.array([0.0, 0.0]),
+                "resdbt": np.array([0.0, 0.0]),
+                "othloc": np.array([0.0, 0.0]),
+                "ccbal": np.array([0.0, 0.0]),
+                "veh_inst": np.array([2_000.0, 1_000.0]),
+                "edn_inst": np.array([0.0, 0.0]),
+                "oth_inst": np.array([0.0, 0.0]),
+                "odebt": np.array([0.0, 0.0]),
                 "auto_loan_balance": np.array([2_000.0, 1_000.0]),
                 "auto_loan_interest": np.array([200.0, 100.0]),
                 "wgt": np.array([1.0, 1.0]),
@@ -266,13 +300,21 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
 
         def predict(self, X_test):
             assert X_test["is_married"].tolist() == [True, False]
-            return pd.DataFrame(
+            values = {var: [0.0, 0.0] for var in self.imputed_variables}
+            values.update(
                 {
-                    "networth": [10_000.0, 5_000.0],
+                    "scf_certificates_of_deposit": [12_000.0, 6_000.0],
+                    "scf_net_worth": [100_000.0, 80_000.0],
+                    "scf_bank_account_assets": [10_000.0, 20_000.0],
+                    "scf_stock_assets": [101.0, 202.0],
+                    "scf_bond_assets": [10.0, 20.0],
+                    "scf_household_vehicles_value": [3_000.0, 2_000.0],
+                    "scf_vehicle_installment_debt": [2_000.0, 1_000.0],
                     "auto_loan_balance": [2_000.0, 1_000.0],
                     "auto_loan_interest": [200.0, 100.0],
                 }
             )
+            return pd.DataFrame(values)
 
     import policyengine_us_data.datasets.scf.scf as scf_module
     import microimpute.models.qrf as qrf_module
@@ -284,8 +326,44 @@ def test_add_auto_loan_interest_and_net_worth_uses_outer_receiver_data(monkeypat
     add_auto_loan_interest_and_net_worth(dataset, {})
 
     assert raw_store.closed is True
+    vehicle_values = np.where(
+        financial_asset_source_is_scf(np.array([10, 20]), time_period=2024),
+        [3_000.0, 2_000.0],
+        [5_000.0, 1_000.0],
+    )
+    bank_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([1_000.0, 2_000.0]),
+        scf_household_values=np.array([10_000.0, 20_000.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
+    stock_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([300.0, 400.0]),
+        scf_household_values=np.array([101.0, 202.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
+    bond_assets = combine_sipp_and_scf_financial_assets(
+        sipp_values=np.array([50.0, 60.0]),
+        scf_household_values=np.array([10.0, 20.0]),
+        person_household_ids=np.array([10, 20]),
+        reference_person_mask=np.array([True, True]),
+        time_period=2024,
+    )
     np.testing.assert_array_equal(
-        dataset.saved_dataset["net_worth"], [10_000.0, 5_000.0]
+        dataset.saved_dataset["net_worth"],
+        np.array([100_000.0, 80_000.0], dtype=np.float32),
+    )
+    assert "scf_net_worth" not in dataset.saved_dataset
+    np.testing.assert_array_equal(
+        dataset.saved_dataset["bank_account_assets"], bank_assets
+    )
+    np.testing.assert_array_equal(dataset.saved_dataset["stock_assets"], stock_assets)
+    np.testing.assert_array_equal(dataset.saved_dataset["bond_assets"], bond_assets)
+    np.testing.assert_array_equal(
+        dataset.saved_dataset["household_vehicles_value"], vehicle_values
     )
     np.testing.assert_array_equal(
         dataset.saved_dataset["auto_loan_interest"], [200.0, 100.0]

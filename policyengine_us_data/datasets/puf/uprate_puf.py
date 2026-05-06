@@ -64,6 +64,7 @@ REMAINING_VARIABLES = [
     "E20400",
     "E26270",
     "E03230",
+    "E87530",
     "E25850",
     "E25860",
     "E00900",
@@ -181,6 +182,8 @@ def uprate_puf(puf, from_year, to_year):
     # (for now, because I'm not sure how to handle the deductions,
     #  credits, and incomes separately)
     for variable in REMAINING_VARIABLES:
+        if variable not in puf:
+            continue
         growth = get_growth("adjusted_gross_income", from_year, to_year)
         puf[variable] *= growth
 

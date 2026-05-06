@@ -164,6 +164,37 @@ def test_chained_indexing_pattern_is_a_no_op_silent_under_cow():
         assert puf["E00900"].equals(original["E00900"])
 
 
+def test_uprate_puf_scales_form_8863_llc_expenses(monkeypatch, tmp_path: Path):
+    with load_uprate_puf_module(tmp_path) as module:
+        monkeypatch.setattr(module, "SOI_TO_PUF_STRAIGHT_RENAMES", {})
+        monkeypatch.setattr(module, "SOI_TO_PUF_POS_ONLY_RENAMES", {})
+        monkeypatch.setattr(module, "SOI_TO_PUF_NEG_ONLY_RENAMES", {})
+        monkeypatch.setattr(
+            module,
+            "REMAINING_VARIABLES",
+            ["E03230", "E87530", "OPTIONAL_MISSING_FIELD"],
+        )
+        monkeypatch.setattr(module, "get_growth", lambda *args: 2.0)
+        monkeypatch.setattr(
+            module,
+            "get_soi_aggregate",
+            lambda variable, year, is_count: 10.0 if year == 2015 else 20.0,
+        )
+        puf = pd.DataFrame(
+            {
+                "E03230": [1_000.0],
+                "E87530": [2_000.0],
+                "S006": [100.0],
+            }
+        )
+
+        result = module.uprate_puf(puf, 2015, 2021)
+
+        assert result.loc[0, "E03230"] == pytest.approx(2_000.0)
+        assert result.loc[0, "E87530"] == pytest.approx(4_000.0)
+        assert result.loc[0, "S006"] == pytest.approx(200.0)
+
+
 def test_uprate_puf_pos_neg_split_module_helpers_intact():
     """Verify the module's POS/NEG rename dicts still cover the SOI
     variables that trigger the chained-indexing path."""

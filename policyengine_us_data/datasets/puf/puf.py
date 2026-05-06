@@ -32,6 +32,11 @@ from policyengine_us_data.pipeline_schema import PipelineNode
 
 rng = np.random.default_rng(seed=64)
 
+PUF_LLC_ELIGIBILITY_INPUTS = (
+    "attends_eligible_educational_institution_for_lifetime_learning_credit",
+    "has_lifetime_learning_credit_1098_t_or_exception",
+)
+
 # Get Qualified Business Income simulation parameters ---
 yamlfilename = (
     files("policyengine_us_data") / "datasets" / "puf" / "qbi_assumptions.yaml"
@@ -573,6 +578,45 @@ def decode_age_dependent(age_range: int) -> int:
     return rng.integers(low=lower, high=upper, endpoint=False)
 
 
+def _qualified_tuition_expenses_from_puf(puf: pd.DataFrame) -> pd.Series:
+    """Return qualified tuition expenses from the most specific PUF fields."""
+
+    if "E87530" not in puf:
+        return puf.E03230
+    return np.maximum(puf.E03230, puf.E87530)
+
+
+def _lifetime_learning_credit_student_from_puf(puf: pd.DataFrame) -> pd.Series:
+    """Infer which PUF records have LLC-specific qualified expenses."""
+
+    if "E87530" in puf:
+        return puf.E87530 > 0
+    return _qualified_tuition_expenses_from_puf(puf) > 0
+
+
+def _with_lifetime_learning_credit_inputs(
+    arrays: dict[str, np.ndarray],
+) -> dict[str, np.ndarray]:
+    """Populate PUF LLC factual eligibility inputs when PE-US supports them."""
+
+    if not has_policyengine_us_variables(*PUF_LLC_ELIGIBILITY_INPUTS):
+        return arrays
+    tuition = arrays.get("qualified_tuition_expenses")
+    if tuition is None:
+        return arrays
+
+    values = np.asarray(tuition) > 0
+    for variable in PUF_LLC_ELIGIBILITY_INPUTS:
+        arrays.setdefault(variable, values)
+    return arrays
+
+
+def _person_financial_value_from_puf_row(variable: str, row, share: float):
+    if variable in PUF_LLC_ELIGIBILITY_INPUTS:
+        return bool(row[variable]) and row["qualified_tuition_expenses"] * share > 0
+    return row[variable] * share
+
+
 @pipeline_node(
     PipelineNode(
         id="preprocess_puf",
@@ -618,7 +662,10 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["unreimbursed_business_employee_expenses"] = puf.E20400
     puf["non_qualified_dividend_income"] = puf.E00600 - puf.E00650
     puf["qualified_dividend_income"] = puf.E00650
-    puf["qualified_tuition_expenses"] = puf.E03230
+    puf["qualified_tuition_expenses"] = _qualified_tuition_expenses_from_puf(puf)
+    llc_student = _lifetime_learning_credit_student_from_puf(puf)
+    for variable in PUF_LLC_ELIGIBILITY_INPUTS:
+        puf[variable] = llc_student
     puf["real_estate_taxes"] = puf.E18500
     # Schedule E rent and royalty
     puf["rental_income"] = puf.E25850 - puf.E25860
@@ -660,7 +707,6 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["american_opportunity_credit"] = puf.E87521
     puf["energy_efficient_home_improvement_credit"] = puf.E07260
     puf["early_withdrawal_penalty"] = puf.E09900
-    # puf["qualified_tuition_expenses"] = puf.E87530 # PE uses the same variable for qualified tuition (general) and qualified tuition (Lifetime Learning Credit). Revisit here.
     puf["other_credits"] = puf.P08000
     puf["savers_credit"] = puf.E07240
     puf["recapture_of_investment_credit"] = puf.E09700
@@ -824,6 +870,8 @@ FINANCIAL_SUBSET = [
     "partnership_se_income",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
+    "attends_eligible_educational_institution_for_lifetime_learning_credit",
+    "has_lifetime_learning_credit_1098_t_or_exception",
 ]
 
 
@@ -1323,6 +1371,7 @@ class PUF(Dataset):
                     ]
                     growth = current_index / start_index
                     arrays[variable] = arrays[variable] * growth
+            arrays = _with_lifetime_learning_credit_inputs(arrays)
             self._save_current_qbi_dataset(arrays)
             return
 
@@ -1428,6 +1477,7 @@ class PUF(Dataset):
         self.holder = {
             variable: values[self.time_period] for variable, values in holder_tp.items()
         }
+        self.holder = _with_lifetime_learning_credit_inputs(self.holder)
         self._save_current_qbi_dataset(self.holder)
 
     def add_tax_unit(self, row, tax_unit_id):
@@ -1484,7 +1534,13 @@ class PUF(Dataset):
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
             if self.variable_to_entity[key] == "person":
-                self.holder[key].append(row[key] * self.earn_splits[-1])
+                self.holder[key].append(
+                    _person_financial_value_from_puf_row(
+                        key,
+                        row,
+                        self.earn_splits[-1],
+                    )
+                )
 
     def add_spouse(self, row, tax_unit_id):
         person_id = int(tax_unit_id * 1e2 + 2)
@@ -1517,7 +1573,13 @@ class PUF(Dataset):
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
             if self.variable_to_entity[key] == "person":
-                self.holder[key].append(row[key] * (1 - self.earn_splits[-1]))
+                self.holder[key].append(
+                    _person_financial_value_from_puf_row(
+                        key,
+                        row,
+                        1 - self.earn_splits[-1],
+                    )
+                )
 
     def add_dependent(self, row, tax_unit_id, dependent_id):
         person_id = int(tax_unit_id * 1e2 + 3 + dependent_id)
@@ -1541,7 +1603,9 @@ class PUF(Dataset):
                 # Skip this one- we are adding it artificially at the filer level.
                 continue
             if self.variable_to_entity[key] == "person":
-                self.holder[key].append(0)
+                self.holder[key].append(
+                    False if key in PUF_LLC_ELIGIBILITY_INPUTS else 0
+                )
 
         self.holder["is_male"].append(rng.choice([0, 1]))
 

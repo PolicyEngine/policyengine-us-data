@@ -12,9 +12,11 @@ workbooks, run:
 `make refresh-soi-targets SOI_SOURCE_YEAR=2021 SOI_TARGET_YEAR=2023`
 
 This refresh path covers the tracked workbook-based national SOI table targets
-in `soi_targets.csv`. The refresh code now rewrites the active Table 1.4 /
-Table 2.1 targets with explicit semantic mappings for the current Publication
-1304 layouts instead of reusing stale stored column letters.
+in `soi_targets.csv`, including the Table 3.3 refundable American Opportunity
+Credit count and amount and the combined nonrefundable education-credit count
+and amount. The refresh code now rewrites the active Table 1.4 / Table 2.1
+targets with explicit semantic mappings for the current Publication 1304
+layouts instead of reusing stale stored column letters.
 
 `get_soi()` now selects the best available tracked year per variable for the
 requested simulation year, so TY2024 uses TY2023 where available, TY2022 uses

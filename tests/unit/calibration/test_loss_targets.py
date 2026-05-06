@@ -15,8 +15,10 @@ from policyengine_us_data.utils.loss import (
     TRANSFER_BALANCE_TARGETS,
     _add_agi_metric_columns,
     _add_acs_housing_cost_targets,
+    _add_aotc_targets,
     _add_bls_ce_targets,
     _add_ctc_targets,
+    _add_education_credit_targets,
     _add_irs_soi_aggregate_targets,
     _add_medicare_enrollment_target,
     _add_real_estate_tax_targets,
@@ -121,6 +123,8 @@ class _FakeSimulation:
     def calculate(self, variable, map_to=None, period=None):
         self.calculate_calls.append((variable, map_to, period))
         values = {
+            "education_tax_credits": [500.0, 0.0, 300.0],
+            "refundable_american_opportunity_credit": [400.0, 0.0, 250.0],
             "refundable_ctc": [100.0, 0.0, 50.0],
             "non_refundable_ctc": [80.0, 10.0, 0.0],
         }
@@ -289,6 +293,78 @@ def test_add_ctc_targets(monkeypatch):
     np.testing.assert_array_equal(
         loss_matrix["nation/irs/non_refundable_ctc_count"],
         np.array([1.0, 1.0, 0.0], dtype=np.float32),
+    )
+
+
+def test_add_aotc_targets(monkeypatch):
+    def fake_get_tracked_soi_row(variable, requested_year, *, count, **kwargs):
+        assert variable == "refundable_american_opportunity_credit"
+        assert requested_year == 2024
+        return pd.Series(
+            {
+                "Year": 2023,
+                "Value": 5_821_688.0 if count else 5_090_364_000.0,
+                "SOI table": "Table 3.3",
+            }
+        )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_tracked_soi_row",
+        fake_get_tracked_soi_row,
+    )
+    sim = _FakeSimulation()
+
+    targets, loss_matrix = _add_aotc_targets(
+        pd.DataFrame(),
+        [],
+        sim,
+        2024,
+    )
+
+    assert targets == [5_090_364_000.0, 5_821_688.0]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/refundable_american_opportunity_credit"],
+        np.array([400.0, 0.0, 250.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/refundable_american_opportunity_credit_count"],
+        np.array([1.0, 0.0, 1.0], dtype=np.float32),
+    )
+
+
+def test_add_education_credit_targets(monkeypatch):
+    def fake_get_tracked_soi_row(variable, requested_year, *, count, **kwargs):
+        assert variable == "education_tax_credits"
+        assert requested_year == 2024
+        return pd.Series(
+            {
+                "Year": 2023,
+                "Value": 7_211_349.0 if count else 7_554_668_000.0,
+                "SOI table": "Table 3.3",
+            }
+        )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_tracked_soi_row",
+        fake_get_tracked_soi_row,
+    )
+    sim = _FakeSimulation()
+
+    targets, loss_matrix = _add_education_credit_targets(
+        pd.DataFrame(),
+        [],
+        sim,
+        2024,
+    )
+
+    assert targets == [7_554_668_000.0, 7_211_349.0]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/education_tax_credits"],
+        np.array([500.0, 0.0, 300.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["nation/irs/education_tax_credits_count"],
+        np.array([1.0, 0.0, 1.0], dtype=np.float32),
     )
 
 

@@ -4,8 +4,9 @@ Covers:
 
 * Presence and structure of ``eitc_state.csv`` and
   ``eitc_by_agi_and_children.csv``.
+* Presence and structure of the IRS TY2024 EITC claim controls.
 * IRS aggregate crosscheck: state totals sum within 1% of the
-  Treasury EITC tax-expenditure parameter for the same tax year.
+  IRS SOI national row for the same tax year.
 * Helper-level wiring of the new target families into a synthetic
   simulation, asserting the expected label schema and 1:1 target /
   loss-matrix-column alignment.
@@ -18,11 +19,16 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from types import SimpleNamespace
 
 from policyengine_us_data.storage import CALIBRATION_FOLDER
 from policyengine_us_data.utils.loss import (
     _add_eitc_by_agi_and_children_targets,
     _add_state_eitc_targets,
+    _domestic_eitc_claim_totals,
+    _get_eitc_claim_targets,
+    _get_eitc_shape_scaling,
+    _load_eitc_claim_controls,
     _skip_unverified_target,
 )
 
@@ -40,6 +46,93 @@ def test_eitc_state_csv_present_with_expected_columns():
     # Numeric columns must parse as nonnegative numbers.
     assert (df["Returns"].astype(float) >= 0).all()
     assert (df["Amount"].astype(float) >= 0).all()
+
+
+def test_eitc_claim_controls_present_with_expected_columns():
+    df = pd.read_csv(CALIBRATION_FOLDER / "eitc_claim_controls.csv", comment="#")
+    assert list(df.columns) == ["year", "GEO_ID", "Returns", "Amount"]
+    assert set(df["year"].unique()) == {2024}
+    assert (df["GEO_ID"] == "0100000US").sum() == 1
+    assert (df["GEO_ID"] == "INTL").sum() == 1
+    assert df["GEO_ID"].str.startswith("0400000US").sum() == 51
+    assert (df["Returns"].astype(float) >= 0).all()
+    assert (df["Amount"].astype(float) >= 0).all()
+
+
+def test_eitc_claim_controls_use_irs_2024_domestic_total():
+    controls, year = _load_eitc_claim_controls(2024)
+    returns, amount = _domestic_eitc_claim_totals(controls)
+
+    assert year == 2024
+    # IRS publishes NATL = 24M / $69.6B and INTL = 10K / $25M.
+    # Domestic calibration targets should exclude the separate INTL row.
+    assert returns == pytest.approx(23_990_000)
+    assert amount == pytest.approx(69_575_000_000)
+
+
+class _FakeYearParameter:
+    def __init__(self, values):
+        self.values = values
+
+    def __call__(self, year):
+        return self.values[int(year)]
+
+
+class _FakeEitcControlSimulation:
+    def __init__(self):
+        self.tax_benefit_system = SimpleNamespace(
+            parameters=SimpleNamespace(
+                calibration=SimpleNamespace(
+                    gov=SimpleNamespace(
+                        census=SimpleNamespace(
+                            populations=SimpleNamespace(
+                                total=_FakeYearParameter(
+                                    {
+                                        2024: 346_588_000,
+                                        2025: 349_000_000,
+                                    }
+                                )
+                            )
+                        )
+                    )
+                ),
+                gov=SimpleNamespace(
+                    bls=SimpleNamespace(
+                        cpi=SimpleNamespace(
+                            cpi_u=_FakeYearParameter(
+                                {
+                                    2024: 309.794,
+                                    2025: 318.0,
+                                }
+                            )
+                        )
+                    )
+                ),
+            )
+        )
+
+
+def test_eitc_claim_targets_normalize_state_rows_to_domestic_control():
+    state_targets, returns, amount, year = _get_eitc_claim_targets(
+        2024,
+        _FakeEitcControlSimulation(),
+    )
+
+    assert year == 2024
+    assert returns == pytest.approx(23_990_000)
+    assert amount == pytest.approx(69_575_000_000)
+    assert state_targets["Returns"].sum() == pytest.approx(returns)
+    assert state_targets["Amount"].sum() == pytest.approx(amount)
+
+
+def test_2022_eitc_agi_shape_scales_to_2024_irs_claim_control():
+    returns_scaling, amount_scaling = _get_eitc_shape_scaling(
+        national_returns=23_990_000,
+        national_amount=69_575_000_000,
+    )
+
+    assert returns_scaling == pytest.approx(0.9959998917228963)
+    assert amount_scaling == pytest.approx(1.1582528482865067)
 
 
 def test_eitc_by_agi_and_children_csv_present_with_expected_columns():
@@ -178,8 +271,8 @@ def test_add_state_eitc_targets_produces_aligned_columns_and_targets():
         loss_matrix,
         targets,
         sim,
-        eitc_spending_uprating=1.0,
-        population_uprating=1.0,
+        amount_uprating=1.0,
+        returns_uprating=1.0,
     )
 
     # All 51 jurisdictions x (returns + amount) = 102 new columns and
@@ -214,8 +307,8 @@ def test_add_eitc_by_agi_and_children_targets_produces_aligned_columns():
         loss_matrix,
         targets,
         sim,
-        eitc_spending_uprating=1.0,
-        population_uprating=1.0,
+        amount_uprating=1.0,
+        returns_uprating=1.0,
     )
 
     # Every emitted column has a matching target (no off-by-one).
@@ -268,8 +361,8 @@ def test_placeholder_rows_are_skipped_without_breaking_alignment(tmp_path, monke
             loss_matrix,
             targets,
             sim,
-            eitc_spending_uprating=1.0,
-            population_uprating=1.0,
+            amount_uprating=1.0,
+            returns_uprating=1.0,
         )
 
         # 2 usable rows x (returns + amount) = 4 columns/targets; the
@@ -317,8 +410,8 @@ def test_mixed_placeholder_row_keeps_valid_metric_drops_invalid(tmp_path, monkey
             loss_matrix,
             targets,
             sim,
-            eitc_spending_uprating=1.0,
-            population_uprating=1.0,
+            amount_uprating=1.0,
+            returns_uprating=1.0,
         )
 
         # 2 valid metrics from rows 1 and 2, plus both metrics from row 3
@@ -380,8 +473,8 @@ def test_three_or_more_children_bucket_uses_ge_not_eq():
         loss_matrix,
         targets,
         sim,
-        eitc_spending_uprating=1.0,
-        population_uprating=1.0,
+        amount_uprating=1.0,
+        returns_uprating=1.0,
     )
 
     # The 3-child, $40k unit is row 3; the 4-child, $42k unit is row 4.
@@ -403,11 +496,11 @@ def test_three_or_more_children_bucket_uses_ge_not_eq():
     assert c3_40k_returns[4] == pytest.approx(1.0)
 
 
-def test_nonunity_uprating_propagates_to_targets(tmp_path, monkeypatch):
-    """``eitc_spending_uprating`` scales dollar targets and
-    ``population_uprating`` scales return-count targets. A base-year CSV
+def test_nonunity_scaling_propagates_to_targets(tmp_path, monkeypatch):
+    """``amount_uprating`` scales dollar targets and ``returns_uprating``
+    scales return-count targets. A base-year CSV
     passed through with both set to 1.10 must produce targets exactly
-    1.10 times the CSV value.
+    equal to the requested scaled value.
     """
 
     csv_path = tmp_path / "eitc_state.csv"
@@ -430,8 +523,8 @@ def test_nonunity_uprating_propagates_to_targets(tmp_path, monkeypatch):
             loss_matrix,
             targets,
             sim,
-            eitc_spending_uprating=1.10,
-            population_uprating=1.05,
+            amount_uprating=1.10,
+            returns_uprating=1.05,
         )
 
         # Single row produces 2 targets: returns then amount, in that order.
@@ -465,10 +558,10 @@ def test_loss_module_does_not_target_treasury_eitc_aggregate():
     import inspect
 
     source = inspect.getsource(loss_module)
-    # The parameter is still *read* (for uprating), but no loss-matrix
-    # column with this label should be created.
+    # No Treasury outlay target should enter the EITC loss path.
     assert '"nation/treasury/eitc"' not in source
     assert "'nation/treasury/eitc'" not in source
+    assert "tax_expenditures.eitc" not in source
 
 
 def test_loss_module_does_not_target_legacy_per_child_count_eitc():

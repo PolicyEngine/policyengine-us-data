@@ -268,6 +268,11 @@ def apply_op(values: np.ndarray, op: str, val: str) -> np.ndarray:
     if values.dtype.kind == "S" and isinstance(parsed, str):
         parsed = parsed.encode()
 
+    if op == "in":
+        allowed = [part.strip() for part in val.split("|")]
+        if values.dtype.kind == "S":
+            allowed = [part.encode() for part in allowed]
+        return np.isin(values, allowed)
     if op in ("==", "="):
         return values == parsed
     if op == ">":
@@ -566,6 +571,20 @@ def load_cd_geoadj_values(
         if cd in rent_lookup:
             geoadj_dict[cd] = rent_lookup[cd]
         else:
+            cd_int = int(cd)
+            state_fips = cd_int // 100
+            district = cd_int % 100
+            fallback_cds = []
+            if state_fips == 11 and district == 1:
+                fallback_cds.append("1198")
+            if district == 1:
+                fallback_cds.append(str(state_fips * 100))
+            for fallback_cd in fallback_cds:
+                if fallback_cd in rent_lookup:
+                    geoadj_dict[cd] = rent_lookup[fallback_cd]
+                    break
+            if cd in geoadj_dict:
+                continue
             print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
             geoadj_dict[cd] = 1.0
 

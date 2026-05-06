@@ -683,6 +683,68 @@ class TestForbesBackbone:
         assert artifact.diagnostics["synthetic_rows"] == len(artifact.synthetic)
         assert artifact.diagnostics["source_ref"] == forbes_backbone.FORBES_RTB_API_REF
 
+    def test_forbes_artifact_scales_weights_when_target_exceeds_forbes_source(
+        self, mini_puf, monkeypatch
+    ):
+        from policyengine_us_data.datasets.puf import forbes_backbone
+        from policyengine_us_data.datasets.puf.disaggregate_puf import (
+            _get_amount_columns,
+            compute_aggregate_eligibility_scores,
+        )
+
+        monkeypatch.setattr(
+            forbes_backbone,
+            "load_forbes_us_top_400",
+            lambda *args, **kwargs: _make_mock_forbes_records(),
+        )
+        monkeypatch.setattr(
+            forbes_backbone,
+            "load_scf_forbes_donor_pool",
+            lambda *args, **kwargs: _make_mock_scf_forbes_donors(),
+        )
+
+        puf_with_missing_target = mini_puf.copy()
+        puf_with_missing_target["E03500"] = 0.0
+        regular = puf_with_missing_target[
+            ~puf_with_missing_target.RECID.isin(AGGREGATE_RECIDS)
+        ].copy()
+        row = (
+            puf_with_missing_target.loc[puf_with_missing_target.RECID == 999999]
+            .iloc[0]
+            .copy()
+        )
+        row["S006"] = 410 * 100
+        row["E03500"] = np.nan
+        amount_columns = _get_amount_columns(puf_with_missing_target.columns)
+        config = forbes_backbone.ForbesTopTailConfig(replicate_count=10)
+        artifact = forbes_backbone.build_forbes_top_tail_artifact(
+            row=row,
+            regular=regular,
+            amount_columns=amount_columns,
+            donor_scores=compute_aggregate_eligibility_scores(regular),
+            next_recid=2_000_000,
+            rng=np.random.default_rng(42),
+            config=config,
+        )
+
+        assert len(artifact.selected_forbes) == 400
+        assert len(artifact.synthetic) == 400 * config.replicate_count
+        assert (artifact.synthetic["S006"] > 0).all()
+        assert set(artifact.synthetic["S006"].unique()) == {10, 11}
+        assert (artifact.synthetic["S006"] / 100).sum() == pytest.approx(410)
+        high_weight_counts_by_unit = (
+            artifact.scf_draws.assign(high_weight=artifact.synthetic.S006 == 11)
+            .groupby("forbes_unit_id")["high_weight"]
+            .sum()
+        )
+        assert high_weight_counts_by_unit.max() <= 3
+        assert high_weight_counts_by_unit.min() >= 2
+        assert artifact.synthetic["E03500"].eq(0).all()
+        for column in amount_columns:
+            target = 0.0 if pd.isna(row[column]) else 410 * row[column]
+            actual = _weighted_total(artifact.synthetic, column)
+            assert actual == pytest.approx(target, rel=1e-9, abs=1e-6)
+
     def test_forbes_diagnostics_are_pr_ready(self, mini_puf, monkeypatch):
         from policyengine_us_data.datasets.puf import forbes_backbone
         from policyengine_us_data.datasets.puf.disaggregate_puf import (
@@ -908,7 +970,7 @@ class TestForbesBackbone:
         assert bucket["forbes_unit_id"].min() == 0
         assert set(bucket["forbes_replicate_id"].unique()) == set(range(10))
 
-    def test_scf_joint_profiles_scale_ratios_to_forbes_wealth(self):
+    def test_scf_joint_profiles_scale_composition_to_forbes_agi(self):
         from policyengine_us_data.datasets.puf.forbes_backbone import (
             sample_scf_joint_profiles,
         )
@@ -925,6 +987,7 @@ class TestForbesBackbone:
                     "self_made_flag": True,
                     "children": 2,
                     "networth_dollars": 1_000_000_000.0,
+                    "estimated_agi": 19_300_000.0,
                     "forbes_unit_id": 0,
                     "replicate_id": 0,
                 }
@@ -938,10 +1001,10 @@ class TestForbesBackbone:
             rng=np.random.default_rng(0),
         )
 
-        assert result["employment_income"].iloc[0] == pytest.approx(10_000_000.0)
-        assert result["capital_gains"].iloc[0] == pytest.approx(187_500_000.0)
-        assert result["interest_dividend_income"].iloc[0] == pytest.approx(25_000_000.0)
-        assert result["business_farm_income"].iloc[0] == pytest.approx(18_750_000.0)
+        assert result["employment_income"].iloc[0] == pytest.approx(800_000.0)
+        assert result["capital_gains"].iloc[0] == pytest.approx(15_000_000.0)
+        assert result["interest_dividend_income"].iloc[0] == pytest.approx(2_000_000.0)
+        assert result["business_farm_income"].iloc[0] == pytest.approx(1_500_000.0)
 
     def test_forbes_selection_uses_scf_membership_scores(self, monkeypatch):
         from policyengine_us_data.datasets.puf import forbes_backbone

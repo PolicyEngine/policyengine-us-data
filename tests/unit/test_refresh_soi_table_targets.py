@@ -103,9 +103,11 @@ def test_build_target_year_rows_reads_standard_table_cells(monkeypatch):
 
 def test_build_target_year_rows_uses_semantic_table_1_4_columns(monkeypatch):
     module = load_module()
-    workbook = make_workbook(cols=80)
+    workbook = make_workbook(cols=100)
     row_index = 9  # Excel row 10
 
+    workbook.iat[row_index, module._column_index("CN")] = 9
+    workbook.iat[row_index, module._column_index("CO")] = 11
     workbook.iat[row_index, module._column_index("BP")] = 10
     workbook.iat[row_index, module._column_index("BQ")] = 30
     workbook.iat[row_index, module._column_index("BT")] = 20
@@ -117,6 +119,24 @@ def test_build_target_year_rows_uses_semantic_table_1_4_columns(monkeypatch):
 
     targets = pd.DataFrame(
         [
+            make_target_row(
+                **{
+                    "SOI table": "Table 1.4",
+                    "XLSX column": "CB",
+                    "XLSX row": 10,
+                    "Variable": "other_income",
+                    "Count": True,
+                }
+            ),
+            make_target_row(
+                **{
+                    "SOI table": "Table 1.4",
+                    "XLSX column": "CC",
+                    "XLSX row": 10,
+                    "Variable": "other_income",
+                    "Count": False,
+                }
+            ),
             make_target_row(
                 **{
                     "SOI table": "Table 1.4",
@@ -163,8 +183,17 @@ def test_build_target_year_rows_uses_semantic_table_1_4_columns(monkeypatch):
         targets, source_year=2021, target_year=2023
     )
 
-    assert refreshed["Value"].tolist() == [30.0, 70_000.0, 11.0, 15_000.0]
+    assert refreshed["Value"].tolist() == [
+        9.0,
+        11_000.0,
+        30.0,
+        70_000.0,
+        11.0,
+        15_000.0,
+    ]
     assert refreshed["XLSX column"].tolist() == [
+        "CN",
+        "CO",
         "BP+BT",
         "BQ+BU",
         "BR+BV",

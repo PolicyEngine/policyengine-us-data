@@ -415,6 +415,31 @@ NAMED_SUPPORT_AUGMENTATION_PROFILES = {
     LATE_SYNTHETIC_GRID_V2.name: LATE_SYNTHETIC_GRID_V2,
     LATE_MIXED_HOUSEHOLD_V1.name: LATE_MIXED_HOUSEHOLD_V1,
 }
+TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES = {
+    "donor-backed-synthetic-v1": (
+        "Target-year donor-backed tax-unit clones selected from the synthetic "
+        "support solution."
+    ),
+    "donor-backed-composite-v1": (
+        "Target-year role-composite households assembled from older-beneficiary "
+        "and payroll-rich donors."
+    ),
+}
+
+
+def valid_support_augmentation_profile_names() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {
+                *NAMED_SUPPORT_AUGMENTATION_PROFILES,
+                *TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES,
+            }
+        )
+    )
+
+
+def is_targeted_donor_support_augmentation_profile(name: str) -> bool:
+    return name in TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES
 
 
 def _period_column(name: str, base_year: int) -> str:
@@ -429,6 +454,91 @@ def get_support_augmentation_profile(name: str) -> SupportAugmentationProfile:
         raise ValueError(
             f"Unknown support augmentation profile '{name}'. Valid profiles: {valid}"
         ) from error
+
+
+def build_targeted_donor_augmented_dataset(
+    *,
+    base_dataset: str,
+    base_year: int,
+    target_year: int,
+    profile: str,
+    top_n_targets: int = 20,
+    donors_per_target: int = 5,
+    max_distance_for_clone: float = 3.0,
+    clone_weight_scale: float = 0.1,
+) -> tuple[Dataset, dict[str, Any]]:
+    if profile not in TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES:
+        valid = ", ".join(sorted(TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES))
+        raise ValueError(
+            f"Unknown targeted donor support profile '{profile}'. "
+            f"Valid targeted donor profiles: {valid}"
+        )
+
+    try:
+        from .prototype_synthetic_2100_support import (
+            build_donor_backed_augmented_dataset,
+            build_role_composite_augmented_dataset,
+        )
+    except ImportError:  # pragma: no cover - script execution fallback
+        from prototype_synthetic_2100_support import (
+            build_donor_backed_augmented_dataset,
+            build_role_composite_augmented_dataset,
+        )
+
+    if profile == "donor-backed-synthetic-v1":
+        augmented_dataset, report = build_donor_backed_augmented_dataset(
+            base_dataset=base_dataset,
+            base_year=base_year,
+            target_year=target_year,
+            top_n_targets=top_n_targets,
+            donors_per_target=donors_per_target,
+            max_distance_for_clone=max_distance_for_clone,
+            clone_weight_scale=clone_weight_scale,
+        )
+    else:
+        augmented_dataset, report = build_role_composite_augmented_dataset(
+            base_dataset=base_dataset,
+            base_year=base_year,
+            target_year=target_year,
+            top_n_targets=top_n_targets,
+            donors_per_target=donors_per_target,
+            max_older_distance=max_distance_for_clone,
+            max_worker_distance=max_distance_for_clone,
+            clone_weight_scale=clone_weight_scale,
+        )
+
+    report["profile"] = profile
+    report["description"] = TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES[profile]
+    report["support_augmentation_family"] = "targeted_donor"
+    return augmented_dataset, report
+
+
+def build_targeted_role_composite_calibration_blueprint(
+    augmentation_report: dict[str, Any],
+    *,
+    year: int,
+    age_bins: list[tuple[int, int]],
+    hh_id_to_idx: dict[int, int],
+    baseline_weights: np.ndarray,
+    base_weight_scale: float = 0.5,
+) -> dict[str, Any] | None:
+    try:
+        from .prototype_synthetic_2100_support import (
+            build_role_composite_calibration_blueprint,
+        )
+    except ImportError:  # pragma: no cover - script execution fallback
+        from prototype_synthetic_2100_support import (
+            build_role_composite_calibration_blueprint,
+        )
+
+    return build_role_composite_calibration_blueprint(
+        augmentation_report,
+        year=year,
+        age_bins=age_bins,
+        hh_id_to_idx=hh_id_to_idx,
+        baseline_weights=baseline_weights,
+        base_weight_scale=base_weight_scale,
+    )
 
 
 def household_support_summary(
@@ -806,7 +916,6 @@ def synthesize_composite_households(
         id_counters=id_counters,
     )
     household_id_col = _period_column("household_id", base_year)
-    original_household_col = _period_column("person_household_id", base_year)
     payroll_totals = _household_component_totals(
         input_df,
         base_year=base_year,

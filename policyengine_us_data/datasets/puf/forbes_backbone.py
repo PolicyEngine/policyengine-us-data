@@ -249,10 +249,14 @@ def build_forbes_top_tail_artifact(
         target_n=target_n,
         scf_donors=scf_donors,
     )
+    if selected_forbes.empty:
+        raise ValueError("Forbes backbone produced no eligible units.")
     if len(selected_forbes) < target_n:
-        raise ValueError(
-            "Forbes backbone produced only "
-            f"{len(selected_forbes)} eligible units for target {target_n}."
+        logger.warning(
+            "Forbes backbone produced %s eligible units for target %s; "
+            "scaling replicate weights to the aggregate-row population.",
+            len(selected_forbes),
+            target_n,
         )
 
     forbes_draws = expand_forbes_replicates(
@@ -287,16 +291,16 @@ def build_forbes_top_tail_artifact(
         next_recid + len(scf_draws),
         dtype=int,
     )
-    synthetic["S006"] = config.unit_weight_hundredths
+    synthetic_weight_hundredths = _scaled_replicate_weight_hundredths(
+        total_units=target_n,
+        row_count=len(scf_draws),
+    )
+    synthetic["S006"] = synthetic_weight_hundredths
 
     utils._apply_structural_templates(synthetic, donor_templates)
     apply_forbes_structural_overrides(synthetic, scf_draws)
 
-    synthetic_weights = np.full(
-        len(scf_draws),
-        1.0 / config.replicate_count,
-        dtype=float,
-    )
+    synthetic_weights = synthetic_weight_hundredths.astype(float) / 100
     utils._calibrate_amount_columns(
         synthetic=synthetic,
         selected=puf_priors,
@@ -307,7 +311,7 @@ def build_forbes_top_tail_artifact(
         amount_columns=amount_columns,
         synthetic_weights=synthetic_weights,
     )
-    synthetic["S006"] = config.unit_weight_hundredths
+    synthetic["S006"] = synthetic_weight_hundredths
 
     artifact = ForbesTopTailArtifact(
         source_forbes=source_forbes,
@@ -363,6 +367,34 @@ def build_forbes_top_tail_diagnostics(
         "synthetic_weight": float((synthetic["S006"] / 100).sum()),
         "target_total_agi": float(target_total_agi),
     }
+
+
+def _scaled_replicate_weight_hundredths(
+    total_units: int,
+    row_count: int,
+) -> np.ndarray:
+    """Return integer hundredth weights that exactly sum to a unit target."""
+
+    if total_units <= 0:
+        raise ValueError("Forbes synthetic target units must be positive.")
+    if row_count <= 0:
+        raise ValueError("Forbes synthetic row count must be positive.")
+
+    total_hundredths = int(total_units * 100)
+    base = total_hundredths // row_count
+    remainder = total_hundredths - base * row_count
+    if base <= 0:
+        raise ValueError(
+            "Forbes synthetic row count exceeds available hundredth weights."
+        )
+
+    weights = np.full(row_count, base, dtype=int)
+    if remainder:
+        remainder_positions = (
+            np.arange(remainder, dtype=np.int64) * row_count // remainder
+        )
+        weights[remainder_positions] += 1
+    return weights
 
 
 def build_forbes_top_tail_diagnostic_tables(
@@ -531,12 +563,15 @@ def validate_forbes_top_tail_artifact(
 
     config.validate()
     expected_units = int(round(pop_weight))
-    expected_draws = expected_units * config.replicate_count
+    selected_units = len(artifact.selected_forbes)
+    expected_draws = selected_units * config.replicate_count
 
-    if len(artifact.selected_forbes) != expected_units:
+    if selected_units <= 0:
+        raise ValueError("Forbes artifact selected no units.")
+    if selected_units > expected_units:
         raise ValueError(
             "Forbes artifact selected "
-            f"{len(artifact.selected_forbes)} units for target {expected_units}."
+            f"{selected_units} units for target {expected_units}."
         )
     for name, frame in {
         "scf_draws": artifact.scf_draws,
@@ -556,8 +591,8 @@ def validate_forbes_top_tail_artifact(
             "Forbes synthetic weights sum to "
             f"{synthetic_weight}; expected {expected_units}."
         )
-    if not artifact.synthetic["S006"].eq(config.unit_weight_hundredths).all():
-        raise ValueError("Forbes synthetic replicate weights are not uniform.")
+    if not (artifact.synthetic["S006"] > 0).all():
+        raise ValueError("Forbes synthetic replicate weights must be positive.")
 
     required_columns = {"RECID", "S006", "E00100", *amount_columns}
     missing_columns = required_columns.difference(artifact.synthetic.columns)
@@ -576,7 +611,7 @@ def validate_forbes_top_tail_artifact(
 
     weights = artifact.synthetic["S006"].to_numpy(dtype=float) / 100
     for column in amount_columns:
-        target_total = pop_weight * float(row.get(column, 0.0))
+        target_total = pop_weight * utils._finite_amount(row.get(column, 0.0))
         actual_total = float(
             np.dot(artifact.synthetic[column].to_numpy(dtype=float), weights)
         )
@@ -979,7 +1014,7 @@ def score_forbes_selection_with_scf(
     for row in prepared_forbes.itertuples(index=False):
         candidates = scf_candidates_for_receiver(scf_donors, row)
         probabilities = scf_match_probabilities(candidates, row)
-        agi_values = scf_implied_agi_values(candidates, row)
+        agi_values = scf_wealth_ratio_agi_values(candidates, row)
         tail_probabilities.append(
             float(probabilities[agi_values >= FORBES_TOP_TAIL_AGI_THRESHOLD].sum())
         )
@@ -988,10 +1023,6 @@ def score_forbes_selection_with_scf(
     scored = prepared_forbes.copy()
     scored["scf_tail_probability"] = tail_probabilities
     scored["scf_expected_agi"] = expected_agi
-    scored["estimated_agi"] = np.maximum(
-        scored["scf_expected_agi"].to_numpy(dtype=float),
-        1.0,
-    )
     return scored
 
 
@@ -1090,7 +1121,80 @@ def scf_implied_component_values(
     candidates: pd.DataFrame,
     receiver,
 ) -> dict[str, np.ndarray]:
-    """Scale SCF donor ratios up to one Forbes receiver's wealth level."""
+    """Scale SCF donor income composition to one Forbes receiver's AGI level."""
+
+    receiver_agi = _receiver_estimated_agi(receiver)
+    employment_base = np.maximum(
+        0.0,
+        candidates["wageinc"].to_numpy(dtype=float),
+    )
+    capital_gains_base = candidates["kginc"].to_numpy(dtype=float)
+    interest_dividend_base = np.maximum(
+        0.0,
+        candidates["intdivinc"].to_numpy(dtype=float),
+    )
+    business_farm_base = candidates["bussefarminc"].to_numpy(dtype=float)
+    pension_base = np.maximum(
+        0.0,
+        candidates["ssretinc"].to_numpy(dtype=float),
+    )
+    donor_agi_base = (
+        employment_base
+        + capital_gains_base
+        + interest_dividend_base
+        + business_farm_base
+        + 0.5 * pension_base
+    )
+    donor_abs_income_base = (
+        np.abs(employment_base)
+        + np.abs(capital_gains_base)
+        + np.abs(interest_dividend_base)
+        + np.abs(business_farm_base)
+        + 0.5 * np.abs(pension_base)
+    )
+    scale_base = np.where(
+        donor_agi_base > 1.0,
+        donor_agi_base,
+        np.maximum(donor_abs_income_base, 1.0),
+    )
+    scale = receiver_agi / scale_base
+    employment_income = np.maximum(
+        0.0,
+        employment_base * scale,
+    )
+    capital_gains = capital_gains_base * scale
+    interest_dividend_income = np.maximum(
+        0.0,
+        interest_dividend_base * scale,
+    )
+    business_farm_income = business_farm_base * scale
+    pension_income = np.maximum(
+        0.0,
+        pension_base * scale,
+    )
+    agi = np.maximum(
+        employment_income
+        + capital_gains
+        + interest_dividend_income
+        + business_farm_income
+        + 0.5 * pension_income,
+        0.0,
+    )
+    return {
+        "employment_income": employment_income,
+        "capital_gains": capital_gains,
+        "interest_dividend_income": interest_dividend_income,
+        "business_farm_income": business_farm_income,
+        "pension_income": pension_income,
+        "agi": agi,
+    }
+
+
+def scf_wealth_ratio_agi_values(
+    candidates: pd.DataFrame,
+    receiver,
+) -> np.ndarray:
+    """Return wealth-ratio AGI values for selection only, not amount priors."""
 
     networth = float(getattr(receiver, "networth_dollars", 0.0))
     employment_income = np.maximum(
@@ -1109,7 +1213,7 @@ def scf_implied_component_values(
         0.0,
         networth * candidates["ssretinc_ratio"].to_numpy(dtype=float),
     )
-    agi = np.maximum(
+    return np.maximum(
         employment_income
         + capital_gains
         + interest_dividend_income
@@ -1117,14 +1221,19 @@ def scf_implied_component_values(
         + 0.5 * pension_income,
         0.0,
     )
-    return {
-        "employment_income": employment_income,
-        "capital_gains": capital_gains,
-        "interest_dividend_income": interest_dividend_income,
-        "business_farm_income": business_farm_income,
-        "pension_income": pension_income,
-        "agi": agi,
-    }
+
+
+def _receiver_estimated_agi(receiver) -> float:
+    """Return the Forbes receiver AGI anchor used for SCF composition draws."""
+
+    estimated_agi = float(getattr(receiver, "estimated_agi", np.nan))
+    if np.isfinite(estimated_agi) and estimated_agi > 0:
+        return estimated_agi
+
+    networth = float(getattr(receiver, "networth_dollars", 0.0))
+    agi_ratio = float(getattr(receiver, "agi_ratio", DEFAULT_PROFILE.agi_ratio))
+    self_made_scale = 1.05 if bool(getattr(receiver, "self_made_flag", False)) else 0.95
+    return max(networth * agi_ratio * self_made_scale, 1.0)
 
 
 def scf_implied_agi_values(
@@ -1622,7 +1731,7 @@ def _build_calibration_diagnostics(
 ) -> pd.DataFrame:
     rows = []
     for column in amount_columns:
-        target_total = pop_weight * float(row.get(column, 0.0))
+        target_total = pop_weight * utils._finite_amount(row.get(column, 0.0))
         synthetic_total = _weighted_columns_total(synthetic, (column,), weights)
         absolute_error = synthetic_total - target_total
         if abs(target_total) > ARTIFACT_NUMERIC_TOL:
@@ -1669,7 +1778,7 @@ def _build_composition_diagnostics(
             continue
 
         target_total = pop_weight * sum(
-            float(row.get(column, 0.0)) for column in columns
+            utils._finite_amount(row.get(column, 0.0)) for column in columns
         )
         synthetic_total = _weighted_columns_total(
             artifact.synthetic,

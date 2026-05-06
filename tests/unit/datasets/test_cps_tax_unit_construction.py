@@ -206,6 +206,45 @@ def test_construct_tax_units_handles_nonconsecutive_person_index():
     assert _decoded_statuses(tax_unit) == ["HEAD_OF_HOUSEHOLD"]
 
 
+def test_construct_tax_units_handles_duplicate_person_index_labels():
+    person = _person_fixture(
+        PH_SEQ=[1, 2],
+        A_LINENO=[1, 1],
+        A_AGE=[40, 30],
+        A_EXPRRP=[1, 1],
+        WSAL_VAL=[50_000, 45_000],
+    )
+    person.index = [0, 0]
+
+    assignments, tax_unit = construct_tax_units(person, year=2024)
+
+    assert assignments.index.tolist() == [0, 0]
+    assert assignments["TAX_ID"].tolist() == [1, 2]
+    assert _decoded_roles(assignments) == ["HEAD", "HEAD"]
+    assert sorted(_decoded_statuses(tax_unit)) == ["SINGLE", "SINGLE"]
+
+
+def test_construct_tax_units_preserves_original_order_for_interleaved_households():
+    person = _person_fixture(
+        PH_SEQ=[1, 2, 1, 2],
+        A_LINENO=[1, 1, 2, 2],
+        A_AGE=[40, 32, 8, 29],
+        A_EXPRRP=[1, 1, 5, 13],
+        PEPAR1=[-1, -1, 1, -1],
+        WSAL_VAL=[50_000, 45_000, 0, 35_000],
+    )
+
+    assignments, tax_unit = construct_tax_units(person, year=2024)
+
+    assert assignments["TAX_ID"].tolist() == [1, 2, 1, 3]
+    assert _decoded_roles(assignments) == ["HEAD", "HEAD", "DEPENDENT", "HEAD"]
+    assert sorted(_decoded_statuses(tax_unit)) == [
+        "HEAD_OF_HOUSEHOLD",
+        "SINGLE",
+        "SINGLE",
+    ]
+
+
 def test_construct_tax_units_allows_missing_optional_evidence_columns():
     person = _person_fixture(
         A_AGE=[40, 10],

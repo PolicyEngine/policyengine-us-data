@@ -6,11 +6,18 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.cps import CPS, CPS_2024, CPS_2024_Full
+from policyengine_us_data.datasets.cps.cps import (
+    CPS,
+    CPS_2024,
+    CPS_2024_Full,
+    ESI_POLICYHOLDER_VARIABLE,
+)
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
 )
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.mortgage_interest import (
@@ -19,9 +26,6 @@ from policyengine_us_data.utils.mortgage_interest import (
     impute_tax_unit_mortgage_balance_hints,
 )
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
-from policyengine_us_data.utils.policyengine import (
-    supports_modeled_medicare_part_b_inputs,
-)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -32,6 +36,78 @@ logger = logging.getLogger(__name__)
 
 def _supports_structural_mortgage_inputs() -> bool:
     return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
+
+
+def _calculate_spm_thresholds_from_assigned_geography(
+    data: dict[str, dict[int, np.ndarray]],
+    time_period: int,
+) -> np.ndarray:
+    from policyengine_us_data.calibration.calibration_utils import (
+        load_cd_geoadj_values,
+    )
+    from policyengine_us_data.utils.spm import (
+        calculate_spm_thresholds_with_geoadj,
+    )
+
+    spm_unit_ids = data["spm_unit_id"][time_period]
+    person_spm_unit_ids = data["person_spm_unit_id"][time_period]
+    person_household_ids = data["person_household_id"][time_period]
+    household_ids = data["household_id"][time_period]
+    ages = data["age"][time_period]
+    cd_geoids = np.asarray(data["congressional_district_geoid"][time_period]).astype(
+        str
+    )
+
+    cd_geoadj_values = load_cd_geoadj_values(sorted(set(cd_geoids)))
+    household_geoadj = np.array(
+        [cd_geoadj_values.get(cd, 1.0) for cd in cd_geoids],
+        dtype=float,
+    )
+    geoadj_by_household = dict(zip(household_ids, household_geoadj))
+
+    person_df = pd.DataFrame(
+        {
+            "spm_unit_id": person_spm_unit_ids,
+            "household_id": person_household_ids,
+            "is_adult": ages >= 18,
+            "is_child": ages < 18,
+        }
+    )
+    spm_df = person_df.groupby("spm_unit_id").agg(
+        num_adults=("is_adult", "sum"),
+        num_children=("is_child", "sum"),
+        household_id=("household_id", "first"),
+    )
+    spm_df = spm_df.reindex(spm_unit_ids)
+
+    tenure = data.get("spm_unit_tenure_type", {}).get(time_period)
+    tenure_codes = np.full(len(spm_unit_ids), 3, dtype=int)
+    if tenure is not None:
+        tenure_values = np.asarray(tenure)
+        if np.issubdtype(tenure_values.dtype, np.bytes_):
+            tenure_values = np.char.decode(tenure_values, "utf-8")
+        tenure_codes = (
+            pd.Series(tenure_values)
+            .map(
+                {
+                    "OWNER_WITH_MORTGAGE": 1,
+                    "OWNER_WITHOUT_MORTGAGE": 2,
+                    "RENTER": 3,
+                }
+            )
+            .fillna(3)
+            .astype(int)
+            .values
+        )
+
+    geoadj = spm_df["household_id"].map(geoadj_by_household).fillna(1.0).values
+    return calculate_spm_thresholds_with_geoadj(
+        num_adults=spm_df["num_adults"].fillna(0).values,
+        num_children=spm_df["num_children"].fillna(0).values,
+        tenure_codes=tenure_codes,
+        geoadj=geoadj,
+        year=time_period,
+    )
 
 
 # CPS-only categorical features to donor-impute onto the PUF clone half.
@@ -146,11 +222,12 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "spm_unit_payroll_tax_reported",
     "spm_unit_federal_tax_reported",
     "spm_unit_state_tax_reported",
-    "spm_unit_spm_threshold",
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
+    "employer_sponsored_insurance_premiums",
     "health_insurance_premiums_without_medicare_part_b",
+    "other_health_insurance_premiums",
     "over_the_counter_health_expenses",
     "other_medical_expenses",
     "child_support_expense",
@@ -166,9 +243,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "self_employment_income_last_year",
 ]
 
-if not supports_modeled_medicare_part_b_inputs():
-    CPS_ONLY_IMPUTED_VARIABLES.append("medicare_part_b_premiums")
-
 # Set for O(1) lookup in the splice loop.
 _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
 
@@ -177,6 +251,7 @@ _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
 CPS_STAGE2_DEMOGRAPHIC_PREDICTORS = [
     "age",
     "is_male",
+    "has_esi",
     "tax_unit_is_joint",
     "tax_unit_count_dependents",
 ]
@@ -354,6 +429,24 @@ def _impute_clone_cps_features(
     return predictions
 
 
+@pipeline_node(
+    PipelineNode(
+        id="clone_features",
+        label="Splice Clone Features",
+        node_type="process",
+        description=(
+            "Replaces clone-half CPS feature variables with donor-matched "
+            "predictions so doubled records retain plausible demographics and "
+            "occupation labels."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["qrf_pass2", "record_double"],
+        artifacts_out=["clone_feature_splice"],
+        pydoc=True,
+    )
+)
 def _splice_clone_feature_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -376,6 +469,23 @@ def _splice_clone_feature_predictions(
     return data
 
 
+@pipeline_node(
+    PipelineNode(
+        id="cps_only",
+        label="Impute CPS-Only Variables",
+        node_type="process",
+        description=(
+            "Runs the second-stage CPS-only QRF imputation for PUF clone "
+            "records inside the extended CPS build."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["record_double", "preprocess_cps"],
+        artifacts_out=["cps_only_predictions"],
+        pydoc=True,
+    )
+)
 def _impute_cps_only_variables(
     data: dict,
     time_period: int,
@@ -743,9 +853,36 @@ def _apply_post_processing(predictions, X_test, time_period, data):
         for col in org_cols:
             predictions[col] = constrained[col]
 
+    if "employer_sponsored_insurance_premiums" in predictions.columns:
+        policyholder = _clone_half_person_values(
+            data, ESI_POLICYHOLDER_VARIABLE, time_period
+        )
+        if policyholder is not None:
+            predictions.loc[
+                ~np.asarray(policyholder, dtype=bool),
+                "employer_sponsored_insurance_premiums",
+            ] = 0
+
     return predictions
 
 
+@pipeline_node(
+    PipelineNode(
+        id="qrf_pass2",
+        label="Splice CPS-Only Predictions",
+        node_type="process",
+        description=(
+            "Writes second-stage CPS-only QRF predictions back into the PUF "
+            "clone half of the extended CPS record set."
+        ),
+        status="transitional",
+        stability="moving",
+        pathways=["data_build"],
+        artifacts_in=["cps_only_predictions"],
+        artifacts_out=["extended_cps_stage2"],
+        pydoc=True,
+    )
+)
 def _splice_cps_only_predictions(
     data: dict,
     predictions: pd.DataFrame,
@@ -838,7 +975,7 @@ class ExtendedCPS(Dataset):
         from policyengine_us import Microsimulation
 
         from policyengine_us_data.calibration.clone_and_assign import (
-            load_global_block_distribution,
+            assign_geography_within_state_county,
         )
         from policyengine_us_data.calibration.puf_impute import (
             puf_clone_dataset,
@@ -853,16 +990,21 @@ class ExtendedCPS(Dataset):
         for var in data:
             data_dict[var] = {self.time_period: data[var][...]}
 
-        n_hh = len(data_dict["household_id"][self.time_period])
-        _, _, block_states, block_probs = load_global_block_distribution()
-        rng = np.random.default_rng(seed=42)
-        indices = rng.choice(len(block_states), size=n_hh, p=block_probs)
-        state_fips = block_states[indices]
+        state_fips = data_dict["state_fips"][self.time_period]
+        county_fips = data_dict.get("county_fips", {}).get(self.time_period)
+        geography = assign_geography_within_state_county(
+            state_fips=state_fips,
+            county_fips=county_fips,
+            seed=42,
+        )
 
         logger.info("PUF clone with dataset: %s", self.puf)
         new_data = puf_clone_dataset(
             data=data_dict,
-            state_fips=state_fips,
+            state_fips=geography.state_fips,
+            block_geoid=geography.block_geoid,
+            cd_geoid=geography.cd_geoid,
+            county_fips=geography.county_fips,
             time_period=self.time_period,
             puf_dataset=self.puf,
             dataset_path=str(self.cps.file_path),
@@ -917,6 +1059,13 @@ class ExtendedCPS(Dataset):
                 self.time_period,
                 had_positive_mortgage_input,
             )
+        logger.info("Calculating SPM thresholds from assigned geography")
+        new_data["spm_unit_spm_threshold"] = {
+            self.time_period: _calculate_spm_thresholds_from_assigned_geography(
+                new_data,
+                self.time_period,
+            )
+        }
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -969,6 +1118,7 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
+        "spm_unit_spm_threshold",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }
@@ -992,6 +1142,24 @@ class ExtendedCPS(Dataset):
     }
 
     @classmethod
+    @pipeline_node(
+        PipelineNode(
+            id="formula_drop",
+            label="Drop Formula Variables",
+            node_type="process",
+            description=(
+                "Removes variables computed by policyengine-us formulas, "
+                "while preserving selected imputed inputs under canonical "
+                "leaf variable names."
+            ),
+            status="transitional",
+            stability="moving",
+            pathways=["data_build"],
+            artifacts_in=["extended_cps_stage2"],
+            artifacts_out=["formula_pruned_extended_cps"],
+            pydoc=True,
+        )
+    )
     def _drop_formula_variables(cls, data):
         """Remove variables that are computed by policyengine-us.
 

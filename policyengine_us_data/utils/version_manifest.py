@@ -93,7 +93,7 @@ class VersionManifest:
     gcs: GCSVersionInfo
     special_operation: Optional[str] = None
     roll_back_version: Optional[str] = None
-    pipeline_run_id: Optional[str] = None
+    run_id: Optional[str] = None
     diagnostics_path: Optional[str] = None
     policyengine_us: Optional[PolicyEngineUSBuildInfo] = None
 
@@ -108,8 +108,8 @@ class VersionManifest:
             result["special_operation"] = self.special_operation
         if self.roll_back_version is not None:
             result["roll_back_version"] = self.roll_back_version
-        if self.pipeline_run_id is not None:
-            result["pipeline_run_id"] = self.pipeline_run_id
+        if self.run_id is not None:
+            result["run_id"] = self.run_id
         if self.diagnostics_path is not None:
             result["diagnostics_path"] = self.diagnostics_path
         if self.policyengine_us is not None:
@@ -126,7 +126,7 @@ class VersionManifest:
             gcs=GCSVersionInfo.from_dict(data["gcs"]),
             special_operation=data.get("special_operation"),
             roll_back_version=data.get("roll_back_version"),
-            pipeline_run_id=data.get("pipeline_run_id"),
+            run_id=data.get("run_id") or data.get("pipeline_run_id"),
             diagnostics_path=data.get("diagnostics_path"),
             policyengine_us=(
                 PolicyEngineUSBuildInfo.from_dict(data["policyengine_us"])
@@ -348,6 +348,7 @@ def build_manifest(
     blob_names: list[str],
     hf_info: Optional[HFVersionInfo] = None,
     policyengine_us_info: Optional[PolicyEngineUSBuildInfo] = None,
+    run_id: str | None = None,
 ) -> VersionManifest:
     """Build a version manifest by reading generation
     numbers from uploaded blobs.
@@ -356,6 +357,7 @@ def build_manifest(
         version: Semver version string.
         blob_names: List of blob paths to include.
         hf_info: Optional HF backend info to include.
+        run_id: Optional publication run ID that produced the version.
 
     Returns:
         A VersionManifest with generation numbers for
@@ -379,6 +381,7 @@ def build_manifest(
             bucket=bucket.name,
             generations=generations,
         ),
+        run_id=run_id,
         policyengine_us=policyengine_us_info or get_policyengine_us_build_info(),
     )
 
@@ -398,6 +401,7 @@ def upload_manifest(
     """
     bucket = _get_gcs_bucket()
     registry = _read_registry_from_gcs(bucket)
+    registry.versions = [v for v in registry.versions if v.version != manifest.version]
     registry.versions.insert(0, manifest)
     registry.current = manifest.version
     _upload_registry_to_gcs(bucket, registry)

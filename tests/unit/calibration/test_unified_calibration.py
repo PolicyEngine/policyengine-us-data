@@ -27,6 +27,9 @@ from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     TAKEUP_AFFECTED_TARGETS,
+    adjust_aca_takeup_to_match_enrollment_and_spending_targets,
+    adjust_aca_takeup_to_match_target,
+    adjust_aca_takeup_to_state_targets,
     apply_block_takeup_to_arrays,
     compute_block_takeup_draws_for_entities,
     compute_block_takeup_for_entities,
@@ -317,6 +320,87 @@ class TestAcaTakeupTargeting:
             np.array([True, False, True, True], dtype=bool),
         )
 
+    def test_adjust_removes_high_draw_takers_when_above_target(self):
+        base_takeup = np.array([True, True, True, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.90, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([2.0, 5.0, 3.0, 4.0], dtype=np.float64)
+
+        result = adjust_aca_takeup_to_match_target(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            target_people=5.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, False], dtype=bool),
+        )
+
+    def test_adjust_state_targets_adds_and_removes_independently(self):
+        base_takeup = np.array([True, True, False, False], dtype=bool)
+        entity_draws = np.array([0.90, 0.10, 0.20, 0.30], dtype=np.float64)
+        enrolled_person_weights = np.array([5.0, 4.0, 7.0, 3.0], dtype=np.float64)
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 4.0, "FL": 10.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, True, True], dtype=bool),
+        )
+
+    def test_adjust_targets_spending_per_person_when_provided(self):
+        base_takeup = np.array([True, True, True], dtype=bool)
+        entity_draws = np.array([0.30, 0.10, 0.20], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0], dtype=np.float64)
+        assigned_spending_weights = np.array(
+            [100.0, 500.0, 1_000.0],
+            dtype=np.float64,
+        )
+
+        result = adjust_aca_takeup_to_match_enrollment_and_spending_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            assigned_spending_weights,
+            target_people=100.0,
+            target_spending=1_000.0,
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, False, True], dtype=bool),
+        )
+
+    def test_state_targets_use_spending_when_available(self):
+        base_takeup = np.array([False, False, False, False], dtype=bool)
+        entity_draws = np.array([0.10, 0.20, 0.30, 0.40], dtype=np.float64)
+        enrolled_person_weights = np.array([100.0, 100.0, 100.0, 100.0])
+        assigned_spending_weights = np.array([100.0, 1_000.0, 500.0, 100.0])
+        state_codes = np.array(["NY", "NY", "FL", "FL"])
+
+        result = adjust_aca_takeup_to_state_targets(
+            base_takeup,
+            entity_draws,
+            enrolled_person_weights,
+            entity_state_codes=state_codes,
+            target_people_by_state={"NY": 100.0, "FL": 100.0},
+            assigned_spending_weights=assigned_spending_weights,
+            target_spending_by_state={"NY": 1_000.0, "FL": 100.0},
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([False, True, False, True], dtype=bool),
+        )
+
 
 class TestResolveRate:
     """Verify _resolve_rate handles scalar and dict rates."""
@@ -466,8 +550,13 @@ class TestParseArgsNewFlags:
         assert args.resume_from == "weights.npy"
         assert args.checkpoint_output == "weights.checkpoint.pt"
 
+        args_default = parse_args([])
+        assert args_default.checkpoint_output is None
+
 
 class FakeSparseCalibrationWeights:
+    fit_calls = []
+
     def __init__(
         self,
         n_features,
@@ -506,6 +595,7 @@ class FakeSparseCalibrationWeights:
         verbose_freq=1,
         target_groups=None,
     ):
+        type(self).fit_calls.append({"target_groups": target_groups})
         increment = float(epochs) + (self.alpha / 10.0)
         self.weights = self.weights + increment
         self.alpha = self.alpha + (10.0 * float(epochs))
@@ -529,6 +619,71 @@ class FakeSparseCalibrationWeights:
     def load_state_dict(self, state_dict):
         self.weights = state_dict["weights"].clone()
         self.alpha = state_dict["alpha"].clone()
+
+
+class TestFitTargetGroups:
+    def test_passes_target_groups_to_l0_model(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            fit_l0_weights,
+        )
+
+        target_groups = np.array([0, 1], dtype=np.int64)
+        FakeSparseCalibrationWeights.fit_calls = []
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            weights = fit_l0_weights(
+                X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+                targets=np.array([1.0, 2.0], dtype=np.float64),
+                lambda_l0=1e-4,
+                epochs=1,
+                device="cpu",
+                target_names=["target_a", "target_b"],
+                initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+                log_path=str(tmp_path / "calibration_log.csv"),
+                target_groups=target_groups,
+            )
+
+        np.testing.assert_allclose(weights, np.array([2.0, 3.0]))
+        np.testing.assert_array_equal(
+            FakeSparseCalibrationWeights.fit_calls[-1]["target_groups"],
+            target_groups,
+        )
+
+    def test_passes_target_groups_to_logged_l0_fit(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            fit_l0_weights,
+        )
+
+        target_groups = np.array([0, 1], dtype=np.int64)
+        FakeSparseCalibrationWeights.fit_calls = []
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            weights = fit_l0_weights(
+                X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+                targets=np.array([1.0, 2.0], dtype=np.float64),
+                lambda_l0=1e-4,
+                epochs=2,
+                device="cpu",
+                target_names=["target_a", "target_b"],
+                initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+                log_freq=1,
+                log_path=str(tmp_path / "calibration_log.csv"),
+                target_groups=target_groups,
+            )
+
+        np.testing.assert_allclose(weights, np.array([4.0, 5.0]))
+        assert len(FakeSparseCalibrationWeights.fit_calls) == 2
+        for fit_call in FakeSparseCalibrationWeights.fit_calls:
+            np.testing.assert_array_equal(
+                fit_call["target_groups"],
+                target_groups,
+            )
 
 
 class TestFitResume:
@@ -674,6 +829,34 @@ class TestFitResume:
                     **{
                         **kwargs,
                         "X_sparse": changed_matrix,
+                        "resume_from": str(checkpoint_path),
+                    }
+                )
+
+    def test_resume_checkpoint_rejects_changed_target_groups(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            default_checkpoint_path,
+            fit_l0_weights,
+        )
+
+        weights_path = tmp_path / "weights.npy"
+        checkpoint_path = default_checkpoint_path(str(weights_path))
+        kwargs = self._fit_kwargs(tmp_path)
+        kwargs["checkpoint_path"] = str(checkpoint_path)
+        kwargs["target_groups"] = np.array([0, 1], dtype=np.int64)
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            first_weights = fit_l0_weights(**kwargs)
+            np.save(weights_path, first_weights)
+
+            with pytest.raises(ValueError, match="target_groups_sha256"):
+                fit_l0_weights(
+                    **{
+                        **kwargs,
+                        "target_groups": np.array([1, 0], dtype=np.int64),
                         "resume_from": str(checkpoint_path),
                     }
                 )

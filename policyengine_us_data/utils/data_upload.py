@@ -1,5 +1,6 @@
 from io import BytesIO
-from typing import Dict, List, Optional, Sequence, Tuple
+from copy import deepcopy
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from huggingface_hub import (
     HfApi,
     CommitOperationAdd,
@@ -7,7 +8,7 @@ from huggingface_hub import (
     CommitOperationDelete,
     hf_hub_download,
 )
-from huggingface_hub.errors import RevisionNotFoundError
+from huggingface_hub.errors import EntryNotFoundError, RevisionNotFoundError
 from google.cloud import storage
 from pathlib import Path
 from importlib import metadata
@@ -16,6 +17,7 @@ import httpx
 import json
 import logging
 import os
+import subprocess
 
 from tenacity import (
     retry,
@@ -30,12 +32,22 @@ from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
 )
+from policyengine_us_data.utils.release_promotion import (
+    FullReleasePromotionConfig,
+    FullReleasePromotionDependencies,
+    promote_full_release,
+)
+from policyengine_us_data.utils.run_context import (
+    RunContext,
+    resolve_run_id,
+)
 from policyengine_us_data.utils.trace_tro import (
     TRACE_TRO_FILENAME,
     build_trace_tro_from_release_manifest,
     serialize_trace_tro,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HF_TIMEOUT = 300
 MAX_RETRIES = 5
 RETRY_BASE_WAIT = 30
@@ -54,6 +66,42 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
 }
 
 
+def _resolve_staging_run_id(run_id: str = "") -> str:
+    return run_id or resolve_run_id()
+
+
+def _run_context_for_release() -> dict | None:
+    run_id = resolve_run_id()
+    if not run_id:
+        return None
+    return RunContext.from_env(run_id=run_id).to_dict()
+
+
+def _apply_run_context_for_release(
+    run_id: str,
+    run_context: Optional[Dict] = None,
+) -> dict | None:
+    if not run_id and not run_context:
+        return None
+    context = RunContext.from_mapping(run_context, run_id=run_id)
+    for key, value in context.export_env().items():
+        os.environ[key] = value
+    return context.to_dict()
+
+
+def _pipeline_run_id_for_manifest(
+    pipeline_run_id: str = "",
+    run_context: Optional[Mapping[str, Any]] = None,
+) -> str | None:
+    if pipeline_run_id:
+        return pipeline_run_id
+    if run_context:
+        run_id = run_context.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            return run_id
+    return None
+
+
 def _get_model_package_version(
     package_name: str = "policyengine-us",
 ) -> Optional[str]:
@@ -67,25 +115,90 @@ def _get_model_package_version(
         return None
 
 
+def _get_data_package_git_sha() -> Optional[str]:
+    github_sha = os.environ.get("GITHUB_SHA")
+    if github_sha:
+        return github_sha
+    try:
+        return subprocess.check_output(
+            ["git", "-C", str(REPO_ROOT), "rev-parse", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def _get_core_package_runtime_metadata(
+    package_name: str = "policyengine-core",
+) -> Optional[Dict[str, Any]]:
+    module_name = package_name.replace("-", "_")
+    try:
+        runtime_metadata_module = __import__(
+            module_name,
+            fromlist=["get_runtime_metadata"],
+        )
+        get_runtime_metadata = getattr(
+            runtime_metadata_module,
+            "get_runtime_metadata",
+            None,
+        )
+        if callable(get_runtime_metadata):
+            runtime_metadata = get_runtime_metadata()
+            if isinstance(runtime_metadata, Mapping):
+                return dict(runtime_metadata)
+    except Exception:
+        logging.warning(
+            "Could not load runtime metadata from %s.",
+            package_name,
+            exc_info=True,
+        )
+
+    version = _get_model_package_version(package_name)
+    if version is None:
+        return None
+    return {
+        "name": package_name,
+        "version": version,
+    }
+
+
 def _get_model_package_build_metadata(
     package_name: str = "policyengine-us",
-) -> Dict[str, Optional[str]]:
-    metadata_payload: Dict[str, Optional[str]] = {
+) -> Dict[str, Any]:
+    metadata_payload: Dict[str, Any] = {
+        "name": package_name,
         "version": _get_model_package_version(package_name),
         "git_sha": None,
         "data_build_fingerprint": None,
+        "core": _get_core_package_runtime_metadata(),
     }
     module_name = package_name.replace("-", "_")
     try:
         build_metadata_module = __import__(
             f"{module_name}.build_metadata",
-            fromlist=["get_data_build_metadata"],
+            fromlist=["get_runtime_metadata", "get_data_build_metadata"],
+        )
+        get_runtime_metadata = getattr(
+            build_metadata_module,
+            "get_runtime_metadata",
+            None,
         )
         get_data_build_metadata = getattr(
             build_metadata_module, "get_data_build_metadata", None
         )
-        if callable(get_data_build_metadata):
-            package_metadata = get_data_build_metadata()
+        metadata_getter = (
+            get_runtime_metadata
+            if callable(get_runtime_metadata)
+            else get_data_build_metadata
+        )
+        if callable(metadata_getter):
+            package_metadata = metadata_getter()
+            if not isinstance(package_metadata, Mapping):
+                return metadata_payload
+            metadata_payload["name"] = package_metadata.get(
+                "name", metadata_payload["name"]
+            )
             metadata_payload["version"] = (
                 package_metadata.get("version") or metadata_payload["version"]
             )
@@ -93,6 +206,9 @@ def _get_model_package_build_metadata(
             metadata_payload["data_build_fingerprint"] = package_metadata.get(
                 "data_build_fingerprint"
             )
+            metadata_payload["core"] = package_metadata.get(
+                "core"
+            ) or metadata_payload.get("core")
     except Exception:
         logging.warning(
             "Could not load build metadata from %s while building release manifest.",
@@ -125,7 +241,7 @@ def load_release_manifest_from_hf(
             )
         except RevisionNotFoundError:
             return None
-        except Exception:
+        except EntryNotFoundError:
             continue
 
         with open(manifest_path) as f:
@@ -232,6 +348,8 @@ def preflight_release_manifest_publish(
     hf_repo_type: str = "model",
     model_package_name: str = "policyengine-us",
     model_package_version: Optional[str] = None,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> tuple[bool, list[str]]:
     should_finalize, missing_prefixes = should_finalize_local_area_release(
         version=version,
@@ -249,6 +367,7 @@ def preflight_release_manifest_publish(
         hf_repo_name=hf_repo_name,
         hf_repo_type=hf_repo_type,
     )
+    resolved_run_context = run_context or _run_context_for_release()
     model_build_metadata = _get_model_package_build_metadata(model_package_name)
     create_release_manifest_commit_operations(
         files_with_repo_paths=[
@@ -262,6 +381,12 @@ def preflight_release_manifest_publish(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        core_package_metadata=model_build_metadata.get("core"),
+        run_context=resolved_run_context,
+        pipeline_run_id=_pipeline_run_id_for_manifest(
+            pipeline_run_id, resolved_run_context
+        ),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     return should_finalize, missing_prefixes
@@ -275,6 +400,10 @@ def create_release_manifest_commit_operations(
     model_package_version: Optional[str] = None,
     model_package_git_sha: Optional[str] = None,
     model_package_data_build_fingerprint: Optional[str] = None,
+    run_context: Optional[Dict] = None,
+    core_package_metadata: Optional[Mapping[str, Any]] = None,
+    pipeline_run_id: Optional[str] = None,
+    data_package_git_sha: Optional[str] = None,
     existing_manifest: Optional[Dict] = None,
 ) -> Tuple[Dict, List[CommitOperationAdd]]:
     manifest = build_release_manifest(
@@ -285,6 +414,10 @@ def create_release_manifest_commit_operations(
         model_package_version=model_package_version,
         model_package_git_sha=model_package_git_sha,
         model_package_data_build_fingerprint=model_package_data_build_fingerprint,
+        run_context=run_context,
+        core_package_metadata=core_package_metadata,
+        pipeline_run_id=pipeline_run_id,
+        data_package_git_sha=data_package_git_sha,
         existing_manifest=existing_manifest,
     )
     manifest_payload = serialize_release_manifest(manifest)
@@ -372,6 +505,8 @@ def get_matching_finalized_release_manifest(
     hf_repo_type: str,
     model_package_name: str,
     model_package_version: Optional[str] = None,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> Optional[Dict]:
     finalized_manifest = load_release_manifest_from_hf(
         version=version,
@@ -383,6 +518,24 @@ def get_matching_finalized_release_manifest(
         return None
 
     model_build_metadata = _get_model_package_build_metadata(model_package_name)
+    finalized_build = finalized_manifest.get("build")
+    finalized_build = finalized_build if isinstance(finalized_build, dict) else {}
+    finalized_build_metadata = finalized_build.get("metadata")
+    finalized_build_metadata = (
+        finalized_build_metadata if isinstance(finalized_build_metadata, dict) else {}
+    )
+    finalized_run_context = finalized_build_metadata.get(
+        "run_context"
+    ) or finalized_build.get("run")
+    finalized_run_context = (
+        finalized_run_context if isinstance(finalized_run_context, Mapping) else None
+    )
+    finalized_core_metadata = finalized_build.get("built_with_core_package")
+    finalized_core_metadata = (
+        finalized_core_metadata
+        if isinstance(finalized_core_metadata, Mapping)
+        else None
+    )
     candidate_manifest, _ = create_release_manifest_commit_operations(
         files_with_repo_paths=[
             (Path(path), repo_path) for path, repo_path in files_with_paths
@@ -395,17 +548,34 @@ def get_matching_finalized_release_manifest(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        core_package_metadata=finalized_core_metadata,
+        run_context=finalized_run_context,
+        pipeline_run_id=finalized_build_metadata.get("pipeline_run_id"),
+        data_package_git_sha=finalized_build_metadata.get("data_package_git_sha"),
         existing_manifest=finalized_manifest,
     )
-    if "created_at" in finalized_manifest:
-        candidate_manifest["created_at"] = finalized_manifest["created_at"]
-    finalized_build = finalized_manifest.get("build")
-    if isinstance(finalized_build, dict):
-        candidate_build = candidate_manifest.setdefault("build", {})
-        for field in ("build_id", "built_at"):
-            if field in finalized_build:
-                candidate_build[field] = finalized_build[field]
-    if candidate_manifest != finalized_manifest:
+    candidate_build = candidate_manifest.setdefault("build", {})
+    for field in ("build_id", "built_at"):
+        if field in finalized_build:
+            candidate_build[field] = finalized_build[field]
+
+    comparable_finalized_manifest = deepcopy(finalized_manifest)
+    legacy_created_at = comparable_finalized_manifest.pop("created_at", None)
+    if legacy_created_at is not None and "built_at" not in finalized_build:
+        candidate_build["built_at"] = legacy_created_at
+    if legacy_created_at is not None:
+        comparable_finalized_manifest.setdefault("build", {}).setdefault(
+            "built_at", legacy_created_at
+        )
+    comparable_build = comparable_finalized_manifest.get("build")
+    if isinstance(comparable_build, dict):
+        legacy_run = comparable_build.pop("run", None)
+        if legacy_run:
+            comparable_build.setdefault("metadata", {}).setdefault(
+                "run_context", legacy_run
+            )
+    comparable_finalized_manifest.setdefault("compatible_core_packages", [])
+    if candidate_manifest != comparable_finalized_manifest:
         raise RuntimeError(
             f"Release {version} is already finalized on {hf_repo_name}. "
             "Refusing to mutate the tagged release manifest."
@@ -480,6 +650,7 @@ def upload_files_to_hf(
         hf_repo_type=hf_repo_type,
     )
     model_build_metadata = _get_model_package_build_metadata()
+    run_context = _run_context_for_release()
     _, manifest_operations = create_release_manifest_commit_operations(
         files_with_repo_paths=files_with_repo_paths,
         version=version,
@@ -489,6 +660,10 @@ def upload_files_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        run_context=run_context,
+        core_package_metadata=model_build_metadata.get("core"),
+        pipeline_run_id=_pipeline_run_id_for_manifest(run_context=run_context),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     hf_operations.extend(manifest_operations)
@@ -654,9 +829,12 @@ def publish_release_manifest_to_hf(
     model_package_name: str = "policyengine-us",
     model_package_version: Optional[str] = None,
     create_tag: bool = False,
+    pipeline_run_id: str = "",
+    run_context: Optional[Dict] = None,
 ) -> Dict:
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    resolved_run_context = run_context or _run_context_for_release()
     finalized_manifest = get_matching_finalized_release_manifest(
         files_with_paths=files_with_paths,
         version=version,
@@ -664,6 +842,8 @@ def publish_release_manifest_to_hf(
         hf_repo_type=hf_repo_type,
         model_package_name=model_package_name,
         model_package_version=model_package_version,
+        pipeline_run_id=pipeline_run_id,
+        run_context=resolved_run_context,
     )
     if finalized_manifest is not None:
         return finalized_manifest
@@ -691,6 +871,12 @@ def publish_release_manifest_to_hf(
         model_package_data_build_fingerprint=model_build_metadata[
             "data_build_fingerprint"
         ],
+        run_context=resolved_run_context,
+        core_package_metadata=model_build_metadata.get("core"),
+        pipeline_run_id=_pipeline_run_id_for_manifest(
+            pipeline_run_id, resolved_run_context
+        ),
+        data_package_git_sha=_get_data_package_git_sha(),
         existing_manifest=existing_manifest,
     )
     parent_commit = get_repo_head_revision(
@@ -789,12 +975,28 @@ def upload_to_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
-    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    context_payload = None
+    if run_id:
+        context_payload = RunContext.from_env(run_id=run_id).to_dict()
+        context_payload["hf_staging_prefix"] = staging_prefix
 
     total_uploaded = 0
     for i in range(0, len(files_with_paths), batch_size):
         batch = files_with_paths[i : i + batch_size]
         operations = []
+        if i == 0 and context_payload is not None:
+            operations.append(
+                CommitOperationAdd(
+                    path_in_repo=f"{staging_prefix}/_run_context.json",
+                    path_or_fileobj=BytesIO(
+                        (
+                            json.dumps(context_payload, indent=2, sort_keys=True) + "\n"
+                        ).encode("utf-8")
+                    ),
+                )
+            )
         for local_path, rel_path in batch:
             local_path = Path(local_path)
             if not local_path.exists():
@@ -816,11 +1018,18 @@ def upload_to_staging_hf(
             repo_id=hf_repo_name,
             repo_type=hf_repo_type,
             token=token,
-            commit_message=f"Upload batch {i // batch_size + 1} to staging for version {version}",
+            commit_message=(
+                f"Upload batch {i // batch_size + 1} to staging "
+                f"for version {version}" + (f" ({run_id})" if run_id else "")
+            ),
         )
-        total_uploaded += len(operations)
+        uploaded_files = len(operations) - (
+            1 if i == 0 and context_payload is not None else 0
+        )
+        total_uploaded += uploaded_files
         logging.info(
-            f"Uploaded batch {i // batch_size + 1}: {len(operations)} files to staging/"
+            f"Uploaded batch {i // batch_size + 1}: "
+            f"{uploaded_files} files to {staging_prefix}/"
         )
 
     logging.info(f"Total: uploaded {total_uploaded} files to staging/ in HuggingFace")
@@ -828,7 +1037,68 @@ def upload_to_staging_hf(
 
 
 def _staging_prefix(run_id: str = "") -> str:
+    run_id = _resolve_staging_run_id(run_id)
     return f"staging/{run_id}" if run_id else "staging"
+
+
+def _dedupe_preserving_order(paths: Sequence[str]) -> list[str]:
+    seen = set()
+    deduped = []
+    for path in paths:
+        if path in seen:
+            continue
+        seen.add(path)
+        deduped.append(path)
+    return deduped
+
+
+def list_missing_staged_artifacts(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[str]:
+    """Return staged HF paths that are missing for this run."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    repo_files = set(
+        api.list_repo_files(
+            repo_id=hf_repo_name,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+    )
+    return [
+        f"{staging_prefix}/{rel_path}"
+        for rel_path in _dedupe_preserving_order(rel_paths)
+        if f"{staging_prefix}/{rel_path}" not in repo_files
+    ]
+
+
+def download_staged_artifacts_for_manifest(
+    rel_paths: Sequence[str],
+    *,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    run_id: str = "",
+) -> list[tuple[Path, str]]:
+    """Download staged HF artifacts for release-manifest checksums."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
+    staging_prefix = _staging_prefix(run_id)
+    files_with_paths = []
+    for rel_path in _dedupe_preserving_order(rel_paths):
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=f"{staging_prefix}/{rel_path}",
+            repo_type=hf_repo_type,
+            token=token,
+        )
+        files_with_paths.append((Path(local_path), rel_path))
+    return files_with_paths
 
 
 def promote_staging_to_production_hf(
@@ -837,6 +1107,7 @@ def promote_staging_to_production_hf(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
+    allow_noop: bool = False,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
@@ -850,6 +1121,9 @@ def promote_staging_to_production_hf(
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
+        allow_noop: Treat an unchanged HF HEAD as success. This is useful
+            when retrying a full-release promotion after the single HF copy
+            commit already succeeded but later backends failed.
 
     Returns:
         Number of files promoted
@@ -859,6 +1133,7 @@ def promote_staging_to_production_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     operations = []
@@ -887,10 +1162,20 @@ def promote_staging_to_production_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Promote {len(files)} files from staging to production for version {version}",
+        commit_message=(
+            f"Promote {len(files)} files from staging to production "
+            f"for version {version}" + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
+        if allow_noop:
+            logging.warning(
+                "Promote commit was a no-op: HEAD stayed at %s. "
+                "Treating as success for idempotent release retry.",
+                head_before,
+            )
+            return len(files)
         raise RuntimeError(
             f"Promote commit was a no-op: HEAD stayed at {head_before}. "
             f"Staging files may be identical to production."
@@ -927,14 +1212,36 @@ def cleanup_staging_hf(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
+
+    existing_repo_files = None
+    try:
+        existing_repo_files = set(
+            api.list_repo_files(
+                repo_id=hf_repo_name,
+                repo_type=hf_repo_type,
+                token=token,
+            )
+        )
+    except Exception as exc:
+        logging.warning(
+            "Could not list staged files before cleanup; attempting requested deletes: %s",
+            exc,
+        )
 
     operations = []
     for rel_path in files:
         staging_path = f"{staging_prefix}/{rel_path}"
+        if existing_repo_files is not None and staging_path not in existing_repo_files:
+            logging.info(
+                "Skipping missing staged file during cleanup: %s", staging_path
+            )
+            continue
         operations.append(CommitOperationDelete(path_in_repo=staging_path))
 
     if not operations:
+        logging.info("No staged files found to clean up.")
         return 0
 
     head_before = api.repo_info(
@@ -949,7 +1256,10 @@ def cleanup_staging_hf(
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
         token=token,
-        commit_message=f"Clean up staging after version {version} promotion",
+        commit_message=(
+            f"Clean up staging after version {version} promotion"
+            + (f" ({run_id})" if run_id else "")
+        ),
     )
 
     if result.oid == head_before:
@@ -958,8 +1268,8 @@ def cleanup_staging_hf(
             f"Staging files may not exist."
         )
 
-    logging.info(f"Cleaned up {len(files)} files from staging/")
-    return len(files)
+    logging.info(f"Cleaned up {len(operations)} files from staging/")
+    return len(operations)
 
 
 def upload_from_hf_staging_to_gcs(
@@ -984,6 +1294,7 @@ def upload_from_hf_staging_to_gcs(
         Number of files uploaded
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
+    run_id = _resolve_staging_run_id(run_id)
     staging_prefix = _staging_prefix(run_id)
 
     credentials, project_id = google.auth.default()
@@ -1009,3 +1320,80 @@ def upload_from_hf_staging_to_gcs(
 
     logging.info(f"Total: uploaded {uploaded} files from HF staging to GCS")
     return uploaded
+
+
+def upload_final_version_manifest(
+    *,
+    version: str,
+    released_paths: Sequence[str],
+    run_id: str = "",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+) -> None:
+    """Update version_manifest.json after a release is finalized."""
+    from policyengine_us_data.utils.version_manifest import (
+        HFVersionInfo,
+        build_manifest,
+        upload_manifest,
+    )
+
+    upload_manifest(
+        build_manifest(
+            version=version,
+            blob_names=sorted(released_paths),
+            hf_info=HFVersionInfo(repo=hf_repo_name, commit=version),
+            run_id=run_id or None,
+        )
+    )
+
+
+def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
+    return FullReleasePromotionDependencies(
+        dedupe_preserving_order=_dedupe_preserving_order,
+        download_staged_artifacts_for_manifest=download_staged_artifacts_for_manifest,
+        get_matching_finalized_release_manifest=get_matching_finalized_release_manifest,
+        list_missing_staged_artifacts=list_missing_staged_artifacts,
+        preflight_release_manifest_publish=preflight_release_manifest_publish,
+        promote_staging_to_production_hf=promote_staging_to_production_hf,
+        upload_from_hf_staging_to_gcs=upload_from_hf_staging_to_gcs,
+        publish_release_manifest_to_hf=publish_release_manifest_to_hf,
+        upload_final_version_manifest=upload_final_version_manifest,
+        cleanup_staging_hf=cleanup_staging_hf,
+    )
+
+
+def promote_full_release_from_staging(
+    *,
+    rel_paths: Sequence[str],
+    version: str,
+    run_id: str = "",
+    run_context: Optional[Dict] = None,
+    files_with_paths: Optional[Sequence[Tuple[Path | str, str]]] = None,
+    extra_cleanup_paths: Sequence[str] = (),
+    gcs_bucket_name: str = "policyengine-us-data",
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    cleanup_staging: bool = True,
+) -> dict:
+    """Promote one complete run-scoped staged release."""
+    run_id = _resolve_staging_run_id(run_id)
+    if not run_id:
+        raise ValueError("run_id is required for full release promotion.")
+    if not version:
+        raise ValueError("version is required for full release promotion.")
+
+    _apply_run_context_for_release(run_id, run_context)
+
+    return promote_full_release(
+        FullReleasePromotionConfig(
+            rel_paths=rel_paths,
+            version=version,
+            run_id=run_id,
+            files_with_paths=files_with_paths,
+            extra_cleanup_paths=extra_cleanup_paths,
+            gcs_bucket_name=gcs_bucket_name,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+            cleanup_staging=cleanup_staging,
+        ),
+        deps=_full_release_promotion_dependencies(),
+    )

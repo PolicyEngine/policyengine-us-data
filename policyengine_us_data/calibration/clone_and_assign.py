@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +37,10 @@ def load_global_block_distribution():
     global distribution.
 
     Returns:
-        Tuple of (block_geoids, cd_geoids, state_fips,
-        probabilities) where each is a numpy array indexed
-        by block row. Probabilities are normalized to sum
-        to 1 globally.
+        Tuple of (block_geoids, cd_geoids, state_fips, county_fips,
+        weights) where each is a numpy array indexed by block row.
+        Weights are block populations when available, otherwise the
+        legacy probability column.
 
     Raises:
         FileNotFoundError: If the CSV file does not exist.
@@ -57,14 +59,63 @@ def load_global_block_distribution():
     at_large = (district_num == 0) | ((state_fips_col == 11) & (district_num == 98))
     df.loc[at_large, "cd_geoid"] = state_fips_col[at_large] * 100 + 1
 
-    block_geoids = df["block_geoid"].values
+    block_geoids = df["block_geoid"].str.zfill(15).values
     cd_geoids = np.array(df["cd_geoid"].astype(str).tolist())
     state_fips = np.array([int(b[:2]) for b in block_geoids])
+    county_fips = np.array([b[:5] for b in block_geoids])
 
-    probs = df["probability"].values.astype(np.float64)
-    probs = probs / probs.sum()
+    weight_col = "population" if "population" in df.columns else "probability"
+    weights = df[weight_col].values.astype(np.float64)
 
-    return block_geoids, cd_geoids, state_fips, probs
+    return block_geoids, cd_geoids, state_fips, county_fips, weights
+
+
+def _group_indices(values: np.ndarray) -> dict[object, np.ndarray]:
+    order = np.argsort(values, kind="mergesort")
+    sorted_values = values[order]
+    if len(sorted_values) == 0:
+        return {}
+    starts = np.r_[0, np.flatnonzero(sorted_values[1:] != sorted_values[:-1]) + 1]
+    ends = np.r_[starts[1:], len(sorted_values)]
+    return {
+        sorted_values[start].item(): order[start:end]
+        for start, end in zip(starts, ends)
+    }
+
+
+def _normalise_county_fips(state_fips, county_fips) -> str | None:
+    if county_fips is None or pd.isna(county_fips):
+        return None
+    if isinstance(county_fips, (bytes, np.bytes_)):
+        county_fips = county_fips.decode()
+    try:
+        state_int = int(state_fips)
+        county_int = int(float(str(county_fips).strip()))
+    except (TypeError, ValueError):
+        return None
+    if county_int <= 0:
+        return None
+    if county_int >= 1_000:
+        return f"{county_int:05d}"
+    return f"{state_int * 1_000 + county_int:05d}"
+
+
+def _sample_index(
+    rng: np.random.Generator,
+    candidates: np.ndarray,
+    weights: np.ndarray,
+    probabilities_cache: dict[int, np.ndarray],
+) -> int:
+    cache_key = id(candidates)
+    if cache_key not in probabilities_cache:
+        candidate_weights = weights[candidates]
+        total = candidate_weights.sum()
+        probabilities_cache[cache_key] = (
+            candidate_weights / total
+            if total > 0
+            else np.full(len(candidates), 1 / len(candidates))
+        )
+    return int(rng.choice(candidates, p=probabilities_cache[cache_key]))
 
 
 def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
@@ -93,6 +144,22 @@ def _build_agi_block_probs(cds, pop_probs, cd_agi_targets):
     return agi_probs / agi_probs.sum()
 
 
+@pipeline_node(
+    PipelineNode(
+        id="geo_assign",
+        label="Assign Random Geography",
+        node_type="library",
+        description="Assign cloned CPS records to population-weighted blocks, counties, states, and congressional districts.",
+        source_file="policyengine_us_data/calibration/clone_and_assign.py",
+        status="current",
+        stability="moving",
+        pathways=["data_build", "calibration_package"],
+        artifacts_out=["GeographyAssignment"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_clone_and_assign.py"
+        ],
+    )
+)
 def assign_random_geography(
     n_records: int,
     n_clones: int = 10,
@@ -123,7 +190,7 @@ def assign_random_geography(
         GeographyAssignment with arrays of length
         n_records * n_clones.
     """
-    blocks, cds, states, probs = load_global_block_distribution()
+    blocks, cds, states, counties, weights = load_global_block_distribution()
     fixed_states = _validate_fixed_state_fips(
         fixed_state_fips,
         n_records=n_records,
@@ -132,6 +199,7 @@ def assign_random_geography(
 
     n_total = n_records * n_clones
     rng = np.random.default_rng(seed)
+    probs = weights / weights.sum()
 
     agi_probs = None
     extreme_mask = None
@@ -263,7 +331,7 @@ def assign_random_geography(
     return GeographyAssignment(
         block_geoid=assigned_blocks,
         cd_geoid=cds[indices],
-        county_fips=np.array([b[:5] for b in assigned_blocks]),
+        county_fips=counties[indices],
         state_fips=states[indices],
         n_records=n_records,
         n_clones=n_clones,
@@ -306,6 +374,56 @@ def _validate_fixed_state_fips(
         n_records,
     )
     return fixed
+
+
+def assign_geography_within_state_county(
+    state_fips: np.ndarray,
+    county_fips: np.ndarray | None = None,
+    n_clones: int = 1,
+    seed: int = 42,
+) -> GeographyAssignment:
+    """Assign blocks within each record's state, and county when available.
+
+    Sampling is weighted by block population when the block distribution file
+    includes a population column, otherwise by its legacy probability weights.
+    """
+    blocks, cds, states, counties, weights = load_global_block_distribution()
+    state_groups = _group_indices(states)
+    county_groups = _group_indices(counties)
+
+    input_states = np.tile(np.asarray(state_fips, dtype=int), n_clones)
+    if county_fips is None:
+        input_counties = np.array([None] * len(input_states), dtype=object)
+    else:
+        input_counties = np.tile(np.asarray(county_fips, dtype=object), n_clones)
+
+    rng = np.random.default_rng(seed)
+    probabilities_cache: dict[int, np.ndarray] = {}
+    selected = np.empty(len(input_states), dtype=np.int64)
+    global_candidates = np.arange(len(blocks))
+
+    for i, (state, county) in enumerate(zip(input_states, input_counties)):
+        county_key = _normalise_county_fips(state, county)
+        candidates = county_groups.get(county_key) if county_key is not None else None
+        if candidates is None or len(candidates) == 0:
+            candidates = state_groups.get(int(state))
+        if candidates is None or len(candidates) == 0:
+            logger.warning(
+                "No block distribution for state=%s county=%s; using national distribution",
+                state,
+                county,
+            )
+            candidates = global_candidates
+        selected[i] = _sample_index(rng, candidates, weights, probabilities_cache)
+
+    return GeographyAssignment(
+        block_geoid=blocks[selected],
+        cd_geoid=cds[selected],
+        county_fips=counties[selected],
+        state_fips=states[selected],
+        n_records=len(state_fips),
+        n_clones=n_clones,
+    )
 
 
 def save_geography(geography: GeographyAssignment, path) -> None:
@@ -355,7 +473,7 @@ def load_geography(path) -> GeographyAssignment:
 @lru_cache(maxsize=1)
 def load_sorted_block_cd_lookup():
     """Load a sorted block -> CD lookup for legacy block artifacts."""
-    blocks, cds, _, _ = load_global_block_distribution()
+    blocks, cds, _, _, _ = load_global_block_distribution()
     order = np.argsort(blocks)
     return blocks[order], cds[order]
 

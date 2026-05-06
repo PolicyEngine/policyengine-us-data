@@ -16,8 +16,6 @@ EntityGraph = exports["EntityGraph"]
 MicrosimulationVariableProvider = exports["MicrosimulationVariableProvider"]
 SourceDatasetSnapshot = exports["SourceDatasetSnapshot"]
 
-FIXTURE_PATH = Path(__file__).parents[2] / "integration" / "test_fixture_50hh.h5"
-
 
 def _tuple_map(mapping):
     return {
@@ -54,6 +52,12 @@ def test_entity_graph_copies_arrays_and_exposes_read_only_storage():
         graph.household_ids[0] = 99
     with pytest.raises(ValueError, match="read-only"):
         graph.subentity_ids["tax_unit"][0] = 99
+    with pytest.raises(TypeError):
+        graph.subentity_ids["tax_unit"] = np.array([1, 2])
+    with pytest.raises(TypeError):
+        graph.household_to_person_indices[0] = ()
+    with pytest.raises(TypeError):
+        graph.household_to_subentity_indices["tax_unit"][0] = ()
 
 
 def test_entity_graph_rejects_unknown_person_household_ids():
@@ -192,22 +196,3 @@ def test_source_dataset_snapshot_builds_from_existing_simulation():
     assert np.array_equal(snapshot.household_ids, np.array([10, 20]))
     assert "household_id" in snapshot.input_variables
     assert snapshot.variable_provider.get_array("household_id", 2023).shape == (2,)
-
-
-def test_source_dataset_snapshot_builds_from_tiny_h5_fixture():
-    pytest.importorskip("policyengine_us")
-    from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
-
-    snapshot = SourceDatasetSnapshot.from_dataset_path(FIXTURE_PATH)
-    weights = CloneWeightMatrix.from_vector(
-        np.ones(snapshot.n_households, dtype=np.float32),
-        n_records=snapshot.n_households,
-    )
-
-    assert snapshot.dataset_path == FIXTURE_PATH
-    assert snapshot.time_period == 2023
-    assert snapshot.n_households == 50
-    assert "household_id" in snapshot.input_variables
-    assert snapshot.entity_graph.person_household_ids.shape[0] > snapshot.n_households
-    assert weights.n_clones == 1
-    assert snapshot.variable_provider.get_array("household_id", 2023).shape == (50,)

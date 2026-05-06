@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Mapping
 
 import numpy as np
@@ -19,6 +20,7 @@ from policyengine_us_data.pipeline_metadata import pipeline_node
 __all__ = [
     "EntityGraph",
     "MicrosimulationVariableProvider",
+    "PolicyEngineDatasetReader",
     "SourceDatasetSnapshot",
 ]
 
@@ -118,12 +120,12 @@ class EntityGraph:
         object.__setattr__(
             self,
             "household_to_person_indices",
-            household_to_person_indices,
+            _readonly_index_mapping(household_to_person_indices),
         )
         object.__setattr__(
             self,
             "household_to_subentity_indices",
-            household_to_subentity_indices,
+            _readonly_nested_index_mapping(household_to_subentity_indices),
         )
 
     @classmethod
@@ -242,13 +244,30 @@ def _readonly_1d_array(values: ArrayLike, name: str) -> np.ndarray:
 def _readonly_array_mapping(
     values: Mapping[str, ArrayLike],
     name: str,
-) -> dict[str, np.ndarray]:
+) -> Mapping[str, np.ndarray]:
     normalized: dict[str, np.ndarray] = {}
     for key, value in values.items():
         if not isinstance(key, str) or not key:
             raise ValueError(f"{name} keys must be non-empty strings")
         normalized[key] = _readonly_1d_array(value, f"{name}[{key!r}]")
-    return normalized
+    return MappingProxyType(normalized)
+
+
+def _readonly_index_mapping(
+    values: Mapping[int, tuple[int, ...]],
+) -> Mapping[int, tuple[int, ...]]:
+    return MappingProxyType(dict(values))
+
+
+def _readonly_nested_index_mapping(
+    values: Mapping[str, Mapping[int, tuple[int, ...]]],
+) -> Mapping[str, Mapping[int, tuple[int, ...]]]:
+    return MappingProxyType(
+        {
+            entity_key: MappingProxyType(dict(membership))
+            for entity_key, membership in values.items()
+        }
+    )
 
 
 def _build_household_to_person_indices(
@@ -479,23 +498,6 @@ class SourceDatasetSnapshot:
         return int(len(self.household_ids))
 
     @classmethod
-    def from_dataset_path(cls, dataset_path: Path) -> "SourceDatasetSnapshot":
-        """Build a snapshot by opening a source H5 dataset path.
-
-        Args:
-            dataset_path: Source H5 dataset path.
-
-        Returns:
-            A `SourceDatasetSnapshot` backed by a microsimulation.
-        """
-
-        from policyengine_us import Microsimulation
-
-        path = Path(dataset_path)
-        simulation = Microsimulation(dataset=str(path))
-        return cls.from_simulation(path, simulation)
-
-    @classmethod
     def from_simulation(
         cls,
         dataset_path: Path,
@@ -519,3 +521,37 @@ class SourceDatasetSnapshot:
             input_variables=provider.input_variables,
             variable_provider=provider,
         )
+
+
+@pipeline_node(
+    id="local_h5_policyengine_dataset_reader",
+    label="PolicyEngineDatasetReader",
+    node_type="library",
+    description=("PolicyEngine H5 dataset adapter for local H5 source snapshots."),
+    source_file="policyengine_us_data/calibration/local_h5/source_dataset.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+    ],
+)
+@dataclass(frozen=True)
+class PolicyEngineDatasetReader:
+    """Read PolicyEngine source H5 files into `SourceDatasetSnapshot` objects."""
+
+    def load(self, dataset_path: Path) -> SourceDatasetSnapshot:
+        """Open a source H5 dataset and return its in-memory snapshot.
+
+        Args:
+            dataset_path: Source H5 dataset path.
+
+        Returns:
+            A `SourceDatasetSnapshot` backed by a PolicyEngine microsimulation.
+        """
+
+        from policyengine_us import Microsimulation
+
+        path = Path(dataset_path)
+        simulation = Microsimulation(dataset=str(path))
+        return SourceDatasetSnapshot.from_simulation(path, simulation)

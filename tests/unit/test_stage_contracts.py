@@ -1,7 +1,10 @@
-import pytest
-
 from dataclasses import dataclass
+import json
 from pathlib import Path
+import subprocess
+import sys
+
+import pytest
 
 from policyengine_us_data.stage_contracts.core import (
     CONTRACT_FINGERPRINT_ALGORITHM,
@@ -352,3 +355,60 @@ def test_canonicalize_for_fingerprint_rejects_plain_dataclasses():
 def test_canonicalize_for_fingerprint_rejects_unsupported_values():
     with pytest.raises(TypeError, match="Unsupported fingerprint material"):
         canonicalize_for_fingerprint(object())
+
+
+def test_stage_contract_package_exports_public_api():
+    import policyengine_us_data.stage_contracts as contracts
+
+    assert contracts.ArtifactRef is ArtifactRef
+    assert contracts.Fingerprint is Fingerprint
+    assert contracts.ReuseSummary is ReuseSummary
+    assert contracts.ExecutionRecord is ExecutionRecord
+    assert contracts.SubstageRecord is SubstageRecord
+    assert contracts.StageContract is StageContract
+    assert contracts.contract_to_json is contract_to_json
+    assert contracts.contract_from_json is contract_from_json
+    assert contracts.write_contract is write_contract
+    assert contracts.read_contract is read_contract
+    assert contracts.canonicalize_for_fingerprint is canonicalize_for_fingerprint
+    assert contracts.fingerprint_material is fingerprint_material
+    assert set(contracts.__all__) >= {
+        "ArtifactRef",
+        "Fingerprint",
+        "ReuseSummary",
+        "ExecutionRecord",
+        "SubstageRecord",
+        "StageContract",
+        "contract_to_json",
+        "contract_from_json",
+        "write_contract",
+        "read_contract",
+        "canonicalize_for_fingerprint",
+        "fingerprint_material",
+    }
+
+
+def test_stage_contract_package_import_has_no_heavy_side_effects():
+    script = """
+import importlib
+import json
+import sys
+
+importlib.import_module("policyengine_us_data.stage_contracts")
+blocked = ["modal", "pandas", "h5py", "torch", "policyengine_us"]
+print(json.dumps({name: name in sys.modules for name in blocked}, sort_keys=True))
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert json.loads(result.stdout) == {
+        "h5py": False,
+        "modal": False,
+        "pandas": False,
+        "policyengine_us": False,
+        "torch": False,
+    }

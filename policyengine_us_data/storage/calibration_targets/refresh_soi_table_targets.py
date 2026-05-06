@@ -24,6 +24,7 @@ TABLE_FILE_SUFFIX = {
     "Table 1.1": "in11si.xls",
     "Table 1.2": "in12ms.xls",
     "Table 1.4": "in14ar.xls",
+    "Table 1.4A": "in14acg.xls",
     "Table 2.1": "in21id.xls",
     "Table 3.3": "in33ar.xls",
     "Table 4.3": "in43ts.xls",
@@ -43,6 +44,7 @@ TABLE_1_4_COLUMNS = {
     "income_tax_before_credits": {True: ("ER",), False: ("ES",)},
     "ira_distributions": {True: ("AT",), False: ("AU",)},
     "ordinary_dividends": {True: ("X",), False: ("Y",)},
+    "other_income": {True: ("CN",), False: ("CO",)},
     "partnership_and_s_corp_income": {
         True: ("BP", "BT"),
         False: ("BQ", "BU"),

@@ -160,7 +160,17 @@ push-pr-branch:
 		echo "Refusing to push main as a PR branch."; \
 		exit 1; \
 	fi
-	@git push -u upstream $(BRANCH)
+	@REMOTE_URL=$$(git remote get-url upstream 2>/dev/null || true); \
+	if [ -z "$$REMOTE_URL" ]; then \
+		echo "Missing upstream remote. Add PolicyEngine/policyengine-us-data as upstream before opening PRs."; \
+		exit 1; \
+	fi; \
+	case "$$REMOTE_URL" in \
+		*PolicyEngine/policyengine-us-data*) ;; \
+		*) echo "Refusing to push: upstream ($$REMOTE_URL) is not PolicyEngine/policyengine-us-data."; exit 1 ;; \
+	esac
+	@git push -u upstream HEAD:$(BRANCH)
+	@echo "Create the PR with: gh pr create --repo PolicyEngine/policyengine-us-data --head $(BRANCH) --base main"
 
 upload-calibration:
 	python -c "from policyengine_us_data.utils.huggingface import upload_calibration_artifacts; \
@@ -250,15 +260,19 @@ check-sanity:
 		--sanity-only --area-type states --areas NC \
 		$(if $(RUN_ID),--run-id $(RUN_ID))
 
-build-data-modal:
-	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests
+require-run-id:
+	@test -n "$(RUN_ID)" || (echo "RUN_ID is required; use the GitHub-created US data run ID." >&2; exit 1)
 
-pipeline:
+build-data-modal: require-run-id
+	modal run --detach modal_app/data_build.py::main --branch $(BRANCH) --upload --skip-tests --run-id $(RUN_ID)
+
+pipeline: require-run-id
 	modal run --detach modal_app.pipeline::main \
 		--action run --branch $(BRANCH) --gpu $(GPU) \
 		--epochs $(EPOCHS) --national-gpu $(NATIONAL_GPU) \
 		--national-epochs $(NATIONAL_EPOCHS) \
-		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES)
+		--num-workers $(NUM_WORKERS) --n-clones $(N_CLONES) \
+		--run-id $(RUN_ID)
 
 clean:
 	rm -f policyengine_us_data/storage/*.h5

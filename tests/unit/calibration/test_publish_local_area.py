@@ -80,7 +80,10 @@ def test_compute_input_fingerprint_uses_loader_canonical_geography_identity(
 
     monkeypatch.setattr(
         "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.resolve_source",
-        lambda self, **kwargs: SimpleNamespace(kind="saved_geography"),
+        lambda self, **kwargs: SimpleNamespace(
+            kind="saved_geography",
+            path=kwargs["geography_path"],
+        ),
     )
     monkeypatch.setattr(
         "policyengine_us_data.calibration.publish_local_area.CalibrationGeographyLoader.compute_canonical_checksum",
@@ -118,7 +121,10 @@ def test_compute_input_fingerprint_passes_calibration_package_path_to_loader(
 
     def fake_resolve_source(self, **kwargs):
         seen["resolve"] = kwargs
-        return SimpleNamespace(kind="calibration_package")
+        return SimpleNamespace(
+            kind="calibration_package",
+            path=kwargs["calibration_package_path"],
+        )
 
     def fake_compute_canonical_checksum(self, **kwargs):
         seen["checksum"] = kwargs

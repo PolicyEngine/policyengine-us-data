@@ -16,10 +16,17 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_notes,
     get_beneficiary_paid_medicare_part_b_premiums_source,
     get_beneficiary_paid_medicare_part_b_premiums_target,
+    get_medicare_enrollment_notes,
+    get_medicare_enrollment_source,
+    get_medicare_enrollment_target,
 )
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
+)
+
+WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
+    "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
 )
 
 
@@ -41,7 +48,9 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         - tax_expenditure_targets: Variables targeted via repeal-based tax expenditures
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
-        - treasury_targets: List of Treasury/JCT targets
+        - irs_soi_targets: List of IRS SOI aggregate targets
+        - treasury_targets: Empty compatibility list; EITC Treasury outlays are
+          diagnostics, not claim calibration targets.
         - time_period: The target year
     """
     from policyengine_us import CountryTaxBenefitSystem
@@ -52,8 +61,8 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     tax_benefit_system = CountryTaxBenefitSystem()
 
     # Hardcoded dollar targets are specific to 2024 and are labeled as
-    # `"year": 2024` throughout this file.  Only CBO/Treasury parameter
-    # lookups use the dynamic `time_period` derived from the dataset.
+    # `"year": 2024` throughout this file.  Only CBO parameter lookups
+    # use the dynamic `time_period` derived from the dataset.
     # See issue #515.
     if time_period != 2024:
         warnings.warn(
@@ -113,20 +122,6 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
 
     direct_sum_targets = [
         {
-            "variable": "alimony_income",
-            "value": 13e9,
-            "source": "Survey-reported (post-TCJA grandfathered)",
-            "notes": "Alimony received - survey reported, not tax-filer restricted",
-            "year": 2024,
-        },
-        {
-            "variable": "alimony_expense",
-            "value": 13e9,
-            "source": "Survey-reported (post-TCJA grandfathered)",
-            "notes": "Alimony paid - survey reported, not tax-filer restricted",
-            "year": 2024,
-        },
-        {
             "variable": "medicaid",
             "value": 871.7e9,
             "source": "https://www.cms.gov/files/document/highlights.pdf",
@@ -141,73 +136,38 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "health_insurance_premiums_without_medicare_part_b",
-            "value": 385e9,
-            "source": "MEPS/NHEA",
-            "notes": "Health insurance premiums excluding Medicare Part B",
-            "year": 2024,
-        },
-        {
-            "variable": "other_medical_expenses",
-            "value": 278e9,
-            "source": "MEPS/NHEA",
-            "notes": "Out-of-pocket medical expenses",
-            "year": 2024,
-        },
-        {
-            "variable": "medicare_part_b_premiums",
+            "variable": "medicare_part_b_premium",
             "value": get_beneficiary_paid_medicare_part_b_premiums_target(2024),
             "source": get_beneficiary_paid_medicare_part_b_premiums_source(2024),
             "notes": get_beneficiary_paid_medicare_part_b_premiums_notes(2024),
             "year": 2024,
         },
         {
-            "variable": "over_the_counter_health_expenses",
-            "value": 72e9,
-            "source": "Consumer Expenditure Survey",
-            "notes": "OTC health products and supplies",
-            "year": 2024,
-        },
-        {
-            "variable": "child_support_expense",
-            "value": 33e9,
-            "source": "Census Bureau",
-            "notes": "Child support payments",
-            "year": 2024,
-        },
-        {
-            "variable": "child_support_received",
-            "value": 33e9,
-            "source": "Census Bureau",
-            "notes": "Child support received",
-            "year": 2024,
-        },
-        {
-            "variable": "spm_unit_capped_work_childcare_expenses",
-            "value": 348e9,
-            "source": "Census Bureau SPM",
-            "notes": "Work and childcare expenses for SPM",
-            "year": 2024,
-        },
-        {
-            "variable": "spm_unit_capped_housing_subsidy",
-            "value": 35e9,
-            "source": "HUD/Census",
-            "notes": "Housing subsidies",
+            "variable": "rent",
+            "value": 764_925_694_800,
+            "source": "Census ACS 2024 1-year table B25060",
+            "notes": "Sum of state aggregate contract rent, annualized from monthly ACS aggregate contract rent",
             "year": 2024,
         },
         {
             "variable": "real_estate_taxes",
-            "value": 500e9,
-            "source": "Census Bureau",
-            "notes": "Property taxes paid",
+            "value": 370_014_207_400,
+            "source": "Census ACS 2024 1-year table B25090",
+            "notes": "Sum of state aggregate real estate taxes paid by owner-occupied housing units",
             "year": 2024,
         },
         {
-            "variable": "rent",
-            "value": 735e9,
-            "source": "Census Bureau/BLS",
-            "notes": "Rental payments",
+            "variable": "childcare_expenses",
+            "value": 63_092e6,
+            "source": "BLS Consumer Expenditure Surveys CE LABSTAT",
+            "notes": "Series CXU670320LB0101M aggregate expenditure: babysitting, childcare, daycare, preschool",
+            "year": 2024,
+        },
+        {
+            "variable": "wic",
+            "value": 4_911_500_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC food costs, excluding nutrition services and administration; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -303,7 +263,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     # Store with actual source year
     conditional_count_targets = [
         {
-            "constraint_variable": "medicaid",
+            "constraint_variable": "medicaid_enrolled",
             "person_count": 72_429_055,
             "source": "CMS/HHS administrative data",
             "notes": "Medicaid enrollment count",
@@ -314,6 +274,20 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "person_count": 19_743_689,
             "source": "CMS marketplace data",
             "notes": "ACA Premium Tax Credit recipients",
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "medicare_enrolled",
+            "person_count": get_medicare_enrollment_target(2024),
+            "source": get_medicare_enrollment_source(2024),
+            "notes": get_medicare_enrollment_notes(2024),
+            "year": 2024,
+        },
+        {
+            "constraint_variable": "wic",
+            "person_count": 6_704_000,
+            "source": WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE,
+            "notes": "FY 2024 WIC average monthly participation; National Level Annual Summary workbook, sheet 'Annual Participation and costs', FY 2024 row",
             "year": 2024,
         },
         {
@@ -413,23 +387,29 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
                 f"{variable_name} (param: {param_name}): {e}"
             )
 
-    # Treasury/JCT targets (EITC) - use time_period derived from dataset
+    # IRS SOI aggregate targets - use time_period derived from dataset.
+    irs_soi_targets = []
     try:
-        eitc_value = tax_benefit_system.parameters.calibration.gov.treasury.tax_expenditures.eitc(
+        value = tax_benefit_system.parameters(
             time_period
-        )
-        treasury_targets = [
+        ).calibration.gov.irs.soi._children["long_term_capital_gains"]
+        irs_soi_targets.append(
             {
-                "variable": "eitc",
-                "value": float(eitc_value),
-                "source": "Treasury/JCT Tax Expenditures",
-                "notes": "EITC tax expenditure",
+                "variable": "long_term_capital_gains",
+                "value": float(value),
+                "source": "IRS SOI",
+                "notes": (
+                    "IRS SOI total long-term capital gains, uprated by policyengine-us"
+                ),
                 "year": time_period,
             }
-        ]
+        )
     except (KeyError, AttributeError) as e:
-        print(f"Warning: Could not extract Treasury EITC parameter: {e}")
-        treasury_targets = []
+        print(f"Warning: Could not extract IRS SOI LTCG parameter: {e}")
+
+    # Treasury/CBO EITC figures are fiscal-year refundable-outlay concepts,
+    # not tax-year claim controls. Keep them out of calibration targets.
+    treasury_targets = []
 
     return {
         "direct_sum_targets": direct_sum_targets,
@@ -437,6 +417,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "tax_expenditure_targets": tax_expenditure_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
+        "irs_soi_targets": irs_soi_targets,
         "treasury_targets": treasury_targets,
         "time_period": time_period,
     }
@@ -462,8 +443,7 @@ def transform_national_targets(raw_targets):
     """
 
     # Process direct sum targets (non-tax items and some CBO items)
-    # Note: income_tax_positive from CBO and eitc from Treasury need
-    # filer constraint
+    # Note: income_tax_positive from CBO needs a filer constraint.
     cbo_non_tax = [
         t for t in raw_targets["cbo_targets"] if t["variable"] != "income_tax_positive"
     ]
@@ -471,14 +451,14 @@ def transform_national_targets(raw_targets):
         t for t in raw_targets["cbo_targets"] if t["variable"] == "income_tax_positive"
     ]
 
-    all_direct_targets = raw_targets["direct_sum_targets"] + cbo_non_tax
+    all_direct_targets = (
+        raw_targets["direct_sum_targets"]
+        + cbo_non_tax
+        + raw_targets.get("irs_soi_targets", [])
+    )
 
     # Tax-related targets that need filer constraint
-    all_tax_filer_targets = (
-        raw_targets["tax_filer_targets"]
-        + cbo_tax
-        + raw_targets["treasury_targets"]  # EITC
-    )
+    all_tax_filer_targets = raw_targets["tax_filer_targets"] + cbo_tax
 
     direct_df = (
         pd.DataFrame(all_direct_targets) if all_direct_targets else pd.DataFrame()
@@ -730,7 +710,7 @@ def load_national_targets(
             target_value = cond_target.get(target_variable)
 
             # Determine constraint details
-            if constraint_var == "medicaid":
+            if constraint_var == "medicaid_enrolled":
                 stratum_notes = "National Medicaid Enrollment"
                 constraint_operation = ">"
                 constraint_value = "0"
@@ -740,6 +720,10 @@ def load_national_targets(
                 constraint_value = "0"
             elif constraint_var == "spm_unit_energy_subsidy_reported":
                 stratum_notes = "National LIHEAP Recipient Households"
+                constraint_operation = ">"
+                constraint_value = "0"
+            elif constraint_var == "wic":
+                stratum_notes = "National WIC Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
             elif constraint_var == "ssn_card_type":
@@ -864,7 +848,7 @@ def main():
     print("Extracting national targets...")
     raw_targets = extract_national_targets(year=year)
     time_period = raw_targets["time_period"]
-    print(f"Using time_period={time_period} for CBO/Treasury targets")
+    print(f"Using time_period={time_period} for dynamic CBO targets")
 
     # Transform
     print("Transforming targets...")

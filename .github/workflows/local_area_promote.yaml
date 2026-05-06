@@ -1,20 +1,20 @@
-name: Promote Local Area H5 Files
+name: Promote US Data Release
 
 on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'Run ID to promote (e.g. 1.23.0_a1b2c3d4_20260407_120000)'
+        description: 'Run ID to promote (e.g. usdata-gha123456-a1-abcdef12)'
         required: true
         type: string
-      branch:
-        description: 'Branch to use for repo setup'
+      version:
+        description: 'Optional version override; defaults to run metadata'
         required: false
-        default: 'main'
+        default: ''
         type: string
 
 jobs:
-  promote-local-area:
+  promote-release:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -22,22 +22,26 @@ jobs:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      MODAL_ENVIRONMENT: main
+      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+      US_DATA_RUN_ID: ${{ github.event.inputs.run_id }}
+      VERSION_OVERRIDE: ${{ github.event.inputs.version }}
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
 
       - name: Install Modal CLI
         run: pip install modal
 
-      - name: Promote staged files to production
-        run: |
-          RUN_ID="${{ github.event.inputs.run_id }}"
-          BRANCH="${{ github.event.inputs.branch }}"
-          echo "Promoting run ${RUN_ID} from branch ${BRANCH}"
-          modal run modal_app/local_area.py::main_promote --run-id="${RUN_ID}" --branch="${BRANCH}"
+      - name: Resolve run context
+        id: run-context
+        run: python .github/scripts/resolve_run_context.py
+
+      - name: Promote staged release to production
+        run: python .github/scripts/promote_publication_pipeline.py

@@ -787,13 +787,15 @@ def construct_tax_units(
             + ", ".join(sorted(SUPPORTED_TAX_UNIT_CONSTRUCTION_MODES))
         )
 
-    person_assignments = pd.DataFrame(index=person.index)
+    original_index = person.index
+    person = person.reset_index(drop=True)
+    person_assignments = pd.DataFrame(index=original_index)
     unit_key_records: list[tuple] = []
     unit_filing_records: list[str] = []
 
-    household_unit_keys: list[tuple] = []
-    household_roles: list[str] = []
-    household_related_flags: list[bool] = []
+    household_unit_key_by_row: dict[Any, tuple] = {}
+    household_role_by_row: dict[Any, str] = {}
+    household_related_flag_by_row: dict[Any, bool] = {}
 
     assignment_fn = (
         _determine_final_assignments_for_household_policyengine
@@ -812,25 +814,35 @@ def construct_tax_units(
 
         for row_index in household.index:
             unit_key = (int(household_id),) + tuple(unit_key_by_person[row_index])
-            household_unit_keys.append(unit_key)
-            household_roles.append(roles_by_person[row_index])
-            household_related_flags.append(related_to_head_or_spouse[row_index])
+            household_unit_key_by_row[row_index] = unit_key
+            household_role_by_row[row_index] = roles_by_person[row_index]
+            household_related_flag_by_row[row_index] = related_to_head_or_spouse[
+                row_index
+            ]
 
         for unit_key, filing_status in filing_status_by_unit.items():
             unit_key_records.append((int(household_id),) + tuple(unit_key))
             unit_filing_records.append(filing_status)
 
+    ordered_household_unit_keys = [
+        household_unit_key_by_row[row_index] for row_index in person.index
+    ]
     dense_unit_ids = {
         unit_key: unit_id
-        for unit_id, unit_key in enumerate(dict.fromkeys(household_unit_keys), start=1)
+        for unit_id, unit_key in enumerate(
+            dict.fromkeys(ordered_household_unit_keys),
+            start=1,
+        )
     }
     person_assignments["TAX_ID"] = np.array(
-        [dense_unit_ids[unit_key] for unit_key in household_unit_keys],
+        [dense_unit_ids[unit_key] for unit_key in ordered_household_unit_keys],
         dtype=np.int64,
     )
-    person_assignments["tax_unit_role_input"] = np.array(household_roles).astype("S")
+    person_assignments["tax_unit_role_input"] = np.array(
+        [household_role_by_row[row_index] for row_index in person.index]
+    ).astype("S")
     person_assignments["is_related_to_head_or_spouse"] = np.array(
-        household_related_flags,
+        [household_related_flag_by_row[row_index] for row_index in person.index],
         dtype=bool,
     )
 

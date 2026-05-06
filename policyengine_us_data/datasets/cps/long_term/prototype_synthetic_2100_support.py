@@ -2217,7 +2217,6 @@ def build_donor_backed_augmented_input_dataframe(
     )
 
     clone_frames = []
-    clone_household_reports = []
     target_reports = []
     skipped_targets = []
 
@@ -2368,6 +2367,7 @@ def build_role_composite_augmented_input_dataframe(
     role_composite_weights, role_composite_solve_info = solve_synthetic_support(
         role_composite_candidates,
         year=target_year,
+        max_constraint_error_pct=0.5,
         baseline_weights=role_composite_prior,
     )
     role_composite_df = summarize_exact_candidates(

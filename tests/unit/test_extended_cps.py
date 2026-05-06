@@ -16,13 +16,17 @@ from policyengine_us_data.calibration.puf_impute import (
     OVERRIDDEN_IMPUTED_VARIABLES,
 )
 from policyengine_us_data.datasets.cps import extended_cps as extended_cps_module
+from policyengine_us_data.datasets.cps.cps import ESI_POLICYHOLDER_VARIABLE
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_CLONE_FEATURE_VARIABLES,
     CPS_ONLY_IMPUTED_VARIABLES,
     CPS_CLONE_FEATURE_PREDICTORS,
+    CPS_STAGE2_DEMOGRAPHIC_PREDICTORS,
     CPS_STAGE2_INCOME_PREDICTORS,
     ExtendedCPS,
+    _apply_post_processing,
     _build_clone_test_frame,
+    _calculate_spm_thresholds_from_assigned_geography,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     apply_retirement_constraints,
@@ -70,6 +74,9 @@ class TestVariableListConsistency:
                 f"Stage-2 income predictor '{var}' not in "
                 f"IMPUTED_VARIABLES — won't have PUF-imputed values"
             )
+
+    def test_stage2_uses_esi_coverage_predictor(self):
+        assert "has_esi" in CPS_STAGE2_DEMOGRAPHIC_PREDICTORS
 
     def test_cps_only_vars_mostly_exist_in_tbs(self):
         """Most CPS-only variables should exist in policyengine-us."""
@@ -143,6 +150,65 @@ class TestVariableListConsistency:
         assert "spm_unit_capped_work_childcare_expenses" not in set(
             CPS_ONLY_IMPUTED_VARIABLES
         )
+
+    def test_spm_threshold_is_location_derived_not_qrf_imputed(self):
+        assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert "spm_unit_spm_threshold" in ExtendedCPS._keep_formula_vars()
+
+
+class TestSpmThresholdGeography:
+    def test_threshold_inputs_follow_assigned_household_geography(self, monkeypatch):
+        captured = {}
+
+        def fake_load_cd_geoadj_values(cds):
+            assert cds == ["101", "202"]
+            return {"101": 1.0, "202": 2.0}
+
+        def fake_calculate_spm_thresholds_with_geoadj(
+            num_adults,
+            num_children,
+            tenure_codes,
+            geoadj,
+            year,
+        ):
+            captured["num_adults"] = num_adults
+            captured["num_children"] = num_children
+            captured["tenure_codes"] = tenure_codes
+            captured["geoadj"] = geoadj
+            captured["year"] = year
+            return geoadj * 100
+
+        monkeypatch.setattr(
+            "policyengine_us_data.calibration.calibration_utils.load_cd_geoadj_values",
+            fake_load_cd_geoadj_values,
+        )
+        monkeypatch.setattr(
+            "policyengine_us_data.utils.spm.calculate_spm_thresholds_with_geoadj",
+            fake_calculate_spm_thresholds_with_geoadj,
+        )
+        data = {
+            "household_id": {2024: np.array([1, 2])},
+            "congressional_district_geoid": {2024: np.array([101, 202])},
+            "spm_unit_id": {2024: np.array([1, 2])},
+            "spm_unit_tenure_type": {
+                2024: np.array([b"RENTER", b"OWNER_WITHOUT_MORTGAGE"])
+            },
+            "person_spm_unit_id": {2024: np.array([1, 1, 2])},
+            "person_household_id": {2024: np.array([1, 1, 2])},
+            "age": {2024: np.array([30, 5, 40])},
+        }
+
+        thresholds = _calculate_spm_thresholds_from_assigned_geography(
+            data,
+            2024,
+        )
+
+        np.testing.assert_array_equal(thresholds, np.array([100.0, 200.0]))
+        np.testing.assert_array_equal(captured["num_adults"], np.array([1, 1]))
+        np.testing.assert_array_equal(captured["num_children"], np.array([1, 0]))
+        np.testing.assert_array_equal(captured["tenure_codes"], np.array([3, 2]))
+        np.testing.assert_array_equal(captured["geoadj"], np.array([1.0, 2.0]))
+        assert captured["year"] == 2024
 
 
 class TestStructuralMortgageValidation:
@@ -467,6 +533,29 @@ class TestCloneChildcareDerivation:
         )
 
         np.testing.assert_allclose(result, np.array([0.0]))
+
+
+class TestStage2PostProcessing:
+    def test_zeroes_esi_premiums_for_non_policyholder_clone_records(self):
+        predictions = pd.DataFrame(
+            {"employer_sponsored_insurance_premiums": [6_000.0, 4_000.0]}
+        )
+        x_test = pd.DataFrame({"has_esi": [True, True]})
+
+        result = _apply_post_processing(
+            predictions=predictions,
+            X_test=x_test,
+            time_period=2024,
+            data={
+                "person_id": {2024: np.array([1, 2, 3, 4])},
+                ESI_POLICYHOLDER_VARIABLE: {2024: np.array([True, False, True, False])},
+            },
+        )
+
+        np.testing.assert_allclose(
+            result["employer_sponsored_insurance_premiums"].to_numpy(),
+            np.array([6_000.0, 0.0]),
+        )
 
 
 class TestRetirementConstraints:

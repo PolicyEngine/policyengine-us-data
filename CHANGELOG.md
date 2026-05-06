@@ -1,3 +1,249 @@
+## [1.101.1] - 2026-05-06
+
+### Fixed
+
+- Fix EITC and state AGI calibration target domains to exclude out-of-domain records.
+
+
+## [1.101.0] - 2026-05-06
+
+### Added
+
+- Added a manual long-run projection workflow with sampled-year controls, run manifests, and opt-in Hugging Face staging upload.
+
+### Fixed
+
+- Hardened CRFB long-run calibration so entropy solutions with large constraint misses are rejected before fallback, recorded richer provenance for Trustees threshold projection inputs, and routed the Trustees core-threshold reform through `policyengine-us`.
+
+
+## [1.100.0] - 2026-05-06
+
+### Added
+
+- Add a run-scoped calibration comparison report and manual workflow for evaluating unified L0 outputs against legacy Enhanced CPS.
+
+
+## [1.99.2] - 2026-05-06
+
+### Changed
+
+- Pass calibration target groups through unified L0 fitting so grouped target loss is used consistently.
+
+
+## [1.99.1] - 2026-05-05
+
+### Fixed
+
+- Assign legacy extended CPS households to Census blocks within their state and county when available, and derive SPM thresholds from the assigned geography.
+
+
+## [1.99.0] - 2026-05-05
+
+### Added
+
+- Added the local H5 clone weight matrix contract for upcoming migration slices.
+
+
+## [1.98.3] - 2026-05-05
+
+### Changed
+
+- Extended US data release manifests with bundle-compatible model/core/build metadata and added contract validation against policyengine-bundles.
+
+
+## [1.98.2] - 2026-05-05
+
+### Changed
+
+- Document the initial AI harness engineering structure, including vendor-neutral agent instructions, generated pipeline documentation artifacts, and Pydoc coverage for H5 build pipeline helpers. Add CI coverage for pipeline/Pydoc artifact generation and publish generated artifacts from the main-branch versioning workflow.
+
+
+## [1.98.1] - 2026-05-05
+
+### Fixed
+
+- Corrected ACA premium tax credit calibration targets to use IRS SOI total PTC columns, including target-year-uprated state-level PTC returns and amounts.
+
+
+## [1.98.0] - 2026-05-05
+
+### Added
+
+- `build_release_manifest` now accepts an
+  `additional_compatible_specifiers` parameter that extends the
+  `compatible_model_packages` list with arbitrary PEP 440 specifiers
+  (e.g. `">=1.637.0,<2.0.0"`). Use this when the data build fingerprint
+  is known to be stable across a range of `policyengine-us` versions so
+  downstream consumers do not have to regenerate the dataset for every
+  model patch release.
+
+
+## [1.97.0] - 2026-05-05
+
+### Added
+
+- Port CPS tax-unit construction to ACS PUMS so ACS datasets split unrelated household members into separate tax units.
+
+### Fixed
+
+- Adds a CMS-sourced total Medicare enrollment count target matching medicare_enrolled semantics.
+
+
+## [1.96.0] - 2026-05-05
+
+### Added
+
+- Calibrate employer-sponsored insurance premiums and seed CPS policyholder ESI contributions for CBO-style income concepts.
+
+
+## [1.95.5] - 2026-05-05
+
+### Fixed
+
+- Hardened CRFB long-run calibration so entropy solutions with large constraint misses are rejected before fallback, and recorded richer provenance for Trustees threshold projection inputs.
+
+
+## [1.95.4] - 2026-05-04
+
+### Changed
+
+- Add run-scoped publication identity for GitHub, Modal, and Hugging Face staging.
+
+
+## [1.95.3] - 2026-05-04
+
+### Fixed
+
+- Clarified SIPP licensing language in `policyengine_us_data/datasets/sipp/README.md`: SIPP public-use data is unrestricted (no per-user license, agreement, or registration). Of the six upstream microdata sources the Enhanced CPS pipeline ingests (CPS, ACS, SCF, ORG, SIPP, IRS-PUF), only IRS-PUF has a genuine access restriction. Fixes #808.
+
+
+## [1.95.2] - 2026-05-04
+
+### Changed
+
+- Updated GitHub Actions workflows for Node 24-compatible action runtimes.
+
+
+## [1.95.1] - 2026-05-04
+
+### Fixed
+
+- Make the 2025 ACA take-up override state-aware and spending-aware, allowing the final vector to add or remove tax-unit take-up by state against checked-in APTC enrollment and spending targets.
+
+
+## [1.95.0] - 2026-05-04
+
+### Fixed
+
+- Map CPS farm self-employment income to farm operations income.
+- Impute unavailable CPS prior-year wage and self-employment income instead of emitting sentinel values.
+
+### Removed
+
+- Remove tracked Beads metadata from the repository.
+
+
+## [1.94.0] - 2026-05-04
+
+### Added
+
+- Add 2026 ACA Marketplace and Medicaid enrollment calibration targets.
+
+
+## [1.93.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate targets for positive miscellaneous income in calibration.
+
+
+## [1.92.0] - 2026-05-04
+
+### Added
+
+- Re-enabled SOI aggregate and AGI-bin targets for tax-exempt interest income and SOI aggregate targets for charitable deductions in calibration.
+
+
+## [1.91.1] - 2026-05-04
+
+### Fixed
+
+- Fixed structural mortgage-interest conversion so QRF outliers cannot create implausibly large gross mortgage-interest inputs.
+
+
+## [1.91.0] - 2026-05-04
+
+### Added
+
+- Added IRS SOI aggregate and AGI-bin targets for long-term capital gains to the legacy enhanced CPS calibration loss matrix and target database.
+
+
+## [1.90.2] - 2026-05-04
+
+### Changed
+
+- Replace QBI simulation assumptions with a documented source-based model for qualification, SSTB status, W-2 wages, UBIA, and REIT/PTP/BDC income.
+
+
+## [1.90.1] - 2026-05-04
+
+### Fixed
+
+- Add CBO aggregate and AGI-bracket targets for capital gains, dividends, and interest income, and scale Forbes top-tail SCF draws to Forbes AGI estimates instead of Forbes wealth, to constrain inflated capital-income aggregates (issues #555, #866).
+
+
+## [1.90.0] - 2026-05-01
+
+### Added
+
+- Added local H5 traceability metadata and scope fingerprinting for calibration artifacts.
+
+### Changed
+
+- Add quality guards for test layout and document the testing skill for AI tooling.
+
+
+## [1.89.1] - 2026-04-30
+
+### Fixed
+
+- Read `is_household_head` directly from the ACS and CPS H5 datasets in `add_rent` and require `policyengine-core>=3.25.4` for PolicyEngine/policyengine-core#482, where user-supplied ETERNITY inputs were dropped after `_invalidate_all_caches`. Removes the empty-train-frame `ValueError` from `sample(10_000)` that was failing the Modal CPS build.
+- Improve Modal data-build diagnostics so database-step failures preserve their stdout and stderr in the build log.
+- Skip the flaky ACF HTML landing page in `etl_tanf` and fetch the FY-stamped workbooks directly via a per-year `TANF_WORKBOOK_URLS` constant; keep the tenacity retry / extended timeout around the workbook GET so transient `acf.gov` slowness does not fail `make database` on Modal builds.
+
+
+## [1.89.0] - 2026-04-30
+
+### Added
+
+- Added hourly wage and annual employment income consistency diagnostics.
+
+
+## [1.88.3] - 2026-04-29
+
+### Fixed
+
+- Added other health insurance premiums as the non-Medicare premium category not covered by modeled Marketplace, CHIP, or Medicaid premiums.
+
+
+## [1.88.2] - 2026-04-29
+
+### Changed
+
+- Enable all state- and district-level EITC and CTC targets in the default calibration target configuration.
+
+### Fixed
+
+- Fix the Modal pipeline diagnostics-upload helper so its generated `python -c` script is valid Python and covered by a unit test before deployment.
+
+
+## [1.88.1] - 2026-04-28
+
+### Fixed
+
+- Remove calibration optimizer checkpoint artifacts from the Modal calibration pipeline.
+
+
 ## [1.88.0] - 2026-04-25
 
 ### Added

@@ -11,8 +11,23 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Mapping
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
+
 AreaType = Literal["national", "state", "district", "city", "custom"]
 FilterOp = Literal["eq", "in"]
+AreaFilterValue = str | int | tuple[str | int, ...]
+SerializedAreaFilter = dict[str, Any]
+SerializedAreaBuildRequest = dict[str, Any]
+
+__all__ = [
+    "AreaBuildRequest",
+    "AreaFilter",
+    "AreaFilterValue",
+    "AreaType",
+    "FilterOp",
+    "SerializedAreaBuildRequest",
+    "SerializedAreaFilter",
+]
 
 
 def _jsonable_request_value(value: Any) -> Any:
@@ -43,13 +58,41 @@ def _validate_output_relative_path(output_relative_path: str) -> None:
         )
 
 
+@pipeline_node(
+    id="local_h5_area_filter",
+    label="AreaFilter",
+    node_type="library",
+    description="Typed geography predicate for local H5 output selection.",
+    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+    ],
+)
 @dataclass(frozen=True)
 class AreaFilter:
-    """A single geography predicate used to select rows for one output area."""
+    """Predicate used to select calibrated clones for one H5 output.
+
+    `AreaFilter` is intentionally small so it can move across process
+    boundaries as JSON. It describes one boolean condition over a geography
+    vector, such as selecting all clones in a set of congressional districts or
+    counties.
+
+    Attributes:
+        geography_field: Name of the geography vector to inspect. Current
+            callers use fields from `GeographyAssignment`, such as `cd_geoid` or
+            `county_fips`.
+        op: Predicate operator. Use `"eq"` for one scalar value and `"in"` for
+            membership in a tuple of values.
+        value: Scalar comparison value for `"eq"` or tuple of allowed values for
+            `"in"`.
+    """
 
     geography_field: str
     op: FilterOp
-    value: str | int | tuple[str | int, ...]
+    value: AreaFilterValue
 
     def __post_init__(self) -> None:
         if not self.geography_field:
@@ -59,7 +102,13 @@ class AreaFilter:
         if self.op == "eq" and isinstance(self.value, tuple):
             raise ValueError("AreaFilter value must not be a tuple when op='eq'")
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> SerializedAreaFilter:
+        """Serialize the filter to JSON-compatible primitives.
+
+        Returns:
+            A dictionary suitable for JSON encoding and worker handoff.
+        """
+
         return {
             "geography_field": self.geography_field,
             "op": self.op,
@@ -68,6 +117,15 @@ class AreaFilter:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "AreaFilter":
+        """Rebuild an `AreaFilter` from serialized request data.
+
+        Args:
+            data: Mapping produced by `to_dict`.
+
+        Returns:
+            A validated `AreaFilter` instance.
+        """
+
         value = data["value"]
         if data["op"] == "in":
             value = tuple(value)
@@ -78,9 +136,43 @@ class AreaFilter:
         )
 
 
+@pipeline_node(
+    id="local_h5_area_request",
+    label="AreaBuildRequest",
+    node_type="library",
+    description="Typed request contract for one national, state, district, city, or custom H5 output.",
+    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+    ],
+)
 @dataclass(frozen=True)
 class AreaBuildRequest:
-    """A complete request describing one local or national H5 to build."""
+    """Complete request for one local-area or national H5 file.
+
+    The request is the stable library-level contract between orchestration code
+    and H5 worker code. It names the output, carries the geography filters used
+    to zero irrelevant clone weights, and records the target geography IDs used
+    by validation.
+
+    Attributes:
+        area_type: Output family, such as `"state"`, `"district"`, `"city"`, or
+            `"national"`.
+        area_id: Stable identifier for the requested area, for example `"CA"`,
+            `"NY-12"`, `"NYC"`, or `"US"`.
+        display_name: Human-readable label used in logs and validation output.
+        output_relative_path: Path below the worker output directory where the
+            H5 should be written.
+        filters: Geography predicates that select clones for this area.
+        validation_geo_level: Target table geography level used to validate the
+            output, when validation is available.
+        validation_geographic_ids: Target geography IDs expected during
+            validation.
+        metadata: Additional non-control metadata for downstream tooling.
+    """
 
     area_type: AreaType
     area_id: str
@@ -105,7 +197,13 @@ class AreaBuildRequest:
                 "are provided"
             )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> SerializedAreaBuildRequest:
+        """Serialize the request to JSON-compatible primitives.
+
+        Returns:
+            A dictionary suitable for Modal worker payloads or manifests.
+        """
+
         return {
             "area_type": self.area_type,
             "area_id": self.area_id,
@@ -119,6 +217,15 @@ class AreaBuildRequest:
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "AreaBuildRequest":
+        """Rebuild an `AreaBuildRequest` from serialized request data.
+
+        Args:
+            data: Mapping produced by `to_dict`.
+
+        Returns:
+            A validated `AreaBuildRequest` instance.
+        """
+
         return cls(
             area_type=data["area_type"],
             area_id=str(data["area_id"]),

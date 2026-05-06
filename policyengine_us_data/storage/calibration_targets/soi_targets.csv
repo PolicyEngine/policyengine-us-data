@@ -9778,6 +9778,12 @@ Year,SOI table,XLSX column,XLSX row,Variable,Filing status,AGI lower bound,AGI u
 2023,Table 1.4,V,27,exempt_interest,All,5000000.0,10000000.0,True,False,False,29763
 2023,Table 1.4,W,28,exempt_interest,All,10000000.0,inf,False,False,False,6779791000
 2023,Table 1.4,V,28,exempt_interest,All,10000000.0,inf,True,False,False,21005
+2021,Table 1.4,CC,9,other_income,All,-inf,inf,False,False,True,62702551000
+2021,Table 1.4,CB,9,other_income,All,-inf,inf,True,False,True,5930776
+2022,Table 1.4,CO,9,other_income,All,-inf,inf,False,False,True,62607506000
+2022,Table 1.4,CN,9,other_income,All,-inf,inf,True,False,True,7557464
+2023,Table 1.4,CO,9,other_income,All,-inf,inf,False,False,True,60816508000
+2023,Table 1.4,CN,9,other_income,All,-inf,inf,True,False,True,7468434
 2023,Table 2.1,CF,10,idpitgst,All,-inf,inf,False,False,True,218543083000
 2023,Table 2.1,CF,33,idpitgst,All,-inf,inf,False,True,False,214582294000
 2023,Table 2.1,CE,10,idpitgst,All,-inf,inf,True,False,True,14464822

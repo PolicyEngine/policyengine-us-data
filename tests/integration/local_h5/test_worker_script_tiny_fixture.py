@@ -10,7 +10,7 @@ import pytest
 
 from policyengine_us_data.calibration.local_h5.source_dataset import (
     DEFAULT_SUBENTITIES,
-    SourceDatasetSnapshot,
+    PolicyEngineDatasetReader,
 )
 from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
 from tests.integration.local_h5.fixtures import (
@@ -87,7 +87,7 @@ def _run_worker(
 def test_tiny_fixture_source_snapshot_matches_worker_artifacts(tmp_path):
     artifacts = seed_local_h5_artifacts(tmp_path / "source-snapshot")
 
-    snapshot = SourceDatasetSnapshot.from_dataset_path(artifacts.dataset_path)
+    snapshot = PolicyEngineDatasetReader().load(artifacts.dataset_path)
     weights = CloneWeightMatrix.from_vector(
         np.load(artifacts.weights_path),
         n_records=snapshot.n_households,

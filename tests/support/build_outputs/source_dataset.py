@@ -58,6 +58,7 @@ def load_source_dataset_exports():
         "MicrosimulationVariableProvider": (
             source_dataset_module.MicrosimulationVariableProvider
         ),
+        "PolicyEngineDatasetReader": source_dataset_module.PolicyEngineDatasetReader,
         "SourceDatasetSnapshot": source_dataset_module.SourceDatasetSnapshot,
     }
 

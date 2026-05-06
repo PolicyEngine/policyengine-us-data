@@ -1,3 +1,10 @@
+## [1.103.2] - 2026-05-06
+
+### Fixed
+
+- Populate American Opportunity Credit eligibility inputs in Enhanced CPS from the PUF-imputed AOTC signal.
+
+
 ## [1.103.1] - 2026-05-06
 
 ### Changed

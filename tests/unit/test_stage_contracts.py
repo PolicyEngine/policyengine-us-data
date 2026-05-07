@@ -30,8 +30,10 @@ from policyengine_us_data.stage_contracts.fingerprints import (
     fingerprint_material,
 )
 from policyengine_us_data.stage_contracts.stages import (
+    CANONICAL_STAGE_IDS,
     CONTRACT_TYPE_BY_STAGE_ID,
     STAGE_2_BUILD_CALIBRATION_PACKAGE,
+    SUBSTAGE_IDS_BY_STAGE_ID,
 )
 
 
@@ -138,7 +140,7 @@ def _stage_contract(*, parameters=None) -> StageContract:
         fingerprint=_fingerprint(),
         substages=(
             SubstageRecord(
-                substage_id="2a_build_target_matrix",
+                substage_id="2a_matrix_build_calibration_target_construction",
                 status="completed",
                 reuse_mode="handoff",
                 outputs=(
@@ -229,6 +231,24 @@ def make_dataset_build_contract() -> StageContract:
                 outputs=(_stage_artifact("base_cps_2024"),),
             ),
             SubstageRecord(
+                substage_id="1c_extended_cps_puf_clone",
+                status="completed",
+                reuse_mode="checkpointable",
+                outputs=(_stage_artifact("extended_cps_puf_clone"),),
+            ),
+            SubstageRecord(
+                substage_id="1d_enhanced_cps_reweighting",
+                status="completed",
+                reuse_mode="checkpointable",
+                outputs=(_stage_artifact("enhanced_cps_2024"),),
+            ),
+            SubstageRecord(
+                substage_id="1e_stratified_cps",
+                status="completed",
+                reuse_mode="handoff",
+                outputs=(_stage_artifact("stratified_cps_2024"),),
+            ),
+            SubstageRecord(
                 substage_id="1f_source_imputation",
                 status="completed",
                 reuse_mode="handoff",
@@ -279,17 +299,10 @@ def make_calibration_package_contract() -> StageContract:
         ),
         substages=(
             SubstageRecord(
-                substage_id="2a_build_target_matrix",
+                substage_id="2a_matrix_build_calibration_target_construction",
                 status="completed",
                 reuse_mode="handoff",
                 inputs=inputs,
-                outputs=(_stage_artifact("clone_target_matrix"),),
-            ),
-            SubstageRecord(
-                substage_id="2b_package_calibration_inputs",
-                status="completed",
-                reuse_mode="handoff",
-                inputs=(_stage_artifact("clone_target_matrix"),),
                 outputs=(_stage_artifact("calibration_package"),),
             ),
         ),
@@ -568,7 +581,7 @@ def test_execution_record_dict_round_trip_with_nested_reuse_summary():
 
 def test_substage_record_dict_round_trip_with_nested_values():
     substage = SubstageRecord(
-        substage_id="2a_build_target_matrix",
+        substage_id="2a_matrix_build_calibration_target_construction",
         status="completed",
         inputs=(_artifact(),),
         outputs=(
@@ -608,7 +621,7 @@ def test_stage_contract_dict_round_trip_with_substages():
 def test_direct_constructors_normalize_nested_sequence_fields():
     artifact = _artifact()
     substage = SubstageRecord(
-        substage_id="2a_build_target_matrix",
+        substage_id="2a_matrix_build_calibration_target_construction",
         status="completed",
         inputs=[artifact],
         outputs=[artifact],
@@ -646,12 +659,22 @@ def test_sample_stage_contract_builders_match_canonical_stage_shapes():
         ("4_build_outputs", "output_build"),
         ("5_validate_and_promote_release", "release_promotion"),
     ]
-    assert [len(item.substages) for item in samples] == [4, 2, 2, 3, 4]
+    assert [len(item.substages) for item in samples] == [7, 1, 2, 3, 4]
     for contract in samples:
         assert isinstance(contract, StageContract)
         assert all(
             isinstance(substage, SubstageRecord) for substage in contract.substages
         )
+
+
+def test_canonical_stage_contract_ids_match_pipeline_step_specs():
+    from modal_app.step_manifests.specs import PIPELINE_STEPS
+
+    assert CANONICAL_STAGE_IDS == tuple(step.id for step in PIPELINE_STEPS)
+    assert dict(SUBSTAGE_IDS_BY_STAGE_ID) == {
+        step.id: tuple(substep.id for substep in step.substeps)
+        for step in PIPELINE_STEPS
+    }
 
 
 def test_sample_stage_contracts_include_planned_artifacts_and_metadata():
@@ -816,13 +839,15 @@ def test_invalid_reuse_decision_raises():
 
 def test_invalid_substage_status_raises():
     with pytest.raises(ValueError, match="Invalid substage status"):
-        SubstageRecord(substage_id="2a_build_target_matrix", status="done")
+        SubstageRecord(
+            substage_id="2a_matrix_build_calibration_target_construction", status="done"
+        )
 
 
 def test_invalid_substage_reuse_mode_raises():
     with pytest.raises(ValueError, match="Invalid substage reuse mode"):
         SubstageRecord(
-            substage_id="2a_build_target_matrix",
+            substage_id="2a_matrix_build_calibration_target_construction",
             status="completed",
             reuse_mode="cacheable",
         )

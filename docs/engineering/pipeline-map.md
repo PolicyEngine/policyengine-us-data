@@ -790,7 +790,7 @@ def _build_publishing_input_bundle(*, weights_path: Path, dataset_path: Path, db
 
 Build the normalized coordinator input bundle for one publish scope.
 
-### `policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader`
+### `policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader`
 
 ```python
 class CalibrationGeographyLoader
@@ -798,7 +798,7 @@ class CalibrationGeographyLoader
 
 Resolve, load, and checksum exact geography artifacts.
 
-### `policyengine_us_data.calibration.local_h5.weights.CloneWeightMatrix`
+### `policyengine_us_data.build_outputs.weights.CloneWeightMatrix`
 
 ```python
 class CloneWeightMatrix
@@ -846,7 +846,7 @@ def load_calibration_geography(weights_path: Path, n_records: int, n_clones: Opt
 
 Resolve exact geography from saved bundles, package metadata, or legacy block artifacts.
 
-### `policyengine_us_data.calibration.local_h5.area_catalog.USAreaCatalog`
+### `policyengine_us_data.build_outputs.area_catalog.USAreaCatalog`
 
 ```python
 class USAreaCatalog
@@ -854,7 +854,7 @@ class USAreaCatalog
 
 Construct typed H5 build requests for supported US geographies.
 
-### `policyengine_us_data.calibration.local_h5.requests.AreaFilter`
+### `policyengine_us_data.build_outputs.requests.AreaFilter`
 
 ```python
 class AreaFilter
@@ -862,7 +862,7 @@ class AreaFilter
 
 Predicate used to select calibrated clones for one H5 output.
 
-### `policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest`
+### `policyengine_us_data.build_outputs.requests.AreaBuildRequest`
 
 ```python
 class AreaBuildRequest
@@ -870,7 +870,7 @@ class AreaBuildRequest
 
 Complete request for one local-area or national H5 file.
 
-### `policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity`
+### `policyengine_us_data.build_outputs.fingerprinting.ArtifactIdentity`
 
 ```python
 class ArtifactIdentity
@@ -886,7 +886,7 @@ def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: 
 
 Compute a scope fingerprint for local H5 checkpoint and resume decisions.
 
-### `policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items`
+### `policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items`
 
 ```python
 def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks
@@ -894,7 +894,7 @@ def partition_weighted_work_items(work_items: WorkItems, num_workers: int, compl
 
 Partition remaining H5 work across worker chunks.
 
-### `policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle`
+### `policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle`
 
 ```python
 class PublishingInputBundle
@@ -902,7 +902,7 @@ class PublishingInputBundle
 
 Input artifact bundle for one local H5 publication scope.
 
-### `policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource`
+### `policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource`
 
 ```python
 class ResolvedGeographySource
@@ -910,7 +910,7 @@ class ResolvedGeographySource
 
 Resolved physical source used to recover calibration geography.
 
-### `policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService`
+### `policyengine_us_data.build_outputs.fingerprinting.FingerprintingService`
 
 ```python
 class FingerprintingService
@@ -918,7 +918,7 @@ class FingerprintingService
 
 Build traceability bundles and derive deterministic scope fingerprints.
 
-### `policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle`
+### `policyengine_us_data.build_outputs.fingerprinting.TraceabilityBundle`
 
 ```python
 class TraceabilityBundle

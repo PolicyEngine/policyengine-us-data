@@ -33,12 +33,14 @@ SUBSTAGE_IDS_BY_STAGE_ID = MappingProxyType(
         STAGE_1_BUILD_DATASETS: (
             "1a_raw_data_download",
             "1b_base_dataset_construction",
+            "1c_extended_cps_puf_clone",
+            "1d_enhanced_cps_reweighting",
+            "1e_stratified_cps",
             "1f_source_imputation",
             "1g_stage_base_datasets",
         ),
         STAGE_2_BUILD_CALIBRATION_PACKAGE: (
-            "2a_build_target_matrix",
-            "2b_package_calibration_inputs",
+            "2a_matrix_build_calibration_target_construction",
         ),
         STAGE_3_FIT_WEIGHTS: (
             "3a_weight_fitting_regional",

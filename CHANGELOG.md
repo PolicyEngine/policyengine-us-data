@@ -1,3 +1,11 @@
+## [1.106.0] - 2026-05-07
+
+### Added
+
+- Add initial stage-contract schemas, canonical JSON helpers, and build-output
+  library seams for harness engineering.
+
+
 ## [1.105.2] - 2026-05-07
 
 ### Changed

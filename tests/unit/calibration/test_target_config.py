@@ -378,6 +378,27 @@ class TestLoadTargetConfig:
             "domain_variable": "medicaid",
         } not in include_rules
 
+    def test_training_config_excludes_district_snap_household_count_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "snap",
+            "geo_level": "state",
+        } in include_rules
+        assert {
+            "variable": "household_count",
+            "geo_level": "district",
+            "domain_variable": "snap",
+        } not in include_rules
+
     def test_training_config_includes_district_non_refundable_ctc_target(self):
         config = load_target_config(
             str(

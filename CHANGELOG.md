@@ -1,3 +1,10 @@
+## [1.104.3] - 2026-05-07
+
+### Fixed
+
+- Aligned SPM threshold recalculation with published Census thresholds and tenure-specific geographic adjustments, and kept zero-weight clone priors near zero during enhanced CPS reweighting.
+
+
 ## [1.104.2] - 2026-05-07
 
 ### Changed

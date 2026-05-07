@@ -223,15 +223,6 @@ def test_build_matrix_chunked_smoke_on_fixture(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     n_records, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)
@@ -267,15 +258,6 @@ def test_build_matrix_chunked_matches_precomputed_builder(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)
@@ -316,15 +298,6 @@ def test_build_matrix_chunked_matches_precomputed_builder_for_aca_ptc(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_entity_target_db)
@@ -365,15 +338,6 @@ def test_build_matrix_chunked_resume_reuses_matching_manifest(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)
@@ -414,15 +378,6 @@ def test_build_matrix_chunked_resume_rejects_lineage_mismatch(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)
@@ -460,15 +415,6 @@ def test_build_matrix_chunked_resume_rejects_cached_chunk_range_mismatch(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     sim = Microsimulation(dataset=str(FIXTURE_PATH))
     _, geography = _build_chunked_test_geography(sim)
     builder = _build_chunked_test_builder(chunked_smoke_db)

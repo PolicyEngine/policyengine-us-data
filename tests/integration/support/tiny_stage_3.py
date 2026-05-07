@@ -50,7 +50,7 @@ STAGE_3_GROUP_VARIABLES = tuple(
             "tax_unit_is_joint",
             "spm_unit_total_income_reported",
             "spm_unit_net_income_reported",
-            "spm_unit_spm_threshold",
+            "spm_unit_geographic_adjustment",
             "spm_unit_capped_housing_subsidy_reported",
             "snap_reported",
             "household_is_puf_clone",
@@ -77,7 +77,7 @@ STAGE_4_INPUT_VARIABLES = (
     "tax_unit_is_joint",
     "spm_unit_total_income_reported",
     "spm_unit_net_income_reported",
-    "spm_unit_spm_threshold",
+    "spm_unit_geographic_adjustment",
     "is_puf_clone",
 )
 
@@ -262,8 +262,8 @@ def _extended_group_arrays(
         "spm_unit_net_income_reported": np.round(total_income * 0.85, 2).astype(
             np.float32
         ),
-        "spm_unit_spm_threshold": (
-            25_000 + tax_unit_count_dependents.astype(np.float32) * 5_000
+        "spm_unit_geographic_adjustment": (
+            1.0 + tax_unit_count_dependents.astype(np.float32) * 0.02
         ).astype(np.float32),
         "spm_unit_capped_housing_subsidy_reported": np.where(
             arrays["tenure_type"] == b"RENTED",

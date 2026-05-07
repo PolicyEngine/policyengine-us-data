@@ -31,7 +31,6 @@ from policyengine_us_data.utils.data_upload import (
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
     load_cd_geoadj_values,
-    calculate_spm_thresholds_vectorized,
 )
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
@@ -515,8 +514,9 @@ def build_h5(
 
     # === Determine variables to save ===
     vars_to_save = set(sim.input_variables)
+    vars_to_save.discard("spm_unit_spm_threshold")
     vars_to_save.add("county")
-    vars_to_save.add("spm_unit_spm_threshold")
+    vars_to_save.add("spm_unit_geographic_adjustment")
     vars_to_save.add("congressional_district_geoid")
     for gv in [
         "block_geoid",
@@ -650,17 +650,14 @@ def build_h5(
         time_period: clone_cd_geoids,
     }
 
-    # === SPM threshold recalculation ===
-    print("Recalculating SPM thresholds...")
+    # === SPM geographic adjustment assignment ===
+    print("Assigning SPM geographic adjustments...")
     unique_cds_list = sorted(set(active_clone_cds))
     cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
     spm_clone_ids = np.repeat(
         np.arange(n_clones, dtype=np.int64),
         entities_per_clone["spm_unit"],
     )
-
-    # Get cloned person ages and SPM tenure types
-    person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
 
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
     spm_tenure_periods = spm_tenure_holder.get_known_periods()
@@ -690,15 +687,8 @@ def build_h5(
         dtype=np.float64,
     )
 
-    new_spm_thresholds = calculate_spm_thresholds_vectorized(
-        person_ages=person_ages,
-        person_spm_unit_ids=new_person_entity_ids["spm_unit"],
-        spm_unit_tenure_types=spm_tenure_cloned,
-        spm_unit_geoadj=spm_unit_geoadj,
-        year=time_period,
-    )
-    data["spm_unit_spm_threshold"] = {
-        time_period: new_spm_thresholds,
+    data["spm_unit_geographic_adjustment"] = {
+        time_period: spm_unit_geoadj.astype(np.float32),
     }
 
     # === Apply calibration takeup draws ===

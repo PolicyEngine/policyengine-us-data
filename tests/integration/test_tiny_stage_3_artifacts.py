@@ -95,7 +95,7 @@ def test_tiny_extended_cps_derives_stage_4_contract_variables(tmp_path):
     assert (arrays["pre_tax_contributions"] >= 0).all()
     assert (arrays["spm_unit_total_income_reported"] >= 0).all()
     assert (arrays["spm_unit_net_income_reported"] >= 0).all()
-    assert (arrays["spm_unit_spm_threshold"] > 0).all()
+    assert (arrays["spm_unit_geographic_adjustment"] > 0).all()
 
 
 def test_tiny_extended_cps_digest_is_stable_for_same_inputs(tmp_path):

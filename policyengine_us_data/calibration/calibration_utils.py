@@ -11,8 +11,6 @@ from scipy import sparse
 from policyengine_us_data.utils.spm import (
     TENURE_CODE_MAP,
     calculate_geoadj_from_rent,
-    get_spm_reference_thresholds,
-    spm_equivalence_scale,
 )
 from policyengine_us.variables.household.demographic.geographic.state_name import (
     StateName,
@@ -182,13 +180,6 @@ STATE_FIPS_TO_CODE = {
     54: StateCode.WV,
     55: StateCode.WI,
     56: StateCode.WY,
-}
-
-# SPM Tenure Type Mappings
-SPM_TENURE_STRING_TO_CODE = {
-    "OWNER_WITH_MORTGAGE": 1,
-    "OWNER_WITHOUT_MORTGAGE": 2,
-    "RENTER": 3,
 }
 
 
@@ -596,66 +587,3 @@ def load_cd_geoadj_values(
             geoadj_dict[cd] = {tenure: 1.0 for tenure in tenure_keys}
 
     return geoadj_dict
-
-
-def calculate_spm_thresholds_vectorized(
-    person_ages: np.ndarray,
-    person_spm_unit_ids: np.ndarray,
-    spm_unit_tenure_types: np.ndarray,
-    spm_unit_geoadj: np.ndarray,
-    year: int,
-) -> np.ndarray:
-    """Calculate SPM thresholds for cloned SPM units from raw arrays.
-
-    Works without a Microsimulation instance. Counts adults/children
-    per SPM unit from person-level arrays, then computes
-    base_threshold * equivalence_scale * geoadj for each unit.
-
-    Args:
-        person_ages: Age per cloned person.
-        person_spm_unit_ids: New SPM unit ID per cloned person
-            (0-based contiguous).
-        spm_unit_tenure_types: Tenure type string per cloned SPM
-            unit (e.g. b"RENTER", b"OWNER_WITH_MORTGAGE").
-        spm_unit_geoadj: Geographic adjustment factor per cloned
-            SPM unit.
-        year: Tax year for base threshold lookup.
-
-    Returns:
-        Float32 array of SPM thresholds, one per SPM unit.
-    """
-    person_ages = np.asarray(person_ages)
-    person_spm_unit_ids = np.asarray(person_spm_unit_ids)
-    spm_unit_tenure_types = np.asarray(spm_unit_tenure_types)
-    spm_unit_geoadj = np.asarray(spm_unit_geoadj, dtype=np.float64)
-
-    n_units = len(spm_unit_tenure_types)
-
-    # Count adults and children per SPM unit
-    is_adult = person_ages >= 18
-    num_adults = np.zeros(n_units, dtype=np.int32)
-    num_children = np.zeros(n_units, dtype=np.int32)
-    np.add.at(num_adults, person_spm_unit_ids, is_adult.astype(np.int32))
-    np.add.at(num_children, person_spm_unit_ids, (~is_adult).astype(np.int32))
-
-    # Map tenure type strings to codes
-    tenure_codes = np.full(n_units, 3, dtype=np.int32)
-    for tenure_str, code in SPM_TENURE_STRING_TO_CODE.items():
-        tenure_bytes = (
-            tenure_str.encode() if isinstance(tenure_str, str) else tenure_str
-        )
-        mask = spm_unit_tenure_types == tenure_bytes
-        if not mask.any():
-            mask = spm_unit_tenure_types == tenure_str
-        tenure_codes[mask] = code
-
-    base_thresholds = get_spm_reference_thresholds(year)
-
-    thresholds = np.zeros(n_units, dtype=np.float32)
-    for i in range(n_units):
-        tenure_str = TENURE_CODE_MAP.get(int(tenure_codes[i]), "renter")
-        base = base_thresholds[tenure_str]
-        equiv_scale = spm_equivalence_scale(int(num_adults[i]), int(num_children[i]))
-        thresholds[i] = base * equiv_scale * spm_unit_geoadj[i]
-
-    return thresholds

@@ -1,13 +1,11 @@
 import numpy as np
 import pandas as pd
 import pytest
-from policyengine_us import CountryTaxBenefitSystem
 
 from policyengine_us_data.calibration.calibration_utils import (
-    calculate_spm_thresholds_vectorized,
     load_cd_geoadj_values,
 )
-from policyengine_us_data.utils.spm import calculate_spm_thresholds_with_geoadj
+from policyengine_us_data.utils.spm import geoadj_for_tenure
 
 
 def test_load_cd_geoadj_values_returns_tenure_specific_lookup(monkeypatch):
@@ -30,29 +28,15 @@ def test_load_cd_geoadj_values_returns_tenure_specific_lookup(monkeypatch):
     assert geoadj_lookup["101"]["owner_without_mortgage"] == pytest.approx(1.1615)
 
 
-def test_calculate_spm_thresholds_vectorized_uses_cpi_fallback_for_future_year():
-    thresholds = calculate_spm_thresholds_vectorized(
-        person_ages=np.array([40, 35, 10, 8]),
-        person_spm_unit_ids=np.array([0, 0, 0, 0]),
-        spm_unit_tenure_types=np.array([b"RENTER"]),
-        spm_unit_geoadj=np.array([1.1]),
-        year=2027,
-    )
+def test_geoadj_for_tenure_accepts_policyengine_tenure_bytes():
+    geoadj_lookup = {
+        "renter": 1.1,
+        "owner_with_mortgage": 1.2,
+        "owner_without_mortgage": 1.3,
+    }
 
-    cpi_u = CountryTaxBenefitSystem().parameters.gov.bls.cpi.cpi_u
-    cpi_ratio = float(cpi_u("2027-02-01") / cpi_u("2024-02-01"))
-    expected = 39_430.0 * cpi_ratio * 1.1
-
-    assert thresholds[0] == pytest.approx(expected)
-
-
-def test_calculate_spm_thresholds_with_geoadj_uses_published_reference_thresholds():
-    thresholds = calculate_spm_thresholds_with_geoadj(
-        num_adults=np.array([2]),
-        num_children=np.array([2]),
-        tenure_codes=np.array([3]),
-        geoadj=np.array([1.0]),
-        year=2024,
-    )
-
-    assert thresholds[0] == pytest.approx(39_430.0)
+    assert geoadj_for_tenure(geoadj_lookup, np.bytes_("RENTER")) == pytest.approx(1.1)
+    assert geoadj_for_tenure(
+        geoadj_lookup,
+        np.bytes_("OWNER_WITH_MORTGAGE"),
+    ) == pytest.approx(1.2)

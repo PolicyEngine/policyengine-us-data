@@ -41,12 +41,12 @@ __all__ = [
     label="ResolvedGeographySource",
     node_type="library",
     description="Resolved physical source used to recover exact calibration geography.",
-    source_file="policyengine_us_data/calibration/local_h5/geography_loader.py",
+    source_file="policyengine_us_data/build_outputs/geography_loader.py",
     status="current",
     stability="stable",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
     ],
 )
 @dataclass(frozen=True)
@@ -78,12 +78,12 @@ def _sibling_artifact_path(weights_path: Path, artifact_name: str) -> Path:
     label="CalibrationGeographyLoader",
     node_type="library",
     description="Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
-    source_file="policyengine_us_data/calibration/local_h5/geography_loader.py",
+    source_file="policyengine_us_data/build_outputs/geography_loader.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
     ],
 )
 class CalibrationGeographyLoader:

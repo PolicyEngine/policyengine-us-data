@@ -16,10 +16,10 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
     save_geography,
 )
-from policyengine_us_data.calibration.local_h5.fingerprinting import (
+from policyengine_us_data.build_outputs.fingerprinting import (
     PublishingInputBundle,
 )
-from policyengine_us_data.calibration.local_h5.requests import (
+from policyengine_us_data.build_outputs.requests import (
     AreaBuildRequest,
     AreaFilter,
 )

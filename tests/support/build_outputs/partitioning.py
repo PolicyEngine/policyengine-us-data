@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_partitioning.py``."""
+"""Fixture helpers for build-output partitioning tests."""
 
 from __future__ import annotations
 
@@ -12,13 +12,9 @@ __test__ = False
 def _load_partitioning_module():
     """Load the pure partitioning module directly from disk."""
 
-    repo_root = Path(__file__).resolve().parents[4]
+    repo_root = Path(__file__).resolve().parents[3]
     module_path = (
-        repo_root
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
-        / "partitioning.py"
+        repo_root / "policyengine_us_data" / "build_outputs" / "partitioning.py"
     )
     spec = importlib.util.spec_from_file_location(
         "local_h5_partitioning",

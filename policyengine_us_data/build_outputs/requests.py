@@ -63,13 +63,11 @@ def _validate_output_relative_path(output_relative_path: str) -> None:
     label="AreaFilter",
     node_type="library",
     description="Typed geography predicate for local H5 output selection.",
-    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    source_file="policyengine_us_data/build_outputs/requests.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_requests.py"],
 )
 @dataclass(frozen=True)
 class AreaFilter:
@@ -141,13 +139,11 @@ class AreaFilter:
     label="AreaBuildRequest",
     node_type="library",
     description="Typed request contract for one national, state, district, city, or custom H5 output.",
-    source_file="policyengine_us_data/calibration/local_h5/requests.py",
+    source_file="policyengine_us_data/build_outputs/requests.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_requests.py"],
 )
 @dataclass(frozen=True)
 class AreaBuildRequest:

@@ -22,7 +22,7 @@ __all__ = ["CloneWeightMatrix"]
     label="CloneWeightMatrix",
     node_type="library",
     description=("Explicit shape contract for flat clone-level calibration weights."),
-    source_file="policyengine_us_data/calibration/local_h5/weights.py",
+    source_file="policyengine_us_data/build_outputs/weights.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
@@ -30,9 +30,7 @@ __all__ = ["CloneWeightMatrix"]
         "calibration_weights.npy",
         "national_calibration_weights.npy",
     ],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_weights.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_weights.py"],
 )
 @dataclass(frozen=True)
 class CloneWeightMatrix:

@@ -11,9 +11,12 @@ emitted by ``policyengine.py`` without parsing prose.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from typing import Any, Iterable, Mapping, Optional
+
+from policyengine_us_data.utils.canonical_json import (
+    canonical_json_bytes as _canonical_json_bytes,
+)
 
 TRACE_TRO_FILENAME = "trace.tro.jsonld"
 TRACE_TROV_VERSION = "0.1"
@@ -64,7 +67,7 @@ def canonical_json_bytes(value: Mapping) -> bytes:
     Kept public so a third-party verifier can reproduce these bytes
     exactly to recompute artifact hashes and the composition fingerprint.
     """
-    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return _canonical_json_bytes(value)
 
 
 def compute_trace_composition_fingerprint(

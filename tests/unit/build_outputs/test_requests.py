@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from tests.unit.calibration.fixtures.test_local_h5_requests import (
+from tests.support.build_outputs.requests import (
     load_requests_exports,
 )
 

@@ -23,7 +23,7 @@ _LAZY_EXPORTS = {
     ),
 }
 
-__all__ = ["ZIP_CODE_DATASET", *_LAZY_EXPORTS]
+__all__ = sorted(_LAZY_EXPORTS)
 
 
 def __getattr__(name: str):

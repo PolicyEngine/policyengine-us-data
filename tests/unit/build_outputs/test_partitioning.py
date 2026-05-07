@@ -1,4 +1,4 @@
-from tests.unit.calibration.fixtures.test_local_h5_partitioning import (
+from tests.support.build_outputs.partitioning import (
     load_partitioning_exports,
 )
 

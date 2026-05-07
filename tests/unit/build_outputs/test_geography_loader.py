@@ -3,7 +3,7 @@ import pickle
 import numpy as np
 import pytest
 
-from tests.unit.calibration.fixtures.test_local_h5_geography_loader import (
+from tests.support.build_outputs.geography_loader import (
     load_geography_loader_exports,
     write_saved_geography,
 )

@@ -39,13 +39,11 @@ def _load_default_state_codes() -> Mapping[int, str]:
     label="USAreaCatalog",
     node_type="library",
     description="Build typed local H5 requests from US states, districts, and supported city rules.",
-    source_file="policyengine_us_data/calibration/local_h5/area_catalog.py",
+    source_file="policyengine_us_data/build_outputs/area_catalog.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_area_catalog.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_area_catalog.py"],
 )
 class USAreaCatalog:
     """Construct typed H5 build requests for supported US geographies.

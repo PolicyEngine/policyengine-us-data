@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_requests.py``."""
+"""Fixture helpers for build-output request tests."""
 
 from __future__ import annotations
 
@@ -38,11 +38,8 @@ def _load_module(name: str, path: Path):
 def load_requests_exports():
     """Load the local H5 request module under a synthetic package name."""
 
-    local_h5_root = (
-        Path(__file__).resolve().parents[4]
-        / "policyengine_us_data"
-        / "calibration"
-        / "local_h5"
+    build_outputs_root = (
+        Path(__file__).resolve().parents[3] / "policyengine_us_data" / "build_outputs"
     )
     package_name = "local_h5_requests_fixture"
 
@@ -50,10 +47,10 @@ def load_requests_exports():
         if name == package_name or name.startswith(f"{package_name}."):
             sys.modules.pop(name, None)
 
-    _ensure_package(package_name, local_h5_root)
+    _ensure_package(package_name, build_outputs_root)
     requests_module = _load_module(
         f"{package_name}.requests",
-        local_h5_root / "requests.py",
+        build_outputs_root / "requests.py",
     )
     return {
         "module": requests_module,

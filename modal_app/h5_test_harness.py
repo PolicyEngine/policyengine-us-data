@@ -259,7 +259,7 @@ def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
     from policyengine_us_data.calibration.publish_local_area import (
         compute_input_fingerprint,
     )
-    from policyengine_us_data.calibration.local_h5.geography_loader import (
+    from policyengine_us_data.build_outputs.geography_loader import (
         CalibrationGeographyLoader,
     )
 

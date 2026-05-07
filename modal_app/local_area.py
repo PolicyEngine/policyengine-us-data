@@ -29,11 +29,11 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
-from policyengine_us_data.calibration.local_h5.fingerprinting import (  # noqa: E402
+from policyengine_us_data.build_outputs.fingerprinting import (  # noqa: E402
     FingerprintingService,
     PublishingInputBundle,
 )
-from policyengine_us_data.calibration.local_h5.partitioning import (  # noqa: E402
+from policyengine_us_data.build_outputs.partitioning import (  # noqa: E402
     partition_weighted_work_items,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
@@ -366,7 +366,7 @@ def get_version() -> str:
         stability="moving",
         pathways=["local_h5"],
         api_refs=[
-            "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle"
+            "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle"
         ],
         validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
     )
@@ -413,7 +413,7 @@ def _build_publishing_input_bundle(
         stability="moving",
         pathways=["local_h5"],
         api_refs=[
-            "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+            "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService"
         ],
         validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
     )
@@ -455,7 +455,7 @@ def _resolve_scope_fingerprint(
         stability="moving",
         pathways=["local_h5"],
         api_refs=[
-            "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items"
+            "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
         ],
         validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
     )

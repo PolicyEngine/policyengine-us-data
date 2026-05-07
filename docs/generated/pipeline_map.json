@@ -92,7 +92,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle",
+        "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
         "modal_app.local_area._build_publishing_input_bundle"
       ],
       "description": "Assemble artifact paths and run metadata for scope fingerprinting.",
@@ -111,7 +111,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader"
+        "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader"
       ],
       "description": "Resolve and load saved, package-backed, or legacy calibration geography artifacts.",
       "id": "calibration_geography_loader",
@@ -120,16 +120,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py",
+      "source_file": "policyengine_us_data/build_outputs/geography_loader.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.weights.CloneWeightMatrix"
+        "policyengine_us_data.build_outputs.weights.CloneWeightMatrix"
       ],
       "artifacts_in": [
         "calibration_weights.npy",
@@ -142,11 +142,11 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/weights.py",
+      "source_file": "policyengine_us_data/build_outputs/weights.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_weights.py"
+        "uv run pytest tests/unit/build_outputs/test_weights.py"
       ]
     },
     {
@@ -177,7 +177,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
         "modal_app.local_area.partition_work"
       ],
       "description": "Compatibility wrapper for local H5 weighted work partitioning.",
@@ -238,7 +238,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.geography_loader.CalibrationGeographyLoader",
+        "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
         "policyengine_us_data.calibration.publish_local_area.load_calibration_geography"
       ],
       "artifacts_in": [
@@ -257,12 +257,12 @@
       "stability": "moving",
       "status": "legacy",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.area_catalog.USAreaCatalog"
+        "policyengine_us_data.build_outputs.area_catalog.USAreaCatalog"
       ],
       "description": "Build typed local H5 requests from US states, districts, and supported city rules.",
       "id": "local_h5_area_catalog",
@@ -271,16 +271,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/area_catalog.py",
+      "source_file": "policyengine_us_data/build_outputs/area_catalog.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_area_catalog.py"
+        "uv run pytest tests/unit/build_outputs/test_area_catalog.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.requests.AreaFilter"
+        "policyengine_us_data.build_outputs.requests.AreaFilter"
       ],
       "description": "Typed geography predicate for local H5 output selection.",
       "id": "local_h5_area_filter",
@@ -289,16 +289,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/requests.py",
+      "source_file": "policyengine_us_data/build_outputs/requests.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+        "uv run pytest tests/unit/build_outputs/test_requests.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.requests.AreaBuildRequest"
+        "policyengine_us_data.build_outputs.requests.AreaBuildRequest"
       ],
       "description": "Typed request contract for one national, state, district, city, or custom H5 output.",
       "id": "local_h5_area_request",
@@ -307,16 +307,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/requests.py",
+      "source_file": "policyengine_us_data/build_outputs/requests.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_requests.py"
+        "uv run pytest tests/unit/build_outputs/test_requests.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.ArtifactIdentity"
+        "policyengine_us_data.build_outputs.fingerprinting.ArtifactIdentity"
       ],
       "description": "Stable content identity for one local H5 publication input artifact.",
       "id": "local_h5_artifact_identity",
@@ -325,16 +325,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "source_file": "policyengine_us_data/build_outputs/fingerprinting.py",
       "stability": "stable",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
+        "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
         "policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint"
       ],
       "description": "Compute a scope fingerprint for local H5 checkpoint and resume decisions.",
@@ -348,12 +348,12 @@
       "stability": "moving",
       "status": "legacy",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items"
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
       ],
       "description": "Assign weighted area work items to worker batches using longest-processing-time scheduling.",
       "id": "local_h5_partition",
@@ -362,16 +362,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/partitioning.py",
+      "source_file": "policyengine_us_data/build_outputs/partitioning.py",
       "stability": "stable",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_partitioning.py"
+        "uv run pytest tests/unit/build_outputs/test_partitioning.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle"
+        "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle"
       ],
       "description": "Input artifact and run metadata bundle for one local H5 publish scope.",
       "id": "local_h5_publishing_input_bundle",
@@ -380,13 +380,13 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "source_file": "policyengine_us_data/build_outputs/fingerprinting.py",
       "stability": "moving",
       "status": "current"
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.geography_loader.ResolvedGeographySource"
+        "policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource"
       ],
       "description": "Resolved physical source used to recover exact calibration geography.",
       "id": "local_h5_resolved_geography_source",
@@ -395,16 +395,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/geography_loader.py",
+      "source_file": "policyengine_us_data/build_outputs/geography_loader.py",
       "stability": "stable",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_geography_loader.py"
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService"
+        "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService"
       ],
       "description": "Build traceability bundles and deterministic scope fingerprints for local H5 publication.",
       "id": "local_h5_traceability",
@@ -413,16 +413,16 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "source_file": "policyengine_us_data/build_outputs/fingerprinting.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
       ]
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.TraceabilityBundle"
+        "policyengine_us_data.build_outputs.fingerprinting.TraceabilityBundle"
       ],
       "description": "Provenance and resumability material for one local H5 publish scope.",
       "id": "local_h5_traceability_bundle",
@@ -431,11 +431,11 @@
       "pathways": [
         "local_h5"
       ],
-      "source_file": "policyengine_us_data/calibration/local_h5/fingerprinting.py",
+      "source_file": "policyengine_us_data/build_outputs/fingerprinting.py",
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
       ]
     },
     {
@@ -461,7 +461,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
+        "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
         "modal_app.local_area._resolve_scope_fingerprint"
       ],
       "description": "Compute the regional or national local H5 fingerprint from publishing inputs.",
@@ -635,11 +635,12 @@
   ],
   "canonical_stages": [
     {
-      "description": "Produce raw, base, extended, enhanced, stratified, and source-imputed datasets.",
+      "description": "Produce raw, base, extended, enhanced, stratified, source-imputed, and staged base datasets.",
       "id": "1_build_datasets",
       "label": "Stage 1",
       "manifest_step_ids": [
-        "01_build_datasets"
+        "01_build_datasets",
+        "04_stage_base_datasets"
       ],
       "title": "Build Datasets"
     },
@@ -663,13 +664,12 @@
       "title": "Fit Weights"
     },
     {
-      "description": "Build local-area and national H5 outputs, stage base datasets, and upload diagnostics.",
+      "description": "Build local-area and national H5 outputs and upload diagnostics.",
       "id": "4_build_outputs",
       "label": "Stage 4",
       "manifest_step_ids": [
         "04_build_h5_regional",
         "04_build_h5_national",
-        "04_stage_base_datasets",
         "04_upload_diagnostics"
       ],
       "title": "Build Outputs"
@@ -2444,6 +2444,82 @@
       "title": "Substage 1f: Source Imputation (ACS + SIPP + SCF)"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
+      "description": "Stage base source-imputed datasets and policy database artifacts for the run",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_source_imputed_s1g",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_policy_db_s1g",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "stage_base_datasets",
+          "target": "out_staged_base_s1g"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "uploaded to",
+          "source": "out_staged_base_s1g",
+          "target": "hf_staging_base_s1g"
+        }
+      ],
+      "groups": [],
+      "id": "1g_stage_base_datasets",
+      "label": "1g",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_stage_base_datasets"
+      ],
+      "nodes": [
+        {
+          "description": "Base dataset artifacts copied into the pipeline volume",
+          "id": "in_source_imputed_s1g",
+          "label": "source_imputed_*.h5",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Policy target database copied into the pipeline volume",
+          "id": "in_policy_db_s1g",
+          "label": "policy_data.db",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Run-scoped staging prefix for base datasets",
+          "id": "hf_staging_base_s1g",
+          "label": "HuggingFace staging/{run_id}",
+          "node_type": "external"
+        },
+        {
+          "description": "Record base source-imputed datasets and policy database artifacts as staged run outputs.",
+          "id": "stage_base_datasets",
+          "label": "stage base datasets",
+          "node_type": "process",
+          "source_file": "modal_app/pipeline.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_pipeline.py"
+          ]
+        },
+        {
+          "description": "Base artifacts uploaded to staging paths for later promotion",
+          "id": "out_staged_base_s1g",
+          "label": "staged base datasets",
+          "node_type": "artifact"
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 1g: Stage Base Datasets"
+    },
+    {
       "canonical_stage_id": "2_build_calibration_package",
       "canonical_stage_title": "Build Calibration Package",
       "description": "Build sparse calibration matrix (targets x households x clones)",
@@ -3575,82 +3651,6 @@
       "stability": "moving",
       "status": "current",
       "title": "Substage 4b: Local Area H5 - National"
-    },
-    {
-      "canonical_stage_id": "4_build_outputs",
-      "canonical_stage_title": "Build Outputs",
-      "description": "Stage base source-imputed datasets and policy database artifacts for the run",
-      "edges": [
-        {
-          "edge_type": "data_flow",
-          "source": "in_source_imputed_s4c",
-          "target": "stage_base_datasets"
-        },
-        {
-          "edge_type": "data_flow",
-          "source": "in_policy_db_s4c",
-          "target": "stage_base_datasets"
-        },
-        {
-          "edge_type": "produces_artifact",
-          "source": "stage_base_datasets",
-          "target": "out_staged_base_s4c"
-        },
-        {
-          "edge_type": "data_flow",
-          "label": "uploaded to",
-          "source": "out_staged_base_s4c",
-          "target": "hf_staging_base_s4c"
-        }
-      ],
-      "groups": [],
-      "id": "4c_stage_base_datasets",
-      "label": "4c",
-      "legacy_stage_id": "7",
-      "manifest_step_ids": [
-        "04_stage_base_datasets"
-      ],
-      "nodes": [
-        {
-          "description": "Base dataset artifacts copied into the pipeline volume",
-          "id": "in_source_imputed_s4c",
-          "label": "source_imputed_*.h5",
-          "node_type": "artifact"
-        },
-        {
-          "description": "Policy target database copied into the pipeline volume",
-          "id": "in_policy_db_s4c",
-          "label": "policy_data.db",
-          "node_type": "artifact"
-        },
-        {
-          "description": "Run-scoped staging prefix for base datasets",
-          "id": "hf_staging_base_s4c",
-          "label": "HuggingFace staging/{run_id}",
-          "node_type": "external"
-        },
-        {
-          "description": "Record base source-imputed datasets and policy database artifacts as staged run outputs.",
-          "id": "stage_base_datasets",
-          "label": "stage base datasets",
-          "node_type": "process",
-          "source_file": "modal_app/pipeline.py",
-          "stability": "moving",
-          "status": "current",
-          "validation_commands": [
-            "uv run pytest tests/unit/test_pipeline.py"
-          ]
-        },
-        {
-          "description": "Base artifacts uploaded to staging paths for later promotion",
-          "id": "out_staged_base_s4c",
-          "label": "staged base datasets",
-          "node_type": "artifact"
-        }
-      ],
-      "stability": "moving",
-      "status": "current",
-      "title": "Substage 4c: Stage Base Datasets"
     },
     {
       "canonical_stage_id": "4_build_outputs",

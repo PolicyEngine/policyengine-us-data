@@ -8,11 +8,12 @@ Face staging uses it as the staging namespace.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 from dataclasses import asdict, dataclass
 from typing import Mapping
+
+from policyengine_us_data.utils.canonical_json import canonical_json_dumps
 
 
 RUN_ID_ENV = "US_DATA_RUN_ID"
@@ -207,7 +208,7 @@ class RunContext:
         }
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+        return canonical_json_dumps(self.to_dict())
 
     def export_env(self) -> dict[str, str]:
         """Return environment variables representing this context."""

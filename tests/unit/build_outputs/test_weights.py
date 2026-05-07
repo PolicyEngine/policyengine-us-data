@@ -1,9 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.unit.calibration.fixtures.test_local_h5_weights import (
-    load_weights_exports,
-)
+from tests.support.build_outputs.weights import load_weights_exports
 
 
 exports = load_weights_exports()

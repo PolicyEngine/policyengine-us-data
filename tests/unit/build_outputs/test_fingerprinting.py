@@ -1,4 +1,4 @@
-from tests.unit.calibration.fixtures.test_local_h5_fingerprinting import (
+from tests.support.build_outputs.fingerprinting import (
     load_fingerprinting_exports,
     make_publishing_inputs,
 )

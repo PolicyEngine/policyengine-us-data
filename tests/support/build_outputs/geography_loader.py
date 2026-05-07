@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_geography_loader.py``."""
+"""Fixture helpers for build-output geography loader tests."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def load_geography_loader_exports():
         return _GEOGRAPHY_LOADER_EXPORTS
 
     module = importlib.import_module(
-        "policyengine_us_data.calibration.local_h5.geography_loader"
+        "policyengine_us_data.build_outputs.geography_loader"
     )
     _GEOGRAPHY_LOADER_EXPORTS = {
         "module": module,

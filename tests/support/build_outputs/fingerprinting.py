@@ -1,4 +1,4 @@
-"""Fixture helpers for ``test_local_h5_fingerprinting.py``."""
+"""Fixture helpers for build-output fingerprinting tests."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from tests.unit.calibration.fixtures.test_local_h5_geography_loader import (
+from tests.support.build_outputs.geography_loader import (
     write_saved_geography,
 )
 
@@ -26,7 +26,7 @@ def load_fingerprinting_exports():
         return _FINGERPRINTING_EXPORTS
 
     module = importlib.import_module(
-        "policyengine_us_data.calibration.local_h5.fingerprinting"
+        "policyengine_us_data.build_outputs.fingerprinting"
     )
     _FINGERPRINTING_EXPORTS = {
         "module": module,

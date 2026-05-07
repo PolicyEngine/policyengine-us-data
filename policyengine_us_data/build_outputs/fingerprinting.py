@@ -32,7 +32,7 @@ __all__ = [
     label="PublishingInputBundle",
     node_type="library",
     description="Input artifact and run metadata bundle for one local H5 publish scope.",
-    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    source_file="policyengine_us_data/build_outputs/fingerprinting.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
@@ -79,12 +79,12 @@ class PublishingInputBundle:
     label="ArtifactIdentity",
     node_type="library",
     description="Stable content identity for one local H5 publication input artifact.",
-    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    source_file="policyengine_us_data/build_outputs/fingerprinting.py",
     status="current",
     stability="stable",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 @dataclass(frozen=True)
@@ -114,12 +114,12 @@ class ArtifactIdentity:
     label="TraceabilityBundle",
     node_type="library",
     description="Provenance and resumability material for one local H5 publish scope.",
-    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    source_file="policyengine_us_data/build_outputs/fingerprinting.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 @dataclass(frozen=True)
@@ -189,12 +189,12 @@ class TraceabilityBundle:
     label="FingerprintingService",
     node_type="library",
     description="Build traceability bundles and deterministic scope fingerprints for local H5 publication.",
-    source_file="policyengine_us_data/calibration/local_h5/fingerprinting.py",
+    source_file="policyengine_us_data/build_outputs/fingerprinting.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_fingerprinting.py"
+        "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
     ],
 )
 class FingerprintingService:

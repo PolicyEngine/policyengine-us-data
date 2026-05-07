@@ -1,4 +1,6 @@
 import importlib
+import json
+import os
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -67,6 +69,19 @@ def _load_data_upload_module():
 def _track_run_context_env(monkeypatch):
     for key in _RUN_CONTEXT_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _restore_run_context_env():
+    original = {
+        key: os.environ[key] for key in _RUN_CONTEXT_ENV_KEYS if key in os.environ
+    }
+    yield
+    for key in _RUN_CONTEXT_ENV_KEYS:
+        if key in original:
+            os.environ[key] = original[key]
+        else:
+            os.environ.pop(key, None)
 
 
 def _install_fake_hf(monkeypatch, tmp_path):
@@ -422,6 +437,16 @@ def test_promote_full_release_orders_full_release_operations(
     )
     monkeypatch.setattr(
         data_upload,
+        "upload_release_completion_marker_to_hf",
+        lambda **kwargs: (
+            calls.append(("release_complete", kwargs.get("create_tag")))
+            or {
+                "marker_path": "releases/1.73.0/release-complete.json",
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
         "cleanup_staging_hf",
         lambda paths, **kwargs: calls.append("cleanup_staging") or len(paths),
     )
@@ -443,6 +468,7 @@ def test_promote_full_release_orders_full_release_operations(
         "upload_gcs",
         "release_manifest",
         ("version_manifest", "run-123"),
+        ("release_complete", True),
         "cleanup_staging",
     ]
     assert data_upload.os.environ["US_DATA_RUN_ID"] == "run-123"
@@ -450,9 +476,12 @@ def test_promote_full_release_orders_full_release_operations(
     assert result["hf_promoted"] == 3
     assert result["gcs_uploaded"] == 3
     assert result["release_manifest_artifacts"] == 3
+    assert result["release_completion_marker"] == (
+        "releases/1.73.0/release-complete.json"
+    )
 
 
-def test_promote_full_release_can_finish_registry_after_finalized_release(
+def test_promote_full_release_verifies_marker_after_finalized_release(
     monkeypatch,
     tmp_path,
 ):
@@ -476,13 +505,21 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     monkeypatch.setattr(
         data_upload,
         "upload_final_version_manifest",
-        lambda **kwargs: calls.append(
-            (
-                "version_manifest",
-                kwargs["released_paths"],
-                kwargs.get("run_id"),
-            )
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("already-finalized retries must not mutate registry state")
         ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_release_completion_marker_to_hf",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("already-finalized retries must not write release markers")
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "release_completion_marker_exists_on_hf",
+        lambda **kwargs: calls.append(("check_marker", kwargs["version"])) or True,
     )
     monkeypatch.setattr(
         data_upload,
@@ -501,6 +538,205 @@ def test_promote_full_release_can_finish_registry_after_finalized_release(
     assert result["hf_promoted"] == 0
     assert result["gcs_uploaded"] == 0
     assert calls == [
-        ("version_manifest", ["states/AL.h5"], "run-123"),
+        ("check_marker", "1.73.0"),
         ("cleanup", ["states/AL.h5"]),
     ]
+    assert result["release_completion_marker"] == (
+        "releases/1.73.0/release-complete.json"
+    )
+
+
+def test_promote_full_release_rejects_finalized_release_without_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    files = _make_files(tmp_path, ["states/AL.h5"])
+
+    monkeypatch.setattr(
+        data_upload,
+        "get_matching_finalized_release_manifest",
+        lambda *args, **kwargs: {"artifacts": {"states/AL": {"path": "states/AL.h5"}}},
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "release_completion_marker_exists_on_hf",
+        lambda **kwargs: False,
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_final_version_manifest",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("missing marker repair must be manual")
+        ),
+    )
+    monkeypatch.setattr(
+        data_upload,
+        "upload_release_completion_marker_to_hf",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("missing marker repair must be manual")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="repair or migrate this release manually"):
+        data_upload.promote_full_release_from_staging(
+            rel_paths=["states/AL.h5"],
+            version="1.73.0",
+            run_id="run-123",
+            files_with_paths=files,
+        )
+
+
+def test_upload_release_completion_marker_requires_release_paths(monkeypatch):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(
+        list_repo_files=lambda **kwargs: [
+            "states/AL.h5",
+            "release_manifest.json",
+            "releases/1.73.0/release_manifest.json",
+            "trace.tro.jsonld",
+            "releases/1.73.0/trace.tro.jsonld",
+            "version_manifest.json",
+            "calibration/runs/run-123/diagnostics/validation_summary.json",
+        ],
+        repo_info=lambda **kwargs: SimpleNamespace(sha="before"),
+        create_tag=lambda **kwargs: None,
+    )
+    commit_operations = []
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+    monkeypatch.setattr(
+        data_upload,
+        "hf_create_commit_with_retry",
+        lambda **kwargs: (
+            commit_operations.extend(kwargs["operations"])
+            or SimpleNamespace(oid="after")
+        ),
+    )
+
+    marker = data_upload.upload_release_completion_marker_to_hf(
+        version="1.73.0",
+        run_id="run-123",
+        released_paths=["states/AL.h5"],
+        expected_paths=["states/AL.h5"],
+        release_manifest={
+            "artifacts": {
+                "states/AL": {
+                    "path": "states/AL.h5",
+                    "sha256": "abc123",
+                }
+            }
+        },
+        promoted_hf=1,
+        uploaded_gcs=1,
+        create_tag=True,
+    )
+
+    assert marker["status"] == "complete"
+    assert marker["marker_path"] == "releases/1.73.0/release-complete.json"
+    assert marker["required_paths"]["validation_reports"] == [
+        "calibration/runs/run-123/diagnostics/validation_summary.json"
+    ]
+    assert commit_operations[0].path_in_repo == (
+        "releases/1.73.0/release-complete.json"
+    )
+
+
+def test_upload_release_completion_marker_fails_without_validation_report(
+    monkeypatch,
+):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(
+        list_repo_files=lambda **kwargs: [
+            "states/AL.h5",
+            "release_manifest.json",
+            "releases/1.73.0/release_manifest.json",
+            "trace.tro.jsonld",
+            "releases/1.73.0/trace.tro.jsonld",
+            "version_manifest.json",
+        ]
+    )
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+
+    with pytest.raises(FileNotFoundError, match="validation report"):
+        data_upload.upload_release_completion_marker_to_hf(
+            version="1.73.0",
+            run_id="run-123",
+            released_paths=["states/AL.h5"],
+            expected_paths=["states/AL.h5"],
+            release_manifest={
+                "artifacts": {
+                    "states/AL": {
+                        "path": "states/AL.h5",
+                        "sha256": "abc123",
+                    }
+                }
+            },
+        )
+
+
+def test_release_completion_marker_exists_on_hf_validates_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    marker = data_upload.build_release_completion_marker(
+        version="1.73.0",
+        run_id="run-123",
+        hf_repo_name="policyengine/policyengine-us-data",
+        hf_repo_type="model",
+        release_manifest={
+            "artifacts": {
+                "states/AL": {
+                    "path": "states/AL.h5",
+                    "sha256": "abc123",
+                }
+            }
+        },
+        released_paths=["states/AL.h5"],
+        validation_report_paths=[
+            "calibration/runs/run-123/diagnostics/validation_summary.json"
+        ],
+        promoted_hf=1,
+        uploaded_gcs=1,
+        created_at="2026-05-06T00:00:00Z",
+    )
+    marker_file = tmp_path / "release-complete.json"
+    marker_file.write_text(json.dumps(marker), encoding="utf-8")
+    downloads = []
+
+    def fake_hf_hub_download(**kwargs):
+        downloads.append(kwargs)
+        return str(marker_file)
+
+    monkeypatch.setattr(data_upload, "hf_hub_download", fake_hf_hub_download)
+
+    assert data_upload.release_completion_marker_exists_on_hf(version="1.73.0")
+    assert downloads[0]["revision"] == "1.73.0"
+
+
+def test_release_completion_marker_exists_on_hf_rejects_invalid_marker(
+    monkeypatch,
+    tmp_path,
+):
+    data_upload = _load_data_upload_module()
+    marker_file = tmp_path / "release-complete.json"
+    marker_file.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "status": "complete",
+                "version": "1.72.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        data_upload,
+        "hf_hub_download",
+        lambda **kwargs: str(marker_file),
+    )
+
+    assert not data_upload.release_completion_marker_exists_on_hf(version="1.73.0")

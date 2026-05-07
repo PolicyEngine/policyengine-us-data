@@ -66,7 +66,7 @@ The PR is valid only if the head repository is `PolicyEngine/policyengine-us-dat
 Six workflow files in `.github/workflows/`:
 
 - `pr.yaml` — fork check, lint, uv.lock freshness, towncrier fragment check, unit tests, smoke test, independent docs build, and quality guards. Integration tests trigger when files in `policyengine_us_data/`, `modal_app/`, or `tests/integration/` change. ~2–3 min for the unit path.
-- `push.yaml` — on push to main: either version-bump + PyPI publish (on `Update package version` commits), or a full Modal data build with integration tests (on everything else).
+- `push.yaml` — on push to main: functional commits create the Towncrier version-bump commit; `Update package version` commits publish PyPI, verify the package version is visible, then dispatch the full Modal data build from that exact commit.
 - `pipeline.yaml` — dispatch only, spawns the H5 generation pipeline on Modal with configurable GPU/epochs/workers.
 - `long_run_projection.yaml` — dispatch only, builds long-run CPS projection H5 files for explicit sampled years and can optionally upload them to a run-scoped Hugging Face staging prefix.
 - `local_area_publish.yaml` / `local_area_promote.yaml` — manual dispatch to build/stage local-area H5 files and promote a run-scoped US data release.

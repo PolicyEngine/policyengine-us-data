@@ -32,6 +32,13 @@ from policyengine_us_data.utils.release_manifest import (
     build_release_manifest,
     serialize_release_manifest,
 )
+from policyengine_us_data.utils.release_completion import (
+    VERSION_MANIFEST_PATH,
+    build_release_completion_marker,
+    release_completion_marker_path,
+    serialize_release_completion_marker,
+    validate_release_completion_marker,
+)
 from policyengine_us_data.utils.release_promotion import (
     FullReleasePromotionConfig,
     FullReleasePromotionDependencies,
@@ -64,6 +71,11 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
     "districts/": 435,
     "cities/": 1,
 }
+VALIDATION_REPORT_FILENAMES = (
+    "validation_summary.json",
+    "validation_results.csv",
+    "national_validation.txt",
+)
 
 
 def _resolve_staging_run_id(run_id: str = "") -> str:
@@ -1346,6 +1358,171 @@ def upload_final_version_manifest(
     )
 
 
+def _validation_report_candidates(run_id: str) -> list[str]:
+    return [
+        f"calibration/runs/{run_id}/diagnostics/{filename}"
+        for filename in VALIDATION_REPORT_FILENAMES
+    ]
+
+
+def _resolve_validation_report_paths(
+    *,
+    repo_files: set[str],
+    run_id: str,
+    validation_report_paths: Optional[Sequence[str]],
+) -> list[str]:
+    if validation_report_paths is not None:
+        return sorted(validation_report_paths)
+    if not run_id:
+        return []
+    return sorted(
+        path for path in _validation_report_candidates(run_id) if path in repo_files
+    )
+
+
+def _missing_release_completion_paths(
+    *,
+    repo_files: set[str],
+    version: str,
+    expected_paths: Sequence[str],
+    validation_report_paths: Sequence[str],
+) -> list[str]:
+    required_paths = [
+        *expected_paths,
+        RELEASE_MANIFEST_PATH,
+        f"releases/{version}/{RELEASE_MANIFEST_PATH}",
+        TRACE_TRO_FILENAME,
+        f"releases/{version}/{TRACE_TRO_FILENAME}",
+        VERSION_MANIFEST_PATH,
+        *validation_report_paths,
+    ]
+    return sorted(path for path in required_paths if path not in repo_files)
+
+
+def upload_release_completion_marker_to_hf(
+    *,
+    version: str,
+    run_id: str,
+    released_paths: Sequence[str],
+    expected_paths: Sequence[str],
+    release_manifest: Mapping[str, Any],
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+    promoted_hf: int = 0,
+    uploaded_gcs: int = 0,
+    create_tag: bool = False,
+    validation_report_paths: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """Write the final release completion marker after all release writes."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    api = HfApi()
+    repo_files = set(
+        api.list_repo_files(
+            repo_id=hf_repo_name,
+            repo_type=hf_repo_type,
+            token=token,
+        )
+    )
+    resolved_validation_report_paths = _resolve_validation_report_paths(
+        repo_files=repo_files,
+        run_id=run_id,
+        validation_report_paths=validation_report_paths,
+    )
+    missing_paths = _missing_release_completion_paths(
+        repo_files=repo_files,
+        version=version,
+        expected_paths=expected_paths,
+        validation_report_paths=resolved_validation_report_paths,
+    )
+    if run_id and not resolved_validation_report_paths:
+        missing_paths.append(
+            f"calibration/runs/{run_id}/diagnostics/<validation report>"
+        )
+    if missing_paths:
+        raise FileNotFoundError(
+            "Cannot mark release complete; missing required release paths: "
+            + ", ".join(sorted(missing_paths))
+        )
+
+    marker = build_release_completion_marker(
+        version=version,
+        run_id=run_id,
+        hf_repo_name=hf_repo_name,
+        hf_repo_type=hf_repo_type,
+        release_manifest=release_manifest,
+        released_paths=released_paths,
+        validation_report_paths=resolved_validation_report_paths,
+        promoted_hf=promoted_hf,
+        uploaded_gcs=uploaded_gcs,
+    )
+    parent_commit = get_repo_head_revision(
+        api=api,
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+    )
+    commit_info = hf_create_commit_with_retry(
+        api=api,
+        operations=[
+            CommitOperationAdd(
+                path_in_repo=release_completion_marker_path(version),
+                path_or_fileobj=BytesIO(
+                    serialize_release_completion_marker(marker),
+                ),
+            )
+        ],
+        repo_id=hf_repo_name,
+        repo_type=hf_repo_type,
+        token=token,
+        commit_message=f"Mark release {version} complete",
+        parent_commit=parent_commit,
+    )
+    if create_tag:
+        create_release_tag(
+            version=version,
+            revision=commit_info.oid,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+            token=token,
+            api=api,
+        )
+    return marker
+
+
+def release_completion_marker_exists_on_hf(
+    *,
+    version: str,
+    hf_repo_name: str = "policyengine/policyengine-us-data",
+    hf_repo_type: str = "model",
+) -> bool:
+    """Return True only for a valid marker at the version tag."""
+    token = os.environ.get("HUGGING_FACE_TOKEN")
+    try:
+        local_path = hf_hub_download(
+            repo_id=hf_repo_name,
+            filename=release_completion_marker_path(version),
+            repo_type=hf_repo_type,
+            revision=version,
+            token=token,
+        )
+        with open(local_path, encoding="utf-8") as marker_file:
+            marker = json.load(marker_file)
+        validate_release_completion_marker(
+            marker,
+            version=version,
+            hf_repo_name=hf_repo_name,
+            hf_repo_type=hf_repo_type,
+        )
+    except (
+        EntryNotFoundError,
+        RevisionNotFoundError,
+        ValueError,
+        json.JSONDecodeError,
+    ):
+        return False
+    return True
+
+
 def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
     return FullReleasePromotionDependencies(
         dedupe_preserving_order=_dedupe_preserving_order,
@@ -1357,6 +1534,8 @@ def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
         upload_from_hf_staging_to_gcs=upload_from_hf_staging_to_gcs,
         publish_release_manifest_to_hf=publish_release_manifest_to_hf,
         upload_final_version_manifest=upload_final_version_manifest,
+        upload_release_completion_marker=upload_release_completion_marker_to_hf,
+        release_completion_marker_exists=release_completion_marker_exists_on_hf,
         cleanup_staging_hf=cleanup_staging_hf,
     )
 

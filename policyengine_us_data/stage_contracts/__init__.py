@@ -31,6 +31,11 @@ from .constants import (
     ValidationReportStatus,
 )
 from .contracts import StageContract
+from .dataset_build import (
+    DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
+    DATASET_BUILD_OUTPUT_CONTRACT_TYPE,
+    build_dataset_build_output_contract,
+)
 from .diagnostics import DiagnosticRef
 from .execution import ExecutionRecord, ReuseSummary
 from .fingerprints import (
@@ -69,6 +74,8 @@ __all__ = [
     "ArtifactRef",
     "CANONICAL_STAGE_IDS",
     "CONTRACT_TYPE_BY_STAGE_ID",
+    "DATASET_BUILD_OUTPUT_CONTRACT_FILENAME",
+    "DATASET_BUILD_OUTPUT_CONTRACT_TYPE",
     "DiagnosticRef",
     "DiagnosticSeverity",
     "ExecutionRecord",
@@ -90,6 +97,7 @@ __all__ = [
     "ValidationFindingStatus",
     "ValidationReport",
     "ValidationReportStatus",
+    "build_dataset_build_output_contract",
     "canonicalize_for_fingerprint",
     "contract_from_json",
     "contract_to_json",

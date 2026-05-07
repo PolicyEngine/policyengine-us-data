@@ -1,6 +1,9 @@
 import importlib
 import sys
+from datetime import datetime, timedelta, timezone
 from types import ModuleType, SimpleNamespace
+
+from policyengine_us_data.stage_contracts import read_contract
 
 
 def _load_data_build_module():
@@ -220,3 +223,57 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
             None,
         ),
     ]
+
+
+def test_write_dataset_build_contract_writes_stage_1_handoff(tmp_path):
+    data_build = _load_data_build_module()
+    artifacts = {
+        "acs_2022.h5": b"acs",
+        "irs_puf_2015.h5": b"irs",
+        "cps_2024.h5": b"cps",
+        "puf_2024.h5": b"puf",
+        "extended_cps_2024.h5": b"extended",
+        "stratified_extended_cps_2024.h5": b"stratified",
+        "source_imputed_stratified_extended_cps_2024.h5": b"source-year",
+        "source_imputed_stratified_extended_cps.h5": b"source-alias",
+        "policy_data.db": b"sqlite",
+        "build_log.txt": b"log",
+        "data_build_checkpoint_stats.json": b"{}",
+    }
+    for filename, payload in artifacts.items():
+        (tmp_path / filename).write_bytes(payload)
+
+    contract = data_build.write_dataset_build_contract(
+        artifacts_dir=tmp_path,
+        run_id="run-123",
+        code_sha="abc123",
+        checkpoint_stats={
+            "expected_outputs": 2,
+            "valid_reused_outputs": 0,
+            "recomputed_outputs": 2,
+            "invalid_outputs": 0,
+        },
+        started_at="2026-05-08T12:00:00Z",
+        completed_at="2026-05-08T12:00:30Z",
+        duration_s=30.0,
+        upload_requested=False,
+        stage_only=True,
+        skip_enhanced_cps=True,
+    )
+
+    contract_path = tmp_path / "dataset_build_output.json"
+    assert contract_path.exists()
+    assert read_contract(contract_path) == contract
+    assert contract.stage_id == "1_build_datasets"
+    assert contract.parameters["stage_only"] is True
+
+
+def test_utc_timestamp_renders_zulu_time_for_build_log():
+    data_build = _load_data_build_module()
+    budapest_summer = timezone(timedelta(hours=2))
+
+    rendered = data_build._utc_timestamp(
+        datetime(2026, 7, 1, 12, 30, 45, tzinfo=budapest_summer)
+    )
+
+    assert rendered == "2026-07-01T10:30:45Z"

@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -20,8 +21,15 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import cpu_image as image  # noqa: E402
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION  # noqa: E402
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
+from policyengine_us_data.stage_contracts import (  # noqa: E402
+    DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
+    StageContract,
+    build_dataset_build_output_contract,
+    write_contract,
+)
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     resolve_run_id,
 )
@@ -134,6 +142,17 @@ VALIDATION_MODULES = [
 def _python_cmd(*args: str) -> list[str]:
     """Build a command that uses the current interpreter."""
     return [sys.executable, *args]
+
+
+def _utc_timestamp(value: datetime | None = None) -> str:
+    """Render a UTC timestamp for persisted pipeline metadata."""
+    value = value or datetime.now(timezone.utc)
+    return (
+        value.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def setup_gcp_credentials():
@@ -473,6 +492,40 @@ def run_tests_with_checkpoints(
         print(f"Checkpointed: {module} passed")
 
 
+def write_dataset_build_contract(
+    *,
+    artifacts_dir: Path,
+    run_id: str,
+    code_sha: str,
+    checkpoint_stats: Mapping[str, int],
+    started_at: str | None,
+    completed_at: str,
+    duration_s: float | None,
+    upload_requested: bool,
+    stage_only: bool,
+    skip_enhanced_cps: bool,
+) -> StageContract:
+    """Write the Stage 1 semantic handoff contract next to copied artifacts."""
+    contract = build_dataset_build_output_contract(
+        artifacts_dir=artifacts_dir,
+        run_id=run_id,
+        code_sha=code_sha,
+        package_version=DATA_PACKAGE_VERSION,
+        checkpoint_stats=checkpoint_stats,
+        started_at=started_at,
+        completed_at=completed_at,
+        duration_s=duration_s,
+        upload_requested=upload_requested,
+        stage_only=stage_only,
+        skip_enhanced_cps=skip_enhanced_cps,
+    )
+    write_contract(
+        contract,
+        artifacts_dir / DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
+    )
+    return contract
+
+
 @app.function(
     image=image,
     secrets=[hf_secret, gcp_secret],
@@ -559,13 +612,14 @@ def build_datasets(
     commit = get_current_commit()
     log_path = Path("build_log.txt")
     log_file = open(log_path, "w")
-    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    started_at_dt = datetime.now(timezone.utc)
+    started = _utc_timestamp(started_at_dt)
     log_file.write(
         f"{'=' * 40}\n"
         f" Data Build Log\n"
         f" Branch:  {branch}\n"
         f" Commit:  {commit[:8]}\n"
-        f" Started: {started}\n"
+        f" Started (UTC): {started}\n"
         f"{'=' * 40}\n"
     )
     log_file.flush()
@@ -787,9 +841,23 @@ def build_datasets(
         )
         print("  Copied calibration_weights.npy")
     shutil.copy2(log_path, artifacts_dir / "build_log.txt")
+    checkpoint_snapshot = checkpoint_stats.snapshot()
     with open(artifacts_dir / "data_build_checkpoint_stats.json", "w") as f:
-        json.dump(checkpoint_stats.snapshot(), f, indent=2, sort_keys=True)
+        json.dump(checkpoint_snapshot, f, indent=2, sort_keys=True)
     log_file.close()
+    completed_at_dt = datetime.now(timezone.utc)
+    write_dataset_build_contract(
+        artifacts_dir=artifacts_dir,
+        run_id=run_id,
+        code_sha=commit,
+        checkpoint_stats=checkpoint_snapshot,
+        started_at=started,
+        completed_at=_utc_timestamp(completed_at_dt),
+        duration_s=(completed_at_dt - started_at_dt).total_seconds(),
+        upload_requested=upload,
+        stage_only=stage_only,
+        skip_enhanced_cps=skip_enhanced_cps,
+    )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
 

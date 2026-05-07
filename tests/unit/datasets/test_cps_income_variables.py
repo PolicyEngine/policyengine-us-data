@@ -9,6 +9,7 @@ def _minimal_person_income_frame() -> pd.DataFrame:
         "WSAL_VAL",
         "HRSWK",
         "A_HRS1",
+        "WKSWORK",
         "INT_VAL",
         "SEMP_VAL",
         "FRSE_VAL",
@@ -54,6 +55,7 @@ def _minimal_person_income_frame() -> pd.DataFrame:
     person = pd.DataFrame({column: [0.0, 0.0] for column in columns})
     person["A_AGE"] = [30, 45]
     person["LKWEEKS"] = [0, 0]
+    person["WKSWORK"] = [0, 0]
     return person
 
 

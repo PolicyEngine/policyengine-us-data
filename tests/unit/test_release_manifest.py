@@ -231,6 +231,13 @@ def test_build_release_manifest_validates_against_bundle_contract(tmp_path):
         tmp_path / "enhanced_cps_2024.h5",
         b"national-dataset",
     )
+    zenodo_mirror = {
+        "kind": "zenodo",
+        "url": "https://zenodo.org/records/10000000/files/enhanced_cps_2024.h5",
+        "doi": "10.5281/zenodo.10000000",
+        "sha256": _sha256(b"national-dataset"),
+        "deposited_at": "2026-04-21T12:00:00Z",
+    }
 
     manifest = build_release_manifest(
         files_with_repo_paths=[(dataset_path, "enhanced_cps_2024.h5")],
@@ -248,9 +255,105 @@ def test_build_release_manifest_validates_against_bundle_contract(tmp_path):
         pipeline_run_id="run-123",
         data_package_git_sha="cafebabe",
         created_at="2026-04-10T12:00:00Z",
+        preservation_mirrors_by_artifact={"enhanced_cps_2024": [zenodo_mirror]},
+        preservation_dois=["10.5281/zenodo.10000000"],
     )
 
     policyengine_bundles.DataReleaseManifest.model_validate(manifest)
+
+
+def test_build_release_manifest_omits_preservation_fields_when_not_provided(
+    tmp_path,
+):
+    national_path = _write_file(tmp_path / "enhanced_cps_2024.h5", b"x")
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[(national_path, "enhanced_cps_2024.h5")],
+        version="1.85.2",
+        repo_id="policyengine/policyengine-us-data",
+        created_at="2026-04-21T12:00:00Z",
+    )
+
+    assert "preservation_dois" not in manifest
+    assert "preservation_mirrors" not in manifest["artifacts"]["enhanced_cps_2024"]
+
+
+def test_build_release_manifest_records_preservation_mirrors_per_artifact(
+    tmp_path,
+):
+    national_path = _write_file(tmp_path / "enhanced_cps_2024.h5", b"x")
+    state_path = _write_file(tmp_path / "AL.h5", b"y")
+    zenodo_mirror = {
+        "kind": "zenodo",
+        "url": "https://zenodo.org/records/10000000/files/enhanced_cps_2024.h5",
+        "doi": "10.5281/zenodo.10000000",
+        "sha256": _sha256(b"x"),
+        "deposited_at": "2026-04-21T12:00:00Z",
+    }
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[
+            (national_path, "enhanced_cps_2024.h5"),
+            (state_path, "states/AL.h5"),
+        ],
+        version="1.85.2",
+        repo_id="policyengine/policyengine-us-data",
+        created_at="2026-04-21T12:00:00Z",
+        preservation_mirrors_by_artifact={"enhanced_cps_2024": [zenodo_mirror]},
+        preservation_dois=["10.5281/zenodo.10000000"],
+    )
+
+    assert manifest["preservation_dois"] == ["10.5281/zenodo.10000000"]
+    assert manifest["artifacts"]["enhanced_cps_2024"]["preservation_mirrors"] == [
+        zenodo_mirror
+    ]
+    assert "preservation_mirrors" not in manifest["artifacts"]["states/AL"]
+
+
+def test_build_release_manifest_skips_empty_mirror_lists(tmp_path):
+    national_path = _write_file(tmp_path / "enhanced_cps_2024.h5", b"x")
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[(national_path, "enhanced_cps_2024.h5")],
+        version="1.85.2",
+        repo_id="policyengine/policyengine-us-data",
+        created_at="2026-04-21T12:00:00Z",
+        preservation_mirrors_by_artifact={"enhanced_cps_2024": []},
+    )
+
+    assert "preservation_mirrors" not in manifest["artifacts"]["enhanced_cps_2024"]
+
+
+def test_build_release_manifest_drops_stale_preservation_dois(tmp_path):
+    national_path = _write_file(tmp_path / "enhanced_cps_2024.h5", b"x")
+    existing_manifest = {
+        "schema_version": RELEASE_MANIFEST_SCHEMA_VERSION,
+        "data_package": {
+            "name": "policyengine-us-data",
+            "version": "1.85.2",
+        },
+        "artifacts": {
+            "enhanced_cps_2024": {
+                "kind": "microdata",
+                "path": "enhanced_cps_2024.h5",
+                "repo_id": "policyengine/policyengine-us-data",
+                "revision": "1.85.2",
+                "sha256": "old",
+                "size_bytes": 1,
+            }
+        },
+        "preservation_dois": ["10.5281/zenodo.old"],
+    }
+
+    manifest = build_release_manifest(
+        files_with_repo_paths=[(national_path, "enhanced_cps_2024.h5")],
+        version="1.85.2",
+        repo_id="policyengine/policyengine-us-data",
+        existing_manifest=existing_manifest,
+        created_at="2026-04-21T12:00:00Z",
+    )
+
+    assert "preservation_dois" not in manifest
 
 
 def test_load_release_manifest_from_hf_uses_explicit_revision_when_requested(tmp_path):

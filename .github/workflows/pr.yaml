@@ -134,7 +134,7 @@ jobs:
       - name: Install bundle contract validator
         run: >
           uv pip install
-          "policyengine-bundles @ git+https://github.com/PolicyEngine/policyengine-bundles@8ae9f56fefcf89f69b8a7e3bc49928509c6207be"
+          "policyengine-bundles @ git+https://github.com/PolicyEngine/policyengine-bundles@e15d653b40926cfb39ddef9b445d1b0022da1b85"
       - name: Validate release manifest shape
         run: >
           uv run pytest

@@ -327,16 +327,26 @@ def _update_artifacts(
     files_with_repo_paths: Sequence[Tuple[Path | str, str]],
     repo_id: str,
     version: str,
+    preservation_mirrors_by_artifact: (
+        Mapping[str, Sequence[Mapping[str, Any]]] | None
+    ) = None,
 ) -> None:
     artifacts = manifest.setdefault("artifacts", {})
     for local_path, path_in_repo in files_with_repo_paths:
         local_path = Path(local_path)
-        artifacts[_artifact_key(path_in_repo)] = _artifact_entry(
+        artifact_key = _artifact_key(path_in_repo)
+        artifacts[artifact_key] = _artifact_entry(
             local_path=local_path,
             path_in_repo=path_in_repo,
             repo_id=repo_id,
             version=version,
         )
+        if preservation_mirrors_by_artifact:
+            mirrors = preservation_mirrors_by_artifact.get(artifact_key)
+            if mirrors:
+                artifacts[artifact_key]["preservation_mirrors"] = [
+                    dict(mirror) for mirror in mirrors
+                ]
 
 
 def _update_default_datasets(
@@ -369,6 +379,10 @@ def build_release_manifest(
     default_datasets: Optional[Mapping[str, str]] = None,
     created_at: str | None = None,
     additional_compatible_specifiers: Sequence[str] | None = None,
+    preservation_mirrors_by_artifact: Optional[
+        Mapping[str, Sequence[Mapping[str, Any]]]
+    ] = None,
+    preservation_dois: Optional[Sequence[str]] = None,
 ) -> Dict:
     manifest = _normalize_existing_manifest(
         existing_manifest,
@@ -415,8 +429,14 @@ def build_release_manifest(
         files_with_repo_paths=files_with_repo_paths,
         repo_id=repo_id,
         version=version,
+        preservation_mirrors_by_artifact=preservation_mirrors_by_artifact,
     )
     _update_default_datasets(manifest, default_datasets)
+
+    if preservation_dois:
+        manifest["preservation_dois"] = list(preservation_dois)
+    else:
+        manifest.pop("preservation_dois", None)
 
     return manifest
 

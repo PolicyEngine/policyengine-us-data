@@ -76,7 +76,9 @@ def _calculate_spm_thresholds_from_assigned_geography(
         load_cd_geoadj_values,
     )
     from policyengine_us_data.utils.spm import (
+        TENURE_CODE_MAP,
         calculate_spm_thresholds_with_geoadj,
+        geoadj_for_tenure,
     )
 
     spm_unit_ids = data["spm_unit_id"][time_period]
@@ -89,11 +91,7 @@ def _calculate_spm_thresholds_from_assigned_geography(
     )
 
     cd_geoadj_values = load_cd_geoadj_values(sorted(set(cd_geoids)))
-    household_geoadj = np.array(
-        [cd_geoadj_values.get(cd, 1.0) for cd in cd_geoids],
-        dtype=float,
-    )
-    geoadj_by_household = dict(zip(household_ids, household_geoadj))
+    cd_by_household = dict(zip(household_ids, cd_geoids))
 
     person_df = pd.DataFrame(
         {
@@ -130,7 +128,19 @@ def _calculate_spm_thresholds_from_assigned_geography(
             .values
         )
 
-    geoadj = spm_df["household_id"].map(geoadj_by_household).fillna(1.0).values
+    geoadj = np.array(
+        [
+            geoadj_for_tenure(
+                cd_geoadj_values.get(cd_by_household.get(household_id), 1.0),
+                TENURE_CODE_MAP.get(int(tenure_code), "renter"),
+            )
+            for household_id, tenure_code in zip(
+                spm_df["household_id"].values,
+                tenure_codes,
+            )
+        ],
+        dtype=float,
+    )
     return calculate_spm_thresholds_with_geoadj(
         num_adults=spm_df["num_adults"].fillna(0).values,
         num_children=spm_df["num_children"].fillna(0).values,

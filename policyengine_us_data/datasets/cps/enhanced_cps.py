@@ -40,6 +40,29 @@ except ImportError:
     torch = None
 
 
+def initialize_weight_priors(
+    original_weights: np.ndarray,
+    seed: int = 1456,
+    epsilon: float = 1e-6,
+) -> np.ndarray:
+    """Build deterministic positive priors for sparse reweighting."""
+
+    weights = np.asarray(original_weights, dtype=np.float64)
+    if np.any(weights < 0):
+        raise ValueError("original_weights must be non-negative")
+
+    priors = np.empty_like(weights, dtype=np.float64)
+    positive_mask = weights > 0
+    priors[positive_mask] = weights[positive_mask]
+
+    zero_mask = ~positive_mask
+    if zero_mask.any():
+        rng = np.random.default_rng(seed)
+        priors[zero_mask] = epsilon * rng.uniform(1.0, 2.0, size=zero_mask.sum())
+
+    return priors
+
+
 def _to_numpy(value) -> np.ndarray:
     return np.asarray(getattr(value, "values", value))
 
@@ -612,15 +635,7 @@ class EnhancedCPS(Dataset):
         base_year = int(sim.default_calculation_period)
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
-        # Seed before the initial weight jitter so the L0 optimizer's
-        # starting point is reproducible across runs. `reweight()` re-seeds
-        # inside, but that happens AFTER this perturbation, so without
-        # this call the jitter (and hence the final calibrated weights)
-        # differ run-to-run.
-        set_seeds(1456)
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
-        )
+        original_weights = initialize_weight_priors(original_weights.values)
 
         bad_targets = [
             "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -800,12 +815,7 @@ class ReweightedCPS_2024(Dataset):
         sim = Microsimulation(dataset=self.input_dataset)
         data = sim.dataset.load_dataset()
         original_weights = sim.calculate("household_weight")
-        # Seed before the jitter so the starting weights (and the final
-        # reweighted result) are reproducible across runs.
-        set_seeds(1456)
-        original_weights = original_weights.values + np.random.normal(
-            1, 0.1, len(original_weights)
-        )
+        original_weights = initialize_weight_priors(original_weights.values)
         for year in [2024]:
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
             optimised_weights = reweight(original_weights, loss_matrix, targets_array)

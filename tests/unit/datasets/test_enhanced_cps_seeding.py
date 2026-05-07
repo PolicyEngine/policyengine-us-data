@@ -1,12 +1,9 @@
-"""Regression test ensuring the initial weight jitter in EnhancedCPS is seeded.
+"""Regression tests for deterministic EnhancedCPS weight initialization.
 
-Previously ``np.random.normal(1, 0.1, ...)`` ran with whatever numpy global
-state the process happened to be in. ``reweight()`` re-seeds, but only
-afterwards, so the final L0 weights differed run to run even with
-``seed=1456`` inside ``reweight``.
-
-Fix: call ``set_seeds(1456)`` right before the jitter in
-``EnhancedCPS.generate`` and ``ReweightedCPS_2024.generate``.
+Earlier versions used global ``np.random.normal(1, 0.1, ...)`` jitter before
+``reweight()`` reseeded the optimizer. Current code routes both dense CPS
+weighting paths through ``initialize_weight_priors()``, which preserves positive
+survey weights and gives zero-weight clone records deterministic tiny priors.
 """
 
 import numpy as np
@@ -36,25 +33,11 @@ def test_unseeded_numpy_normal_is_non_reproducible():
     assert not np.array_equal(a, b)
 
 
-def test_enhanced_cps_sources_call_set_seeds_before_jitter():
-    """The fix places ``set_seeds(1456)`` immediately before
-    ``np.random.normal`` in both generate() methods. Verify the file
-    preserves that invariant so regressions are caught by lint.
-    """
+def test_enhanced_cps_sources_use_deterministic_weight_priors():
+    """Both generate() methods should use deterministic priors, not global RNG."""
     import policyengine_us_data.datasets.cps.enhanced_cps as ec
 
     source = open(ec.__file__).read()
-    # Split into the two generate() bodies. Both must contain the
-    # set_seeds call before the np.random.normal call.
-    # The simplest invariant: every occurrence of np.random.normal
-    # must be preceded (within the previous 5 non-blank lines) by a
-    # set_seeds(...) call.
-    lines = source.splitlines()
-    normal_indices = [i for i, line in enumerate(lines) if "np.random.normal" in line]
-    assert normal_indices, "Expected at least one np.random.normal site"
-    for idx in normal_indices:
-        window = "\n".join(lines[max(0, idx - 5) : idx])
-        assert "set_seeds(" in window, (
-            f"np.random.normal on line {idx + 1} is not preceded by set_seeds("
-            f") within the previous 5 lines; window was:\n{window}"
-        )
+
+    assert "np.random.normal" not in source
+    assert source.count("initialize_weight_priors(original_weights.values)") == 2

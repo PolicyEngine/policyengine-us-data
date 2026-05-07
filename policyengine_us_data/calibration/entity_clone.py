@@ -24,6 +24,7 @@ from policyengine_us_data.calibration.calibration_utils import (
     calculate_spm_thresholds_vectorized,
     load_cd_geoadj_values,
 )
+from policyengine_us_data.utils.spm import geoadj_for_tenure
 from policyengine_us_data.utils.takeup import (
     _sum_person_values_to_tax_units,
     apply_block_takeup_to_arrays,
@@ -383,10 +384,6 @@ def materialize_clone_household_chunk(
         np.arange(n_clones, dtype=np.int64),
         entities_per_clone["spm_unit"],
     )
-    spm_unit_geoadj = np.array(
-        [cd_geoadj_values[active_cd_geoids[c]] for c in spm_clone_ids],
-        dtype=np.float64,
-    )
 
     person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
@@ -404,6 +401,17 @@ def materialize_clone_household_chunk(
             b"RENTER",
             dtype="S30",
         )
+
+    spm_unit_geoadj = np.array(
+        [
+            geoadj_for_tenure(
+                cd_geoadj_values[active_cd_geoids[clone_id]],
+                spm_tenure_cloned[spm_unit_index],
+            )
+            for spm_unit_index, clone_id in enumerate(spm_clone_ids)
+        ],
+        dtype=np.float64,
+    )
 
     data["spm_unit_spm_threshold"] = {
         time_period: calculate_spm_thresholds_vectorized(

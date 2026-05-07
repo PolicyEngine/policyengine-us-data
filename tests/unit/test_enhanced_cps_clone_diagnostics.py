@@ -8,9 +8,39 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
     build_clone_diagnostics_payload,
     compute_clone_diagnostics_summary,
     clone_diagnostics_path,
+    initialize_weight_priors,
     refresh_clone_diagnostics_report,
     save_clone_diagnostics_report,
 )
+
+
+def test_initialize_weight_priors_keeps_zero_weight_records_near_zero():
+    weights = np.array([1_500.0, 0.0, 625.0, 0.0], dtype=np.float64)
+
+    priors = initialize_weight_priors(weights, seed=123)
+
+    assert np.all(priors > 0)
+    assert priors[1] < 1e-4
+    assert priors[3] < 1e-4
+    assert priors[0] == pytest.approx(1_500.0)
+    assert priors[2] == pytest.approx(625.0)
+
+
+def test_initialize_weight_priors_preserves_positive_weights_exactly():
+    weights = np.array([1_500.0, 625.0, 42.0], dtype=np.float64)
+
+    priors = initialize_weight_priors(weights, seed=123)
+
+    np.testing.assert_array_equal(priors, weights)
+
+
+def test_initialize_weight_priors_is_reproducible():
+    weights = np.array([400.0, 0.0, 100.0], dtype=np.float64)
+
+    priors_a = initialize_weight_priors(weights, seed=77)
+    priors_b = initialize_weight_priors(weights, seed=77)
+
+    np.testing.assert_allclose(priors_a, priors_b)
 
 
 def test_compute_clone_diagnostics_summary():

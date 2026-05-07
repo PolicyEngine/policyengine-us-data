@@ -1,3 +1,10 @@
+## [1.105.2] - 2026-05-07
+
+### Changed
+
+- Store SPM geographic adjustment inputs instead of materialized CPS SPM thresholds.
+
+
 ## [1.105.1] - 2026-05-07
 
 ### Fixed

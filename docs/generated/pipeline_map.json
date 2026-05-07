@@ -1306,7 +1306,7 @@
           "api_refs": [
             "policyengine_us_data.datasets.cps.cps.add_spm_variables"
           ],
-          "description": "Populate CPS supplemental poverty measure variables and thresholds.",
+          "description": "Populate CPS supplemental poverty measure variables and geographic adjustments.",
           "id": "add_spm_variables",
           "label": "Add SPM Variables",
           "node_type": "library",

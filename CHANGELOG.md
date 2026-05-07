@@ -1,3 +1,10 @@
+## [1.104.0] - 2026-05-07
+
+### Removed
+
+- Removed district SNAP household-count calibration targets sourced from ACS S2201.
+
+
 ## [1.103.5] - 2026-05-07
 
 ### Changed

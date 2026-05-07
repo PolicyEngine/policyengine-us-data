@@ -274,6 +274,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     # Hours/employment
     "weekly_hours_worked",
     "hours_worked_last_week",
+    "weeks_worked",
     # ORG labor-market variables
     "hourly_wage",
     "is_paid_hourly",

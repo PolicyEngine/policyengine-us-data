@@ -149,6 +149,9 @@ class TestVariableListConsistency:
             CPS_ONLY_IMPUTED_VARIABLES
         )
 
+    def test_weeks_worked_is_cps_only_imputed_for_clone_records(self):
+        assert "weeks_worked" in set(CPS_ONLY_IMPUTED_VARIABLES)
+
     def test_spm_threshold_is_location_derived_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "spm_unit_spm_threshold" in ExtendedCPS._keep_formula_vars()

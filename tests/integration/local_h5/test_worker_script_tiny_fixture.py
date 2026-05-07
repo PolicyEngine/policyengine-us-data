@@ -8,11 +8,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from policyengine_us_data.calibration.local_h5.source_dataset import (
+from policyengine_us_data.build_outputs.source_dataset import (
     DEFAULT_SUBENTITIES,
     PolicyEngineDatasetReader,
 )
-from policyengine_us_data.calibration.local_h5.weights import CloneWeightMatrix
+from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
 from tests.integration.local_h5.fixtures import (
     build_request,
     seed_local_h5_artifacts,

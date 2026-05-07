@@ -48,7 +48,9 @@ class _EntityMapsView:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=["uv run pytest tests/unit/build_outputs/test_source_dataset.py"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+    ],
 )
 @dataclass(frozen=True)
 class EntityGraph:
@@ -367,7 +369,9 @@ def _calculation_values(calculation) -> np.ndarray:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=["uv run pytest tests/unit/build_outputs/test_source_dataset.py"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+    ],
 )
 @dataclass
 class MicrosimulationVariableProvider:
@@ -452,7 +456,9 @@ class MicrosimulationVariableProvider:
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=["uv run pytest tests/unit/build_outputs/test_source_dataset.py"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+    ],
 )
 @dataclass
 class SourceDatasetSnapshot:

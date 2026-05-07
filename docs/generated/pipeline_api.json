@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 639,
+    "line": 640,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -474,7 +474,7 @@
     "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    stage_only: Upload to HF staging only, without promoting a release.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 501,
+    "line": 502,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
@@ -572,7 +572,7 @@
     "docstring": "Build sparse calibration matrix.\n\nTwo-phase build: (1) simulate each clone and save\nCOO entries to disk, (2) assemble CSR from caches.\n\nArgs:\n    geography: GeographyAssignment with state_fips,\n        cd_geoid, block_geoid arrays and n_records,\n        n_clones attributes.\n    sim: Microsimulation for parameters and entity\n        relationships.\n    target_filter: Dict for target_overview filtering.\n    hierarchical_domains: Domain names for\n        hierarchical uprating + CD reconciliation.\n    cache_dir: Directory for per-clone COO caches.\n        If None, COO data held in memory.\n    sim_modifier: Optional callback(sim, clone_idx)\n        called per clone after state_fips is set but\n        before cache clearing. Use for takeup\n        re-randomization.\n    rerandomize_takeup: If True, use geo-salted\n        entity-level takeup draws instead of base h5\n        takeup values for takeup-affected targets.\n    county_level: If True (default), iterate counties\n        within each state during precomputation. If\n        False, compute once per state and alias to all\n        counties (faster for county-invariant vars).\n\nReturns:\n    (targets_df, X_sparse, target_names)",
     "id": "build_matrix",
     "kind": "function",
-    "line": 2473,
+    "line": 2481,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
@@ -601,10 +601,10 @@
     "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py"
   },
   "build_matrix_chunked": {
-    "docstring": "Build a sparse matrix by materializing mixed-geography chunks.\n\nThis path chunks over global clone-household columns.  Each chunk H5\ncontains only the selected base households and their dependent entities,\nwith geography inputs assigned row-by-row from the clone assignment.",
+    "docstring": "Build a sparse matrix by materializing mixed-geography chunks.\n\nThin facade: target querying, uprating, constraint extraction,\nand manifest handling live here; chunking, per-chunk execution,\nand streaming final assembly live in\n:class:`ChunkedMatrixAssembler`.",
     "id": "build_matrix_chunked",
     "kind": "function",
-    "line": 3210,
+    "line": 3218,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
@@ -628,14 +628,14 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked",
-    "signature": "def build_matrix_chunked(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, chunk_size: int = 25000, chunk_dir: Optional[str] = None, keep_chunks: bool = False, resume_chunks: bool = False, rerandomize_takeup: bool = True) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]",
+    "signature": "def build_matrix_chunked(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, chunk_size: int = 25000, chunk_dir: Optional[str] = None, keep_chunks: bool = False, resume_chunks: bool = False, rerandomize_takeup: bool = True, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '') -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]",
     "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py"
   },
   "build_publishing_input_bundle": {
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 373,
+    "line": 374,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "",
     "id": "calibration_diagnostics",
     "kind": "function",
-    "line": 1085,
+    "line": 1104,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
@@ -747,7 +747,7 @@
     "docstring": "Standalone clone-value assembly (no ``self``).\n\nIdentical logic to\n``UnifiedMatrixBuilder._assemble_clone_values`` but usable\nfrom a worker process.",
     "id": "clone_assembly",
     "kind": "function",
-    "line": 595,
+    "line": 611,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone"
@@ -841,7 +841,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 986,
+    "line": 987,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -876,7 +876,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 462,
+    "line": 463,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.partitioning.partition_weighted_work_items",
@@ -936,7 +936,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 406,
+    "line": 407,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -1023,7 +1023,7 @@
     "docstring": "Fit L0-regularized calibration weights.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets: Target values array.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    verbose_freq: Print frequency. Defaults to 10%.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n        None disables logging.\n    log_path: Path for the per-target calibration log CSV.\n    target_names: Human-readable target names for the log.\n    initial_weights: Pre-computed initial weights. If None,\n        computed from targets_df age targets.\n    targets_df: Targets DataFrame, used to compute\n        initial_weights when not provided.\n    target_groups: Optional group ID per target row for balanced loss.\n    resume_from: Path to a `.checkpoint.pt` file or `.npy`\n        weights file to continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "fit_model",
     "kind": "function",
-    "line": 729,
+    "line": 748,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
@@ -1201,7 +1201,7 @@
     "docstring": "Compute population-based initial weights from age targets.\n\nFor each congressional district, sums person_count targets where\ndomain_variable == \"age\" to get district population, then divides\nby the number of columns (households) active in that district.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets_df: Targets DataFrame with columns: variable,\n        domain_variable, geo_level, geographic_id, value.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "init_weights",
     "kind": "function",
-    "line": 650,
+    "line": 669,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
@@ -1643,7 +1643,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    version: Override version (default: from run\n        metadata).\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1654,
+    "line": 1711,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -1766,7 +1766,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 420,
+    "line": 421,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.local_h5.fingerprinting.FingerprintingService",
@@ -1853,7 +1853,7 @@
     "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1211,
+    "line": 1230,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"
@@ -1885,14 +1885,14 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration.unified_calibration.run_calibration",
-    "signature": "def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False)",
+    "signature": "def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
   "run_local_h5_phase": {
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 511,
+    "line": 512,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -1919,10 +1919,10 @@
     "source_file": "modal_app/local_area.py"
   },
   "run_modal_pipeline": {
-    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n\nReturns:\n    The run ID for use with promote.",
+    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 753,
+    "line": 786,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -1949,7 +1949,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.run_pipeline",
-    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '') -> str",
+    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "sanity_checks": {
@@ -2124,7 +2124,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 828,
+    "line": 829,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -2154,7 +2154,7 @@
     "docstring": "Compute household/person/entity values for one state.\n\nTop-level function (not a method) so it is picklable for\n``ProcessPoolExecutor``.\n\nArgs:\n    dataset_path: Path to the base CPS h5 file.\n    time_period: Tax year for simulation.\n    state: State FIPS code.\n    n_hh: Number of household records.\n    target_vars: Target variable names (list for determinism).\n    constraint_vars: Constraint variable names (list).\n    rerandomize_takeup: Force takeup=True if True.\n    affected_targets: Takeup-affected target info dict.\n\nReturns:\n    (state_fips, {\"hh\": {...}, \"person\": {...}, \"entity\": {...}})",
     "id": "state_precomp",
     "kind": "function",
-    "line": 214,
+    "line": 230,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder._compute_single_state"
@@ -2208,7 +2208,7 @@
     "docstring": "Build sparse calibration matrix for cloned CPS records.\n\nProcesses clone-by-clone: each clone's records get their\nassigned geography, are simulated, and the results fill\nthe corresponding columns.\n\nArgs:\n    db_uri: SQLAlchemy database URI.\n    time_period: Tax year for calibration (e.g. 2024).\n    dataset_path: Path to the base extended CPS h5 file.",
     "id": "unified_matrix_builder",
     "kind": "class",
-    "line": 1366,
+    "line": 1382,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder"
@@ -2235,7 +2235,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 752,
+    "line": 753,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"
@@ -2262,7 +2262,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 414,
+    "line": 447,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

@@ -777,7 +777,7 @@ Build sparse calibration matrix.
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked`
 
 ```python
-def build_matrix_chunked(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, chunk_size: int = 25000, chunk_dir: Optional[str] = None, keep_chunks: bool = False, resume_chunks: bool = False, rerandomize_takeup: bool = True) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]
+def build_matrix_chunked(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, chunk_size: int = 25000, chunk_dir: Optional[str] = None, keep_chunks: bool = False, resume_chunks: bool = False, rerandomize_takeup: bool = True, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '') -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]
 ```
 
 Build a sparse matrix by materializing mixed-geography chunks.
@@ -945,7 +945,7 @@ Compute the scope fingerprint while preserving pinned resume values.
 ### `policyengine_us_data.calibration.unified_calibration.run_calibration`
 
 ```python
-def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False)
+def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')
 ```
 
 Run unified calibration pipeline.
@@ -961,7 +961,7 @@ Run a single build phase, spawning workers and collecting results.
 ### `modal_app.pipeline.run_pipeline`
 
 ```python
-def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '') -> str
+def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str
 ```
 
 Run the full pipeline end-to-end.

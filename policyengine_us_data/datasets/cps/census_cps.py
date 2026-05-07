@@ -314,6 +314,7 @@ PERSON_COLUMNS = [
     "A_LINENO",
     "A_SPOUSE",
     "A_EXPRRP",
+    "PERRP",
     "A_FAMREL",
     "A_FAMTYP",
     "A_AGE",

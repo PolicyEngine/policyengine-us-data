@@ -187,6 +187,7 @@ def test_validate_raw_cps_schema_accepts_constructed_tax_unit_id_column():
     person = pd.DataFrame(
         {
             "CENSUS_TAX_ID": [123],
+            "PERRP": [43],
             "NOW_GRPFTYP": [1],
             "NOW_HIPAID": [1],
             "NOW_OWNGRP": [1],
@@ -195,3 +196,22 @@ def test_validate_raw_cps_schema_accepts_constructed_tax_unit_id_column():
     tax_unit = pd.DataFrame({"TAX_ID": [1]})
 
     _validate_raw_cps_schema(person, tax_unit, "census_cps_2024")
+
+
+def test_validate_raw_cps_schema_requires_reference_partner_column():
+    from policyengine_us_data.datasets.cps.cps import _validate_raw_cps_schema
+
+    person = pd.DataFrame(
+        {
+            "CENSUS_TAX_ID": [123],
+            "NOW_GRPFTYP": [1],
+            "NOW_HIPAID": [1],
+            "NOW_OWNGRP": [1],
+        }
+    )
+    tax_unit = pd.DataFrame({"TAX_ID": [1]})
+
+    with pytest.raises(ValueError) as error:
+        _validate_raw_cps_schema(person, tax_unit, "census_cps_2024")
+
+    assert "PERRP" in str(error.value)

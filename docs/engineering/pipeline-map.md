@@ -6,15 +6,15 @@ Generated from `docs/pipeline_map.yaml` and `@pipeline_node` decorators.
 
 | Stage | Title | Manifest steps |
 | --- | --- | --- |
-| `1_build_datasets` Stage 1 | Build Datasets | `01_build_datasets` |
+| `1_build_datasets` Stage 1 | Build Datasets | `01_build_datasets`, `04_stage_base_datasets` |
 | `2_build_calibration_package` Stage 2 | Build Calibration Package | `02_build_package` |
 | `3_fit_weights` Stage 3 | Fit Weights | `03_fit_weights_regional`, `03_fit_weights_national` |
-| `4_build_outputs` Stage 4 | Build Outputs | `04_build_h5_regional`, `04_build_h5_national`, `04_stage_base_datasets`, `04_upload_diagnostics` |
+| `4_build_outputs` Stage 4 | Build Outputs | `04_build_h5_regional`, `04_build_h5_national`, `04_upload_diagnostics` |
 | `5_validate_and_promote_release` Stage 5 | Validate and Promote Release | `05_promote_release` |
 
 ## Stage 1: Build Datasets
 
-Produce raw, base, extended, enhanced, stratified, and source-imputed datasets.
+Produce raw, base, extended, enhanced, stratified, source-imputed, and staged base datasets.
 
 ### Substage 1a: Raw Data Download
 
@@ -324,6 +324,32 @@ Impute wealth/assets from external surveys onto stratified CPS via QRF
 - `util_qrf_s4` -> `sipp_assets_qrf` `uses_utility`
 - `util_qrf_s4` -> `scf_qrf` `uses_utility`
 
+### Substage 1g: Stage Base Datasets
+
+Stage base source-imputed datasets and policy database artifacts for the run
+
+- Substage ID: `1g_stage_base_datasets`
+- Canonical stage: `1_build_datasets`
+- Legacy stage: `7`
+- Manifest steps: `04_stage_base_datasets`
+- Status: `current`
+- Stability: `moving`
+
+| Node | Type | Status | Stability | API refs |
+| --- | --- | --- | --- | --- |
+| `in_source_imputed_s1g` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
+| `in_policy_db_s1g` policy_data.db | `artifact` | `unknown` | `unknown` |  |
+| `hf_staging_base_s1g` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `stage_base_datasets` stage base datasets | `process` | `current` | `moving` |  |
+| `out_staged_base_s1g` staged base datasets | `artifact` | `unknown` | `unknown` |  |
+
+#### Edges
+
+- `in_source_imputed_s1g` -> `stage_base_datasets` `data_flow`
+- `in_policy_db_s1g` -> `stage_base_datasets` `data_flow`
+- `stage_base_datasets` -> `out_staged_base_s1g` `produces_artifact`
+- `out_staged_base_s1g` -> `hf_staging_base_s1g` `data_flow` (uploaded to)
+
 ## Stage 2: Build Calibration Package
 
 Build the calibration target package, geography tables, constraints, sparse matrices, and supporting metadata.
@@ -465,7 +491,7 @@ Fit national log-weights for the national H5 output using the same L0 calibratio
 
 ## Stage 4: Build Outputs
 
-Build local-area and national H5 outputs, stage base datasets, and upload diagnostics.
+Build local-area and national H5 outputs and upload diagnostics.
 
 ### Substage 4a: Local Area H5 - Regional
 
@@ -562,32 +588,6 @@ Build the national US.h5 output from national weights and national geography art
 - `out_national_h5` -> `national_validation` `data_flow`
 - `national_validation` -> `out_national_validation` `produces_artifact`
 - `util_build_h5_national` -> `build_h5` `uses_utility`
-
-### Substage 4c: Stage Base Datasets
-
-Stage base source-imputed datasets and policy database artifacts for the run
-
-- Substage ID: `4c_stage_base_datasets`
-- Canonical stage: `4_build_outputs`
-- Legacy stage: `7`
-- Manifest steps: `04_stage_base_datasets`
-- Status: `current`
-- Stability: `moving`
-
-| Node | Type | Status | Stability | API refs |
-| --- | --- | --- | --- | --- |
-| `in_source_imputed_s4c` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
-| `in_policy_db_s4c` policy_data.db | `artifact` | `unknown` | `unknown` |  |
-| `hf_staging_base_s4c` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
-| `stage_base_datasets` stage base datasets | `process` | `current` | `moving` |  |
-| `out_staged_base_s4c` staged base datasets | `artifact` | `unknown` | `unknown` |  |
-
-#### Edges
-
-- `in_source_imputed_s4c` -> `stage_base_datasets` `data_flow`
-- `in_policy_db_s4c` -> `stage_base_datasets` `data_flow`
-- `stage_base_datasets` -> `out_staged_base_s4c` `produces_artifact`
-- `out_staged_base_s4c` -> `hf_staging_base_s4c` `data_flow` (uploaded to)
 
 ### Substage 4d: Upload Diagnostics
 

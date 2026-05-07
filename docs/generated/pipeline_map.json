@@ -635,11 +635,12 @@
   ],
   "canonical_stages": [
     {
-      "description": "Produce raw, base, extended, enhanced, stratified, and source-imputed datasets.",
+      "description": "Produce raw, base, extended, enhanced, stratified, source-imputed, and staged base datasets.",
       "id": "1_build_datasets",
       "label": "Stage 1",
       "manifest_step_ids": [
-        "01_build_datasets"
+        "01_build_datasets",
+        "04_stage_base_datasets"
       ],
       "title": "Build Datasets"
     },
@@ -663,13 +664,12 @@
       "title": "Fit Weights"
     },
     {
-      "description": "Build local-area and national H5 outputs, stage base datasets, and upload diagnostics.",
+      "description": "Build local-area and national H5 outputs and upload diagnostics.",
       "id": "4_build_outputs",
       "label": "Stage 4",
       "manifest_step_ids": [
         "04_build_h5_regional",
         "04_build_h5_national",
-        "04_stage_base_datasets",
         "04_upload_diagnostics"
       ],
       "title": "Build Outputs"
@@ -2444,6 +2444,82 @@
       "title": "Substage 1f: Source Imputation (ACS + SIPP + SCF)"
     },
     {
+      "canonical_stage_id": "1_build_datasets",
+      "canonical_stage_title": "Build Datasets",
+      "description": "Stage base source-imputed datasets and policy database artifacts for the run",
+      "edges": [
+        {
+          "edge_type": "data_flow",
+          "source": "in_source_imputed_s1g",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "in_policy_db_s1g",
+          "target": "stage_base_datasets"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "stage_base_datasets",
+          "target": "out_staged_base_s1g"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "uploaded to",
+          "source": "out_staged_base_s1g",
+          "target": "hf_staging_base_s1g"
+        }
+      ],
+      "groups": [],
+      "id": "1g_stage_base_datasets",
+      "label": "1g",
+      "legacy_stage_id": "7",
+      "manifest_step_ids": [
+        "04_stage_base_datasets"
+      ],
+      "nodes": [
+        {
+          "description": "Base dataset artifacts copied into the pipeline volume",
+          "id": "in_source_imputed_s1g",
+          "label": "source_imputed_*.h5",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Policy target database copied into the pipeline volume",
+          "id": "in_policy_db_s1g",
+          "label": "policy_data.db",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Run-scoped staging prefix for base datasets",
+          "id": "hf_staging_base_s1g",
+          "label": "HuggingFace staging/{run_id}",
+          "node_type": "external"
+        },
+        {
+          "description": "Record base source-imputed datasets and policy database artifacts as staged run outputs.",
+          "id": "stage_base_datasets",
+          "label": "stage base datasets",
+          "node_type": "process",
+          "source_file": "modal_app/pipeline.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_pipeline.py"
+          ]
+        },
+        {
+          "description": "Base artifacts uploaded to staging paths for later promotion",
+          "id": "out_staged_base_s1g",
+          "label": "staged base datasets",
+          "node_type": "artifact"
+        }
+      ],
+      "stability": "moving",
+      "status": "current",
+      "title": "Substage 1g: Stage Base Datasets"
+    },
+    {
       "canonical_stage_id": "2_build_calibration_package",
       "canonical_stage_title": "Build Calibration Package",
       "description": "Build sparse calibration matrix (targets x households x clones)",
@@ -3575,82 +3651,6 @@
       "stability": "moving",
       "status": "current",
       "title": "Substage 4b: Local Area H5 - National"
-    },
-    {
-      "canonical_stage_id": "4_build_outputs",
-      "canonical_stage_title": "Build Outputs",
-      "description": "Stage base source-imputed datasets and policy database artifacts for the run",
-      "edges": [
-        {
-          "edge_type": "data_flow",
-          "source": "in_source_imputed_s4c",
-          "target": "stage_base_datasets"
-        },
-        {
-          "edge_type": "data_flow",
-          "source": "in_policy_db_s4c",
-          "target": "stage_base_datasets"
-        },
-        {
-          "edge_type": "produces_artifact",
-          "source": "stage_base_datasets",
-          "target": "out_staged_base_s4c"
-        },
-        {
-          "edge_type": "data_flow",
-          "label": "uploaded to",
-          "source": "out_staged_base_s4c",
-          "target": "hf_staging_base_s4c"
-        }
-      ],
-      "groups": [],
-      "id": "4c_stage_base_datasets",
-      "label": "4c",
-      "legacy_stage_id": "7",
-      "manifest_step_ids": [
-        "04_stage_base_datasets"
-      ],
-      "nodes": [
-        {
-          "description": "Base dataset artifacts copied into the pipeline volume",
-          "id": "in_source_imputed_s4c",
-          "label": "source_imputed_*.h5",
-          "node_type": "artifact"
-        },
-        {
-          "description": "Policy target database copied into the pipeline volume",
-          "id": "in_policy_db_s4c",
-          "label": "policy_data.db",
-          "node_type": "artifact"
-        },
-        {
-          "description": "Run-scoped staging prefix for base datasets",
-          "id": "hf_staging_base_s4c",
-          "label": "HuggingFace staging/{run_id}",
-          "node_type": "external"
-        },
-        {
-          "description": "Record base source-imputed datasets and policy database artifacts as staged run outputs.",
-          "id": "stage_base_datasets",
-          "label": "stage base datasets",
-          "node_type": "process",
-          "source_file": "modal_app/pipeline.py",
-          "stability": "moving",
-          "status": "current",
-          "validation_commands": [
-            "uv run pytest tests/unit/test_pipeline.py"
-          ]
-        },
-        {
-          "description": "Base artifacts uploaded to staging paths for later promotion",
-          "id": "out_staged_base_s4c",
-          "label": "staged base datasets",
-          "node_type": "artifact"
-        }
-      ],
-      "stability": "moving",
-      "status": "current",
-      "title": "Substage 4c: Stage Base Datasets"
     },
     {
       "canonical_stage_id": "4_build_outputs",

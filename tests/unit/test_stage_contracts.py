@@ -669,12 +669,29 @@ def test_sample_stage_contract_builders_match_canonical_stage_shapes():
 
 def test_canonical_stage_contract_ids_match_pipeline_step_specs():
     from modal_app.step_manifests.specs import PIPELINE_STEPS
+    from scripts.extract_pipeline_docs import load_pipeline_map
 
-    assert CANONICAL_STAGE_IDS == tuple(step.id for step in PIPELINE_STEPS)
-    assert dict(SUBSTAGE_IDS_BY_STAGE_ID) == {
+    expected_stage_ids = tuple(step.id for step in PIPELINE_STEPS)
+    expected_substage_ids = {
         step.id: tuple(substep.id for substep in step.substeps)
         for step in PIPELINE_STEPS
     }
+    pipeline_map = load_pipeline_map(Path("docs/pipeline_map.yaml"))
+    map_substage_ids = {
+        stage_id: tuple(
+            stage["id"]
+            for stage in pipeline_map["stages"]
+            if stage["canonical_stage_id"] == stage_id
+        )
+        for stage_id in expected_stage_ids
+    }
+
+    assert CANONICAL_STAGE_IDS == expected_stage_ids
+    assert dict(SUBSTAGE_IDS_BY_STAGE_ID) == expected_substage_ids
+    assert tuple(stage["id"] for stage in pipeline_map["canonical_stages"]) == (
+        expected_stage_ids
+    )
+    assert map_substage_ids == expected_substage_ids
 
 
 def test_sample_stage_contracts_include_planned_artifacts_and_metadata():

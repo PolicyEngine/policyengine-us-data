@@ -15,6 +15,10 @@ def _as_bool(value: str) -> bool:
     return value.lower() == "true"
 
 
+def _env(name: str, default: str) -> str:
+    return os.environ.get(name, default)
+
+
 def _append_summary(function_call_id: str, context: RunContext) -> None:
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if not summary_path:
@@ -36,6 +40,13 @@ def _append_summary(function_call_id: str, context: RunContext) -> None:
         handle.write(f"| HF staging | `{context.hf_staging_prefix}` |\n")
         if os.environ.get("SOURCE_SHA"):
             handle.write(f"| Source SHA | `{os.environ['SOURCE_SHA']}` |\n")
+        handle.write(
+            "| Matrix | "
+            f"`chunked={_env('CHUNKED_MATRIX', 'false')}, "
+            f"parallel={_env('PARALLEL_MATRIX', 'false')}, "
+            f"chunk_size={_env('CHUNK_SIZE', '25000')}, "
+            f"workers={_env('NUM_MATRIX_WORKERS', '50')}` |\n"
+        )
         handle.write(f"| Function call ID | `{function_call_id}` |\n\n")
         handle.write("**[Monitor on Modal Dashboard](https://modal.com/apps)**\n")
 
@@ -58,6 +69,10 @@ def main() -> None:
         "run_context": context.to_dict(),
         "modal_app_name": context.modal_app_name,
         "modal_environment": context.modal_environment,
+        "chunked_matrix": _as_bool(_env("CHUNKED_MATRIX", "false")),
+        "chunk_size": int(_env("CHUNK_SIZE", "25000")),
+        "parallel_matrix": _as_bool(_env("PARALLEL_MATRIX", "false")),
+        "num_matrix_workers": int(_env("NUM_MATRIX_WORKERS", "50")),
     }
     if environment_name:
         run_pipeline = modal.Function.from_name(

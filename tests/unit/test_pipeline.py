@@ -11,6 +11,7 @@ modal = pytest.importorskip("modal")
 
 from modal_app.pipeline import (  # noqa: E402
     _build_diagnostics_upload_script,
+    _calibration_package_parameters,
     _run_required_promotion_subprocess,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
@@ -21,6 +22,44 @@ from modal_app.step_manifests.store import (  # noqa: E402
 
 
 # -- RunMetadata tests ------------------------------------------
+
+
+def test_calibration_package_parameters_track_matrix_mode():
+    params = _calibration_package_parameters(
+        workers=50,
+        n_clones=430,
+        target_config=None,
+        skip_county=True,
+        chunked_matrix=True,
+        chunk_size=10_000,
+        parallel_matrix=True,
+        num_matrix_workers=25,
+    )
+
+    assert params["chunked_matrix"] is True
+    assert params["workers"] is None
+    assert params["chunk_size"] == 10_000
+    assert params["parallel_matrix"] is True
+    assert params["num_matrix_workers"] == 25
+
+
+def test_calibration_package_parameters_ignore_unused_matrix_options():
+    params = _calibration_package_parameters(
+        workers=50,
+        n_clones=430,
+        target_config=None,
+        skip_county=True,
+        chunked_matrix=False,
+        chunk_size=10_000,
+        parallel_matrix=True,
+        num_matrix_workers=25,
+    )
+
+    assert params["chunked_matrix"] is False
+    assert params["workers"] == 50
+    assert params["chunk_size"] is None
+    assert params["parallel_matrix"] is False
+    assert params["num_matrix_workers"] is None
 
 
 class TestRunMetadata:

@@ -3,18 +3,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from policyengine_us_data.build_outputs.source_dataset import (
+    EntityGraph,
+    MicrosimulationVariableProvider,
+    SourceDatasetSnapshot,
+)
 from tests.support.build_outputs.source_dataset import (
     FakeHolder,
     FakeSimulation,
-    load_source_dataset_exports,
     make_entity_graph_arrays,
 )
-
-
-exports = load_source_dataset_exports()
-EntityGraph = exports["EntityGraph"]
-MicrosimulationVariableProvider = exports["MicrosimulationVariableProvider"]
-SourceDatasetSnapshot = exports["SourceDatasetSnapshot"]
 
 
 def _tuple_map(mapping):

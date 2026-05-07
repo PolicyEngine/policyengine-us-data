@@ -72,10 +72,11 @@ class EntityGraph:
     person_household_ids: np.ndarray
     subentity_ids: Mapping[str, np.ndarray]
     person_subentity_ids: Mapping[str, np.ndarray]
-    household_to_person_indices: Mapping[int, tuple[int, ...]] | None = None
-    household_to_subentity_indices: (
-        Mapping[str, Mapping[int, tuple[int, ...]]] | None
-    ) = None
+    household_to_person_indices: Mapping[int, tuple[int, ...]] = field(init=False)
+    household_to_subentity_indices: Mapping[
+        str,
+        Mapping[int, tuple[int, ...]],
+    ] = field(init=False)
 
     def __post_init__(self) -> None:
         household_ids = _readonly_1d_array(self.household_ids, "household_ids")
@@ -447,13 +448,11 @@ class MicrosimulationVariableProvider:
     label="SourceDatasetSnapshot",
     node_type="library",
     description=("In-memory source H5 dataset contract for local H5 worker setup."),
-    source_file="policyengine_us_data/calibration/local_h5/source_dataset.py",
+    source_file="policyengine_us_data/build_outputs/source_dataset.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],
-    validation_commands=[
-        "uv run pytest tests/unit/calibration/test_local_h5_source_dataset.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_source_dataset.py"],
 )
 @dataclass
 class SourceDatasetSnapshot:
@@ -524,7 +523,7 @@ class SourceDatasetSnapshot:
     label="PolicyEngineDatasetReader",
     node_type="library",
     description=("PolicyEngine H5 dataset adapter for local H5 source snapshots."),
-    source_file="policyengine_us_data/calibration/local_h5/source_dataset.py",
+    source_file="policyengine_us_data/build_outputs/source_dataset.py",
     status="current",
     stability="moving",
     pathways=["local_h5"],

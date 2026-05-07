@@ -69,16 +69,6 @@ def test_materialize_clone_household_chunk_preserves_entity_joins(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.full(
-            len(kwargs["spm_unit_tenure_types"]),
-            12000.0,
-            dtype=np.float32,
-        ),
-    )
-
     output_path = tmp_path / "clone_chunk.h5"
     summary = materialize_clone_household_chunk(
         sim=fixture_sim,
@@ -106,12 +96,52 @@ def test_materialize_clone_household_chunk_preserves_entity_joins(
         household_id = h5["household_id"]["2023"][:]
         assert np.array_equal(household_id, np.array([0, 1, 2], dtype=np.int32))
         assert set(person_household_id).issubset(set(household_id))
+        spm_geoadj = h5["spm_unit_geographic_adjustment"]["2023"][:]
+        np.testing.assert_allclose(spm_geoadj, 1.0)
+        assert "spm_unit_spm_threshold" not in h5
 
         for entity_key in ("tax_unit", "spm_unit", "family", "marital_unit"):
             entity_ids = h5[f"{entity_key}_id"]["2023"][:]
             person_entity_ids = h5[f"person_{entity_key}_id"]["2023"][:]
             assert len(entity_ids) == len(set(entity_ids))
             assert set(person_entity_ids).issubset(set(entity_ids))
+
+
+def test_materialize_clone_household_chunk_drops_legacy_spm_threshold_input(
+    tmp_path,
+    monkeypatch,
+    fixture_sim,
+    fixture_entity_maps,
+):
+    original_input_variables = list(fixture_sim.input_variables)
+    fixture_sim.input_variables.append("spm_unit_spm_threshold")
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
+        _fake_geography_from_blocks,
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
+        lambda cds: {cd: 1.0 for cd in cds},
+    )
+
+    output_path = tmp_path / "legacy_threshold_input.h5"
+    try:
+        materialize_clone_household_chunk(
+            sim=fixture_sim,
+            entity_maps=fixture_entity_maps,
+            active_hh=np.array([0], dtype=np.int64),
+            active_blocks=np.array(["371830501001001"], dtype="U15"),
+            active_cd_geoids=np.array(["3701"], dtype=str),
+            active_clone_indices=np.array([0], dtype=np.int64),
+            output_path=output_path,
+            apply_takeup=False,
+        )
+    finally:
+        fixture_sim.input_variables = original_input_variables
+
+    with h5py.File(output_path, "r") as h5:
+        assert "spm_unit_spm_threshold" not in h5
+        assert "spm_unit_geographic_adjustment" in h5
 
 
 def test_materialize_clone_household_chunk_keeps_clone_specific_block_geoids(
@@ -128,15 +158,6 @@ def test_materialize_clone_household_chunk_keeps_clone_specific_block_geoids(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     output_path = tmp_path / "clone_specific_blocks.h5"
     materialize_clone_household_chunk(
         sim=fixture_sim,
@@ -171,15 +192,6 @@ def test_materialize_clone_household_chunk_writes_non_ascii_county_as_index(
         "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
         lambda cds: {cd: 1.0 for cd in cds},
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone."
-        "calculate_spm_thresholds_vectorized",
-        lambda **kwargs: np.ones(
-            len(kwargs["spm_unit_tenure_types"]),
-            dtype=np.float32,
-        ),
-    )
-
     output_path = tmp_path / "non_ascii_county.h5"
     materialize_clone_household_chunk(
         sim=fixture_sim,

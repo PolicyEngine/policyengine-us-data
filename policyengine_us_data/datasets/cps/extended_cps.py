@@ -68,7 +68,7 @@ def _supports_structural_mortgage_inputs() -> bool:
     return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
 
 
-def _calculate_spm_thresholds_from_assigned_geography(
+def _calculate_spm_geographic_adjustments_from_assigned_geography(
     data: dict[str, dict[int, np.ndarray]],
     time_period: int,
 ) -> np.ndarray:
@@ -76,8 +76,6 @@ def _calculate_spm_thresholds_from_assigned_geography(
         load_cd_geoadj_values,
     )
     from policyengine_us_data.utils.spm import (
-        TENURE_CODE_MAP,
-        calculate_spm_thresholds_with_geoadj,
         geoadj_for_tenure,
     )
 
@@ -85,7 +83,6 @@ def _calculate_spm_thresholds_from_assigned_geography(
     person_spm_unit_ids = data["person_spm_unit_id"][time_period]
     person_household_ids = data["person_household_id"][time_period]
     household_ids = data["household_id"][time_period]
-    ages = data["age"][time_period]
     cd_geoids = np.asarray(data["congressional_district_geoid"][time_period]).astype(
         str
     )
@@ -97,56 +94,33 @@ def _calculate_spm_thresholds_from_assigned_geography(
         {
             "spm_unit_id": person_spm_unit_ids,
             "household_id": person_household_ids,
-            "is_adult": ages >= 18,
-            "is_child": ages < 18,
         }
     )
     spm_df = person_df.groupby("spm_unit_id").agg(
-        num_adults=("is_adult", "sum"),
-        num_children=("is_child", "sum"),
         household_id=("household_id", "first"),
     )
     spm_df = spm_df.reindex(spm_unit_ids)
 
     tenure = data.get("spm_unit_tenure_type", {}).get(time_period)
-    tenure_codes = np.full(len(spm_unit_ids), 3, dtype=int)
+    tenure_values = np.full(len(spm_unit_ids), "RENTER", dtype="U30")
     if tenure is not None:
         tenure_values = np.asarray(tenure)
         if np.issubdtype(tenure_values.dtype, np.bytes_):
             tenure_values = np.char.decode(tenure_values, "utf-8")
-        tenure_codes = (
-            pd.Series(tenure_values)
-            .map(
-                {
-                    "OWNER_WITH_MORTGAGE": 1,
-                    "OWNER_WITHOUT_MORTGAGE": 2,
-                    "RENTER": 3,
-                }
-            )
-            .fillna(3)
-            .astype(int)
-            .values
-        )
+        tenure_values = pd.Series(tenure_values).fillna("RENTER").astype(str).values
 
-    geoadj = np.array(
+    return np.array(
         [
             geoadj_for_tenure(
                 cd_geoadj_values.get(cd_by_household.get(household_id), 1.0),
-                TENURE_CODE_MAP.get(int(tenure_code), "renter"),
+                tenure_type,
             )
-            for household_id, tenure_code in zip(
+            for household_id, tenure_type in zip(
                 spm_df["household_id"].values,
-                tenure_codes,
+                tenure_values,
             )
         ],
         dtype=float,
-    )
-    return calculate_spm_thresholds_with_geoadj(
-        num_adults=spm_df["num_adults"].fillna(0).values,
-        num_children=spm_df["num_children"].fillna(0).values,
-        tenure_codes=tenure_codes,
-        geoadj=geoadj,
-        year=time_period,
     )
 
 
@@ -965,9 +939,9 @@ class ExtendedCPS(Dataset):
                 self.time_period,
                 had_positive_mortgage_input,
             )
-        logger.info("Calculating SPM thresholds from assigned geography")
-        new_data["spm_unit_spm_threshold"] = {
-            self.time_period: _calculate_spm_thresholds_from_assigned_geography(
+        logger.info("Calculating SPM geographic adjustments from assigned geography")
+        new_data["spm_unit_geographic_adjustment"] = {
+            self.time_period: _calculate_spm_geographic_adjustments_from_assigned_geography(
                 new_data,
                 self.time_period,
             )
@@ -1243,8 +1217,8 @@ class ExtendedCPS(Dataset):
     # due to entity shape mismatch.
     _KEEP_FORMULA_VARS = {
         "person_id",
-        "spm_unit_spm_threshold",
         "weeks_worked",
+        "spm_unit_geographic_adjustment",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }

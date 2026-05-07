@@ -21,7 +21,6 @@ from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
 from policyengine_us_data.calibration.calibration_utils import (
-    calculate_spm_thresholds_vectorized,
     load_cd_geoadj_values,
 )
 from policyengine_us_data.utils.spm import geoadj_for_tenure
@@ -270,8 +269,9 @@ def materialize_clone_household_chunk(
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
     vars_to_save = set(sim.input_variables)
+    vars_to_save.discard("spm_unit_spm_threshold")
     vars_to_save.add("county")
-    vars_to_save.add("spm_unit_spm_threshold")
+    vars_to_save.add("spm_unit_geographic_adjustment")
     vars_to_save.add("congressional_district_geoid")
     for geo_var in [
         "block_geoid",
@@ -385,7 +385,6 @@ def materialize_clone_household_chunk(
         entities_per_clone["spm_unit"],
     )
 
-    person_ages = sim.calculate("age", map_to="person").values[person_clone_idx]
     spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
     spm_tenure_periods = spm_tenure_holder.get_known_periods()
     if spm_tenure_periods:
@@ -413,14 +412,8 @@ def materialize_clone_household_chunk(
         dtype=np.float64,
     )
 
-    data["spm_unit_spm_threshold"] = {
-        time_period: calculate_spm_thresholds_vectorized(
-            person_ages=person_ages,
-            person_spm_unit_ids=new_person_entity_ids["spm_unit"],
-            spm_unit_tenure_types=spm_tenure_cloned,
-            spm_unit_geoadj=spm_unit_geoadj,
-            year=time_period,
-        ),
+    data["spm_unit_geographic_adjustment"] = {
+        time_period: spm_unit_geoadj.astype(np.float32),
     }
 
     if apply_takeup:

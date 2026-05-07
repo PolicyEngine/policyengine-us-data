@@ -148,10 +148,6 @@ def create_sparse_ecps():
         dataset=EnhancedCPS_2024,
     )
     template_sim.set_input("household_weight", time_period, sparse_weights)
-    # Preserve the base-year SPM threshold when round-tripping through a
-    # dataframe. It is a formula variable in policyengine-us, but poverty
-    # projections need the input value as the geographic-adjusted anchor.
-    template_sim.calculate("spm_unit_spm_threshold", time_period)
 
     df = template_sim.to_input_dataframe()
     del template_sim

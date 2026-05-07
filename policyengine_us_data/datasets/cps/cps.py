@@ -1385,7 +1385,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         id="add_spm_variables",
         label="Add SPM Variables",
         node_type="library",
-        description="Populate CPS supplemental poverty measure variables and thresholds.",
+        description="Populate CPS supplemental poverty measure variables and geographic adjustments.",
         source_file="policyengine_us_data/datasets/cps/cps.py",
         status="current",
         stability="moving",
@@ -1394,10 +1394,6 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     )
 )
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
-    from policyengine_us_data.utils.spm import (
-        calculate_spm_thresholds_with_geoadj,
-    )
-
     SPM_RENAMES = dict(
         spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
@@ -1419,15 +1415,8 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
 
-    # Calculate SPM thresholds using spm-calculator with Census-provided
-    # geographic adjustment factors (SPM_GEOADJ)
-    cps["spm_unit_spm_threshold"] = calculate_spm_thresholds_with_geoadj(
-        num_adults=spm_unit["SPM_NUMADULTS"].values,
-        num_children=spm_unit["SPM_NUMKIDS"].values,
-        tenure_codes=spm_unit["SPM_TENMORTSTATUS"].values,
-        geoadj=spm_unit["SPM_GEOADJ"].values,
-        year=self.time_period,
-    )
+    if "SPM_GEOADJ" in spm_unit.columns:
+        cps["spm_unit_geographic_adjustment"] = spm_unit["SPM_GEOADJ"].values
 
     if "SPM_TENMORTSTATUS" in spm_unit.columns:
         tenure_map = {

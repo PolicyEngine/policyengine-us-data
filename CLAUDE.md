@@ -14,7 +14,8 @@ rules here.
 ## Required skill lookup
 
 Before opening, replacing, or sharing a PR, read
-`docs/engineering/skills/github-prs.md`.
+`docs/engineering/skills/github-prs.md`. Add the required towncrier changelog
+fragment before creating the PR.
 
 When adding, moving, or reviewing tests, read
 `docs/engineering/skills/testing.md` before editing. Then run

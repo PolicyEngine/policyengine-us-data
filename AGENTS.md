@@ -29,11 +29,13 @@ Before creating or sharing any PR, all developers and agents must:
 
 1. Confirm the target remote is the canonical repository:
    `gh repo view PolicyEngine/policyengine-us-data --json nameWithOwner`.
-2. Push the branch to that repository, for example:
+2. Add a towncrier changelog fragment in `changelog.d/` using the format
+   documented in `docs/engineering/skills/github-prs.md`.
+3. Push the branch to that repository, for example:
    `git push upstream HEAD:<branch-name>`.
-3. Create the PR from the same repository, for example:
+4. Create the PR from the same repository, for example:
    `gh pr create --repo PolicyEngine/policyengine-us-data --head <branch-name> --base main`.
-4. Verify the PR head repository before reporting it:
+5. Verify the PR head repository before reporting it:
    `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
 
 The PR is valid only if the head repository is `PolicyEngine/policyengine-us-data`.

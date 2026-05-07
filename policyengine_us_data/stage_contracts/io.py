@@ -11,7 +11,7 @@ from policyengine_us_data.utils.canonical_json import (
     canonical_json_loads,
 )
 
-from .core import StageContract
+from .contracts import StageContract
 
 
 def contract_to_json(contract: StageContract) -> str:

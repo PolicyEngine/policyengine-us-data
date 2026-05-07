@@ -11,7 +11,8 @@ contract, not independent persisted contracts.
 This package is intentionally dependency-light and has no Modal dependency.
 """
 
-from .core import (
+from .artifacts import ArtifactRef
+from .constants import (
     CONTRACT_FINGERPRINT_ALGORITHM,
     CONTRACT_SCHEMA_VERSION,
     DIAGNOSTIC_SEVERITIES,
@@ -21,24 +22,22 @@ from .core import (
     SUBSTAGE_STATUSES,
     VALIDATION_FINDING_STATUSES,
     VALIDATION_REPORT_STATUSES,
-    ArtifactRef,
-    DiagnosticRef,
     DiagnosticSeverity,
-    ExecutionRecord,
     ExecutionStatus,
-    Fingerprint,
     ReuseDecision,
-    ReuseSummary,
-    StageContract,
-    SubstageRecord,
     SubstageReuseMode,
     SubstageStatus,
-    ValidationFinding,
     ValidationFindingStatus,
-    ValidationReport,
     ValidationReportStatus,
 )
-from .fingerprints import canonicalize_for_fingerprint, fingerprint_material
+from .contracts import StageContract
+from .diagnostics import DiagnosticRef
+from .execution import ExecutionRecord, ReuseSummary
+from .fingerprints import (
+    Fingerprint,
+    canonicalize_for_fingerprint,
+    fingerprint_material,
+)
 from .io import contract_from_json, contract_to_json, read_contract, write_contract
 from .stages import (
     CANONICAL_STAGE_IDS,
@@ -54,6 +53,8 @@ from .stages import (
     is_canonical_substage_id,
     substage_ids_for_stage,
 )
+from .substages import SubstageRecord
+from .validation import ValidationFinding, ValidationReport
 
 __all__ = [
     "CONTRACT_FINGERPRINT_ALGORITHM",

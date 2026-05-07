@@ -54,13 +54,19 @@ def _chunk_root(run_id: str) -> str:
     max_containers=50,
     nonpreemptible=True,
 )
-def build_matrix_chunk_worker(run_id: str, chunk_ids: List[int]) -> Dict:
+def build_matrix_chunk_worker(
+    run_id: str,
+    chunk_ids: List[int],
+    resume_chunks: bool = False,
+) -> Dict:
     """Materialize ``chunk_ids`` from the pickled ``SharedBuildState``.
 
     Args:
         run_id: Pipeline run identifier; selects the volume path for
             this worker's shared state and shard output directory.
         chunk_ids: Chunk indices this worker is responsible for.
+        resume_chunks: Whether to trust matching pre-existing COO shards.
+            Fresh builds pass ``False`` so workers overwrite stale chunks.
 
     Returns:
         Dict with ``chunk_ids``, ``nnz_per_chunk``, and ``errors``
@@ -92,7 +98,7 @@ def build_matrix_chunk_worker(run_id: str, chunk_ids: List[int]) -> Dict:
         shared_state=shared_state,
         chunk_root=chunk_root,
         chunk_size=shared_state.chunk_size,
-        resume=True,
+        resume=resume_chunks,
         keep_chunks=False,
     )
 

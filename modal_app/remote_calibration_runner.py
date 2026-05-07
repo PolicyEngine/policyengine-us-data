@@ -21,6 +21,7 @@ hf_secret = modal.Secret.from_name("huggingface-token")
 pipeline_vol = modal.Volume.from_name(
     os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
+    version=2,
 )
 
 PIPELINE_MOUNT = "/pipeline"
@@ -337,6 +338,9 @@ def _build_package_impl(
     workers: int = 8,
     n_clones: int = 430,
     run_id: str = "",
+    modal_app_name: str = "",
+    modal_environment: str = "",
+    pipeline_volume_name: str = "",
     chunked_matrix: bool = False,
     chunk_size: int = 25_000,
     parallel_matrix: bool = False,
@@ -399,6 +403,15 @@ def _build_package_impl(
         # locate their shared state at {pipeline-artifacts}/{run_id}/
         # matrix_build/chunk_build_state.pkl on the pipeline volume.
         build_env["POLICYENGINE_US_DATA_RUN_ID"] = run_id
+        build_env["US_DATA_RUN_ID"] = run_id
+    if modal_app_name:
+        build_env["US_DATA_MODAL_APP_NAME"] = modal_app_name
+        build_env["MODAL_APP_NAME"] = modal_app_name
+    if modal_environment:
+        build_env["US_DATA_MODAL_ENVIRONMENT"] = modal_environment
+        build_env["MODAL_ENVIRONMENT"] = modal_environment
+    if pipeline_volume_name:
+        build_env["US_DATA_PIPELINE_VOLUME_NAME"] = pipeline_volume_name
     build_rc, build_lines = _run_streaming(
         cmd,
         env=build_env,
@@ -440,6 +453,9 @@ def build_package_remote(
     workers: int = 8,
     n_clones: int = 430,
     run_id: str = "",
+    modal_app_name: str = "",
+    modal_environment: str = "",
+    pipeline_volume_name: str = "",
     chunked_matrix: bool = False,
     chunk_size: int = 25_000,
     parallel_matrix: bool = False,
@@ -452,6 +468,9 @@ def build_package_remote(
         workers=workers,
         n_clones=n_clones,
         run_id=run_id,
+        modal_app_name=modal_app_name,
+        modal_environment=modal_environment,
+        pipeline_volume_name=pipeline_volume_name,
         chunked_matrix=chunked_matrix,
         chunk_size=chunk_size,
         parallel_matrix=parallel_matrix,

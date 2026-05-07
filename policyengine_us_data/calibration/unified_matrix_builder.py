@@ -3431,6 +3431,7 @@ class UnifiedMatrixBuilder:
                 chunk_root=chunk_root,
                 run_id=run_id,
                 num_workers=num_matrix_workers,
+                resume_chunks=resume_chunks,
             )
         else:
             assembler.run_chunks(range(assembler.n_chunks))

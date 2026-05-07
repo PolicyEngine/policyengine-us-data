@@ -115,6 +115,7 @@ gcp_secret = modal.Secret.from_name("gcp-credentials")
 pipeline_volume = modal.Volume.from_name(
     os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
+    version=2,
 )
 staging_volume = modal.Volume.from_name(
     os.environ.get("US_DATA_STAGING_VOLUME_NAME", "local-area-staging"),
@@ -127,6 +128,31 @@ REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
 def _python_cmd(*args: str) -> list[str]:
     """Build a command that uses the current interpreter."""
     return [sys.executable, *args]
+
+
+def _calibration_package_parameters(
+    *,
+    workers: int,
+    n_clones: int,
+    target_config: str | None,
+    skip_county: bool,
+    chunked_matrix: bool,
+    chunk_size: int,
+    parallel_matrix: bool,
+    num_matrix_workers: int,
+) -> dict:
+    """Return manifest parameters that affect package construction."""
+    effective_parallel = bool(chunked_matrix and parallel_matrix)
+    return {
+        "workers": workers if not chunked_matrix else None,
+        "n_clones": n_clones,
+        "target_config": target_config,
+        "skip_county": skip_county,
+        "chunked_matrix": bool(chunked_matrix),
+        "chunk_size": chunk_size if chunked_matrix else None,
+        "parallel_matrix": effective_parallel,
+        "num_matrix_workers": num_matrix_workers if effective_parallel else None,
+    }
 
 
 def get_pinned_sha(branch: str) -> str:
@@ -212,7 +238,7 @@ from modal_app.remote_calibration_runner import (  # noqa: E402
 # worker via ``app.include(_calibration_app)`` below. Without this the
 # dispatch layer's ``modal.Function.from_name`` lookup would fail at
 # runtime.
-from modal_app.matrix_chunk_worker import build_matrix_chunk_worker  # noqa: F401
+from modal_app.matrix_chunk_worker import build_matrix_chunk_worker  # noqa: E402, F401
 
 app.include(_calibration_app)
 
@@ -308,6 +334,7 @@ for local_path, repo_path in entries:
     )
     print(f"Uploaded {{repo_path}}")
 """
+
 
 def _run_required_promotion_subprocess(label: str, script: str) -> str:
     """Run a promotion subprocess and fail the release step on error."""
@@ -1049,12 +1076,16 @@ def run_pipeline(
                 "database": _artifacts_dir(run_id) / "policy_data.db",
             }
         )
-        package_parameters = {
-            "workers": num_workers,
-            "n_clones": n_clones,
-            "target_config": None,
-            "skip_county": True,
-        }
+        package_parameters = _calibration_package_parameters(
+            workers=num_workers,
+            n_clones=n_clones,
+            target_config=None,
+            skip_county=True,
+            chunked_matrix=chunked_matrix,
+            chunk_size=chunk_size,
+            parallel_matrix=parallel_matrix,
+            num_matrix_workers=num_matrix_workers,
+        )
         package_reuse = _step_reusable(
             meta,
             BUILD_CALIBRATION_PACKAGE,
@@ -1087,6 +1118,9 @@ def run_pipeline(
                 workers=num_workers,
                 n_clones=n_clones,
                 run_id=run_id,
+                modal_app_name=current_run_context.modal_app_name,
+                modal_environment=current_run_context.modal_environment,
+                pipeline_volume_name=current_run_context.pipeline_volume_name,
                 chunked_matrix=chunked_matrix,
                 chunk_size=chunk_size,
                 parallel_matrix=parallel_matrix,

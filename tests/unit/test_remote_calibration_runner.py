@@ -152,6 +152,9 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
         workers=1,
         n_clones=10,
         run_id="bench-run",
+        modal_app_name="policyengine-us-data-pub-bench-run",
+        modal_environment="main",
+        pipeline_volume_name="pipeline-artifacts-bench-run",
         chunked_matrix=True,
         parallel_matrix=True,
         num_matrix_workers=1,
@@ -168,5 +171,17 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     chunk_dir_idx = captured["cmd"].index("--chunk-dir") + 1
     assert captured["cmd"][chunk_dir_idx] == str(artifacts_dir / "matrix_build")
     assert captured["env"]["POLICYENGINE_US_DATA_RUN_ID"] == "bench-run"
+    assert captured["env"]["US_DATA_RUN_ID"] == "bench-run"
+    assert (
+        captured["env"]["US_DATA_MODAL_APP_NAME"]
+        == "policyengine-us-data-pub-bench-run"
+    )
+    assert captured["env"]["MODAL_APP_NAME"] == "policyengine-us-data-pub-bench-run"
+    assert captured["env"]["US_DATA_MODAL_ENVIRONMENT"] == "main"
+    assert captured["env"]["MODAL_ENVIRONMENT"] == "main"
+    assert (
+        captured["env"]["US_DATA_PIPELINE_VOLUME_NAME"]
+        == "pipeline-artifacts-bench-run"
+    )
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()

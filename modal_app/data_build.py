@@ -45,6 +45,7 @@ checkpoint_volume = modal.Volume.from_name(
 pipeline_volume = modal.Volume.from_name(
     os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts"),
     create_if_missing=True,
+    version=2,
 )
 PIPELINE_MOUNT = "/pipeline"
 

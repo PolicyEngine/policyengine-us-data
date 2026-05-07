@@ -7,7 +7,9 @@ a fake worker function (via injected ``worker_function`` and
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Dict, List
 from unittest import mock
 
@@ -18,6 +20,7 @@ from policyengine_us_data.calibration.chunked_matrix_assembler import (
     SharedBuildState,
 )
 from policyengine_us_data.calibration.chunked_matrix_modal import (
+    _lookup_worker_function,
     dispatch_chunks_modal,
     partition_chunk_ids_contiguous,
 )
@@ -53,6 +56,30 @@ def test_contiguous_batch_zero_chunks() -> None:
 def test_contiguous_batch_rejects_non_positive_workers() -> None:
     with pytest.raises(ValueError, match="num_workers"):
         partition_chunk_ids_contiguous(n_chunks=5, num_workers=0)
+
+
+def test_lookup_worker_function_uses_run_context_env(monkeypatch) -> None:
+    captured = {}
+
+    class _FakeFunction:
+        @staticmethod
+        def from_name(app_name: str, function_name: str, **kwargs):
+            captured["app_name"] = app_name
+            captured["function_name"] = function_name
+            captured["kwargs"] = kwargs
+            return object()
+
+    monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(Function=_FakeFunction))
+    monkeypatch.setenv("US_DATA_MODAL_APP_NAME", "policyengine-us-data-pub-run")
+    monkeypatch.setenv("US_DATA_MODAL_ENVIRONMENT", "main")
+
+    _lookup_worker_function()
+
+    assert captured == {
+        "app_name": "policyengine-us-data-pub-run",
+        "function_name": "build_matrix_chunk_worker",
+        "kwargs": {"environment_name": "main"},
+    }
 
 
 # -----------------------------------------------------------------------
@@ -135,8 +162,16 @@ def test_dispatch_spawns_per_batch_and_assembles(tmp_path: Path) -> None:
     # by the time assemble_final() runs, the shard files exist.
     spawn_calls: List[Dict] = []
 
-    def fake_spawn(*, run_id: str, chunk_ids: List[int]) -> _FakeHandle:
-        spawn_calls.append({"run_id": run_id, "chunk_ids": list(chunk_ids)})
+    def fake_spawn(
+        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
+    ) -> _FakeHandle:
+        spawn_calls.append(
+            {
+                "run_id": run_id,
+                "chunk_ids": list(chunk_ids),
+                "resume_chunks": resume_chunks,
+            }
+        )
         for chunk_id in chunk_ids:
             col_start = chunk_id * state.chunk_size
             col_end = col_start + state.chunk_size
@@ -166,12 +201,54 @@ def test_dispatch_spawns_per_batch_and_assembles(tmp_path: Path) -> None:
     assert [c["chunk_ids"] for c in spawn_calls] == [[0, 1], [2, 3]]
     # Every spawn carried the run_id.
     assert all(c["run_id"] == "run-test" for c in spawn_calls)
+    # Fresh dispatch must not let workers trust stale shards.
+    assert all(c["resume_chunks"] is False for c in spawn_calls)
     # Final CSR covers all 4 chunks' nnz.
     assert X.shape == (state.n_targets, state.n_total)
     assert X.nnz == n_chunks
     # Volume was committed (pre-spawn) and reloaded (pre-assemble).
     assert volume.commit_count >= 1
     assert volume.reload_count >= 1
+
+
+def test_dispatch_uses_run_scoped_v2_volume(monkeypatch, tmp_path: Path) -> None:
+    state = _minimal_shared_state(n_records=5, n_clones=1, chunk_size=10)
+    captured = {}
+
+    def fake_volume_from_name(name: str, **kwargs):
+        captured["name"] = name
+        captured["kwargs"] = kwargs
+        return _FakeVolume()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "modal",
+        SimpleNamespace(Volume=SimpleNamespace(from_name=fake_volume_from_name)),
+    )
+    monkeypatch.setenv("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts-run")
+
+    def fake_spawn(
+        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
+    ) -> _FakeHandle:
+        for chunk_id in chunk_ids:
+            _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
+        return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
+
+    fake_worker = mock.MagicMock()
+    fake_worker.spawn.side_effect = fake_spawn
+
+    dispatch_chunks_modal(
+        shared_state=state,
+        chunk_root=tmp_path,
+        run_id="run-test",
+        num_workers=1,
+        worker_function=fake_worker,
+    )
+
+    assert captured == {
+        "name": "pipeline-artifacts-run",
+        "kwargs": {"create_if_missing": True, "version": 2},
+    }
 
 
 def test_dispatch_short_circuits_when_zero_chunks(tmp_path: Path) -> None:
@@ -197,7 +274,9 @@ def test_dispatch_aggregates_worker_errors(tmp_path: Path) -> None:
     state = _minimal_shared_state(n_records=10, n_clones=2, chunk_size=10)
     # n_total=20, chunk_size=10 -> 2 chunks, 2 workers.
 
-    def fake_spawn(*, run_id: str, chunk_ids: List[int]) -> _FakeHandle:
+    def fake_spawn(
+        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
+    ) -> _FakeHandle:
         # First worker returns a per-chunk error; second crashes in .get().
         if chunk_ids == [0]:
             return _FakeHandle(
@@ -230,7 +309,9 @@ def test_dispatch_writes_shared_state_pickle(tmp_path: Path) -> None:
     state = _minimal_shared_state(n_records=5, n_clones=1, chunk_size=10)
     # n_total=5, chunk_size=10 -> 1 chunk, 1 worker.
 
-    def fake_spawn(*, run_id: str, chunk_ids: List[int]) -> _FakeHandle:
+    def fake_spawn(
+        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
+    ) -> _FakeHandle:
         for chunk_id in chunk_ids:
             _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
         return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
@@ -255,3 +336,43 @@ def test_dispatch_writes_shared_state_pickle(tmp_path: Path) -> None:
     assert roundtripped.n_total == state.n_total
     assert roundtripped.chunk_size == state.chunk_size
     assert roundtripped.target_names == state.target_names
+
+
+def test_dispatch_forwards_resume_chunks_to_workers(tmp_path: Path) -> None:
+    state = _minimal_shared_state(n_records=5, n_clones=1, chunk_size=10)
+    spawn_calls: List[Dict] = []
+
+    def fake_spawn(
+        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
+    ) -> _FakeHandle:
+        spawn_calls.append(
+            {
+                "run_id": run_id,
+                "chunk_ids": list(chunk_ids),
+                "resume_chunks": resume_chunks,
+            }
+        )
+        for chunk_id in chunk_ids:
+            _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
+        return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
+
+    fake_worker = mock.MagicMock()
+    fake_worker.spawn.side_effect = fake_spawn
+
+    dispatch_chunks_modal(
+        shared_state=state,
+        chunk_root=tmp_path,
+        run_id="run-test",
+        num_workers=1,
+        resume_chunks=True,
+        worker_function=fake_worker,
+        volume=_FakeVolume(),
+    )
+
+    assert spawn_calls == [
+        {
+            "run_id": "run-test",
+            "chunk_ids": [0],
+            "resume_chunks": True,
+        }
+    ]

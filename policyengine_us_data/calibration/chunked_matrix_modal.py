@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import pickle
 import time
 from pathlib import Path
@@ -28,14 +29,36 @@ from policyengine_us_data.calibration.chunked_matrix_assembler import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_NUM_MATRIX_WORKERS = 50
+DEFAULT_MODAL_APP_NAME = "policyengine-us-data-pipeline"
+DEFAULT_PIPELINE_VOLUME_NAME = "pipeline-artifacts"
 # The worker is declared on ``_calibration_app`` in
 # ``modal_app/matrix_chunk_worker.py`` (``policyengine-us-data-fit-weights``),
 # but ``modal_app/pipeline.py`` merges that app into the pipeline app via
 # ``app.include(_calibration_app)``. After ``modal deploy modal_app/pipeline.py``
 # the function is registered under the pipeline app's name — that's the name
 # ``modal.Function.from_name`` looks up.
-MODAL_APP_NAME = "policyengine-us-data-pipeline"
 WORKER_FUNCTION_NAME = "build_matrix_chunk_worker"
+
+
+def _modal_app_name() -> str:
+    return (
+        os.environ.get("US_DATA_PIPELINE_APP_NAME")
+        or os.environ.get("US_DATA_MODAL_APP_NAME")
+        or os.environ.get("MODAL_APP_NAME")
+        or DEFAULT_MODAL_APP_NAME
+    )
+
+
+def _modal_environment_name() -> Optional[str]:
+    return (
+        os.environ.get("US_DATA_MODAL_ENVIRONMENT")
+        or os.environ.get("MODAL_ENVIRONMENT")
+        or None
+    )
+
+
+def _pipeline_volume_name() -> str:
+    return os.environ.get("US_DATA_PIPELINE_VOLUME_NAME", DEFAULT_PIPELINE_VOLUME_NAME)
 
 
 def partition_chunk_ids_contiguous(n_chunks: int, num_workers: int) -> List[List[int]]:
@@ -67,7 +90,11 @@ def _lookup_worker_function():
     """
     import modal
 
-    return modal.Function.from_name(MODAL_APP_NAME, WORKER_FUNCTION_NAME)
+    kwargs = {}
+    environment_name = _modal_environment_name()
+    if environment_name:
+        kwargs["environment_name"] = environment_name
+    return modal.Function.from_name(_modal_app_name(), WORKER_FUNCTION_NAME, **kwargs)
 
 
 def dispatch_chunks_modal(
@@ -76,6 +103,7 @@ def dispatch_chunks_modal(
     chunk_root: Path,
     run_id: str,
     num_workers: int = DEFAULT_NUM_MATRIX_WORKERS,
+    resume_chunks: bool = False,
     worker_function: Optional[Any] = None,
     volume: Optional[Any] = None,
 ) -> sparse.csr_matrix:
@@ -93,9 +121,12 @@ def dispatch_chunks_modal(
             with the coordinator's.
         num_workers: Upper bound on workers; actual count equals
             ``min(num_workers, n_chunks)``.
+        resume_chunks: Whether workers may reuse existing chunk shards.
+            Fresh builds pass ``False`` so stale shards are overwritten.
         worker_function: Override for the Modal function (tests only).
         volume: Override for the pipeline volume (tests only). When
-            omitted, resolves ``modal.Volume.from_name("pipeline-artifacts")``.
+            omitted, resolves the run-scoped pipeline volume from
+            ``US_DATA_PIPELINE_VOLUME_NAME``.
 
     Raises:
         RuntimeError: if any worker reports one or more chunk errors
@@ -111,7 +142,11 @@ def dispatch_chunks_modal(
     if volume is None:
         import modal
 
-        volume = modal.Volume.from_name("pipeline-artifacts", create_if_missing=True)
+        volume = modal.Volume.from_name(
+            _pipeline_volume_name(),
+            create_if_missing=True,
+            version=2,
+        )
     # Make the shared-state pickle visible to workers.
     volume.commit()
 
@@ -143,7 +178,11 @@ def dispatch_chunks_modal(
     t_dispatch = time.time()
     handles = []
     for batch_idx, chunk_ids in enumerate(batches):
-        handle = worker_function.spawn(run_id=run_id, chunk_ids=chunk_ids)
+        handle = worker_function.spawn(
+            run_id=run_id,
+            chunk_ids=chunk_ids,
+            resume_chunks=resume_chunks,
+        )
         logger.info(
             "Worker %d/%d: %d chunks (%d-%d), fc=%s",
             batch_idx + 1,

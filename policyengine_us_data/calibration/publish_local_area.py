@@ -36,6 +36,7 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
+from policyengine_us_data.utils.spm import geoadj_for_tenure
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     _sum_person_values_to_tax_units,
@@ -653,14 +654,9 @@ def build_h5(
     print("Recalculating SPM thresholds...")
     unique_cds_list = sorted(set(active_clone_cds))
     cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
-    # Build per-SPM-unit geoadj from clone's CD
     spm_clone_ids = np.repeat(
         np.arange(n_clones, dtype=np.int64),
         entities_per_clone["spm_unit"],
-    )
-    spm_unit_geoadj = np.array(
-        [cd_geoadj_values[active_clone_cds[c]] for c in spm_clone_ids],
-        dtype=np.float64,
     )
 
     # Get cloned person ages and SPM tenure types
@@ -681,6 +677,18 @@ def build_h5(
             b"RENTER",
             dtype="S30",
         )
+
+    # Build per-SPM-unit geoadj from the clone's CD and SPM unit tenure.
+    spm_unit_geoadj = np.array(
+        [
+            geoadj_for_tenure(
+                cd_geoadj_values[active_clone_cds[clone_id]],
+                spm_tenure_cloned[spm_unit_index],
+            )
+            for spm_unit_index, clone_id in enumerate(spm_clone_ids)
+        ],
+        dtype=np.float64,
+    )
 
     new_spm_thresholds = calculate_spm_thresholds_vectorized(
         person_ages=person_ages,

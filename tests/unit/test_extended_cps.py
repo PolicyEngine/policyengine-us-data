@@ -162,7 +162,18 @@ class TestSpmThresholdGeography:
 
         def fake_load_cd_geoadj_values(cds):
             assert cds == ["101", "202"]
-            return {"101": 1.0, "202": 2.0}
+            return {
+                "101": {
+                    "renter": 1.0,
+                    "owner_with_mortgage": 10.0,
+                    "owner_without_mortgage": 20.0,
+                },
+                "202": {
+                    "renter": 2.0,
+                    "owner_with_mortgage": 3.0,
+                    "owner_without_mortgage": 4.0,
+                },
+            }
 
         def fake_calculate_spm_thresholds_with_geoadj(
             num_adults,
@@ -203,11 +214,11 @@ class TestSpmThresholdGeography:
             2024,
         )
 
-        np.testing.assert_array_equal(thresholds, np.array([100.0, 200.0]))
+        np.testing.assert_array_equal(thresholds, np.array([100.0, 400.0]))
         np.testing.assert_array_equal(captured["num_adults"], np.array([1, 1]))
         np.testing.assert_array_equal(captured["num_children"], np.array([1, 0]))
         np.testing.assert_array_equal(captured["tenure_codes"], np.array([3, 2]))
-        np.testing.assert_array_equal(captured["geoadj"], np.array([1.0, 2.0]))
+        np.testing.assert_array_equal(captured["geoadj"], np.array([1.0, 4.0]))
         assert captured["year"] == 2024
 
 

@@ -873,6 +873,7 @@ def _validate_raw_cps_schema(
 ) -> None:
     required_person_columns = {
         "CENSUS_TAX_ID",
+        "PERRP",
         *ESI_SOURCE_COLUMNS,
     }
     required_tax_unit_columns = set()

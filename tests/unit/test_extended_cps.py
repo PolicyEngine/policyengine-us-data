@@ -153,6 +153,9 @@ class TestVariableListConsistency:
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "spm_unit_spm_threshold" in ExtendedCPS._keep_formula_vars()
 
+    def test_weeks_worked_is_preserved_for_future_year_formulas(self):
+        assert "weeks_worked" in ExtendedCPS._keep_formula_vars()
+
 
 class TestSpmThresholdGeography:
     def test_threshold_inputs_follow_assigned_household_geography(self, monkeypatch):

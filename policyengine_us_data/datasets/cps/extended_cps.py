@@ -1243,6 +1243,7 @@ class ExtendedCPS(Dataset):
     _KEEP_FORMULA_VARS = {
         "person_id",
         "spm_unit_spm_threshold",
+        "weeks_worked",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }

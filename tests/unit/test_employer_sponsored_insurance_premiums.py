@@ -93,6 +93,7 @@ def test_raw_cps_schema_requires_esi_source_columns():
     person = pd.DataFrame(
         {
             "CENSUS_TAX_ID": [1],
+            "PERRP": [43],
             **{column: [1] for column in ESI_SOURCE_COLUMNS},
         }
     )

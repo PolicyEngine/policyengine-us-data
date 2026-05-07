@@ -1,3 +1,5 @@
+import json
+import math
 from pathlib import Path
 
 import h5py
@@ -61,6 +63,17 @@ INCOME_GROUPS = [
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
+
+CLONE_DIAGNOSTICS_FILENAME = "enhanced_cps_2024.clone_diagnostics.json"
+CLONE_DIAGNOSTICS_METRICS = {
+    "clone_household_weight_share_pct",
+    "clone_person_weight_share_pct",
+    "clone_poor_modeled_only_person_weight_share_pct",
+    "poor_modeled_only_within_clone_person_weight_share_pct",
+    "clone_childcare_exceeds_pre_subsidy_share_pct",
+    "clone_childcare_above_5000_share_pct",
+    "clone_taxes_exceed_market_income_share_pct",
+}
 
 
 def _resolve_run_id(run_id: str = "") -> str:
@@ -201,6 +214,10 @@ def validate_dataset(file_path: Path) -> None:
     file_path = Path(file_path)
     filename = file_path.name
 
+    if filename == CLONE_DIAGNOSTICS_FILENAME:
+        validate_clone_diagnostics(file_path)
+        return
+
     if filename not in VALIDATED_FILENAMES:
         return  # Skip validation for auxiliary files
 
@@ -317,6 +334,80 @@ def validate_dataset(file_path: Path) -> None:
     print(f"    Household weight sum: {hh_weight:,.0f}")
 
 
+def validate_clone_diagnostics(file_path: Path) -> None:
+    file_path = Path(file_path)
+    errors = []
+
+    try:
+        payload = json.loads(file_path.read_text())
+    except Exception as exc:
+        raise DatasetValidationError(
+            f"Validation failed for {file_path.name}:\n"
+            f"  - Failed to read clone diagnostics JSON: {exc}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        errors.append("Expected clone diagnostics JSON object.")
+    elif "periods" in payload:
+        periods = payload["periods"]
+        if not isinstance(periods, dict) or not periods:
+            errors.append("Expected non-empty 'periods' object.")
+        else:
+            for period, diagnostics in periods.items():
+                try:
+                    int(period)
+                except (TypeError, ValueError):
+                    errors.append(f"Period key {period!r} is not an integer year.")
+                    continue
+                errors.extend(
+                    _clone_diagnostics_errors(
+                        diagnostics,
+                        context=f"period {period}",
+                    )
+                )
+    else:
+        period = payload.get("period")
+        if isinstance(period, bool):
+            errors.append("'period' must be an integer year.")
+        else:
+            try:
+                int(period)
+            except (TypeError, ValueError):
+                errors.append("'period' must be an integer year.")
+        errors.extend(_clone_diagnostics_errors(payload, context="top-level"))
+
+    if errors:
+        raise DatasetValidationError(
+            f"Validation failed for {file_path.name}:\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+
+    print(f"  ✓ Validation passed for {file_path.name}")
+
+
+def _clone_diagnostics_errors(diagnostics, *, context: str) -> list[str]:
+    errors = []
+    if not isinstance(diagnostics, dict):
+        return [f"Expected clone diagnostics object for {context}."]
+
+    missing = sorted(CLONE_DIAGNOSTICS_METRICS.difference(diagnostics))
+    if missing:
+        errors.append(f"Missing clone diagnostics metric(s) in {context}: {missing}")
+
+    for metric in sorted(CLONE_DIAGNOSTICS_METRICS.intersection(diagnostics)):
+        value = diagnostics[metric]
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            errors.append(f"{context} metric {metric} must be numeric.")
+            continue
+        if not math.isfinite(float(value)):
+            errors.append(f"{context} metric {metric} must be finite.")
+            continue
+        if not 0 <= float(value) <= 100:
+            errors.append(f"{context} metric {metric} must be between 0 and 100.")
+
+    return errors
+
+
 def stage_datasets(
     require_enhanced_cps: bool = True,
     version: str | None = None,
@@ -362,6 +453,8 @@ def promote_datasets(
         if files_with_repo_paths
         else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
     )
+    if files_with_repo_paths is None:
+        _validate_dataset_artifacts(manifest_files)
     should_finalize, missing_prefixes = preflight_release_manifest_publish(
         manifest_files,
         version=version,

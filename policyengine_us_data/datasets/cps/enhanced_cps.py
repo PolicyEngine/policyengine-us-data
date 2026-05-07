@@ -779,11 +779,11 @@ class EnhancedCPS(Dataset):
                 diagnostics_payload,
             )
         except Exception:
-            logging.warning(
+            logging.exception(
                 "Unable to compute clone diagnostics for %s",
                 self.file_path,
-                exc_info=True,
             )
+            raise
 
 
 class ReweightedCPS_2024(Dataset):

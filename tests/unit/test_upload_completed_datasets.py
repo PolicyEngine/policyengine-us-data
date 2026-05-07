@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -16,6 +17,18 @@ from policyengine_us_data.storage.upload_completed_datasets import (
 import policyengine_us_data.utils.dataset_validation as _dv_mod
 from policyengine_us_data.utils.dataset_validation import validate_dataset_contract
 from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
+
+
+VALID_CLONE_DIAGNOSTICS = {
+    "period": 2024,
+    "clone_household_weight_share_pct": 5.0,
+    "clone_person_weight_share_pct": 5.0,
+    "clone_poor_modeled_only_person_weight_share_pct": 1.0,
+    "poor_modeled_only_within_clone_person_weight_share_pct": 20.0,
+    "clone_childcare_exceeds_pre_subsidy_share_pct": 0.0,
+    "clone_childcare_above_5000_share_pct": 0.0,
+    "clone_taxes_exceed_market_income_share_pct": 0.0,
+}
 
 
 class _FakeArrayResult:
@@ -165,7 +178,7 @@ def _prepare_release_files(tmp_path, monkeypatch):
     enhanced_path = tmp_path / "enhanced_cps_2024.h5"
     enhanced_path.write_bytes(b"enhanced")
     diagnostics_path = enhanced_path.with_suffix(".clone_diagnostics.json")
-    diagnostics_path.write_bytes(b"diagnostics")
+    diagnostics_path.write_text(json.dumps(VALID_CLONE_DIAGNOSTICS))
     small_path = tmp_path / "small_enhanced_cps_2024.h5"
     small_path.write_bytes(b"small")
     calibration_dir = tmp_path / "calibration"
@@ -417,7 +430,9 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
 
     upload_datasets(promote_only=True, run_id="run-123", version="1.73.0")
 
-    assert validate_calls == []
+    assert [Path(path).name for path in validate_calls] == [
+        Path(repo_path).name for repo_path in expected_repo_paths
+    ]
     assert promote_calls == [
         (
             "hf",
@@ -510,6 +525,63 @@ def test_upload_datasets_requires_clone_diagnostics_sidecar(tmp_path, monkeypatc
 
     with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
         upload_datasets(require_enhanced_cps=True)
+
+
+def test_validate_dataset_accepts_clone_diagnostics_sidecar(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.clone_diagnostics.json"
+    file_path.write_text(json.dumps(VALID_CLONE_DIAGNOSTICS))
+
+    validate_dataset(file_path)
+
+
+def test_validate_dataset_accepts_multiperiod_clone_diagnostics(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.clone_diagnostics.json"
+    file_path.write_text(
+        json.dumps(
+            {
+                "periods": {
+                    "2024": {
+                        key: value
+                        for key, value in VALID_CLONE_DIAGNOSTICS.items()
+                        if key != "period"
+                    }
+                }
+            }
+        )
+    )
+
+    validate_dataset(file_path)
+
+
+def test_validate_dataset_rejects_malformed_clone_diagnostics(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.clone_diagnostics.json"
+    file_path.write_text("not-json")
+
+    with pytest.raises(DatasetValidationError, match="clone diagnostics JSON"):
+        validate_dataset(file_path)
+
+
+def test_validate_dataset_rejects_incomplete_clone_diagnostics(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.clone_diagnostics.json"
+    payload = dict(VALID_CLONE_DIAGNOSTICS)
+    del payload["clone_household_weight_share_pct"]
+    file_path.write_text(json.dumps(payload))
+
+    with pytest.raises(
+        DatasetValidationError,
+        match="Missing clone diagnostics metric",
+    ):
+        validate_dataset(file_path)
+
+
+def test_validate_dataset_rejects_out_of_range_clone_diagnostics(tmp_path):
+    file_path = tmp_path / "enhanced_cps_2024.clone_diagnostics.json"
+    payload = dict(VALID_CLONE_DIAGNOSTICS)
+    payload["clone_household_weight_share_pct"] = 101.0
+    file_path.write_text(json.dumps(payload))
+
+    with pytest.raises(DatasetValidationError, match="between 0 and 100"):
+        validate_dataset(file_path)
 
 
 def test_validate_built_datasets_requires_clone_diagnostics_sidecar(

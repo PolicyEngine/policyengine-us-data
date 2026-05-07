@@ -30,9 +30,7 @@ __all__ = ["CloneWeightMatrix"]
         "calibration_weights.npy",
         "national_calibration_weights.npy",
     ],
-    validation_commands=[
-        "uv run pytest tests/unit/build_outputs/test_weights.py"
-    ],
+    validation_commands=["uv run pytest tests/unit/build_outputs/test_weights.py"],
 )
 @dataclass(frozen=True)
 class CloneWeightMatrix:

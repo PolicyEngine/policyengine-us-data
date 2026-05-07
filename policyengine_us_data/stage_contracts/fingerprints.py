@@ -19,9 +19,7 @@ def canonicalize_for_fingerprint(value: Any) -> Any:
     if hasattr(value, "to_dict") and callable(value.to_dict):
         return canonicalize_for_fingerprint(value.to_dict())
     if is_dataclass(value):
-        raise TypeError(
-            "Dataclass values must expose to_dict() before fingerprinting"
-        )
+        raise TypeError("Dataclass values must expose to_dict() before fingerprinting")
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, Mapping):
@@ -37,9 +35,7 @@ def canonicalize_for_fingerprint(value: Any) -> Any:
         return value
     if isinstance(value, str | int | bool) or value is None:
         return value
-    raise TypeError(
-        f"Unsupported fingerprint material value: {type(value).__name__}"
-    )
+    raise TypeError(f"Unsupported fingerprint material value: {type(value).__name__}")
 
 
 def fingerprint_material(material: Mapping[str, Any]) -> Fingerprint:

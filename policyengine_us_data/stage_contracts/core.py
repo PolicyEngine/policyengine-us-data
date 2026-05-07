@@ -94,9 +94,7 @@ __all__ = [
 
 def _validate_schema_version(schema_version: str, owner: str) -> None:
     if schema_version != CONTRACT_SCHEMA_VERSION:
-        raise ValueError(
-            f"{owner} schema_version must be {CONTRACT_SCHEMA_VERSION!r}"
-        )
+        raise ValueError(f"{owner} schema_version must be {CONTRACT_SCHEMA_VERSION!r}")
 
 
 def _require_non_empty(value: Any, field_name: str) -> str:
@@ -355,9 +353,7 @@ class DiagnosticRef:
             name=_required_string(data, "name"),
             kind=_required_string(data, "kind"),
             artifact=(
-                ArtifactRef.from_dict(artifact)
-                if artifact is not None
-                else None
+                ArtifactRef.from_dict(artifact) if artifact is not None else None
             ),
             summary=_mapping_value(data, "summary"),
             severity=data.get("severity", "info"),
@@ -441,9 +437,7 @@ class ValidationFinding:
             _optional_string_value(self.metric, "metric"),
         )
         if self.status not in VALIDATION_FINDING_STATUSES:
-            raise ValueError(
-                f"Invalid validation finding status: {self.status!r}"
-            )
+            raise ValueError(f"Invalid validation finding status: {self.status!r}")
         object.__setattr__(self, "value", _freeze_value(self.value))
         object.__setattr__(self, "threshold", _freeze_value(self.threshold))
         object.__setattr__(
@@ -522,12 +516,10 @@ class ValidationReport:
         return cls(
             status=data.get("status", "not_run"),
             findings=tuple(
-                ValidationFinding.from_dict(item)
-                for item in data.get("findings", ())
+                ValidationFinding.from_dict(item) for item in data.get("findings", ())
             ),
             diagnostics=tuple(
-                DiagnosticRef.from_dict(item)
-                for item in data.get("diagnostics", ())
+                DiagnosticRef.from_dict(item) for item in data.get("diagnostics", ())
             ),
             metadata=_mapping_value(data, "metadata"),
             schema_version=_schema_version(data),
@@ -637,11 +629,7 @@ class ExecutionRecord:
         object.__setattr__(
             self,
             "error",
-            (
-                _freeze_mapping(self.error, "error")
-                if self.error is not None
-                else None
-            ),
+            (_freeze_mapping(self.error, "error") if self.error is not None else None),
         )
         object.__setattr__(
             self,
@@ -676,9 +664,7 @@ class ExecutionRecord:
             modal_call_id=data.get("modal_call_id"),
             reuse_decision=data.get("reuse_decision", "not_applicable"),
             reuse_reason=data.get("reuse_reason"),
-            reuse_summary=ReuseSummary.from_dict(
-                data.get("reuse_summary", {})
-            ),
+            reuse_summary=ReuseSummary.from_dict(data.get("reuse_summary", {})),
             error=_optional_mapping_value(data, "error"),
             schema_version=_schema_version(data),
             metadata=_mapping_value(data, "metadata"),
@@ -748,15 +734,11 @@ class SubstageRecord:
             "outputs": [_jsonable_value(item) for item in self.outputs],
             "parameters": _jsonable_value(self.parameters),
             "fingerprint": (
-                self.fingerprint.to_dict()
-                if self.fingerprint is not None
-                else None
+                self.fingerprint.to_dict() if self.fingerprint is not None else None
             ),
             "reuse_mode": self.reuse_mode,
             "validation": (
-                self.validation.to_dict()
-                if self.validation is not None
-                else None
+                self.validation.to_dict() if self.validation is not None else None
             ),
             "diagnostics": [_jsonable_value(item) for item in self.diagnostics],
             "schema_version": self.schema_version,
@@ -778,9 +760,7 @@ class SubstageRecord:
             ),
             parameters=_mapping_value(data, "parameters"),
             fingerprint=(
-                Fingerprint.from_dict(fingerprint)
-                if fingerprint is not None
-                else None
+                Fingerprint.from_dict(fingerprint) if fingerprint is not None else None
             ),
             reuse_mode=data.get("reuse_mode", "observed_only"),
             validation=(
@@ -789,8 +769,7 @@ class SubstageRecord:
                 else None
             ),
             diagnostics=tuple(
-                DiagnosticRef.from_dict(item)
-                for item in data.get("diagnostics", ())
+                DiagnosticRef.from_dict(item) for item in data.get("diagnostics", ())
             ),
             schema_version=_schema_version(data),
             metadata=_mapping_value(data, "metadata"),
@@ -916,9 +895,7 @@ class StageContract:
             "substages": [_jsonable_value(item) for item in self.substages],
             "execution": self.execution.to_dict(),
             "validation": (
-                self.validation.to_dict()
-                if self.validation is not None
-                else None
+                self.validation.to_dict() if self.validation is not None else None
             ),
             "diagnostics": [_jsonable_value(item) for item in self.diagnostics],
             "metadata": _jsonable_value(self.metadata),
@@ -943,8 +920,7 @@ class StageContract:
             parameters=_mapping_value(data, "parameters"),
             fingerprint=Fingerprint.from_dict(data["fingerprint"]),
             substages=tuple(
-                SubstageRecord.from_dict(item)
-                for item in data.get("substages", ())
+                SubstageRecord.from_dict(item) for item in data.get("substages", ())
             ),
             execution=ExecutionRecord.from_dict(data["execution"]),
             validation=(
@@ -953,8 +929,7 @@ class StageContract:
                 else None
             ),
             diagnostics=tuple(
-                DiagnosticRef.from_dict(item)
-                for item in data.get("diagnostics", ())
+                DiagnosticRef.from_dict(item) for item in data.get("diagnostics", ())
             ),
             metadata=_mapping_value(data, "metadata"),
         )

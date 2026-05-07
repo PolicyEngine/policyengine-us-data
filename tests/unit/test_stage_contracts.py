@@ -182,10 +182,7 @@ def _sample_fingerprint(
         {
             "contract_type": contract_type,
             "stage_id": stage_id,
-            "inputs": {
-                artifact.logical_name: artifact.sha256
-                for artifact in inputs
-            },
+            "inputs": {artifact.logical_name: artifact.sha256 for artifact in inputs},
             "parameters": parameters or {},
         }
     )
@@ -316,9 +313,7 @@ def make_fitted_weights_contract() -> StageContract:
     inputs = (_stage_artifact("calibration_package"),)
     parameters = {"solver": "l0", "max_iterations": 1000}
     diagnostics = (
-        _diagnostic(
-            artifact=_stage_artifact("regional_weight_fit_diagnostics")
-        ),
+        _diagnostic(artifact=_stage_artifact("regional_weight_fit_diagnostics")),
     )
     validation = ValidationReport(
         status="pass",
@@ -655,8 +650,7 @@ def test_sample_stage_contract_builders_match_canonical_stage_shapes():
     for contract in samples:
         assert isinstance(contract, StageContract)
         assert all(
-            isinstance(substage, SubstageRecord)
-            for substage in contract.substages
+            isinstance(substage, SubstageRecord) for substage in contract.substages
         )
 
 
@@ -714,10 +708,7 @@ def test_sample_stage_contract_fingerprints_are_reproducible():
 
         assert rebuilt.value == contract.fingerprint.value
         assert contract.fingerprint.material["stage_id"] == contract.stage_id
-        assert (
-            contract.fingerprint.material["contract_type"]
-            == contract.contract_type
-        )
+        assert contract.fingerprint.material["contract_type"] == contract.contract_type
 
 
 def test_diagnostic_ref_dict_round_trip_with_artifact_and_summary():

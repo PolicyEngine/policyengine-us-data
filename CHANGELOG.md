@@ -1,3 +1,10 @@
+## [1.105.1] - 2026-05-07
+
+### Fixed
+
+- Populate CPS inputs for the SPM childcare expense formula.
+
+
 ## [1.105.0] - 2026-05-07
 
 ### Added

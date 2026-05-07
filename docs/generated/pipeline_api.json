@@ -61,7 +61,7 @@
     "docstring": "\"Add auto loan balance, interest and net_worth variable.",
     "id": "add_auto_loan",
     "kind": "function",
-    "line": 2773,
+    "line": 2796,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
@@ -88,7 +88,7 @@
     "docstring": "Populate household-level geography variables used by PolicyEngine US.\n\nArgs:\n    cps: Output CPS H5 group receiving derived household variables.\n    household: Raw CPS household table.",
     "id": "add_household_variables",
     "kind": "function",
-    "line": 1435,
+    "line": 1458,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_household_variables"
@@ -115,7 +115,7 @@
     "docstring": "Add basic ID and weight variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The person table of the ASEC.\n    tax_unit (DataFrame): The tax unit table created from the person table\n        of the ASEC.\n    family (DataFrame): The family table of the ASEC.\n    spm_unit (DataFrame): The SPM unit table created from the person table\n        of the ASEC.\n    household (DataFrame): The household table of the ASEC.",
     "id": "add_id_variables",
     "kind": "function",
-    "line": 903,
+    "line": 913,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_id_variables"
@@ -142,7 +142,7 @@
     "docstring": "Impute ORG-derived wage and union inputs onto CPS persons.",
     "id": "add_org_inputs",
     "kind": "function",
-    "line": 2657,
+    "line": 2680,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
@@ -169,7 +169,7 @@
     "docstring": "Add income variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.\n    year (int): The CPS year",
     "id": "add_personal_income_variables",
     "kind": "function",
-    "line": 1097,
+    "line": 1119,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_income_variables"
@@ -196,7 +196,7 @@
     "docstring": "Add personal demographic variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.",
     "id": "add_personal_variables",
     "kind": "function",
-    "line": 965,
+    "line": 975,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_variables"
@@ -223,7 +223,7 @@
     "docstring": "",
     "id": "add_previous_year_income",
     "kind": "function",
-    "line": 1477,
+    "line": 1500,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_previous_year_income"
@@ -250,7 +250,7 @@
     "docstring": "",
     "id": "add_rent",
     "kind": "function",
-    "line": 343,
+    "line": 352,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_rent"
@@ -277,7 +277,7 @@
     "docstring": "",
     "id": "add_spm_variables",
     "kind": "function",
-    "line": 1373,
+    "line": 1396,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_spm_variables"
@@ -304,7 +304,7 @@
     "docstring": "Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.\nCodes:\n- 0: \"NONE\" - Likely undocumented immigrants\n- 1: \"CITIZEN\" - US citizens (born or naturalized)\n- 2: \"NON_CITIZEN_VALID_EAD\" - Non-citizens with work/study authorization\n- 3: \"OTHER_NON_CITIZEN\" - Non-citizens with indicators of legal status",
     "id": "add_ssn_card_type",
     "kind": "function",
-    "line": 1583,
+    "line": 1606,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_ssn_card_type"
@@ -331,7 +331,7 @@
     "docstring": "",
     "id": "add_takeup",
     "kind": "function",
-    "line": 457,
+    "line": 466,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_takeup"
@@ -358,7 +358,7 @@
     "docstring": "",
     "id": "add_tips",
     "kind": "function",
-    "line": 2482,
+    "line": 2505,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_tips"
@@ -778,7 +778,7 @@
     "docstring": "Replace clone-half person-level feature variables with donor matches.",
     "id": "clone_features",
     "kind": "function",
-    "line": 490,
+    "line": 491,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions"
@@ -904,7 +904,7 @@
     "docstring": "Second-stage QRF: train on CPS, predict for PUF clones.\n\nFor the PUF clone half of the extended CPS we need plausible values\nof CPS-only variables (retirement distributions, transfers, hours,\nSPM components, etc.) that are consistent with the clone's\nPUF-imputed income -- not just naively copied from the CPS donor.\n\nWe train a QRF on CPS person-level data where:\n  * predictors = demographics + key income variables\n  * outputs    = CPS-only variables listed in\n                 ``CPS_ONLY_IMPUTED_VARIABLES``\n\nFor PUF clone prediction we use the PUF-imputed income values\nfrom the second half of ``data`` (the clone half, which already\nhas PUF-imputed income from stage 1).\n\nUses ``fit_predict()`` with ``max_train_samples`` instead of\nmanual sampling + separate fit/predict.\n\nArgs:\n    data: Extended dataset dict after ``puf_clone_dataset()`` --\n        already doubled, with PUF-imputed income in the second half.\n    time_period: Tax year.\n    dataset_path: Path to the CPS h5 file for Microsimulation.\n\nReturns:\n    DataFrame with one column per CPS-only variable, containing\n    predicted values for the PUF clone half (person-level).",
     "id": "cps_only",
     "kind": "function",
-    "line": 529,
+    "line": 530,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables"
@@ -996,7 +996,7 @@
     "docstring": "Subsample the loaded CPS dataset and preserve downsampled arrays.\n\nArgs:\n    frac: Fraction of records to retain.",
     "id": "downsample",
     "kind": "function",
-    "line": 310,
+    "line": 319,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.CPS.downsample"
@@ -1057,7 +1057,7 @@
     "docstring": "Remove variables that are computed by policyengine-us.\n\nVariables with formulas, ``adds``, or ``subtracts`` are\nrecomputed by the simulation engine, so storing them wastes\nspace and can mislead validation.\n\nAggregate variables whose ``adds`` include a behavioral-\nresponse input (e.g. ``employment_income_before_lsr``) are\nrenamed to that input before dropping so the raw data is\npreserved under the correct input-variable name.",
     "id": "formula_drop",
     "kind": "function",
-    "line": 1424,
+    "line": 1289,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
@@ -1705,7 +1705,7 @@
     "docstring": "Replace PUF clone half of CPS-only variables with QRF predictions.\n\nAfter ``puf_clone_dataset()`` the CPS-only variables in the second\nhalf are naive copies of the CPS donor values. This function\nreplaces them with the second-stage QRF predictions that are\nconsistent with the clone's PUF-imputed income.\n\nArgs:\n    data: Extended dataset dict (already doubled).\n    predictions: DataFrame from ``_impute_cps_only_variables()``.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 file for entity mapping.\n\nReturns:\n    Modified data dict with CPS-only variables spliced in.",
     "id": "qrf_pass2",
     "kind": "function",
-    "line": 926,
+    "line": 808,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"

@@ -447,7 +447,7 @@
     "docstring": "Build city H5 files with checkpointing, optionally uploading.",
     "id": "build_cities",
     "kind": "function",
-    "line": 939,
+    "line": 944,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_cities"
@@ -506,7 +506,7 @@
     "docstring": "Build district H5 files with checkpointing, optionally uploading.",
     "id": "build_districts",
     "kind": "function",
-    "line": 852,
+    "line": 857,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_districts"
@@ -533,7 +533,7 @@
     "docstring": "Build an H5 file by cloning records for each nonzero weight.\n\nArgs:\n    weights: Clone-level weight vector, shape (n_clones_total * n_hh,).\n    geography: GeographyAssignment from assign_random_geography.\n    dataset_path: Path to base dataset H5 file.\n    output_path: Where to write the output H5 file.\n    cd_subset: If provided, only include clones for these CDs.\n    county_fips_filter: If provided, zero out weights for clones\n        whose county FIPS is not in this set.\n    takeup_filter: List of takeup vars to apply.\n\nReturns:\n    Path to the output H5 file.",
     "id": "build_h5",
     "kind": "function",
-    "line": 322,
+    "line": 325,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_h5"
@@ -663,7 +663,7 @@
     "docstring": "Build state H5 files with checkpointing, optionally uploading.",
     "id": "build_states",
     "kind": "function",
-    "line": 766,
+    "line": 771,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_states"
@@ -963,7 +963,7 @@
     "docstring": "Create a stratified sample of CPS data preserving high-income households\nwhile maintaining low-income diversity for poverty analysis.\n\nArgs:\n    target_households: Target number of households in output (approximate)\n    oversample_poor: If True, boost sampling rate for bottom 25% by 1.5x\n    seed: Random seed for reproducibility (default: None for random)\n    base_dataset: Path to source h5 file (default: extended_cps_2024.h5)\n    output_path: Where to save the stratified h5 file\n    high_agi_brackets: List of (lo, hi, cap) tuples defining per-bracket\n        caps for the high-AGI tail. Defaults to HIGH_AGI_BRACKETS.",
     "id": "create_stratified",
     "kind": "function",
-    "line": 82,
+    "line": 85,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.create_stratified_cps.create_stratified_cps_dataset"
@@ -1057,7 +1057,7 @@
     "docstring": "Remove variables that are computed by policyengine-us.\n\nVariables with formulas, ``adds``, or ``subtracts`` are\nrecomputed by the simulation engine, so storing them wastes\nspace and can mislead validation.\n\nAggregate variables whose ``adds`` include a behavioral-\nresponse input (e.g. ``employment_income_before_lsr``) are\nrenamed to that input before dropping so the raw data is\npreserved under the correct input-variable name.",
     "id": "formula_drop",
     "kind": "function",
-    "line": 1199,
+    "line": 1206,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
@@ -1231,7 +1231,7 @@
     "docstring": "",
     "id": "load_calibration_geography",
     "kind": "function",
-    "line": 134,
+    "line": 137,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
@@ -1399,7 +1399,7 @@
     "docstring": "",
     "id": "local_h5_input_fingerprint",
     "kind": "function",
-    "line": 75,
+    "line": 78,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -1786,7 +1786,7 @@
     "docstring": "Run QRF imputation for PUF variables.\n\nStratified-subsamples PUF records (top 0.5% by AGI kept,\nrest randomly sampled to ~20K total), trains QRF, and\npredicts on CPS data.\n\nArgs:\n    data: CPS data dict.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path.\n    dataset_path: Path to CPS h5 for computing\n        demographic predictors via Microsimulation.\n\nReturns:\n    Tuple of (y_full_imputations, y_override_imputations)\n    as dicts of {variable: np.ndarray}.",
     "id": "puf_qrf_pass",
     "kind": "function",
-    "line": 907,
+    "line": 890,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._run_qrf_imputation"
@@ -1844,7 +1844,7 @@
     "docstring": "Clone CPS data 2x and impute PUF variables on one half.\n\nThe first half keeps CPS values (with OVERRIDDEN vars QRF'd).\nThe second half gets full PUF QRF imputation. The second half\nhas household weights set to zero.\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household, shape (n_households,).\n    block_geoid: Optional 15-character Census block GEOID per household.\n    cd_geoid: Optional congressional district GEOID per household.\n    county_fips: Optional 5-digit county FIPS per household.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path for QRF training.\n        If None, skips QRF (same as skip_qrf=True).\n    skip_qrf: If True, skip QRF imputation (for testing).\n    dataset_path: Path to CPS h5 file (needed for QRF to\n        compute demographic predictors via Microsimulation).\n\nReturns:\n    New data dict with doubled records.",
     "id": "record_double",
     "kind": "function",
-    "line": 475,
+    "line": 452,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute.puf_clone_dataset"
@@ -1902,7 +1902,7 @@
     "docstring": "Impute retirement contributions for the PUF half using QRF.\n\nTrains on CPS data (which has realistic income-to-contribution\nrelationships) and predicts onto PUF clone records using\nPUF-imputed income as input features.\n\nNote: ``pre_tax_contributions`` is separately imputed from PUF\nvia OVERRIDDEN_IMPUTED_VARIABLES.  In PolicyEngine it is a\nformula (``adds`` of traditional_401k + traditional_403b + \u2026),\nso the stored value is only used when the formula is bypassed.\nA future improvement could reconcile or drop the stored\npre_tax_contributions in favour of the formula sum.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Dict mapping retirement variable names to imputed arrays.\n    Returns all-zeros on QRF failure.",
     "id": "retire_impute",
     "kind": "function",
-    "line": 762,
+    "line": 745,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_retirement_contributions"
@@ -2205,7 +2205,7 @@
     "docstring": "Predict SS sub-components for PUF half from demographics.\n\nThe CPS-PUF link is statistical (not identity-based), so the\npaired CPS record's sub-component split is just one noisy draw.\nA QRF trained on all CPS SS recipients gives a better expected\nprediction by pooling across the full training set.\n\nFor all PUF records with positive social_security, this function\npredicts shares via QRF (falling back to an age heuristic) and\nscales them to match the imputed total. PUF records with zero\nSS get all sub-components cleared to zero.\n\nModifies ``data`` in place. Only the PUF half (indices\nn_cps .. 2*n_cps) is changed.\n\nArgs:\n    data: Dataset dict {variable: {time_period: array}}.\n    n_cps: Number of records in the CPS half.\n    time_period: Tax year key into data dicts.",
     "id": "ss_reconcile",
     "kind": "function",
-    "line": 407,
+    "line": 384,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents"
@@ -2397,7 +2397,7 @@
     "docstring": "Impute weeks_unemployed for the PUF half using QRF.\n\nUses CPS as training data and imputed PUF demographics as\ntest data, preserving the joint distribution of weeks with\nunemployment compensation.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Array of imputed weeks for PUF half.",
     "id": "weeks_impute",
     "kind": "function",
-    "line": 656,
+    "line": 637,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed"

@@ -126,6 +126,23 @@ def test_calibration_package_contract_records_stage_2_handoff(tmp_path):
     assert contract.outputs[0].media_type == "application/python-pickle"
 
 
+def test_calibration_package_contract_normalizes_empty_run_id_to_none(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+
+    contract = build_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    assert contract.run_id is None
+
+
 def test_calibration_package_contract_records_matrix_summary(tmp_path):
     contract = _contract(tmp_path)
 

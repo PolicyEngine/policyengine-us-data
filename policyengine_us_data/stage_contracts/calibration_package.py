@@ -163,7 +163,7 @@ def build_calibration_package_contract(
     return StageContract(
         contract_type=CALIBRATION_PACKAGE_CONTRACT_TYPE,
         stage_id=STAGE_2_BUILD_CALIBRATION_PACKAGE,
-        run_id=run_id,
+        run_id=run_id or None,
         created_at=completed_at,
         code_sha=code_sha,
         package_version=package_version,

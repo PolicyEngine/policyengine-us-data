@@ -1,3 +1,10 @@
+## [1.106.1] - 2026-05-08
+
+### Changed
+
+- Stopped materializing SPM geographic adjustments in data builds; PolicyEngine US now computes them from raw geography and tenure inputs.
+
+
 ## [1.106.0] - 2026-05-07
 
 ### Added

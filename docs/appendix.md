@@ -47,7 +47,7 @@ for iteration in range(5000):
 
 ### Table A1: Complete List of Imputed Variables
 
-#### Variables Imputed from IRS Public Use File (70 variables)
+#### Variables Imputed from IRS Public Use File (57 variables)
 
 **Income Variables:**
 
@@ -63,12 +63,12 @@ for iteration in range(5000):
 - qualified_dividend_income
 - non_qualified_dividend_income
 - rental_income
-- taxable_unemployment_compensation
 - taxable_interest_income
 - tax_exempt_interest_income
 - estate_income
 - miscellaneous_income
 - farm_income
+- partnership_se_income
 - alimony_income
 - farm_rent_income
 - non_sch_d_capital_gains
@@ -90,22 +90,12 @@ for iteration in range(5000):
 - health_savings_account_ald
 - student_loan_interest
 - investment_income_elected_form_4952
-- early_withdrawal_penalty
 - educator_expense
 - deductible_mortgage_interest
 
 **Tax Credits:**
 
 - cdcc_relevant_expenses
-- foreign_tax_credit
-- american_opportunity_credit
-- general_business_credit
-- energy_efficient_home_improvement_credit
-- amt_foreign_tax_credit
-- excess_withheld_payroll_tax
-- savers_credit
-- prior_year_minimum_tax_credit
-- other_credits
 
 **Qualified Business Income Variables:**
 
@@ -133,9 +123,22 @@ within the same record.
 
 **Other Tax Variables:**
 
-- traditional_ira_contributions
 - qualified_tuition_expenses
 - casualty_loss
+
+#### PUF Reported/Calculated Tax Outputs Excluded from Donor Imputation
+
+- taxable_unemployment_compensation
+- foreign_tax_credit
+- american_opportunity_credit
+- general_business_credit
+- energy_efficient_home_improvement_credit
+- amt_foreign_tax_credit
+- excess_withheld_payroll_tax
+- savers_credit
+- early_withdrawal_penalty
+- prior_year_minimum_tax_credit
+- other_credits
 - unreported_payroll_tax
 - recapture_of_investment_credit
 

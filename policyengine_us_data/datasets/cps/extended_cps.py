@@ -888,24 +888,21 @@ class ExtendedCPS(Dataset):
 
     @classmethod
     def _impute_aotc_eligibility_inputs(cls, data, time_period):
-        """Convert imputed tax-unit AOTC amounts to person eligibility inputs."""
+        """Convert AOTC source signals to person eligibility inputs."""
         credit = data.get("american_opportunity_credit", {}).get(time_period)
         tax_unit_ids = data.get("tax_unit_id", {}).get(time_period)
         person_tax_unit_ids = data.get("person_tax_unit_id", {}).get(time_period)
         tuition = data.get("qualified_tuition_expenses", {}).get(time_period)
-        if (
-            credit is None
-            or tax_unit_ids is None
-            or person_tax_unit_ids is None
-            or tuition is None
-        ):
+        if tax_unit_ids is None or person_tax_unit_ids is None or tuition is None:
             return data
 
-        credit = np.asarray(credit)
+        credit = np.asarray(credit) if credit is not None else None
         tax_unit_ids = np.asarray(tax_unit_ids)
         person_tax_unit_ids = np.asarray(person_tax_unit_ids)
         tuition = np.array(tuition, copy=True)
-        if len(credit) != len(tax_unit_ids) or len(tuition) != len(person_tax_unit_ids):
+        if (credit is not None and len(credit) != len(tax_unit_ids)) or len(
+            tuition
+        ) != len(person_tax_unit_ids):
             logger.warning(
                 "Skipping AOTC eligibility imputation due to entity length mismatch"
             )
@@ -926,54 +923,64 @@ class ExtendedCPS(Dataset):
             else np.zeros(len(person_tax_unit_ids), dtype=bool)
         )
 
-        positive_credit = credit > 0
-        if not positive_credit.any():
-            return data
-
-        positive_credit_units = tax_unit_ids[positive_credit]
-        credit_by_tax_unit_id = dict(zip(tax_unit_ids, credit))
         adjusted_tuition_count = 0
-        max_student_credit = maximum_american_opportunity_credit_per_student(
-            time_period
-        )
-        for tax_unit_id in positive_credit_units:
-            member_indices = np.flatnonzero(person_tax_unit_ids == tax_unit_id)
-            if member_indices.size == 0 or max_student_credit <= 0:
-                continue
+        signal_tax_unit_count = 0
+        if credit is not None:
+            positive_credit = credit > 0
+            if not positive_credit.any():
+                return data
 
-            tuition_indices = member_indices[tuition[member_indices] > 0]
-            candidate_groups = []
-            if tuition_indices.size > 0:
-                candidate_groups.append(tuition_indices)
-            candidate_groups.extend(
-                (
-                    member_indices[full_time[member_indices]],
-                    member_indices[dependent[member_indices]],
-                    member_indices,
-                )
+            positive_credit_units = tax_unit_ids[positive_credit]
+            signal_tax_unit_count = int(positive_credit.sum())
+            credit_by_tax_unit_id = dict(zip(tax_unit_ids, credit))
+            max_student_credit = maximum_american_opportunity_credit_per_student(
+                time_period
             )
-            ordered_candidates = []
-            seen = set()
-            for group in candidate_groups:
-                for index in group:
-                    if index not in seen:
-                        ordered_candidates.append(index)
-                        seen.add(index)
+            for tax_unit_id in positive_credit_units:
+                member_indices = np.flatnonzero(person_tax_unit_ids == tax_unit_id)
+                if member_indices.size == 0 or max_student_credit <= 0:
+                    continue
 
-            remaining_credit = float(credit_by_tax_unit_id[tax_unit_id])
-            for selected in ordered_candidates:
-                if remaining_credit <= 0:
-                    break
-                student_credit = min(remaining_credit, max_student_credit)
-                target_tuition = qualifying_expenses_from_american_opportunity_credit(
-                    student_credit,
-                    time_period,
+                tuition_indices = member_indices[tuition[member_indices] > 0]
+                candidate_groups = []
+                if tuition_indices.size > 0:
+                    candidate_groups.append(tuition_indices)
+                candidate_groups.extend(
+                    (
+                        member_indices[full_time[member_indices]],
+                        member_indices[dependent[member_indices]],
+                        member_indices,
+                    )
                 )
-                if tuition[selected] != target_tuition:
-                    adjusted_tuition_count += 1
-                aotc_student[selected] = True
-                tuition[selected] = target_tuition
-                remaining_credit -= student_credit
+                ordered_candidates = []
+                seen = set()
+                for group in candidate_groups:
+                    for index in group:
+                        if index not in seen:
+                            ordered_candidates.append(index)
+                            seen.add(index)
+
+                remaining_credit = float(credit_by_tax_unit_id[tax_unit_id])
+                for selected in ordered_candidates:
+                    if remaining_credit <= 0:
+                        break
+                    student_credit = min(remaining_credit, max_student_credit)
+                    target_tuition = (
+                        qualifying_expenses_from_american_opportunity_credit(
+                            student_credit,
+                            time_period,
+                        )
+                    )
+                    if tuition[selected] != target_tuition:
+                        adjusted_tuition_count += 1
+                    aotc_student[selected] = True
+                    tuition[selected] = target_tuition
+                    remaining_credit -= student_credit
+        else:
+            aotc_student = tuition > 0
+            if not aotc_student.any():
+                return data
+            signal_tax_unit_count = len(np.unique(person_tax_unit_ids[aotc_student]))
 
         if not _supports_aotc_eligibility_inputs():
             existing = data.get("is_eligible_for_american_opportunity_credit", {}).get(
@@ -992,7 +999,7 @@ class ExtendedCPS(Dataset):
                 "eligibility input for %d people across %d tax units "
                 "and adjusted tuition for %d people",
                 int(aotc_student.sum()),
-                int(positive_credit.sum()),
+                signal_tax_unit_count,
                 adjusted_tuition_count,
             )
             return data
@@ -1043,7 +1050,7 @@ class ExtendedCPS(Dataset):
             "AOTC eligibility imputation populated inputs for %d people "
             "across %d tax units and adjusted tuition for %d people",
             int(aotc_student.sum()),
-            int(positive_credit.sum()),
+            signal_tax_unit_count,
             adjusted_tuition_count,
         )
         return data
@@ -1209,6 +1216,9 @@ class ExtendedCPS(Dataset):
         preserved under the correct input-variable name.
         """
         from policyengine_us import CountryTaxBenefitSystem
+        from policyengine_us_data.datasets.puf.variable_roles import (
+            PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+        )
 
         tbs = CountryTaxBenefitSystem()
 
@@ -1227,17 +1237,20 @@ class ExtendedCPS(Dataset):
                         data[add_var] = data.pop(name)
                     break
 
-        formula_vars = {
+        calculated_vars = {
             name
             for name, var in tbs.variables.items()
             if (hasattr(var, "formulas") and len(var.formulas) > 0)
             or getattr(var, "adds", None)
             or getattr(var, "subtracts", None)
-        } - cls._keep_formula_vars()
-        dropped = sorted(set(data.keys()) & formula_vars)
+        }
+        drop_vars = (
+            calculated_vars | PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+        ) - cls._keep_formula_vars()
+        dropped = sorted(set(data.keys()) & drop_vars)
         if dropped:
             logger.info(
-                "Dropping %d formula variables: %s",
+                "Dropping %d calculated/source-output variables: %s",
                 len(dropped),
                 dropped,
             )

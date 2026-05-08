@@ -316,12 +316,14 @@ def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypa
         inputs=publishing_inputs,
         scope="regional",
         artifacts_dir=artifacts_dir,
+        scope_fingerprint="resolved-fingerprint",
     )
 
     assert captured == {
         "inputs": publishing_inputs,
         "scope": "regional",
         "artifacts_dir": artifacts_dir,
+        "scope_fingerprint": "resolved-fingerprint",
     }
     assert bundle.manifest_path == (
         artifacts_dir / "bootstrap" / "regional" / "worker_bootstrap.json"

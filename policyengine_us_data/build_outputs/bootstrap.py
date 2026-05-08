@@ -301,6 +301,7 @@ class WorkerBootstrapBuilder:
         inputs: PublishingInputBundle,
         scope: BootstrapScope,
         artifacts_dir: Path,
+        scope_fingerprint: str | None = None,
     ) -> WorkerBootstrapBundle:
         """Build and persist one bootstrap bundle.
 
@@ -308,6 +309,8 @@ class WorkerBootstrapBuilder:
             inputs: Normalized local H5 publishing input bundle.
             scope: Bootstrap scope, currently ``"regional"`` or ``"national"``.
             artifacts_dir: Run-scoped pipeline artifact directory.
+            scope_fingerprint: Already-resolved scope fingerprint. When omitted,
+                the builder computes it from traceability material.
 
         Returns:
             Persisted bootstrap bundle metadata.
@@ -365,9 +368,10 @@ class WorkerBootstrapBuilder:
             inputs=inputs,
             scope=scope,
         )
-        scope_fingerprint = self._fingerprinting_service.compute_scope_fingerprint(
-            traceability
-        )
+        if scope_fingerprint is None:
+            scope_fingerprint = self._fingerprinting_service.compute_scope_fingerprint(
+                traceability
+            )
 
         entity_graph_path = store.entity_graph_path(scope)
         save_entity_graph(snapshot.entity_graph, entity_graph_path)

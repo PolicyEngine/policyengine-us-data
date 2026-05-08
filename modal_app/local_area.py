@@ -472,6 +472,7 @@ def _build_worker_bootstrap(
     inputs: PublishingInputBundle,
     scope: str,
     artifacts_dir: Path,
+    scope_fingerprint: str | None = None,
 ):
     """Persist optional worker bootstrap artifacts for one local H5 scope."""
 
@@ -479,6 +480,7 @@ def _build_worker_bootstrap(
         inputs=inputs,
         scope=scope,
         artifacts_dir=artifacts_dir,
+        scope_fingerprint=scope_fingerprint,
     )
     print(
         f"Worker bootstrap ready for {scope}: "
@@ -1132,17 +1134,18 @@ def coordinate_publish(
         scope="regional",
         expected_fingerprint=expected_fingerprint,
     )
-    _build_worker_bootstrap(
-        inputs=fingerprint_inputs,
-        scope="regional",
-        artifacts_dir=artifacts,
-    )
-    pipeline_volume.commit()
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
+    _build_worker_bootstrap(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        artifacts_dir=artifacts,
+        scope_fingerprint=fingerprint,
+    )
+    pipeline_volume.commit()
     staging_volume.commit()
     if work_items_override is None:
         result = subprocess.run(
@@ -1425,14 +1428,15 @@ def coordinate_national_publish(
         inputs=fingerprint_inputs,
         scope="national",
     )
+    run_dir = staging_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
     _build_worker_bootstrap(
         inputs=fingerprint_inputs,
         scope="national",
         artifacts_dir=artifacts,
+        scope_fingerprint=fingerprint,
     )
     pipeline_volume.commit()
-    run_dir = staging_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
     national_h5 = run_dir / "national" / "US.h5"
 
     work_items = [{"type": "national", "id": "US"}]

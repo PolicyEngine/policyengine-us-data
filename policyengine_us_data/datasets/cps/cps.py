@@ -1385,7 +1385,7 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
         id="add_spm_variables",
         label="Add SPM Variables",
         node_type="library",
-        description="Populate CPS supplemental poverty measure variables and geographic adjustments.",
+        description="Populate CPS supplemental poverty measure variables.",
         source_file="policyengine_us_data/datasets/cps/cps.py",
         status="current",
         stability="moving",
@@ -1414,9 +1414,6 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     for openfisca_variable, asec_variable in SPM_RENAMES.items():
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
-
-    if "SPM_GEOADJ" in spm_unit.columns:
-        cps["spm_unit_geographic_adjustment"] = spm_unit["SPM_GEOADJ"].values
 
     if "SPM_TENMORTSTATUS" in spm_unit.columns:
         tenure_map = {

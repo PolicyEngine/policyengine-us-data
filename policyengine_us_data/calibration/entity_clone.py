@@ -20,10 +20,6 @@ import numpy as np
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
-from policyengine_us_data.calibration.calibration_utils import (
-    load_cd_geoadj_values,
-)
-from policyengine_us_data.utils.spm import geoadj_for_tenure
 from policyengine_us_data.utils.takeup import (
     _sum_person_values_to_tax_units,
     apply_block_takeup_to_arrays,
@@ -271,7 +267,6 @@ def materialize_clone_household_chunk(
     vars_to_save = set(sim.input_variables)
     vars_to_save.discard("spm_unit_spm_threshold")
     vars_to_save.add("county")
-    vars_to_save.add("spm_unit_geographic_adjustment")
     vars_to_save.add("congressional_district_geoid")
     for geo_var in [
         "block_geoid",
@@ -376,44 +371,6 @@ def materialize_clone_household_chunk(
 
     data["congressional_district_geoid"] = {
         time_period: np.array([int(cd) for cd in active_cd_geoids], dtype=np.int32),
-    }
-
-    unique_cds_list = sorted(set(active_cd_geoids))
-    cd_geoadj_values = load_cd_geoadj_values(unique_cds_list)
-    spm_clone_ids = np.repeat(
-        np.arange(n_clones, dtype=np.int64),
-        entities_per_clone["spm_unit"],
-    )
-
-    spm_tenure_holder = sim.get_holder("spm_unit_tenure_type")
-    spm_tenure_periods = spm_tenure_holder.get_known_periods()
-    if spm_tenure_periods:
-        raw_tenure = spm_tenure_holder.get_array(spm_tenure_periods[0])
-        if hasattr(raw_tenure, "decode_to_str"):
-            raw_tenure = raw_tenure.decode_to_str().astype("S")
-        else:
-            raw_tenure = np.array(raw_tenure).astype("S")
-        spm_tenure_cloned = raw_tenure[entity_clone_idx["spm_unit"]]
-    else:
-        spm_tenure_cloned = np.full(
-            len(entity_clone_idx["spm_unit"]),
-            b"RENTER",
-            dtype="S30",
-        )
-
-    spm_unit_geoadj = np.array(
-        [
-            geoadj_for_tenure(
-                cd_geoadj_values[active_cd_geoids[clone_id]],
-                spm_tenure_cloned[spm_unit_index],
-            )
-            for spm_unit_index, clone_id in enumerate(spm_clone_ids)
-        ],
-        dtype=np.float64,
-    )
-
-    data["spm_unit_geographic_adjustment"] = {
-        time_period: spm_unit_geoadj.astype(np.float32),
     }
 
     if apply_takeup:

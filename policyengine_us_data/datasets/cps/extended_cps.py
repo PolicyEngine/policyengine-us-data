@@ -68,62 +68,6 @@ def _supports_structural_mortgage_inputs() -> bool:
     return has_policyengine_us_variables(*STRUCTURAL_MORTGAGE_VARIABLES)
 
 
-def _calculate_spm_geographic_adjustments_from_assigned_geography(
-    data: dict[str, dict[int, np.ndarray]],
-    time_period: int,
-) -> np.ndarray:
-    from policyengine_us_data.calibration.calibration_utils import (
-        load_cd_geoadj_values,
-    )
-    from policyengine_us_data.utils.spm import (
-        geoadj_for_tenure,
-    )
-
-    spm_unit_ids = data["spm_unit_id"][time_period]
-    person_spm_unit_ids = data["person_spm_unit_id"][time_period]
-    person_household_ids = data["person_household_id"][time_period]
-    household_ids = data["household_id"][time_period]
-    cd_geoids = np.asarray(data["congressional_district_geoid"][time_period]).astype(
-        str
-    )
-
-    cd_geoadj_values = load_cd_geoadj_values(sorted(set(cd_geoids)))
-    cd_by_household = dict(zip(household_ids, cd_geoids))
-
-    person_df = pd.DataFrame(
-        {
-            "spm_unit_id": person_spm_unit_ids,
-            "household_id": person_household_ids,
-        }
-    )
-    spm_df = person_df.groupby("spm_unit_id").agg(
-        household_id=("household_id", "first"),
-    )
-    spm_df = spm_df.reindex(spm_unit_ids)
-
-    tenure = data.get("spm_unit_tenure_type", {}).get(time_period)
-    tenure_values = np.full(len(spm_unit_ids), "RENTER", dtype="U30")
-    if tenure is not None:
-        tenure_values = np.asarray(tenure)
-        if np.issubdtype(tenure_values.dtype, np.bytes_):
-            tenure_values = np.char.decode(tenure_values, "utf-8")
-        tenure_values = pd.Series(tenure_values).fillna("RENTER").astype(str).values
-
-    return np.array(
-        [
-            geoadj_for_tenure(
-                cd_geoadj_values.get(cd_by_household.get(household_id), 1.0),
-                tenure_type,
-            )
-            for household_id, tenure_type in zip(
-                spm_df["household_id"].values,
-                tenure_values,
-            )
-        ],
-        dtype=float,
-    )
-
-
 # CPS-only categorical features to donor-impute onto the PUF clone half.
 # These drive subgroup analysis and occupation-based logic, so naive donor
 # duplication dilutes the relationship between the clone's PUF-imputed
@@ -939,13 +883,6 @@ class ExtendedCPS(Dataset):
                 self.time_period,
                 had_positive_mortgage_input,
             )
-        logger.info("Calculating SPM geographic adjustments from assigned geography")
-        new_data["spm_unit_geographic_adjustment"] = {
-            self.time_period: _calculate_spm_geographic_adjustments_from_assigned_geography(
-                new_data,
-                self.time_period,
-            )
-        }
         new_data = self._drop_formula_variables(new_data)
         self.save_dataset(new_data)
 
@@ -1218,7 +1155,6 @@ class ExtendedCPS(Dataset):
     _KEEP_FORMULA_VARS = {
         "person_id",
         "weeks_worked",
-        "spm_unit_geographic_adjustment",
         "self_employed_pension_contribution_ald",
         "self_employed_health_insurance_ald",
     }

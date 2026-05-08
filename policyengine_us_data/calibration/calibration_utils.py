@@ -2,16 +2,12 @@
 Shared utilities for calibration scripts.
 """
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 import json
 import numpy as np
 import pandas as pd
 from scipy import sparse
 
-from policyengine_us_data.utils.spm import (
-    TENURE_CODE_MAP,
-    calculate_geoadj_from_rent,
-)
 from policyengine_us.variables.household.demographic.geographic.state_name import (
     StateName,
 )
@@ -530,60 +526,3 @@ def load_geo_labels(path) -> List[str]:
     """Load geo unit labels from JSON."""
     with open(path) as f:
         return json.load(f)
-
-
-def load_cd_geoadj_values(
-    cds_to_calibrate: List[str],
-) -> Dict[str, Dict[str, float]]:
-    """
-    Load geographic adjustment factors from rent data CSV.
-    Uses median 2BR rent by CD vs national median to compute geoadj.
-    """
-    from policyengine_us_data.storage import STORAGE_FOLDER
-
-    csv_path = STORAGE_FOLDER / "national_and_district_rents_2023.csv"
-    rent_df = pd.read_csv(csv_path, dtype={"cd_id": str})
-
-    # Filter to numeric cd_id only (excludes "09ZZ" style undefined districts)
-    rent_df = rent_df[rent_df["cd_id"].str.match(r"^\d+$")]
-
-    # Convert zero-padded cd_id to match code format (e.g., "0101" -> "101")
-    rent_df["cd_geoid"] = rent_df["cd_id"].apply(lambda x: str(int(x)))
-
-    tenure_keys = tuple(TENURE_CODE_MAP.values())
-
-    # Build lookup from rent data
-    rent_lookup = {}
-    for _, row in rent_df.iterrows():
-        rent_lookup[row["cd_geoid"]] = {
-            tenure: calculate_geoadj_from_rent(
-                local_rent=row["median_2br_rent"],
-                national_rent=row["national_median_2br_rent"],
-                tenure=tenure,
-            )
-            for tenure in tenure_keys
-        }
-
-    geoadj_dict = {}
-    for cd in cds_to_calibrate:
-        if cd in rent_lookup:
-            geoadj_dict[cd] = rent_lookup[cd]
-        else:
-            cd_int = int(cd)
-            state_fips = cd_int // 100
-            district = cd_int % 100
-            fallback_cds = []
-            if state_fips == 11 and district == 1:
-                fallback_cds.append("1198")
-            if district == 1:
-                fallback_cds.append(str(state_fips * 100))
-            for fallback_cd in fallback_cds:
-                if fallback_cd in rent_lookup:
-                    geoadj_dict[cd] = rent_lookup[fallback_cd]
-                    break
-            if cd in geoadj_dict:
-                continue
-            print(f"Warning: No rent data for CD {cd}, using geoadj=1.0")
-            geoadj_dict[cd] = {tenure: 1.0 for tenure in tenure_keys}
-
-    return geoadj_dict

@@ -189,7 +189,11 @@ def check_package_staleness(metadata: dict) -> None:
     if created:
         try:
             built_dt = datetime.datetime.fromisoformat(created)
-            age = datetime.datetime.now() - built_dt
+            if built_dt.tzinfo is None:
+                built_dt = built_dt.replace(tzinfo=datetime.UTC)
+            age = datetime.datetime.now(datetime.UTC) - built_dt.astimezone(
+                datetime.UTC
+            )
             if age.days > 7:
                 print(f"WARNING: Package is {age.days} days old (built {created})")
         except Exception:

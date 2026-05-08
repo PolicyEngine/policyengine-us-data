@@ -42,6 +42,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
 )
 from policyengine_us_data.calibration.unified_calibration import (
     _calibration_package_contract_parameters,
+    check_package_staleness,
 )
 
 
@@ -91,6 +92,25 @@ def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
     assert params["chunk_size"] is None
     assert params["parallel_matrix"] is False
     assert params["num_matrix_workers"] is None
+
+
+def test_check_package_staleness_warns_for_old_utc_timestamp(
+    capsys,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.unified_calibration.get_git_provenance",
+        lambda: {"git_branch": "main"},
+    )
+
+    check_package_staleness(
+        {
+            "created_at": "2000-01-01T00:00:00Z",
+            "git_branch": "main",
+        }
+    )
+
+    assert "WARNING: Package is" in capsys.readouterr().out
 
 
 class TestForbesStateOverrides:

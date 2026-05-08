@@ -111,7 +111,15 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                     else "bootstrap.json"
                 )
 
+        class _FakeWorkerBootstrapStore:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def load(self, *args, **kwargs):
+                raise FileNotFoundError("fake bootstrap store is empty")
+
         fake_bootstrap.WorkerBootstrapBuilder = _FakeWorkerBootstrapBuilder
+        fake_bootstrap.WorkerBootstrapStore = _FakeWorkerBootstrapStore
         fake_fingerprinting.PublishingInputBundle = object
 
         class _FakeFingerprintingService:

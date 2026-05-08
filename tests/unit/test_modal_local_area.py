@@ -328,3 +328,62 @@ def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypa
     assert bundle.manifest_path == (
         artifacts_dir / "bootstrap" / "regional" / "worker_bootstrap.json"
     )
+
+
+def test_has_matching_worker_bootstrap_accepts_matching_fingerprint(monkeypatch):
+    local_area = load_local_area_module(stub_policyengine=False)
+    artifacts_dir = Path("/pipeline/artifacts/run-123")
+
+    class FakeWorkerBootstrapStore:
+        def __init__(self, root):
+            assert root == artifacts_dir
+
+        def load(self, scope):
+            assert scope == "regional"
+            return SimpleNamespace(
+                traceability={"scope_fingerprint": "resolved-fingerprint"},
+                manifest_path=(
+                    artifacts_dir / "bootstrap" / scope / "worker_bootstrap.json"
+                ),
+            )
+
+    monkeypatch.setattr(
+        local_area,
+        "WorkerBootstrapStore",
+        FakeWorkerBootstrapStore,
+    )
+
+    assert local_area._has_matching_worker_bootstrap(
+        scope="regional",
+        artifacts_dir=artifacts_dir,
+        scope_fingerprint="resolved-fingerprint",
+    )
+
+
+def test_has_matching_worker_bootstrap_rejects_mismatched_fingerprint(monkeypatch):
+    local_area = load_local_area_module(stub_policyengine=False)
+    artifacts_dir = Path("/pipeline/artifacts/run-123")
+
+    class FakeWorkerBootstrapStore:
+        def __init__(self, root):
+            assert root == artifacts_dir
+
+        def load(self, scope):
+            return SimpleNamespace(
+                traceability={"scope_fingerprint": "old-fingerprint"},
+                manifest_path=(
+                    artifacts_dir / "bootstrap" / scope / "worker_bootstrap.json"
+                ),
+            )
+
+    monkeypatch.setattr(
+        local_area,
+        "WorkerBootstrapStore",
+        FakeWorkerBootstrapStore,
+    )
+
+    assert not local_area._has_matching_worker_bootstrap(
+        scope="regional",
+        artifacts_dir=artifacts_dir,
+        scope_fingerprint="resolved-fingerprint",
+    )

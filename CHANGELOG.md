@@ -1,3 +1,10 @@
+## [1.106.2] - 2026-05-08
+
+### Changed
+
+- Removed dead ACS code that materialized SPM thresholds instead of leaving them to PolicyEngine US formulas.
+
+
 ## [1.106.1] - 2026-05-08
 
 ### Changed

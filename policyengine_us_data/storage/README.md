@@ -73,4 +73,4 @@
 - **national_and_district_rents_2023.csv**
   • Source: Census ACS 5-year estimates (2023), median 2BR rent by congressional district
   • Created by: `fetch_cd_rents.py` (requires `CENSUS_API_KEY` environment variable)
-  • Notes: Used to calculate SPM geographic adjustment factors for local area calibration 
+  • Notes: Legacy source for SPM geographic adjustment factors; current calculations live in `policyengine-us`.

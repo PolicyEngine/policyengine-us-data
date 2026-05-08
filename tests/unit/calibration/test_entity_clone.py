@@ -65,10 +65,6 @@ def test_materialize_clone_household_chunk_preserves_entity_joins(
         "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
         _fake_geography_from_blocks,
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
-        lambda cds: {cd: 1.0 for cd in cds},
-    )
     output_path = tmp_path / "clone_chunk.h5"
     summary = materialize_clone_household_chunk(
         sim=fixture_sim,
@@ -96,9 +92,8 @@ def test_materialize_clone_household_chunk_preserves_entity_joins(
         household_id = h5["household_id"]["2023"][:]
         assert np.array_equal(household_id, np.array([0, 1, 2], dtype=np.int32))
         assert set(person_household_id).issubset(set(household_id))
-        spm_geoadj = h5["spm_unit_geographic_adjustment"]["2023"][:]
-        np.testing.assert_allclose(spm_geoadj, 1.0)
         assert "spm_unit_spm_threshold" not in h5
+        assert "spm_unit_geographic_adjustment" not in h5
 
         for entity_key in ("tax_unit", "spm_unit", "family", "marital_unit"):
             entity_ids = h5[f"{entity_key}_id"]["2023"][:]
@@ -119,11 +114,6 @@ def test_materialize_clone_household_chunk_drops_legacy_spm_threshold_input(
         "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
         _fake_geography_from_blocks,
     )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
-        lambda cds: {cd: 1.0 for cd in cds},
-    )
-
     output_path = tmp_path / "legacy_threshold_input.h5"
     try:
         materialize_clone_household_chunk(
@@ -141,7 +131,7 @@ def test_materialize_clone_household_chunk_drops_legacy_spm_threshold_input(
 
     with h5py.File(output_path, "r") as h5:
         assert "spm_unit_spm_threshold" not in h5
-        assert "spm_unit_geographic_adjustment" in h5
+        assert "spm_unit_geographic_adjustment" not in h5
 
 
 def test_materialize_clone_household_chunk_keeps_clone_specific_block_geoids(
@@ -153,10 +143,6 @@ def test_materialize_clone_household_chunk_keeps_clone_specific_block_geoids(
     monkeypatch.setattr(
         "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
         _fake_geography_from_blocks,
-    )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
-        lambda cds: {cd: 1.0 for cd in cds},
     )
     output_path = tmp_path / "clone_specific_blocks.h5"
     materialize_clone_household_chunk(
@@ -187,10 +173,6 @@ def test_materialize_clone_household_chunk_writes_non_ascii_county_as_index(
     monkeypatch.setattr(
         "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
         _fake_geography_from_blocks,
-    )
-    monkeypatch.setattr(
-        "policyengine_us_data.calibration.entity_clone.load_cd_geoadj_values",
-        lambda cds: {cd: 1.0 for cd in cds},
     )
     output_path = tmp_path / "non_ascii_county.h5"
     materialize_clone_household_chunk(

@@ -26,7 +26,6 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     ExtendedCPS,
     _apply_post_processing,
     _build_clone_test_frame,
-    _calculate_spm_geographic_adjustments_from_assigned_geography,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     apply_retirement_constraints,
@@ -155,51 +154,10 @@ class TestVariableListConsistency:
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "spm_unit_spm_threshold" not in ExtendedCPS._keep_formula_vars()
-        assert "spm_unit_geographic_adjustment" in ExtendedCPS._keep_formula_vars()
+        assert "spm_unit_geographic_adjustment" not in ExtendedCPS._keep_formula_vars()
 
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
         assert "weeks_worked" in ExtendedCPS._keep_formula_vars()
-
-
-class TestSpmThresholdGeography:
-    def test_geoadj_inputs_follow_assigned_household_geography(self, monkeypatch):
-        def fake_load_cd_geoadj_values(cds):
-            assert cds == ["101", "202"]
-            return {
-                "101": {
-                    "renter": 1.0,
-                    "owner_with_mortgage": 10.0,
-                    "owner_without_mortgage": 20.0,
-                },
-                "202": {
-                    "renter": 2.0,
-                    "owner_with_mortgage": 3.0,
-                    "owner_without_mortgage": 4.0,
-                },
-            }
-
-        monkeypatch.setattr(
-            "policyengine_us_data.calibration.calibration_utils.load_cd_geoadj_values",
-            fake_load_cd_geoadj_values,
-        )
-        data = {
-            "household_id": {2024: np.array([1, 2])},
-            "congressional_district_geoid": {2024: np.array([101, 202])},
-            "spm_unit_id": {2024: np.array([1, 2])},
-            "spm_unit_tenure_type": {
-                2024: np.array([b"RENTER", b"OWNER_WITHOUT_MORTGAGE"])
-            },
-            "person_spm_unit_id": {2024: np.array([1, 1, 2])},
-            "person_household_id": {2024: np.array([1, 1, 2])},
-            "age": {2024: np.array([30, 5, 40])},
-        }
-
-        geoadj = _calculate_spm_geographic_adjustments_from_assigned_geography(
-            data,
-            2024,
-        )
-
-        np.testing.assert_array_equal(geoadj, np.array([1.0, 4.0]))
 
 
 class TestStructuralMortgageValidation:

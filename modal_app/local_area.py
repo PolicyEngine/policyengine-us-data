@@ -31,7 +31,6 @@ from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
 from policyengine_us_data.build_outputs.bootstrap import (  # noqa: E402
     WorkerBootstrapBuilder,
-    WorkerBootstrapStore,
 )
 from policyengine_us_data.build_outputs.fingerprinting import (  # noqa: E402
     FingerprintingService,
@@ -488,36 +487,6 @@ def _build_worker_bootstrap(
         f"{bundle.manifest_path.relative_to(artifacts_dir)}"
     )
     return bundle
-
-
-def _has_matching_worker_bootstrap(
-    *,
-    scope: str,
-    artifacts_dir: Path,
-    scope_fingerprint: str,
-) -> bool:
-    """Return whether a resume-compatible worker bootstrap already exists."""
-
-    try:
-        bundle = WorkerBootstrapStore(artifacts_dir).load(scope)
-    except (FileNotFoundError, ValueError, json.JSONDecodeError) as exc:
-        print(f"Worker bootstrap missing or invalid for {scope}: {exc}")
-        return False
-
-    stored_fingerprint = bundle.traceability.get("scope_fingerprint")
-    if stored_fingerprint != scope_fingerprint:
-        print(
-            f"Worker bootstrap fingerprint mismatch for {scope}; rebuilding.\n"
-            f"  Stored:  {stored_fingerprint}\n"
-            f"  Current: {scope_fingerprint}"
-        )
-        return False
-
-    print(
-        f"Worker bootstrap unchanged for {scope}: "
-        f"{bundle.manifest_path.relative_to(artifacts_dir)}"
-    )
-    return True
 
 
 @pipeline_node(
@@ -1168,25 +1137,14 @@ def coordinate_publish(
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
-        if not _has_matching_worker_bootstrap(
-            scope="regional",
-            artifacts_dir=artifacts,
-            scope_fingerprint=fingerprint,
-        ):
-            _build_worker_bootstrap(
-                inputs=fingerprint_inputs,
-                scope="regional",
-                artifacts_dir=artifacts,
-                scope_fingerprint=fingerprint,
-            )
     else:
         print(f"Prepared staging directory for fingerprint {fingerprint}")
-        _build_worker_bootstrap(
-            inputs=fingerprint_inputs,
-            scope="regional",
-            artifacts_dir=artifacts,
-            scope_fingerprint=fingerprint,
-        )
+    _build_worker_bootstrap(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        artifacts_dir=artifacts,
+        scope_fingerprint=fingerprint,
+    )
     pipeline_volume.commit()
     staging_volume.commit()
     if work_items_override is None:

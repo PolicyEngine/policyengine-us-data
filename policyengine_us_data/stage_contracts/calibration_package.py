@@ -180,7 +180,6 @@ def build_calibration_package_contract(
                 parameters=parameters,
                 fingerprint=fingerprint,
                 reuse_mode="handoff",
-                metadata={"package_summary": package_summary},
             ),
         ),
         execution=execution,
@@ -270,7 +269,7 @@ def validate_calibration_package_contract(
             Path(db_path),
         )
     if package is None:
-        return contract
+        raise ValueError("package is required to validate calibration package summary")
 
     expected_summary = canonicalize_for_fingerprint(
         summarize_calibration_package(package)

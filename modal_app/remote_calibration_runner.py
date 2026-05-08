@@ -422,16 +422,20 @@ def _build_package_impl(
 
     from policyengine_us_data.stage_contracts.calibration_package import (
         CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        load_calibration_package_payload,
         validate_calibration_package_contract,
     )
 
     contract_path = f"{artifacts}/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}"
+    package = load_calibration_package_payload(Path(pkg_path))
     validate_calibration_package_contract(
         package_path=Path(pkg_path),
         contract_path=Path(contract_path),
+        package=package,
         dataset_path=Path(dataset_path),
         db_path=Path(db_path),
     )
+    del package
 
     sidecar_ok = _write_package_sidecar(pkg_path)
     if not sidecar_ok:

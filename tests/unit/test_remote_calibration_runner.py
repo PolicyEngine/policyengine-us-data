@@ -143,6 +143,15 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     def fake_validate_contract(**kwargs):
         captured["contract_validation"] = kwargs
 
+    def fake_load_package(path):
+        captured["loaded_package_path"] = path
+        return {"package": "payload"}
+
+    monkeypatch.setattr(
+        calibration_package,
+        "load_calibration_package_payload",
+        fake_load_package,
+    )
     monkeypatch.setattr(
         calibration_package,
         "validate_calibration_package_contract",
@@ -205,5 +214,9 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     assert captured["contract_validation"]["db_path"] == (
         artifacts_dir / "policy_data.db"
     )
+    assert captured["loaded_package_path"] == (
+        artifacts_dir / "calibration_package.pkl"
+    )
+    assert captured["contract_validation"]["package"] == {"package": "payload"}
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()

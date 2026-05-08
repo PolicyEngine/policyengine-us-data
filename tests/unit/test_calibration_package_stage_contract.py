@@ -173,7 +173,7 @@ def test_calibration_package_contract_records_single_substage(tmp_path):
     assert substage.status == "completed"
     assert substage.reuse_mode == "handoff"
     assert substage.outputs[0].logical_name == "calibration_package"
-    assert substage.metadata["package_summary"]["matrix_shape"] == (2, 3)
+    assert substage.metadata == {}
 
 
 def test_calibration_package_contract_json_round_trip_is_deterministic(tmp_path):
@@ -302,6 +302,27 @@ def test_validate_calibration_package_contract_fails_on_package_checksum(tmp_pat
         assert "checksum mismatch" in str(exc)
     else:
         raise AssertionError("Stale calibration package checksum should fail")
+
+
+def test_validate_calibration_package_contract_requires_package_for_summary(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+    write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    try:
+        validate_calibration_package_contract(package_path=package_path)
+    except ValueError as exc:
+        assert "package is required" in str(exc)
+    else:
+        raise AssertionError("Package payload should be required for full validation")
 
 
 def test_load_calibration_package_payload_rejects_non_mapping(tmp_path):

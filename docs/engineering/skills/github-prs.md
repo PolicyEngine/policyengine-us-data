@@ -24,16 +24,18 @@ Before creating or sharing a PR:
    `make lint`.
 6. Push the current branch to the canonical repository:
    `make push-pr-branch`.
-7. Create the PR from that same repository:
-   `gh pr create --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main`.
-8. Verify the PR head repository:
-   `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
+7. Create the PR as a draft from that same repository:
+   `gh pr create --draft --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main`.
+8. Verify the PR is draft and the head repository is canonical:
+   `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json isDraft,headRepositoryOwner,headRepository`.
+9. Leave the PR as draft unless a maintainer explicitly asks for it to be
+   marked ready for review.
 
-The PR is valid only if the head repository is
+The PR is valid only if `isDraft` is `true` and the head repository is
 `PolicyEngine/policyengine-us-data`. If you cannot push to the canonical
 repository, stop and ask for access. Do not create a fork PR as a fallback. If
 you accidentally create one, close it immediately and replace it with a
-same-repository PR.
+same-repository draft PR.
 
 ## PR title
 

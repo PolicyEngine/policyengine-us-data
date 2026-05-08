@@ -17,11 +17,13 @@ Before creating or sharing a PR:
    already exists.
 3. Put `Fixes #ISSUE_NUMBER` as the first line of the PR description, using the
    issue number from the issue created or found in the previous step.
-4. Push the current branch to the canonical repository:
+4. Run the repository lint target:
+   `make lint`.
+5. Push the current branch to the canonical repository:
    `make push-pr-branch`.
-5. Create the PR from that same repository:
+6. Create the PR from that same repository:
    `gh pr create --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main`.
-6. Verify the PR head repository:
+7. Verify the PR head repository:
    `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
 
 The PR is valid only if the head repository is

@@ -12,6 +12,15 @@ This package is intentionally dependency-light and has no Modal dependency.
 """
 
 from .artifacts import ArtifactRef
+from .calibration_package import (
+    CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+    CALIBRATION_PACKAGE_CONTRACT_TYPE,
+    build_calibration_package_contract,
+    load_calibration_package_payload,
+    summarize_calibration_package,
+    validate_calibration_package_contract,
+    write_calibration_package_contract,
+)
 from .constants import (
     CONTRACT_FINGERPRINT_ALGORITHM,
     CONTRACT_SCHEMA_VERSION,
@@ -73,6 +82,8 @@ __all__ = [
     "VALIDATION_REPORT_STATUSES",
     "ArtifactRef",
     "CANONICAL_STAGE_IDS",
+    "CALIBRATION_PACKAGE_CONTRACT_FILENAME",
+    "CALIBRATION_PACKAGE_CONTRACT_TYPE",
     "CONTRACT_TYPE_BY_STAGE_ID",
     "DATASET_BUILD_OUTPUT_CONTRACT_FILENAME",
     "DATASET_BUILD_OUTPUT_CONTRACT_TYPE",
@@ -97,6 +108,7 @@ __all__ = [
     "ValidationFindingStatus",
     "ValidationReport",
     "ValidationReportStatus",
+    "build_calibration_package_contract",
     "build_dataset_build_output_contract",
     "canonicalize_for_fingerprint",
     "contract_from_json",
@@ -105,7 +117,11 @@ __all__ = [
     "fingerprint_material",
     "is_canonical_stage_id",
     "is_canonical_substage_id",
+    "load_calibration_package_payload",
     "read_contract",
+    "summarize_calibration_package",
     "substage_ids_for_stage",
+    "validate_calibration_package_contract",
+    "write_calibration_package_contract",
     "write_contract",
 ]

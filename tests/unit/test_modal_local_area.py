@@ -286,3 +286,43 @@ def test_resolve_scope_fingerprint_warns_and_preserves_mismatched_pin(
     )
     assert "legacy-fingerprint" in captured.out
     assert "computed-fingerprint" in captured.out
+
+
+def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypatch):
+    local_area = load_local_area_module(stub_policyengine=False)
+    publishing_inputs = object()
+    artifacts_dir = Path("/pipeline/artifacts/run-123")
+    captured = {}
+
+    class FakeWorkerBootstrapBuilder:
+        def build(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(
+                manifest_path=(
+                    artifacts_dir
+                    / "bootstrap"
+                    / kwargs["scope"]
+                    / "worker_bootstrap.json"
+                )
+            )
+
+    monkeypatch.setattr(
+        local_area,
+        "WorkerBootstrapBuilder",
+        FakeWorkerBootstrapBuilder,
+    )
+
+    bundle = local_area._build_worker_bootstrap(
+        inputs=publishing_inputs,
+        scope="regional",
+        artifacts_dir=artifacts_dir,
+    )
+
+    assert captured == {
+        "inputs": publishing_inputs,
+        "scope": "regional",
+        "artifacts_dir": artifacts_dir,
+    }
+    assert bundle.manifest_path == (
+        artifacts_dir / "bootstrap" / "regional" / "worker_bootstrap.json"
+    )

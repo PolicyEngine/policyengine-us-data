@@ -29,6 +29,9 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
+from policyengine_us_data.build_outputs.bootstrap import (  # noqa: E402
+    WorkerBootstrapBuilder,
+)
 from policyengine_us_data.build_outputs.fingerprinting import (  # noqa: E402
     FingerprintingService,
     PublishingInputBundle,
@@ -442,6 +445,46 @@ def _resolve_scope_fingerprint(
             print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
         return expected_fingerprint
     return computed_fingerprint
+
+
+@pipeline_node(
+    PipelineNode(
+        id="build_worker_bootstrap",
+        label="Build Worker Bootstrap",
+        node_type="library",
+        description="Persist deterministic local H5 worker setup artifacts for one scope.",
+        source_file="modal_app/local_area.py",
+        status="current",
+        stability="moving",
+        pathways=["local_h5"],
+        api_refs=[
+            "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder"
+        ],
+        artifacts_out=[
+            "bootstrap/{scope}/worker_bootstrap.json",
+            "bootstrap/{scope}/entity_graph.npz",
+        ],
+        validation_commands=["uv run pytest tests/unit/test_modal_local_area.py"],
+    )
+)
+def _build_worker_bootstrap(
+    *,
+    inputs: PublishingInputBundle,
+    scope: str,
+    artifacts_dir: Path,
+):
+    """Persist optional worker bootstrap artifacts for one local H5 scope."""
+
+    bundle = WorkerBootstrapBuilder().build(
+        inputs=inputs,
+        scope=scope,
+        artifacts_dir=artifacts_dir,
+    )
+    print(
+        f"Worker bootstrap ready for {scope}: "
+        f"{bundle.manifest_path.relative_to(artifacts_dir)}"
+    )
+    return bundle
 
 
 @pipeline_node(
@@ -1089,6 +1132,12 @@ def coordinate_publish(
         scope="regional",
         expected_fingerprint=expected_fingerprint,
     )
+    _build_worker_bootstrap(
+        inputs=fingerprint_inputs,
+        scope="regional",
+        artifacts_dir=artifacts,
+    )
+    pipeline_volume.commit()
     reconcile_action = reconcile_run_dir_fingerprint(run_dir, fingerprint)
     if reconcile_action == "resume":
         print(f"Inputs unchanged ({fingerprint}), resuming...")
@@ -1376,6 +1425,12 @@ def coordinate_national_publish(
         inputs=fingerprint_inputs,
         scope="national",
     )
+    _build_worker_bootstrap(
+        inputs=fingerprint_inputs,
+        scope="national",
+        artifacts_dir=artifacts,
+    )
+    pipeline_volume.commit()
     run_dir = staging_dir / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     national_h5 = run_dir / "national" / "US.h5"

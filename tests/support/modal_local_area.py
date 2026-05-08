@@ -79,6 +79,7 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_partitioning = ModuleType(
             "policyengine_us_data.build_outputs.partitioning"
         )
+        fake_bootstrap = ModuleType("policyengine_us_data.build_outputs.bootstrap")
         fake_fingerprinting = ModuleType(
             "policyengine_us_data.build_outputs.fingerprinting"
         )
@@ -101,6 +102,16 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_pipeline_schema.PipelineNode = _FakePipelineNode
         fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
+
+        class _FakeWorkerBootstrapBuilder:
+            def build(self, *args, **kwargs):
+                return SimpleNamespace(
+                    manifest_path=kwargs.get("artifacts_dir", "") / "bootstrap.json"
+                    if kwargs.get("artifacts_dir")
+                    else "bootstrap.json"
+                )
+
+        fake_bootstrap.WorkerBootstrapBuilder = _FakeWorkerBootstrapBuilder
         fake_fingerprinting.PublishingInputBundle = object
 
         class _FakeFingerprintingService:
@@ -120,6 +131,7 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                 "policyengine_us_data.utils": fake_utils,
                 "policyengine_us_data.utils.run_context": fake_run_context,
                 "policyengine_us_data.build_outputs": fake_build_outputs,
+                "policyengine_us_data.build_outputs.bootstrap": fake_bootstrap,
                 "policyengine_us_data.build_outputs.fingerprinting": (
                     fake_fingerprinting
                 ),

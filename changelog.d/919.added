@@ -1,0 +1,1 @@
+Stage 1 now emits a semantic `dataset_build_output.json` contract alongside copied pipeline artifacts.

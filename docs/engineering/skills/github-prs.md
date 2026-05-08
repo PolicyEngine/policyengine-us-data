@@ -13,11 +13,20 @@ Before creating or sharing a PR:
 
 1. Confirm the canonical repository is reachable:
    `gh repo view PolicyEngine/policyengine-us-data --json nameWithOwner`.
-2. Push the current branch to the canonical repository:
+2. Open a GitHub issue for the work, or verify that an appropriate issue
+   already exists.
+3. Put `Fixes #ISSUE_NUMBER` as the first line of the PR description, using the
+   issue number from the issue created or found in the previous step.
+4. Add a Towncrier changelog fragment under `changelog.d/` using the issue
+   number and the appropriate configured type, for example
+   `changelog.d/ISSUE_NUMBER.added`.
+5. Run the repository lint target:
+   `make lint`.
+6. Push the current branch to the canonical repository:
    `make push-pr-branch`.
-3. Create the PR from that same repository:
+7. Create the PR from that same repository:
    `gh pr create --repo PolicyEngine/policyengine-us-data --head "$(git branch --show-current)" --base main`.
-4. Verify the PR head repository:
+8. Verify the PR head repository:
    `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
 
 The PR is valid only if the head repository is

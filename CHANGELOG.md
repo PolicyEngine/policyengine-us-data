@@ -1,3 +1,10 @@
+## [1.107.0] - 2026-05-08
+
+### Added
+
+- Stage 1 now emits a semantic `dataset_build_output.json` contract alongside copied pipeline artifacts.
+
+
 ## [1.106.3] - 2026-05-08
 
 ### Fixed

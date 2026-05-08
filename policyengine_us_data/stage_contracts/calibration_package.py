@@ -251,10 +251,7 @@ def validate_calibration_package_contract(
     if contract.stage_id != STAGE_2_BUILD_CALIBRATION_PACKAGE:
         raise ValueError(f"Invalid Stage 2 contract stage_id: {contract.stage_id!r}")
     if contract.contract_type != CALIBRATION_PACKAGE_CONTRACT_TYPE:
-        raise ValueError(
-            "Invalid Stage 2 contract type: "
-            f"{contract.contract_type!r}"
-        )
+        raise ValueError(f"Invalid Stage 2 contract type: {contract.contract_type!r}")
     _assert_artifact_matches_file(
         _single_artifact(contract.outputs, "calibration_package"),
         package_path,

@@ -1,0 +1,2 @@
+Stage 2 now emits and validates a semantic `calibration_package_contract.json`
+sidecar next to `calibration_package.pkl`.

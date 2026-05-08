@@ -30,6 +30,7 @@ import builtins
 import logging
 import os
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -69,6 +70,42 @@ LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 430
 DEFAULT_TARGET_CONFIG_PATH = Path(__file__).resolve().parent / "target_config.yaml"
+
+
+def _utc_now_isoformat() -> str:
+    """Return a compact UTC timestamp for contract metadata."""
+
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _calibration_package_contract_parameters(
+    *,
+    workers: int,
+    n_clones: int,
+    target_config_path: str | None,
+    skip_county: bool,
+    skip_source_impute: bool,
+    skip_takeup_rerandomize: bool,
+    chunked_matrix: bool,
+    chunk_size: int,
+    parallel: bool,
+    num_matrix_workers: int,
+) -> dict:
+    """Return Stage 2 parameters that affect package construction."""
+
+    parallel_matrix = bool(chunked_matrix and parallel)
+    return {
+        "workers": workers if not chunked_matrix else None,
+        "n_clones": n_clones,
+        "target_config": target_config_path,
+        "skip_county": skip_county,
+        "skip_source_impute": skip_source_impute,
+        "skip_takeup_rerandomize": skip_takeup_rerandomize,
+        "chunked_matrix": chunked_matrix,
+        "chunk_size": chunk_size if chunked_matrix else None,
+        "parallel_matrix": parallel_matrix,
+        "num_matrix_workers": num_matrix_workers if parallel_matrix else None,
+    }
 
 
 def get_git_provenance() -> dict:
@@ -1303,6 +1340,7 @@ def run_calibration(
     """
     import time
 
+    started_at = _utc_now_isoformat()
     t0 = time.time()
 
     # Early exit: load pre-built package
@@ -1547,8 +1585,6 @@ def run_calibration(
     # Step 6b: Save the calibration package. By default this is the
     # minimal package selected by target_config.yaml; use
     # --all-active-targets to build a broad diagnostic package.
-    import datetime
-
     metadata = {
         "dataset_path": dataset_path,
         "db_path": db_path,
@@ -1556,7 +1592,7 @@ def run_calibration(
         "n_records": X_sparse.shape[1],
         "base_n_records": n_records,
         "seed": seed,
-        "created_at": datetime.datetime.now().isoformat(),
+        "created_at": _utc_now_isoformat(),
         "target_config_path": target_config_path,
         "package_scope": "minimal" if target_config else "all_active_targets",
         "matrix_builder": "chunked" if chunked_matrix else "precompute",
@@ -1573,20 +1609,63 @@ def run_calibration(
             Path(target_config_path)
         )
 
+    initial_weights = compute_initial_weights(X_sparse, targets_df)
     if package_output_path:
-        full_initial_weights = compute_initial_weights(X_sparse, targets_df)
+        package_payload = {
+            "X_sparse": X_sparse,
+            "targets_df": targets_df,
+            "target_names": target_names,
+            "metadata": metadata,
+            "initial_weights": initial_weights,
+            "cd_geoid": geography.cd_geoid,
+            "block_geoid": geography.block_geoid,
+        }
         save_calibration_package(
             package_output_path,
             X_sparse,
             targets_df,
             target_names,
             metadata,
-            initial_weights=full_initial_weights,
+            initial_weights=initial_weights,
             cd_geoid=geography.cd_geoid,
             block_geoid=geography.block_geoid,
         )
+        from policyengine_us_data.stage_contracts.calibration_package import (
+            validate_calibration_package_contract,
+            write_calibration_package_contract,
+        )
 
-    initial_weights = compute_initial_weights(X_sparse, targets_df)
+        completed_at = _utc_now_isoformat()
+        write_calibration_package_contract(
+            package_path=Path(package_output_path),
+            dataset_path=Path(dataset_path),
+            db_path=Path(db_path),
+            package=package_payload,
+            parameters=_calibration_package_contract_parameters(
+                workers=workers,
+                n_clones=n_clones,
+                target_config_path=target_config_path,
+                skip_county=skip_county,
+                skip_source_impute=skip_source_impute,
+                skip_takeup_rerandomize=skip_takeup_rerandomize,
+                chunked_matrix=chunked_matrix,
+                chunk_size=chunk_size,
+                parallel=parallel,
+                num_matrix_workers=num_matrix_workers,
+            ),
+            run_id=run_id,
+            started_at=started_at,
+            completed_at=completed_at,
+            duration_s=round(time.time() - t0, 1),
+            code_sha=metadata.get("git_commit"),
+            package_version=metadata.get("package_version"),
+        )
+        validate_calibration_package_contract(
+            package_path=Path(package_output_path),
+            package=package_payload,
+            dataset_path=Path(dataset_path),
+            db_path=Path(db_path),
+        )
 
     if build_only:
         from policyengine_us_data.calibration.validate_package import (

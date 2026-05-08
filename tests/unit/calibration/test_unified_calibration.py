@@ -40,6 +40,57 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
 )
+from policyengine_us_data.calibration.unified_calibration import (
+    _calibration_package_contract_parameters,
+)
+
+
+def test_calibration_package_contract_parameters_track_effective_matrix_mode():
+    params = _calibration_package_contract_parameters(
+        workers=8,
+        n_clones=430,
+        target_config_path="policyengine_us_data/calibration/target_config.yaml",
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=True,
+        chunk_size=25_000,
+        parallel=True,
+        num_matrix_workers=50,
+    )
+
+    assert params == {
+        "workers": None,
+        "n_clones": 430,
+        "target_config": "policyengine_us_data/calibration/target_config.yaml",
+        "skip_county": True,
+        "skip_source_impute": True,
+        "skip_takeup_rerandomize": False,
+        "chunked_matrix": True,
+        "chunk_size": 25_000,
+        "parallel_matrix": True,
+        "num_matrix_workers": 50,
+    }
+
+
+def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
+    params = _calibration_package_contract_parameters(
+        workers=8,
+        n_clones=430,
+        target_config_path=None,
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=False,
+        chunk_size=25_000,
+        parallel=True,
+        num_matrix_workers=50,
+    )
+
+    assert params["workers"] == 8
+    assert params["chunk_size"] is None
+    assert params["parallel_matrix"] is False
+    assert params["num_matrix_workers"] is None
 
 
 class TestForbesStateOverrides:

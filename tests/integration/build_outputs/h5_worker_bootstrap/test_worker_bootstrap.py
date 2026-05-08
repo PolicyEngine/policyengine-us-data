@@ -7,7 +7,7 @@ from policyengine_us_data.build_outputs.bootstrap import (
     load_entity_graph,
 )
 from policyengine_us_data.build_outputs.fingerprinting import PublishingInputBundle
-from tests.integration.local_h5.fixtures import (
+from tests.integration.build_outputs.fixtures import (
     SEED,
     VERSION,
     seed_local_h5_artifacts,

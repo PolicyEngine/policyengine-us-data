@@ -534,7 +534,7 @@ class SourceDatasetSnapshot:
     stability="moving",
     pathways=["local_h5"],
     validation_commands=[
-        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
     ],
 )
 @dataclass(frozen=True)

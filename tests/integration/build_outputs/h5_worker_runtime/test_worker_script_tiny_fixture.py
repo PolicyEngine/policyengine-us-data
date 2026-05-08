@@ -13,7 +13,7 @@ from policyengine_us_data.build_outputs.source_dataset import (
     PolicyEngineDatasetReader,
 )
 from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
-from tests.integration.local_h5.fixtures import (
+from tests.integration.build_outputs.fixtures import (
     build_request,
     seed_local_h5_artifacts,
 )

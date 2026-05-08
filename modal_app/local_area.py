@@ -678,7 +678,7 @@ def run_phase(
         artifacts_out=["one or more H5 files"],
         validation_commands=[
             "uv run pytest tests/unit/test_modal_local_area.py",
-            "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py",
+            "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py",
         ],
     )
 )

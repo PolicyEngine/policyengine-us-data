@@ -30,8 +30,8 @@ Examples:
     python run_household_projection.py 2045 2045 --profile ss --target-source trustees_2025_current_law --save-h5
     python run_household_projection.py 2025 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
     python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-synthetic-v1 --support-augmentation-target-year 2100 --allow-validation-failures
-    python run_household_projection.py 2100 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 0.5 --allow-validation-failures --save-h5
-    python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-align-to-run-year --support-augmentation-blueprint-base-weight-scale 0.5 --allow-validation-failures
+    python run_household_projection.py 2100 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 5.0 --save-h5
+    python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-align-to-run-year --support-augmentation-blueprint-base-weight-scale 5.0
     python run_household_projection.py 2025 2100 --profile ss-payroll-tob --target-source oact_2025_08_05_provisional --save-h5
 """
 
@@ -565,7 +565,7 @@ if "--support-augmentation-clone-weight-scale" in sys.argv:
     SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE = float(sys.argv[weight_scale_index + 1])
     del sys.argv[weight_scale_index : weight_scale_index + 2]
 
-SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE = 0.5
+SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE = 5.0
 if "--support-augmentation-blueprint-base-weight-scale" in sys.argv:
     blueprint_scale_index = sys.argv.index(
         "--support-augmentation-blueprint-base-weight-scale"
@@ -802,6 +802,7 @@ def _build_support_augmentation(
             donors_per_target=SUPPORT_AUGMENTATION_DONORS_PER_TARGET,
             max_distance_for_clone=SUPPORT_AUGMENTATION_MAX_DISTANCE,
             clone_weight_scale=SUPPORT_AUGMENTATION_CLONE_WEIGHT_SCALE,
+            reform=ACTIVE_LONG_RUN_TAX_REFORM,
         )
     else:
         augmented_dataset, augmentation_report = build_augmented_dataset(
@@ -1245,6 +1246,8 @@ for year_idx in range(n_years):
             hh_id_to_idx=current_hh_id_to_idx,
             baseline_weights=baseline_weights,
             base_weight_scale=SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE,
+            ss_values_actual=ss_values_actual,
+            payroll_values_actual=payroll_values_actual,
         )
         if calibration_blueprint is not None:
             calibration_baseline_weights = calibration_blueprint["baseline_weights"]

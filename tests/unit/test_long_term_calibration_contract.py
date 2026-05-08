@@ -185,6 +185,43 @@ def test_targeted_donor_support_builder_rejects_unknown_profile():
         )
 
 
+@pytest.mark.parametrize(
+    ("profile", "builder_name"),
+    [
+        ("donor-backed-synthetic-v1", "build_donor_backed_augmented_dataset"),
+        ("donor-backed-composite-v1", "build_role_composite_augmented_dataset"),
+    ],
+)
+def test_targeted_donor_support_builder_forwards_reform(
+    monkeypatch,
+    profile,
+    builder_name,
+):
+    from policyengine_us_data.datasets.cps.long_term import (
+        prototype_synthetic_2100_support as prototype_module,
+    )
+
+    reform = {"gov.irs.uprating": {"2035-01-01.2100-12-31": "gov.ssa.nawi"}}
+    calls = {}
+
+    def fake_builder(**kwargs):
+        calls["reform"] = kwargs.get("reform")
+        return object(), {}
+
+    monkeypatch.setattr(prototype_module, builder_name, fake_builder)
+
+    _, report = build_targeted_donor_augmented_dataset(
+        base_dataset="unused.h5",
+        base_year=2024,
+        target_year=2075,
+        profile=profile,
+        reform=reform,
+    )
+
+    assert calls["reform"] is reform
+    assert report["profile"] == profile
+
+
 def test_support_augmentation_clones_households_with_new_ids():
     import pandas as pd
 
@@ -553,6 +590,36 @@ def test_role_composite_calibration_blueprint_reweights_clone_priors():
     assert blueprint["age_overrides"][2].sum() == pytest.approx(1.0)
     assert blueprint["summary"]["clone_household_count"] == 2
     assert blueprint["summary"]["base_weight_scale"] == pytest.approx(0.5)
+
+
+def test_role_composite_blueprint_prefers_realized_support_values():
+    report = {
+        "target_year": 2100,
+        "clone_household_reports": [
+            {
+                "clone_household_id": 1001,
+                "target_head_age": 70,
+                "target_spouse_age": None,
+                "target_dependent_ages": [],
+                "target_ss_total": 20_000.0,
+                "target_payroll_total": 50_000.0,
+                "per_clone_weight_share_pct": 10.0,
+            }
+        ],
+    }
+    blueprint = build_role_composite_calibration_blueprint(
+        report,
+        year=2100,
+        age_bins=build_age_bins(n_ages=86, bucket_size=5),
+        hh_id_to_idx={1001: 1},
+        baseline_weights=np.array([100.0, 200.0]),
+        ss_values_actual=np.array([1_000.0, 21_000.0]),
+        payroll_values_actual=np.array([2_000.0, 55_000.0]),
+    )
+
+    assert blueprint is not None
+    assert blueprint["ss_overrides"] == {1: 21_000.0}
+    assert blueprint["payroll_overrides"] == {1: 55_000.0}
 
 
 def test_legacy_flags_map_to_named_profile():

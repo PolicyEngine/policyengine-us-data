@@ -1,3 +1,15 @@
+## [1.108.0] - 2026-05-08
+
+### Added
+
+- Added local H5 source dataset snapshot and entity graph contracts.
+
+### Fixed
+
+- Add retry backoff for brittle public data downloads and handle NumPy string arrays
+  when writing small enhanced CPS HDF5 outputs.
+
+
 ## [1.107.0] - 2026-05-08
 
 ### Added

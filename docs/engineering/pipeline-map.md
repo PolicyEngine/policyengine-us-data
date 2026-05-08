@@ -878,6 +878,14 @@ class ArtifactIdentity
 
 Stable identity for an input artifact used by traceability.
 
+### `policyengine_us_data.build_outputs.source_dataset.EntityGraph`
+
+```python
+class EntityGraph
+```
+
+Structural relationships between source dataset entities.
+
 ### `policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint`
 
 ```python
@@ -886,6 +894,14 @@ def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: 
 
 Compute a scope fingerprint for local H5 checkpoint and resume decisions.
 
+### `policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider`
+
+```python
+class MicrosimulationVariableProvider
+```
+
+Lazy holder-backed variable reader for a source microsimulation.
+
 ### `policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items`
 
 ```python
@@ -893,6 +909,14 @@ def partition_weighted_work_items(work_items: WorkItems, num_workers: int, compl
 ```
 
 Partition remaining H5 work across worker chunks.
+
+### `policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader`
+
+```python
+class PolicyEngineDatasetReader
+```
+
+Read PolicyEngine source H5 files into `SourceDatasetSnapshot` objects.
 
 ### `policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle`
 
@@ -909,6 +933,14 @@ class ResolvedGeographySource
 ```
 
 Resolved physical source used to recover calibration geography.
+
+### `policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot`
+
+```python
+class SourceDatasetSnapshot
+```
+
+Explicit in-memory worker view of a source H5 dataset.
 
 ### `policyengine_us_data.build_outputs.fingerprinting.FingerprintingService`
 

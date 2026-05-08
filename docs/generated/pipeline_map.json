@@ -334,6 +334,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.EntityGraph"
+      ],
+      "description": "Explicit source-dataset entity spine for local H5 worker setup.",
+      "id": "local_h5_entity_graph",
+      "label": "EntityGraph",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
         "policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint"
       ],
@@ -353,6 +371,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider"
+      ],
+      "description": "Lazy source variable access wrapper for local H5 source snapshots.",
+      "id": "local_h5_microsimulation_variable_provider",
+      "label": "MicrosimulationVariableProvider",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
       ],
       "description": "Assign weighted area work items to worker batches using longest-processing-time scheduling.",
@@ -367,6 +403,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_partitioning.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader"
+      ],
+      "description": "PolicyEngine H5 dataset adapter for local H5 source snapshots.",
+      "id": "local_h5_policyengine_dataset_reader",
+      "label": "PolicyEngineDatasetReader",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
       ]
     },
     {
@@ -400,6 +454,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot"
+      ],
+      "description": "In-memory source H5 dataset contract for local H5 worker setup.",
+      "id": "local_h5_source_dataset_snapshot",
+      "label": "SourceDatasetSnapshot",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
       ]
     },
     {
@@ -685,9 +757,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 31,
+    "api_node_count": 35,
     "canonical_stage_count": 5,
-    "decorated_object_count": 80,
+    "decorated_object_count": 84,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

@@ -1368,6 +1368,33 @@
     "signature": "class ArtifactIdentity",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
   },
+  "local_h5_entity_graph": {
+    "docstring": "Structural relationships between source dataset entities.\n\n`EntityGraph` is the canonical in-memory shape for the source entity spine.\nIt stores raw ID arrays plus derived household-membership maps so later H5\nbuilder seams can select households without rebuilding joins.\n\nAttributes:\n    household_ids: Source household IDs, one per household row.\n    person_household_ids: Household ID for each source person row.\n    subentity_ids: Entity IDs by subentity key, such as `tax_unit`.\n    person_subentity_ids: Entity ID for each source person row by subentity.\n    household_to_person_indices: Household row index to person row indices.\n    household_to_subentity_indices: Subentity key to household row index to\n        subentity row indices.",
+    "id": "local_h5_entity_graph",
+    "kind": "class",
+    "line": 56,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.EntityGraph"
+      ],
+      "description": "Explicit source-dataset entity spine for local H5 worker setup.",
+      "id": "local_h5_entity_graph",
+      "label": "EntityGraph",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.source_dataset.EntityGraph",
+    "signature": "class EntityGraph",
+    "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
+  },
   "local_h5_input_fingerprint": {
     "docstring": "",
     "id": "local_h5_input_fingerprint",
@@ -1396,6 +1423,33 @@
     "signature": "def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: Optional[int] = None, seed: int = 42, geography_path: Optional[Path] = None, blocks_path: Optional[Path] = None, target_db_path: Optional[Path] = None, run_config_path: Optional[Path] = None, calibration_package_path: Optional[Path] = None, scope: str = 'regional') -> str",
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
   },
+  "local_h5_microsimulation_variable_provider": {
+    "docstring": "Lazy holder-backed variable reader for a source microsimulation.\n\nThe provider intentionally reads arrays only when callers request a\nvariable/period pair. It caches the normalized array for repeated access\nwhile keeping construction lightweight.\n\nAttributes:\n    simulation: Source `policyengine_us.Microsimulation` or a compatible\n        test double with `input_variables` and `get_holder(...)`.",
+    "id": "local_h5_microsimulation_variable_provider",
+    "kind": "class",
+    "line": 377,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider"
+      ],
+      "description": "Lazy source variable access wrapper for local H5 source snapshots.",
+      "id": "local_h5_microsimulation_variable_provider",
+      "label": "MicrosimulationVariableProvider",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider",
+    "signature": "class MicrosimulationVariableProvider",
+    "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
+  },
   "local_h5_partition": {
     "docstring": "Partition remaining H5 work across worker chunks.\n\nThe function uses longest-processing-time scheduling: uncompleted work items\nare sorted by descending `weight`, then assigned to the currently lightest\nworker chunk. This keeps expensive state or district builds from clustering\non one worker.\n\nArgs:\n    work_items: Candidate work items. Each item must contain `type`, `id`,\n        and numeric `weight` keys.\n    num_workers: Maximum number of worker chunks to produce.\n    completed: Stable completion keys, formatted as `\"{type}:{id}\"`, that\n        should be skipped.\n\nReturns:\n    Non-empty worker chunks. Returns an empty list when `num_workers <= 0` or\n    every item is already completed.",
     "id": "local_h5_partition",
@@ -1422,6 +1476,33 @@
     "object_path": "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
     "signature": "def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks",
     "source_file": "policyengine_us_data/build_outputs/partitioning.py"
+  },
+  "local_h5_policyengine_dataset_reader": {
+    "docstring": "Read PolicyEngine source H5 files into `SourceDatasetSnapshot` objects.",
+    "id": "local_h5_policyengine_dataset_reader",
+    "kind": "class",
+    "line": 541,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader"
+      ],
+      "description": "PolicyEngine H5 dataset adapter for local H5 source snapshots.",
+      "id": "local_h5_policyengine_dataset_reader",
+      "label": "PolicyEngineDatasetReader",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader",
+    "signature": "class PolicyEngineDatasetReader",
+    "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
   },
   "local_h5_publishing_input_bundle": {
     "docstring": "Input artifact bundle for one local H5 publication scope.\n\nThe bundle is the library-level contract used by coordinators before\nfingerprinting. Paths point to local files already materialized in the\nworker or orchestration environment.\n\nAttributes:\n    weights_path: Path to `calibration_weights.npy`.\n    source_dataset_path: Path to the source-imputed dataset H5.\n    target_db_path: Optional `policy_data.db` path used for validation.\n    exact_geography_path: Optional saved `geography_assignment.npz` path.\n    calibration_package_path: Optional `calibration_package.pkl` path used\n        as a geography fallback.\n    run_config_path: Optional run configuration JSON with code and model\n        build metadata.\n    run_id: Pipeline run identifier.\n    version: Package or release version associated with the publish.\n    n_clones: Expected clone count, when known.\n    seed: Geography assignment seed used by the build.\n    legacy_blocks_path: Optional legacy `stacked_blocks.npy` fallback.",
@@ -1473,6 +1554,33 @@
     "object_path": "policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource",
     "signature": "class ResolvedGeographySource",
     "source_file": "policyengine_us_data/build_outputs/geography_loader.py"
+  },
+  "local_h5_source_dataset_snapshot": {
+    "docstring": "Explicit in-memory worker view of a source H5 dataset.\n\nThe snapshot groups source dataset structure and lazy variable access. It\ndoes not serialize artifacts or change current worker execution paths.\n\nAttributes:\n    dataset_path: Source H5 dataset path.\n    time_period: Default source calculation period.\n    entity_graph: Source entity relationship graph.\n    input_variables: Input variable names available from the source.\n    variable_provider: Lazy variable reader for the source simulation.",
+    "id": "local_h5_source_dataset_snapshot",
+    "kind": "class",
+    "line": 464,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot"
+      ],
+      "description": "In-memory source H5 dataset contract for local H5 worker setup.",
+      "id": "local_h5_source_dataset_snapshot",
+      "label": "SourceDatasetSnapshot",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/source_dataset.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot",
+    "signature": "class SourceDatasetSnapshot",
+    "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
   },
   "local_h5_traceability": {
     "docstring": "Build traceability bundles and derive deterministic scope fingerprints.\n\nThe service centralizes provenance rules for local H5 publishing. It avoids\nimporting heavy simulation machinery until a fallback record-count inference\nis needed.",

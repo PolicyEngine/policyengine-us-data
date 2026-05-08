@@ -1,3 +1,10 @@
+## [1.106.3] - 2026-05-08
+
+### Fixed
+
+- Fixed long-run donor-composite support calibration to use the active tax assumption and realized clone support values for Social Security and taxable payroll.
+
+
 ## [1.106.2] - 2026-05-08
 
 ### Changed

@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 640,
+    "line": 685,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -436,7 +436,7 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/test_modal_local_area.py",
-        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
       ]
     },
     "object_path": "modal_app.local_area.build_areas_worker",
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 374,
+    "line": 377,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -685,6 +685,38 @@
     "object_path": "policyengine_us_data.calibration.publish_local_area.build_states",
     "signature": "def build_states(weights_path: Path, dataset_path: Path, geography, output_dir: Path, completed_states: set, hf_batch_size: int = 10, takeup_filter: List[str] = None, upload: bool = False, state_filter: str = None)",
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
+  },
+  "build_worker_bootstrap": {
+    "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
+    "id": "build_worker_bootstrap",
+    "kind": "function",
+    "line": 470,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
+        "modal_app.local_area._build_worker_bootstrap"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Persist deterministic local H5 worker setup artifacts for one scope.",
+      "id": "build_worker_bootstrap",
+      "label": "Build Worker Bootstrap",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    "object_path": "modal_app.local_area._build_worker_bootstrap",
+    "signature": "def _build_worker_bootstrap(*, inputs: PublishingInputBundle, scope: str, artifacts_dir: Path, scope_fingerprint: str | None = None)",
+    "source_file": "modal_app/local_area.py"
   },
   "calibration_diagnostics": {
     "docstring": "",
@@ -841,7 +873,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 987,
+    "line": 1032,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -876,7 +908,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 463,
+    "line": 508,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -1497,7 +1529,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
       ]
     },
     "object_path": "policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader",
@@ -1635,6 +1667,111 @@
     "object_path": "policyengine_us_data.build_outputs.fingerprinting.TraceabilityBundle",
     "signature": "class TraceabilityBundle",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
+  },
+  "local_h5_worker_bootstrap_builder": {
+    "docstring": "Build and persist one scope's local H5 worker bootstrap artifacts.",
+    "id": "local_h5_worker_bootstrap_builder",
+    "kind": "class",
+    "line": 280,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Materialize deterministic local H5 worker bootstrap artifacts.",
+      "id": "local_h5_worker_bootstrap_builder",
+      "label": "WorkerBootstrapBuilder",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
+    "signature": "class WorkerBootstrapBuilder",
+    "source_file": "policyengine_us_data/build_outputs/bootstrap.py"
+  },
+  "local_h5_worker_bootstrap_bundle": {
+    "docstring": "Manifest-backed bootstrap bundle for one worker setup scope.\n\nThe bundle is an introduced artifact contract only. It records the\ndeterministic source, weight, geography, and traceability facts that later\nworker-session code can load instead of rebuilding inside every worker.\n\nAttributes:\n    run_id: GitHub-created pipeline run identifier.\n    scope: Bootstrap scope, currently ``\"regional\"`` or ``\"national\"``.\n    root_dir: Directory containing this scope's bootstrap artifacts.\n    manifest_path: Path to ``worker_bootstrap.json``.\n    entity_graph_path: Path to ``entity_graph.npz``.\n    inputs: Manifest artifact identity map.\n    source_dataset: Source dataset summary payload.\n    weights: Clone-weight summary payload.\n    geography: Geography summary payload.\n    traceability: Scope fingerprint and resumability payload.\n    artifacts: Relative bootstrap artifact filenames.\n    schema_version: Bootstrap schema version.",
+    "id": "local_h5_worker_bootstrap_bundle",
+    "kind": "class",
+    "line": 74,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBundle"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db"
+      ],
+      "artifacts_out": [
+        "worker_bootstrap.json",
+        "entity_graph.npz"
+      ],
+      "description": "Persisted deterministic worker setup facts for one local H5 scope.",
+      "id": "local_h5_worker_bootstrap_bundle",
+      "label": "WorkerBootstrapBundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBundle",
+    "signature": "class WorkerBootstrapBundle",
+    "source_file": "policyengine_us_data/build_outputs/bootstrap.py"
+  },
+  "local_h5_worker_bootstrap_store": {
+    "docstring": "Filesystem adapter for scope-specific bootstrap bundle paths.",
+    "id": "local_h5_worker_bootstrap_store",
+    "kind": "class",
+    "line": 214,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapStore"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Filesystem path adapter for run-scoped local H5 bootstrap artifacts.",
+      "id": "local_h5_worker_bootstrap_store",
+      "label": "WorkerBootstrapStore",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapStore",
+    "signature": "class WorkerBootstrapStore",
+    "source_file": "policyengine_us_data/build_outputs/bootstrap.py"
   },
   "local_stage_upload": {
     "docstring": "",
@@ -1874,7 +2011,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 421,
+    "line": 424,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -2000,7 +2137,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 512,
+    "line": 557,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -2232,7 +2369,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 829,
+    "line": 874,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -2343,7 +2480,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 753,
+    "line": 798,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"

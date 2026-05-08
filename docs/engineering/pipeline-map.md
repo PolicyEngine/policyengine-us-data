@@ -790,6 +790,14 @@ def _build_publishing_input_bundle(*, weights_path: Path, dataset_path: Path, db
 
 Build the normalized coordinator input bundle for one publish scope.
 
+### `modal_app.local_area._build_worker_bootstrap`
+
+```python
+def _build_worker_bootstrap(*, inputs: PublishingInputBundle, scope: str, artifacts_dir: Path, scope_fingerprint: str | None = None)
+```
+
+Persist optional worker bootstrap artifacts for one local H5 scope.
+
 ### `policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader`
 
 ```python
@@ -957,6 +965,30 @@ class TraceabilityBundle
 ```
 
 Full provenance record for one local H5 publish scope.
+
+### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder`
+
+```python
+class WorkerBootstrapBuilder
+```
+
+Build and persist one scope's local H5 worker bootstrap artifacts.
+
+### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBundle`
+
+```python
+class WorkerBootstrapBundle
+```
+
+Manifest-backed bootstrap bundle for one worker setup scope.
+
+### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapStore`
+
+```python
+class WorkerBootstrapStore
+```
+
+Filesystem adapter for scope-specific bootstrap bundle paths.
 
 ### `policyengine_us_data.calibration.promote_local_h5s.stage`
 

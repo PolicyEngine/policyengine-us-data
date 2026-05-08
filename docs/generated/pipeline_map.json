@@ -19,7 +19,7 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/test_modal_local_area.py",
-        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
       ]
     },
     {
@@ -98,6 +98,29 @@
       "description": "Assemble artifact paths and run metadata for scope fingerprinting.",
       "id": "build_publishing_input_bundle",
       "label": "Build Publishing Input Bundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "modal_app/local_area.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_modal_local_area.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
+        "modal_app.local_area._build_worker_bootstrap"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Persist deterministic local H5 worker setup artifacts for one scope.",
+      "id": "build_worker_bootstrap",
+      "label": "Build Worker Bootstrap",
       "node_type": "library",
       "pathways": [
         "local_h5"
@@ -420,7 +443,7 @@
       "stability": "moving",
       "status": "current",
       "validation_commands": [
-        "uv run pytest tests/integration/local_h5/test_worker_script_tiny_fixture.py"
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
       ]
     },
     {
@@ -508,6 +531,84 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_fingerprinting.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Materialize deterministic local H5 worker bootstrap artifacts.",
+      "id": "local_h5_worker_bootstrap_builder",
+      "label": "WorkerBootstrapBuilder",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBundle"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db"
+      ],
+      "artifacts_out": [
+        "worker_bootstrap.json",
+        "entity_graph.npz"
+      ],
+      "description": "Persisted deterministic worker setup facts for one local H5 scope.",
+      "id": "local_h5_worker_bootstrap_bundle",
+      "label": "WorkerBootstrapBundle",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapStore"
+      ],
+      "artifacts_out": [
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Filesystem path adapter for run-scoped local H5 bootstrap artifacts.",
+      "id": "local_h5_worker_bootstrap_store",
+      "label": "WorkerBootstrapStore",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/bootstrap.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
       ]
     },
     {
@@ -757,9 +858,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 35,
+    "api_node_count": 39,
     "canonical_stage_count": 5,
-    "decorated_object_count": 84,
+    "decorated_object_count": 88,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

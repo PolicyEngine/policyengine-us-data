@@ -1,3 +1,10 @@
+## [1.109.0] - 2026-05-08
+
+### Added
+
+- Added run-scoped local H5 worker bootstrap artifacts for deterministic worker setup metadata.
+
+
 ## [1.108.1] - 2026-05-08
 
 ### Fixed

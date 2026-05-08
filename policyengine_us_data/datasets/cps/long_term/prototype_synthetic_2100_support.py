@@ -442,8 +442,9 @@ def build_tax_unit_summary(
     dataset: str | Dataset,
     *,
     period: int,
+    reform: object | None = None,
 ) -> pd.DataFrame:
-    sim = Microsimulation(dataset=dataset)
+    sim = Microsimulation(dataset=dataset, reform=reform)
     input_df = sim.to_input_dataframe()
 
     person_df = pd.DataFrame(
@@ -533,8 +534,12 @@ def build_tax_unit_summary(
     return pd.DataFrame(rows)
 
 
-def build_actual_tax_unit_summary(base_dataset: str) -> pd.DataFrame:
-    return build_tax_unit_summary(base_dataset, period=BASE_YEAR)
+def build_actual_tax_unit_summary(
+    base_dataset: str,
+    *,
+    reform: object | None = None,
+) -> pd.DataFrame:
+    return build_tax_unit_summary(base_dataset, period=BASE_YEAR, reform=reform)
 
 
 def attach_person_uprating_factors(
@@ -586,8 +591,12 @@ def attach_person_uprating_factors(
     return df
 
 
-def load_base_aggregates(base_dataset: str) -> dict[str, float]:
-    sim = Microsimulation(dataset=base_dataset)
+def load_base_aggregates(
+    base_dataset: str,
+    *,
+    reform: object | None = None,
+) -> dict[str, float]:
+    sim = Microsimulation(dataset=base_dataset, reform=reform)
     household_series = sim.calculate(
         "household_id", period=BASE_YEAR, map_to="household"
     )
@@ -874,15 +883,16 @@ def build_role_composite_calibration_blueprint(
     hh_id_to_idx: dict[int, int],
     baseline_weights: np.ndarray,
     base_weight_scale: float = 0.5,
+    ss_values_actual: np.ndarray | None = None,
+    payroll_values_actual: np.ndarray | None = None,
 ) -> dict[str, object] | None:
     """
     Build target-year calibration overrides for donor-composite clones.
 
-    Donor-composite augmentation produces realized microdata rows that are close
-    to the synthetic target support but not numerically identical. At the
-    augmentation target year we can calibrate against the exact clone
-    blueprints, using the synthetic solution as priors, while still applying
-    the resulting household weights to the realized rows.
+    Donor-composite augmentation produces realized microdata rows that match
+    the synthetic target ages exactly, while payroll and Social Security values
+    should come from the actual PolicyEngine run when available. This keeps the
+    calibration contract aligned with the rows that downstream scoring uses.
     """
     target_year = augmentation_report.get("target_year")
     clone_reports = augmentation_report.get("clone_household_reports")
@@ -916,8 +926,16 @@ def build_role_composite_calibration_blueprint(
             ages.append(int(spouse_age))
         ages.extend(int(age) for age in clone_report.get("target_dependent_ages", []))
         age_overrides[idx] = age_bucket_vector(ages, age_bins)
-        ss_overrides[idx] = float(clone_report["target_ss_total"])
-        payroll_overrides[idx] = float(clone_report["target_payroll_total"])
+        ss_overrides[idx] = (
+            float(ss_values_actual[idx])
+            if ss_values_actual is not None
+            else float(clone_report["target_ss_total"])
+        )
+        payroll_overrides[idx] = (
+            float(payroll_values_actual[idx])
+            if payroll_values_actual is not None
+            else float(clone_report["target_payroll_total"])
+        )
         prior_weights[idx] = (
             clone_total_prior_weight
             * float(clone_report["per_clone_weight_share_pct"])
@@ -2171,16 +2189,17 @@ def build_donor_backed_augmented_input_dataframe(
     donors_per_target: int = 5,
     max_distance_for_clone: float = 3.0,
     clone_weight_scale: float = 0.1,
+    reform: object | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    sim = Microsimulation(dataset=base_dataset)
+    sim = Microsimulation(dataset=base_dataset, reform=reform)
     input_df = attach_person_uprating_factors(
         sim.to_input_dataframe(),
         sim,
         base_year=base_year,
         target_year=target_year,
     )
-    actual_summary = build_actual_tax_unit_summary(base_dataset)
-    base_aggregates = load_base_aggregates(base_dataset)
+    actual_summary = build_actual_tax_unit_summary(base_dataset, reform=reform)
+    base_aggregates = load_base_aggregates(base_dataset, reform=reform)
     ss_scale = load_ssa_benefit_projections(target_year) / max(
         base_aggregates["weighted_ss_total"],
         1.0,
@@ -2315,16 +2334,17 @@ def build_role_composite_augmented_input_dataframe(
     max_older_distance: float = 3.0,
     max_worker_distance: float = 3.0,
     clone_weight_scale: float = 0.1,
+    reform: object | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
-    sim = Microsimulation(dataset=base_dataset)
+    sim = Microsimulation(dataset=base_dataset, reform=reform)
     input_df = attach_person_uprating_factors(
         sim.to_input_dataframe(),
         sim,
         base_year=base_year,
         target_year=target_year,
     )
-    actual_summary = build_actual_tax_unit_summary(base_dataset)
-    base_aggregates = load_base_aggregates(base_dataset)
+    actual_summary = build_actual_tax_unit_summary(base_dataset, reform=reform)
+    base_aggregates = load_base_aggregates(base_dataset, reform=reform)
     ss_scale = load_ssa_benefit_projections(target_year) / max(
         base_aggregates["weighted_ss_total"],
         1.0,
@@ -2530,6 +2550,7 @@ def build_role_composite_augmented_dataset(
     max_older_distance: float = 3.0,
     max_worker_distance: float = 3.0,
     clone_weight_scale: float = 0.1,
+    reform: object | None = None,
 ) -> tuple[Dataset, dict[str, object]]:
     augmented_df, report = build_role_composite_augmented_input_dataframe(
         base_dataset=base_dataset,
@@ -2540,6 +2561,7 @@ def build_role_composite_augmented_dataset(
         max_older_distance=max_older_distance,
         max_worker_distance=max_worker_distance,
         clone_weight_scale=clone_weight_scale,
+        reform=reform,
     )
     return Dataset.from_dataframe(augmented_df, base_year), report
 
@@ -2553,6 +2575,7 @@ def build_donor_backed_augmented_dataset(
     donors_per_target: int = 5,
     max_distance_for_clone: float = 3.0,
     clone_weight_scale: float = 0.1,
+    reform: object | None = None,
 ) -> tuple[Dataset, dict[str, object]]:
     augmented_df, report = build_donor_backed_augmented_input_dataframe(
         base_dataset=base_dataset,
@@ -2562,6 +2585,7 @@ def build_donor_backed_augmented_dataset(
         donors_per_target=donors_per_target,
         max_distance_for_clone=max_distance_for_clone,
         clone_weight_scale=clone_weight_scale,
+        reform=reform,
     )
     return Dataset.from_dataframe(augmented_df, base_year), report
 

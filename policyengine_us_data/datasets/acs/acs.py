@@ -96,11 +96,6 @@ class ACS(Dataset):
         )
 
     @staticmethod
-    def add_spm_variables(acs: h5py.File, spm_unit: DataFrame) -> None:
-        acs["spm_unit_net_income_reported"] = spm_unit.SPM_RESOURCES
-        acs["spm_unit_spm_threshold"] = spm_unit.SPM_POVTHRESHOLD
-
-    @staticmethod
     def add_household_variables(acs: h5py.File, household: DataFrame) -> None:
         acs["household_vehicles_owned"] = household.VEH
         acs["state_fips"] = acs["household_state_fips"] = household.ST.astype(int)

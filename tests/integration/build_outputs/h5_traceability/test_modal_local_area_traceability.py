@@ -3,7 +3,11 @@ from policyengine_us_data.build_outputs.fingerprinting import (
 )
 import pytest
 
-from tests.integration.local_h5.fixtures import SEED, VERSION, seed_local_h5_artifacts
+from tests.integration.build_outputs.fixtures import (
+    SEED,
+    VERSION,
+    seed_local_h5_artifacts,
+)
 from tests.support.modal_local_area import load_local_area_module
 
 pytestmark = pytest.mark.integration

@@ -19,7 +19,6 @@ Data sources:
 import logging
 
 import pandas as pd
-import requests
 from sqlmodel import Session, create_engine
 
 from policyengine_us_data.storage import STORAGE_FOLDER
@@ -33,6 +32,7 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
     etl_argparser,
 )
+from policyengine_us_data.utils.http import get_with_exponential_backoff
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
     save_json,
@@ -134,8 +134,7 @@ def extract_cdc_births(year: int) -> pd.DataFrame:
         )
         url = f"{CDC_VSRR_BASE}?{params}"
         logger.info(f"Fetching CDC VSRR births for {year}")
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
+        resp = get_with_exponential_backoff(url, timeout=30)
         rows = resp.json()
         if not rows:
             raise ValueError(f"No CDC VSRR birth data returned for {year}")
@@ -184,8 +183,7 @@ def extract_female_population(year: int) -> pd.DataFrame:
         var_ids = ",".join([f"B01001_{i:03d}E" for i in range(30, 39)])
         url = f"https://api.census.gov/data/{year}/acs/acs1?get={var_ids}&for=state:*"
         logger.info(f"Fetching ACS B01001 female 15-44 for {year}")
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
+        resp = get_with_exponential_backoff(url, timeout=30)
         data = resp.json()
         save_json(cache_file, data)
 

@@ -1,8 +1,8 @@
 import logging
-import requests
 
 import pandas as pd
 
+from policyengine_us_data.utils.http import get_with_exponential_backoff
 from policyengine_us_data.utils.raw_cache import (
     is_cached,
     save_json,
@@ -144,8 +144,7 @@ def get_census_docs(year):
         return load_json(cache_file)
 
     logger.info(f"Downloading census docs for {year}")
-    docs_response = requests.get(docs_url)
-    docs_response.raise_for_status()
+    docs_response = get_with_exponential_backoff(docs_url, timeout=30)
     data = docs_response.json()
     save_json(cache_file, data)
     return data
@@ -177,7 +176,8 @@ def pull_acs_table(group: str, geo: str, year: int) -> pd.DataFrame:
     url = f"{base}?get=group({group})&for={geo_q}"
 
     logger.info(f"Downloading ACS table {group} ({geo}) for {year}")
-    data = requests.get(url).json()
+    response = get_with_exponential_backoff(url, timeout=30)
+    data = response.json()
     save_json(cache_file, data)
     headers, rows = data[0], data[1:]
     df = pd.DataFrame(rows, columns=headers)

@@ -16,6 +16,7 @@ from policyengine_us_data.stage_contracts.calibration_package import (
     load_calibration_package_payload,
     summarize_calibration_package,
     validate_calibration_package_contract,
+    validate_persisted_calibration_package_contract,
     write_calibration_package_contract,
 )
 
@@ -253,6 +254,28 @@ def test_write_and_validate_calibration_package_contract(tmp_path):
         dataset_path=dataset_path,
         db_path=db_path,
     )
+    assert validated == contract
+
+
+def test_validate_persisted_calibration_package_contract_loads_pickle(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+    contract = write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    validated = validate_persisted_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+    )
+
     assert validated == contract
 
 

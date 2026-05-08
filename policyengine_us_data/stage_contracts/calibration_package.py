@@ -282,6 +282,25 @@ def validate_calibration_package_contract(
     return contract
 
 
+def validate_persisted_calibration_package_contract(
+    *,
+    package_path: Path,
+    contract_path: Path | None = None,
+    dataset_path: Path | None = None,
+    db_path: Path | None = None,
+) -> StageContract:
+    """Validate a persisted Stage 2 sidecar against its pickle payload."""
+
+    package = load_calibration_package_payload(package_path)
+    return validate_calibration_package_contract(
+        package_path=package_path,
+        contract_path=contract_path,
+        package=package,
+        dataset_path=dataset_path,
+        db_path=db_path,
+    )
+
+
 def load_calibration_package_payload(package_path: Path) -> Mapping[str, Any]:
     """Load a calibration package pickle for sidecar validation."""
 

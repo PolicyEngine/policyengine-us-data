@@ -19,6 +19,7 @@ from .calibration_package import (
     load_calibration_package_payload,
     summarize_calibration_package,
     validate_calibration_package_contract,
+    validate_persisted_calibration_package_contract,
     write_calibration_package_contract,
 )
 from .constants import (
@@ -122,6 +123,7 @@ __all__ = [
     "summarize_calibration_package",
     "substage_ids_for_stage",
     "validate_calibration_package_contract",
+    "validate_persisted_calibration_package_contract",
     "write_calibration_package_contract",
     "write_contract",
 ]

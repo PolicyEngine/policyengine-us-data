@@ -10,6 +10,10 @@ from typing import Any
 from policyengine_us_data.utils.step_manifest import sha256_file
 
 from .artifacts import ArtifactRef
+from .calibration_package_schema import (
+    CalibrationPackageParameters,
+    CalibrationPackageSummary,
+)
 from .contracts import StageContract
 from .execution import ExecutionRecord, ReuseSummary
 from .fingerprints import canonicalize_for_fingerprint, fingerprint_material
@@ -24,7 +28,9 @@ CALIBRATION_PACKAGE_CONTRACT_TYPE = contract_type_for_stage(
 CALIBRATION_PACKAGE_SUBSTAGE_ID = "2a_matrix_build_calibration_target_construction"
 
 
-def summarize_calibration_package(package: Mapping[str, Any]) -> Mapping[str, Any]:
+def summarize_calibration_package(
+    package: Mapping[str, Any],
+) -> CalibrationPackageSummary:
     """Return a contract-safe summary of a calibration package pickle payload."""
 
     matrix = _required_package_value(package, "X_sparse")
@@ -44,37 +50,36 @@ def summarize_calibration_package(package: Mapping[str, Any]) -> Mapping[str, An
     nnz = int(matrix.nnz)
     density = nnz / (n_targets * n_columns) if n_targets * n_columns else 0.0
 
-    summary: dict[str, Any] = {
-        "matrix_shape": (n_targets, n_columns),
-        "matrix_nnz": nnz,
-        "matrix_density": float(density),
-        "n_targets": int(len(targets_df)),
-        "n_columns": n_columns,
-        "target_name_count": int(len(target_names)),
-        "dataset_sha256": _optional_metadata_string(metadata, "dataset_sha256"),
-        "db_sha256": _optional_metadata_string(metadata, "db_sha256"),
-        "target_config_path": _optional_metadata_string(
+    return CalibrationPackageSummary(
+        matrix_shape=(n_targets, n_columns),
+        matrix_nnz=nnz,
+        matrix_density=float(density),
+        n_targets=int(len(targets_df)),
+        n_columns=n_columns,
+        target_name_count=int(len(target_names)),
+        dataset_sha256=_optional_metadata_string(metadata, "dataset_sha256"),
+        db_sha256=_optional_metadata_string(metadata, "db_sha256"),
+        target_config_path=_optional_metadata_string(
             metadata,
             "target_config_path",
         ),
-        "target_config_sha256": _optional_metadata_string(
+        target_config_sha256=_optional_metadata_string(
             metadata,
             "target_config_sha256",
         ),
-        "n_clones": _optional_metadata_int(metadata, "n_clones"),
-        "seed": _optional_metadata_int(metadata, "seed"),
-        "base_n_records": _optional_metadata_int(metadata, "base_n_records"),
-        "package_scope": _optional_metadata_string(metadata, "package_scope"),
-        "matrix_builder": _optional_metadata_string(metadata, "matrix_builder"),
-        "chunk_size": _optional_metadata_int(metadata, "chunk_size"),
-        "chunk_dir": _optional_metadata_string(metadata, "chunk_dir"),
-        "has_initial_weights": package.get("initial_weights") is not None,
-        "has_cd_geoid": package.get("cd_geoid") is not None,
-        "has_block_geoid": package.get("block_geoid") is not None,
-        "cd_geoid_length": _optional_len(package.get("cd_geoid")),
-        "block_geoid_length": _optional_len(package.get("block_geoid")),
-    }
-    return summary
+        n_clones=_optional_metadata_int(metadata, "n_clones"),
+        seed=_optional_metadata_int(metadata, "seed"),
+        base_n_records=_optional_metadata_int(metadata, "base_n_records"),
+        package_scope=_optional_metadata_string(metadata, "package_scope"),
+        matrix_builder=_optional_metadata_string(metadata, "matrix_builder"),
+        chunk_size=_optional_metadata_int(metadata, "chunk_size"),
+        chunk_dir=_optional_metadata_string(metadata, "chunk_dir"),
+        has_initial_weights=package.get("initial_weights") is not None,
+        has_cd_geoid=package.get("cd_geoid") is not None,
+        has_block_geoid=package.get("block_geoid") is not None,
+        cd_geoid_length=_optional_len(package.get("cd_geoid")),
+        block_geoid_length=_optional_len(package.get("block_geoid")),
+    )
 
 
 def build_calibration_package_contract(
@@ -83,7 +88,7 @@ def build_calibration_package_contract(
     dataset_path: Path,
     db_path: Path,
     package: Mapping[str, Any],
-    parameters: Mapping[str, Any],
+    parameters: CalibrationPackageParameters | Mapping[str, Any],
     run_id: str | None,
     completed_at: str,
     started_at: str | None = None,
@@ -100,8 +105,10 @@ def build_calibration_package_contract(
     _require_existing_file(dataset_path, "source dataset")
     _require_existing_file(db_path, "target database")
 
+    parameter_schema = _calibration_package_parameters(parameters)
+    parameter_payload = parameter_schema.to_dict()
     metadata = _package_metadata(package)
-    package_summary = summarize_calibration_package(package)
+    package_summary = summarize_calibration_package(package).to_dict()
     inputs = (
         _artifact_ref_from_path(
             logical_name="source_imputed_stratified_extended_cps",
@@ -156,7 +163,7 @@ def build_calibration_package_contract(
             "contract_type": CALIBRATION_PACKAGE_CONTRACT_TYPE,
             "inputs": inputs,
             "outputs": outputs,
-            "parameters": parameters,
+            "parameters": parameter_payload,
             "package_summary": package_summary,
         }
     )
@@ -169,7 +176,7 @@ def build_calibration_package_contract(
         package_version=package_version,
         inputs=inputs,
         outputs=outputs,
-        parameters=parameters,
+        parameters=parameter_payload,
         fingerprint=fingerprint,
         substages=(
             SubstageRecord(
@@ -177,7 +184,7 @@ def build_calibration_package_contract(
                 status="completed",
                 inputs=inputs,
                 outputs=outputs,
-                parameters=parameters,
+                parameters=parameter_payload,
                 fingerprint=fingerprint,
                 reuse_mode="handoff",
             ),
@@ -197,7 +204,7 @@ def write_calibration_package_contract(
     dataset_path: Path,
     db_path: Path,
     package: Mapping[str, Any],
-    parameters: Mapping[str, Any],
+    parameters: CalibrationPackageParameters | Mapping[str, Any],
     run_id: str | None,
     completed_at: str,
     started_at: str | None = None,
@@ -272,10 +279,12 @@ def validate_calibration_package_contract(
         raise ValueError("package is required to validate calibration package summary")
 
     expected_summary = canonicalize_for_fingerprint(
-        summarize_calibration_package(package)
+        summarize_calibration_package(package).to_dict()
     )
     actual_summary = canonicalize_for_fingerprint(
-        contract.metadata.get("package_summary", {})
+        CalibrationPackageSummary.from_dict(
+            contract.metadata.get("package_summary", {})
+        ).to_dict()
     )
     if actual_summary != expected_summary:
         raise ValueError("Calibration package contract summary does not match pickle")
@@ -349,6 +358,14 @@ def _optional_len(value: Any) -> int | None:
     if value is None:
         return None
     return int(len(value))
+
+
+def _calibration_package_parameters(
+    parameters: CalibrationPackageParameters | Mapping[str, Any],
+) -> CalibrationPackageParameters:
+    if isinstance(parameters, CalibrationPackageParameters):
+        return parameters
+    return CalibrationPackageParameters.from_dict(parameters)
 
 
 def _require_existing_file(path: Path, label: str) -> None:

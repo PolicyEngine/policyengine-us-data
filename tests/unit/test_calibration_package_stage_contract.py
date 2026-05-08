@@ -12,6 +12,8 @@ from policyengine_us_data.stage_contracts import (
 )
 from policyengine_us_data.stage_contracts.calibration_package import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+    CalibrationPackageParameters,
+    CalibrationPackageSummary,
     build_calibration_package_contract,
     load_calibration_package_payload,
     summarize_calibration_package,
@@ -85,6 +87,8 @@ def _parameters() -> dict:
         "n_clones": 430,
         "target_config": "policyengine_us_data/calibration/target_config.yaml",
         "skip_county": True,
+        "skip_source_impute": True,
+        "skip_takeup_rerandomize": False,
         "chunked_matrix": True,
         "chunk_size": 25_000,
         "parallel_matrix": False,
@@ -125,6 +129,81 @@ def test_calibration_package_contract_records_stage_2_handoff(tmp_path):
     }
     assert all(artifact.sha256.startswith("sha256:") for artifact in contract.inputs)
     assert contract.outputs[0].media_type == "application/python-pickle"
+
+
+def test_calibration_package_parameters_parse_runtime_args():
+    params = CalibrationPackageParameters.from_runtime_args(
+        workers=8,
+        n_clones=430,
+        target_config_path="policyengine_us_data/calibration/target_config.yaml",
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=True,
+        chunk_size=25_000,
+        parallel=True,
+        num_matrix_workers=50,
+    )
+
+    assert params.to_dict() == {
+        "chunk_size": 25_000,
+        "chunked_matrix": True,
+        "n_clones": 430,
+        "num_matrix_workers": 50,
+        "parallel_matrix": True,
+        "skip_county": True,
+        "skip_source_impute": True,
+        "skip_takeup_rerandomize": False,
+        "target_config": "policyengine_us_data/calibration/target_config.yaml",
+        "workers": None,
+    }
+
+
+def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
+    try:
+        CalibrationPackageParameters(
+            workers=8,
+            n_clones=430,
+            target_config=None,
+            skip_county=True,
+            skip_source_impute=True,
+            skip_takeup_rerandomize=False,
+            chunked_matrix=True,
+            chunk_size=25_000,
+            parallel_matrix=False,
+            num_matrix_workers=None,
+        )
+    except ValueError as exc:
+        assert "workers must be None" in str(exc)
+    else:
+        raise AssertionError("Inconsistent chunked parameter shape should fail")
+
+
+def test_calibration_package_summary_round_trips_through_schema():
+    summary = summarize_calibration_package(_package())
+
+    assert isinstance(summary, CalibrationPackageSummary)
+    assert CalibrationPackageSummary.from_dict(summary.to_dict()) == summary
+
+
+def test_calibration_package_contract_rejects_invalid_parameter_mapping(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+
+    try:
+        build_calibration_package_contract(
+            package_path=package_path,
+            dataset_path=dataset_path,
+            db_path=db_path,
+            package=package,
+            parameters={"workers": 1},
+            run_id="run-a",
+            completed_at="2026-05-08T12:02:00Z",
+        )
+    except ValueError as exc:
+        assert "missing required key" in str(exc)
+    else:
+        raise AssertionError("Invalid parameter mapping should fail")
 
 
 def test_calibration_package_contract_normalizes_empty_run_id_to_none(tmp_path):
@@ -188,7 +267,7 @@ def test_calibration_package_contract_json_round_trip_is_deterministic(tmp_path)
 
 
 def test_calibration_package_summary_omits_bulky_payloads():
-    summary = summarize_calibration_package(_package())
+    summary = summarize_calibration_package(_package()).to_dict()
 
     assert "X_sparse" not in summary
     assert "targets_df" not in summary
@@ -204,7 +283,7 @@ def test_calibration_package_summary_handles_empty_matrix():
     package["targets_df"] = package["targets_df"].iloc[0:0]
     package["target_names"] = []
 
-    summary = summarize_calibration_package(package)
+    summary = summarize_calibration_package(package).to_dict()
 
     assert summary["matrix_shape"] == (0, 0)
     assert summary["matrix_nnz"] == 0

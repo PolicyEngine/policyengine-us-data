@@ -15,6 +15,8 @@ from .artifacts import ArtifactRef
 from .calibration_package import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     CALIBRATION_PACKAGE_CONTRACT_TYPE,
+    CalibrationPackageParameters,
+    CalibrationPackageSummary,
     build_calibration_package_contract,
     load_calibration_package_payload,
     summarize_calibration_package,
@@ -85,6 +87,8 @@ __all__ = [
     "CANONICAL_STAGE_IDS",
     "CALIBRATION_PACKAGE_CONTRACT_FILENAME",
     "CALIBRATION_PACKAGE_CONTRACT_TYPE",
+    "CalibrationPackageParameters",
+    "CalibrationPackageSummary",
     "CONTRACT_TYPE_BY_STAGE_ID",
     "DATASET_BUILD_OUTPUT_CONTRACT_FILENAME",
     "DATASET_BUILD_OUTPUT_CONTRACT_TYPE",

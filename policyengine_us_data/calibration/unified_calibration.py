@@ -45,6 +45,9 @@ from policyengine_us_data.calibration.calibration_utils import (
     create_target_groups,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.stage_contracts.calibration_package import (
+    CalibrationPackageParameters,
+)
 from policyengine_us_data.pipeline_schema import PipelineNode
 
 logging.basicConfig(
@@ -90,22 +93,21 @@ def _calibration_package_contract_parameters(
     chunk_size: int,
     parallel: bool,
     num_matrix_workers: int,
-) -> dict:
+) -> CalibrationPackageParameters:
     """Return Stage 2 parameters that affect package construction."""
 
-    parallel_matrix = bool(chunked_matrix and parallel)
-    return {
-        "workers": workers if not chunked_matrix else None,
-        "n_clones": n_clones,
-        "target_config": target_config_path,
-        "skip_county": skip_county,
-        "skip_source_impute": skip_source_impute,
-        "skip_takeup_rerandomize": skip_takeup_rerandomize,
-        "chunked_matrix": chunked_matrix,
-        "chunk_size": chunk_size if chunked_matrix else None,
-        "parallel_matrix": parallel_matrix,
-        "num_matrix_workers": num_matrix_workers if parallel_matrix else None,
-    }
+    return CalibrationPackageParameters.from_runtime_args(
+        workers=workers,
+        n_clones=n_clones,
+        target_config_path=target_config_path,
+        skip_county=skip_county,
+        skip_source_impute=skip_source_impute,
+        skip_takeup_rerandomize=skip_takeup_rerandomize,
+        chunked_matrix=chunked_matrix,
+        chunk_size=chunk_size,
+        parallel=parallel,
+        num_matrix_workers=num_matrix_workers,
+    )
 
 
 def get_git_provenance() -> dict:

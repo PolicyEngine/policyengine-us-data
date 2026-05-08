@@ -44,6 +44,9 @@ from policyengine_us_data.calibration.unified_calibration import (
     _calibration_package_contract_parameters,
     check_package_staleness,
 )
+from policyengine_us_data.stage_contracts.calibration_package import (
+    CalibrationPackageParameters,
+)
 
 
 def test_calibration_package_contract_parameters_track_effective_matrix_mode():
@@ -60,7 +63,8 @@ def test_calibration_package_contract_parameters_track_effective_matrix_mode():
         num_matrix_workers=50,
     )
 
-    assert params == {
+    assert isinstance(params, CalibrationPackageParameters)
+    assert params.to_dict() == {
         "workers": None,
         "n_clones": 430,
         "target_config": "policyengine_us_data/calibration/target_config.yaml",
@@ -88,10 +92,10 @@ def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
         num_matrix_workers=50,
     )
 
-    assert params["workers"] == 8
-    assert params["chunk_size"] is None
-    assert params["parallel_matrix"] is False
-    assert params["num_matrix_workers"] is None
+    assert params.to_dict()["workers"] == 8
+    assert params.to_dict()["chunk_size"] is None
+    assert params.to_dict()["parallel_matrix"] is False
+    assert params.to_dict()["num_matrix_workers"] is None
 
 
 def test_check_package_staleness_warns_for_old_utc_timestamp(

@@ -1193,6 +1193,8 @@ def test_stage_contract_package_exports_public_api():
     import policyengine_us_data.stage_contracts as contracts
 
     assert contracts.ArtifactRef is ArtifactRef
+    assert hasattr(contracts, "CalibrationPackageParameters")
+    assert hasattr(contracts, "CalibrationPackageSummary")
     assert contracts.DiagnosticRef is DiagnosticRef
     assert contracts.Fingerprint is Fingerprint
     assert contracts.ValidationFinding is ValidationFinding
@@ -1215,6 +1217,8 @@ def test_stage_contract_package_exports_public_api():
         "ArtifactRef",
         "CANONICAL_STAGE_IDS",
         "CONTRACT_TYPE_BY_STAGE_ID",
+        "CalibrationPackageParameters",
+        "CalibrationPackageSummary",
         "DiagnosticRef",
         "Fingerprint",
         "ValidationFinding",

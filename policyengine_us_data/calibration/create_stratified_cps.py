@@ -14,6 +14,9 @@ import h5py
 from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 from policyengine_core.enums import Enum
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
@@ -298,7 +301,7 @@ def create_stratified_cps_dataset(
     data = {}
 
     # Only save input variables (not calculated/derived variables)
-    input_vars = set(sim.input_variables)
+    input_vars = set(sim.input_variables) - PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
     print(f"Found {len(input_vars)} input variables to save")
 
     for variable in stratified_sim.tax_benefit_system.variables:

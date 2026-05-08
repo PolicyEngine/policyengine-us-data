@@ -22,6 +22,9 @@ import yaml
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
 )
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
@@ -72,7 +75,6 @@ IMPUTED_VARIABLES = [
     "charitable_cash_donations",
     "self_employed_pension_contribution_ald",
     "unrecaptured_section_1250_gain",
-    "taxable_unemployment_compensation",
     "taxable_interest_income",
     "domestic_production_ald",
     "self_employed_health_insurance_ald",
@@ -81,10 +83,8 @@ IMPUTED_VARIABLES = [
     "cdcc_relevant_expenses",
     "tax_exempt_interest_income",
     "salt_refund_income",
-    "foreign_tax_credit",
     "estate_income",
     "charitable_non_cash_donations",
-    "american_opportunity_credit",
     "miscellaneous_income",
     "alimony_expense",
     "farm_income",
@@ -92,23 +92,13 @@ IMPUTED_VARIABLES = [
     "alimony_income",
     "health_savings_account_ald",
     "non_sch_d_capital_gains",
-    "general_business_credit",
-    "energy_efficient_home_improvement_credit",
-    "amt_foreign_tax_credit",
-    "excess_withheld_payroll_tax",
-    "savers_credit",
     "student_loan_interest",
     "investment_income_elected_form_4952",
-    "early_withdrawal_penalty",
-    "prior_year_minimum_tax_credit",
     "farm_rent_income",
     "qualified_tuition_expenses",
     "educator_expense",
     "long_term_capital_gains_on_collectibles",
-    "other_credits",
     "casualty_loss",
-    "unreported_payroll_tax",
-    "recapture_of_investment_credit",
     "deductible_mortgage_interest",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
@@ -141,36 +131,23 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
     "charitable_cash_donations",
     "self_employed_pension_contribution_ald",
     "unrecaptured_section_1250_gain",
-    "taxable_unemployment_compensation",
     "domestic_production_ald",
     "self_employed_health_insurance_ald",
     "cdcc_relevant_expenses",
     "salt_refund_income",
-    "foreign_tax_credit",
     "estate_income",
     "charitable_non_cash_donations",
-    "american_opportunity_credit",
     "miscellaneous_income",
     "alimony_expense",
     "health_savings_account_ald",
     "non_sch_d_capital_gains",
-    "general_business_credit",
-    "energy_efficient_home_improvement_credit",
-    "amt_foreign_tax_credit",
-    "excess_withheld_payroll_tax",
-    "savers_credit",
     "student_loan_interest",
     "investment_income_elected_form_4952",
-    "early_withdrawal_penalty",
-    "prior_year_minimum_tax_credit",
     "farm_rent_income",
     "qualified_tuition_expenses",
     "educator_expense",
     "long_term_capital_gains_on_collectibles",
-    "other_credits",
     "casualty_loss",
-    "unreported_payroll_tax",
-    "recapture_of_investment_credit",
     "deductible_mortgage_interest",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
@@ -558,6 +535,10 @@ def puf_clone_dataset(
 
     new_data = {}
     for variable, time_dict in data.items():
+        if variable in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
+            logger.info("Dropping PUF tax-output variable: %s", variable)
+            continue
+
         values = time_dict[time_period]
 
         if variable in OVERRIDDEN_IMPUTED_VARIABLES and y_override:
@@ -697,7 +678,11 @@ def _impute_weeks_unemployed(
     X_train = cps_sim.calculate_dataframe(WEEKS_PREDICTORS)
     X_train["weeks_unemployed"] = cps_weeks
 
-    if "taxable_unemployment_compensation" in puf_imputations:
+    puf_unemployment_compensation = puf_imputations.get("unemployment_compensation")
+    if puf_unemployment_compensation is None and "unemployment_compensation" in data:
+        puf_unemployment_compensation = data["unemployment_compensation"][time_period]
+
+    if puf_unemployment_compensation is not None:
         cps_uc = cps_sim.calculate("unemployment_compensation").values
         X_train["unemployment_compensation"] = cps_uc
         WEEKS_PREDICTORS = WEEKS_PREDICTORS + ["unemployment_compensation"]
@@ -706,10 +691,8 @@ def _impute_weeks_unemployed(
         [p for p in WEEKS_PREDICTORS if p != "unemployment_compensation"]
     )
 
-    if "taxable_unemployment_compensation" in puf_imputations:
-        X_test["unemployment_compensation"] = puf_imputations[
-            "taxable_unemployment_compensation"
-        ]
+    if puf_unemployment_compensation is not None:
+        X_test["unemployment_compensation"] = puf_unemployment_compensation
 
     del cps_sim
 

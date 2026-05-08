@@ -20,6 +20,9 @@ import numpy as np
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+)
 from policyengine_us_data.utils.takeup import (
     _sum_person_values_to_tax_units,
     apply_block_takeup_to_arrays,
@@ -264,7 +267,9 @@ def materialize_clone_household_chunk(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    vars_to_save = set(sim.input_variables)
+    vars_to_save = (
+        set(sim.input_variables) - PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+    )
     vars_to_save.discard("spm_unit_spm_threshold")
     vars_to_save.add("county")
     vars_to_save.add("congressional_district_geoid")

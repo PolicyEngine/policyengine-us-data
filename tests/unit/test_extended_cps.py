@@ -34,6 +34,9 @@ from policyengine_us_data.datasets.cps.extended_cps import (
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
 )
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+)
 from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 from policyengine_us_data.utils.aotc import (
     get_american_opportunity_credit_amount_scale,
@@ -159,6 +162,19 @@ class TestVariableListConsistency:
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
         assert "weeks_worked" in ExtendedCPS._keep_formula_vars()
 
+    def test_reported_calculated_tax_outputs_dropped_before_export(self):
+        data = {
+            var: {2024: np.array([1.0])}
+            for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+        }
+        data["person_id"] = {2024: np.array([1])}
+
+        result = ExtendedCPS._drop_formula_variables(data)
+
+        assert "person_id" in result
+        for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
+            assert var not in result
+
 
 class TestStructuralMortgageValidation:
     def test_positive_mortgage_input_ignores_non_mortgage_interest_deduction(self):
@@ -220,6 +236,32 @@ class TestAOTCEligibilityInputImputation:
         np.testing.assert_array_equal(
             result["qualified_tuition_expenses"][2024],
             np.array([1_200.0]),
+        )
+
+    def test_uses_tuition_signal_when_aotc_output_is_absent(
+        self,
+        pe_us_supports_aotc_inputs,
+    ):
+        data = {
+            "tax_unit_id": {2024: np.array([1, 2])},
+            "person_tax_unit_id": {2024: np.array([1, 1, 2])},
+            "qualified_tuition_expenses": {2024: np.array([1_200.0, 0.0, 900.0])},
+        }
+
+        result = ExtendedCPS._impute_aotc_eligibility_inputs(data, 2024)
+
+        expected = np.array([True, False, True])
+        for variable in (
+            "is_pursuing_credential_for_american_opportunity_credit",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+            "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+            "has_american_opportunity_credit_1098_t_or_exception",
+            "has_american_opportunity_credit_institution_ein",
+        ):
+            np.testing.assert_array_equal(result[variable][2024], expected)
+        np.testing.assert_array_equal(
+            result["qualified_tuition_expenses"][2024],
+            np.array([1_200.0, 0.0, 900.0]),
         )
 
     def test_marks_tuition_members_in_positive_aotc_tax_units(

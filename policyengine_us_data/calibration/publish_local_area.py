@@ -34,6 +34,9 @@ from policyengine_us_data.calibration.calibration_utils import (
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+)
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
     _sum_person_values_to_tax_units,
@@ -511,7 +514,9 @@ def build_h5(
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
     # === Determine variables to save ===
-    vars_to_save = set(sim.input_variables)
+    vars_to_save = (
+        set(sim.input_variables) - PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+    )
     vars_to_save.discard("spm_unit_spm_threshold")
     vars_to_save.add("county")
     vars_to_save.add("congressional_district_geoid")

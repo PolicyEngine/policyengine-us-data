@@ -7,14 +7,21 @@ so tests don't require real CPS/PUF datasets.
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.calibration import puf_impute as puf_impute_module
 from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
     _impute_retirement_contributions,
+    _impute_weeks_unemployed,
     _log_stratified_subsample,
     _stratified_subsample_index,
     puf_clone_dataset,
+)
+from policyengine_us_data.datasets.puf.variable_roles import (
+    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+    PUF_SOURCE_VARIABLE_ROLES,
+    REPORTED_CALCULATED_TAX_OUTPUT_ROLE,
 )
 
 
@@ -204,6 +211,62 @@ class TestPufCloneDataset:
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES
 
+    def test_reported_calculated_tax_outputs_not_imputed(self):
+        expected = {
+            "taxable_unemployment_compensation",
+            "foreign_tax_credit",
+            "american_opportunity_credit",
+            "general_business_credit",
+            "energy_efficient_home_improvement_credit",
+            "amt_foreign_tax_credit",
+            "excess_withheld_payroll_tax",
+            "savers_credit",
+            "early_withdrawal_penalty",
+            "prior_year_minimum_tax_credit",
+            "other_credits",
+            "unreported_payroll_tax",
+            "recapture_of_investment_credit",
+        }
+        blocked = PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+        assert blocked == expected
+        assert all(
+            PUF_SOURCE_VARIABLE_ROLES[var] == REPORTED_CALCULATED_TAX_OUTPUT_ROLE
+            for var in blocked
+        )
+        assert blocked.isdisjoint(IMPUTED_VARIABLES)
+        assert blocked.isdisjoint(OVERRIDDEN_IMPUTED_VARIABLES)
+
+    def test_reported_calculated_tax_outputs_not_emitted(self, monkeypatch):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        data["general_business_credit"] = {2024: np.ones(20, dtype=np.float32)}
+        y_full = {var: np.ones(20, dtype=np.float32) for var in IMPUTED_VARIABLES}
+        y_full.update(
+            {
+                var: np.ones(20, dtype=np.float32)
+                for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+            }
+        )
+
+        def fake_run_qrf_imputation(*args, **kwargs):
+            return y_full, {}
+
+        monkeypatch.setattr(
+            puf_impute_module,
+            "_run_qrf_imputation",
+            fake_run_qrf_imputation,
+        )
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=np.array([1, 2, 36, 6, 48]),
+            time_period=2024,
+            puf_dataset=object(),
+            skip_qrf=False,
+        )
+
+        for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
+            assert var not in result
+
     def test_sstb_qbi_split_variables_imputed(self):
         expected = {
             "sstb_self_employment_income",
@@ -379,6 +442,57 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
         result["self_employed_pension_contributions"],
         np.array([25.0, 25.0]),
     )
+
+
+def test_weeks_imputation_uses_unemployment_compensation_input(monkeypatch):
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def calculate(self, variable):
+            if variable == "weeks_unemployed":
+                return pd.Series([0.0, 12.0, 0.0])
+            if variable == "unemployment_compensation":
+                return pd.Series([0.0, 500.0, 0.0])
+            raise ValueError(variable)
+
+        def calculate_dataframe(self, columns):
+            return pd.DataFrame({column: [0.0, 1.0, 0.0] for column in columns})
+
+    class FakeQRF:
+        def __init__(self, **kwargs):
+            pass
+
+        def fit_predict(
+            self,
+            X_train,
+            X_test,
+            predictors,
+            imputed_variables,
+            n_jobs,
+        ):
+            assert "unemployment_compensation" in predictors
+            assert "unemployment_compensation" in X_train
+            np.testing.assert_array_equal(
+                X_test["unemployment_compensation"].to_numpy(),
+                np.array([0.0, 100.0, 0.0]),
+            )
+            return pd.DataFrame({"weeks_unemployed": [5.0, 6.0, 7.0]})
+
+    monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
+    monkeypatch.setattr("microimpute.models.qrf.QRF", FakeQRF)
+
+    result = _impute_weeks_unemployed(
+        data={
+            "person_id": {2024: np.array([1, 2, 3])},
+            "unemployment_compensation": {2024: np.array([0.0, 100.0, 0.0])},
+        },
+        puf_imputations={},
+        time_period=2024,
+        dataset_path="ignored.h5",
+    )
+
+    np.testing.assert_array_equal(result, np.array([0.0, 6.0, 0.0]))
 
 
 def test_log_handles_grouped_currency_threshold(caplog):

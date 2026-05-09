@@ -1,0 +1,1 @@
+Precompute tax-unit construction inputs once per dataset to speed ACS builds.

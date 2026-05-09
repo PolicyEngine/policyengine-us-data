@@ -45,6 +45,14 @@ on:
         required: true
         default: ""
         type: string
+      publish_mode:
+        description: "How to publish when upload=true"
+        required: true
+        default: "pull_request"
+        type: choice
+        options:
+          - "pull_request"
+          - "direct"
       confirm_publish:
         description: "Required when upload=true: set to the exact version"
         required: false
@@ -100,6 +108,7 @@ jobs:
           DATA_PACKAGE_GIT_SHA: ${{ inputs.data_package_git_sha }}
           UPLOAD: ${{ inputs.upload }}
           UPLOAD_REVISION: ${{ inputs.upload_revision }}
+          PUBLISH_MODE: ${{ inputs.publish_mode }}
           HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
         run: |
           if [[ ! "${VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
@@ -152,7 +161,15 @@ jobs:
             cmd+=(--data-package-git-sha "${DATA_PACKAGE_GIT_SHA}")
           fi
           if [ "${UPLOAD}" = "true" ]; then
-            cmd+=(--upload --create-pr)
+            if [ "${PUBLISH_MODE}" != "pull_request" ] &&
+              [ "${PUBLISH_MODE}" != "direct" ]; then
+              echo "::error::publish_mode must be pull_request or direct."
+              exit 1
+            fi
+            cmd+=(--upload)
+            if [ "${PUBLISH_MODE}" = "pull_request" ]; then
+              cmd+=(--create-pr)
+            fi
             if [ -n "${UPLOAD_REVISION}" ]; then
               cmd+=(--upload-revision "${UPLOAD_REVISION}")
             fi
@@ -167,8 +184,8 @@ jobs:
             echo "- Manifest artifact: \`release_manifest-${VERSION}.json\`"
             echo "- Upload requested: \`${UPLOAD}\`"
             if [ "${UPLOAD}" = "true" ]; then
-              echo "- HF base branch: \`${UPLOAD_REVISION:-main}\`"
-              echo "- HF pull request requested: \`true\`"
+              echo "- Publish mode: \`${PUBLISH_MODE}\`"
+              echo "- HF branch/revision: \`${UPLOAD_REVISION:-main}\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

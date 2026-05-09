@@ -22,11 +22,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "policyengine-us>=1.690.1",
-    # policyengine-core 3.26.0 includes the fix for
+    "policyengine-us>=1.690.3",
+    # policyengine-core 3.26.1 is the current 3.26.x runtime and includes the fix for
     # PolicyEngine/policyengine-core#482 (user-set ETERNITY inputs lost
     # after _invalidate_all_caches) and is required by policyengine-us 1.682.1+.
-    "policyengine-core>=3.26.0,<3.27",
+    "policyengine-core>=3.26.1,<3.27",
     "pandas>=2.3.1",
     "requests>=2.25.0",
     "tqdm>=4.60.0",
@@ -45,7 +45,7 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqlmodel>=0.0.24",
     "xlrd>=2.0.2",
-    "spm-calculator>=0.2.1",
+    "spm-calculator>=0.3.1",
     "tenacity>=8.0.0",
 ]
 

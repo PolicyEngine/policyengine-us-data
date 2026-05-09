@@ -432,12 +432,25 @@ def create_release_manifest_commit_operations(
         data_package_git_sha=data_package_git_sha,
         existing_manifest=existing_manifest,
     )
+    operations = create_release_manifest_operations_from_manifest(
+        manifest,
+        version=version,
+    )
+    return manifest, operations
+
+
+def create_release_manifest_operations_from_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    version: str,
+) -> List[CommitOperationAdd]:
+    """Create HF commit operations for an already-built release manifest."""
     manifest_payload = serialize_release_manifest(manifest)
     trace_tro_payload = serialize_trace_tro(
         build_trace_tro_from_release_manifest(manifest)
     )
 
-    operations = [
+    return [
         CommitOperationAdd(
             path_in_repo=RELEASE_MANIFEST_PATH,
             path_or_fileobj=BytesIO(manifest_payload),
@@ -455,7 +468,6 @@ def create_release_manifest_commit_operations(
             path_or_fileobj=BytesIO(trace_tro_payload),
         ),
     ]
-    return manifest, operations
 
 
 def create_release_tag(
@@ -944,6 +956,8 @@ def hf_create_commit_with_retry(
     token: str,
     commit_message: str,
     parent_commit: Optional[str] = None,
+    revision: Optional[str] = None,
+    create_pr: Optional[bool] = None,
 ):
     """
     Create HuggingFace commit with retry logic for timeout errors.
@@ -957,6 +971,8 @@ def hf_create_commit_with_retry(
         repo_type=repo_type,
         commit_message=commit_message,
         parent_commit=parent_commit,
+        revision=revision,
+        create_pr=create_pr,
     )
 
 

@@ -1,0 +1,1 @@
+Use saved calibration diagnostics for the sparse enhanced CPS validation gate instead of rebuilding the full loss matrix.

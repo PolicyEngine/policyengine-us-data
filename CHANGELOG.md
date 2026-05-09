@@ -1,3 +1,10 @@
+## [1.110.6] - 2026-05-09
+
+### Fixed
+
+- Speed up ACS spouse and parent inference in dataset builds.
+
+
 ## [1.110.5] - 2026-05-09
 
 ### Fixed

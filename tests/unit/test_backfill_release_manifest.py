@@ -121,6 +121,31 @@ def test_build_backfilled_release_manifest_records_exact_core_metadata():
     }
 
 
+def test_build_backfilled_release_manifest_records_additional_core_compatibility():
+    manifest = build_backfilled_release_manifest(
+        version="1.73.0",
+        artifacts=[
+            HfArtifactMetadata(
+                path="enhanced_cps_2024.h5",
+                sha256="a" * 64,
+                size_bytes=1,
+            )
+        ],
+        model_package_version="1.653.3",
+        core_package_version="3.26.0",
+        compatible_core_package_versions=["3.26.1"],
+    )
+
+    assert manifest["build"]["built_with_core_package"] == {
+        "name": "policyengine-core",
+        "version": "3.26.0",
+    }
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.26.0"},
+        {"name": "policyengine-core", "specifier": "==3.26.1"},
+    ]
+
+
 def test_upload_backfilled_release_manifest_uploads_manifest_and_trace(monkeypatch):
     api = MagicMock()
     api.create_commit.return_value = SimpleNamespace(oid="commit-sha")

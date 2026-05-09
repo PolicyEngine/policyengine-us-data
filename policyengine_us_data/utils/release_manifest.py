@@ -105,16 +105,26 @@ def _model_package_compatibility(
 
 def _core_package_compatibility(
     core_package_metadata: Mapping[str, Any] | None,
+    additional_compatible_specifiers: Sequence[str] | None = None,
 ) -> list[Dict[str, str]]:
+    package_name = "policyengine-core"
+    if core_package_metadata is not None:
+        package_name = core_package_metadata.get("name", package_name)
+
+    compatible_packages: list[Dict[str, str]] = []
     core_version = _core_version(core_package_metadata)
-    if not core_version:
-        return []
-    return [
-        {
-            "name": core_package_metadata.get("name", "policyengine-core"),
-            "specifier": f"=={core_version}",
-        }
-    ]
+    if core_version:
+        compatible_packages.append(
+            {
+                "name": package_name,
+                "specifier": f"=={core_version}",
+            }
+        )
+    for specifier in additional_compatible_specifiers or ():
+        candidate = {"name": package_name, "specifier": specifier}
+        if candidate not in compatible_packages:
+            compatible_packages.append(candidate)
+    return compatible_packages
 
 
 def _build_section(
@@ -168,6 +178,7 @@ def _new_manifest(
     build_id: str,
     created_at: str,
     additional_compatible_specifiers: Sequence[str] | None = None,
+    additional_core_compatible_specifiers: Sequence[str] | None = None,
     pipeline_run_id: str | None,
     data_package_git_sha: str | None,
 ) -> Dict:
@@ -182,7 +193,10 @@ def _new_manifest(
             model_package_version=model_package_version,
             additional_compatible_specifiers=additional_compatible_specifiers,
         ),
-        "compatible_core_packages": _core_package_compatibility(core_package_metadata),
+        "compatible_core_packages": _core_package_compatibility(
+            core_package_metadata,
+            additional_compatible_specifiers=additional_core_compatible_specifiers,
+        ),
         "default_datasets": {},
         "build": _build_section(
             model_package_name=model_package_name,
@@ -251,6 +265,7 @@ def _update_existing_manifest_metadata(
     build_id: str,
     created_at: str,
     additional_compatible_specifiers: Sequence[str] | None = None,
+    additional_core_compatible_specifiers: Sequence[str] | None = None,
     pipeline_run_id: str | None,
     data_package_git_sha: str | None,
 ) -> None:
@@ -278,7 +293,10 @@ def _update_existing_manifest_metadata(
     if compatible_model_packages:
         manifest["compatible_model_packages"] = compatible_model_packages
 
-    compatible_core_packages = _core_package_compatibility(core_package_metadata)
+    compatible_core_packages = _core_package_compatibility(
+        core_package_metadata,
+        additional_compatible_specifiers=additional_core_compatible_specifiers,
+    )
     if compatible_core_packages:
         manifest["compatible_core_packages"] = compatible_core_packages
 
@@ -379,6 +397,7 @@ def build_release_manifest(
     default_datasets: Optional[Mapping[str, str]] = None,
     created_at: str | None = None,
     additional_compatible_specifiers: Sequence[str] | None = None,
+    additional_core_compatible_specifiers: Sequence[str] | None = None,
     preservation_mirrors_by_artifact: Optional[
         Mapping[str, Sequence[Mapping[str, Any]]]
     ] = None,
@@ -405,6 +424,7 @@ def build_release_manifest(
             build_id=resolved_build_id,
             created_at=manifest_timestamp,
             additional_compatible_specifiers=additional_compatible_specifiers,
+            additional_core_compatible_specifiers=additional_core_compatible_specifiers,
             pipeline_run_id=pipeline_run_id,
             data_package_git_sha=data_package_git_sha,
         )
@@ -420,6 +440,7 @@ def build_release_manifest(
             build_id=resolved_build_id,
             created_at=manifest_timestamp,
             additional_compatible_specifiers=additional_compatible_specifiers,
+            additional_core_compatible_specifiers=additional_core_compatible_specifiers,
             pipeline_run_id=pipeline_run_id,
             data_package_git_sha=data_package_git_sha,
         )

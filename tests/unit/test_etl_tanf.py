@@ -1,8 +1,11 @@
 import pandas as pd
 import pytest
+import requests
 
 from policyengine_us_data.db.etl_tanf import (
+    _acf_get,
     _validate_supported_year,
+    fallback_tanf_targets_2024,
     transform_tanf_caseload_data,
     transform_tanf_financial_data,
 )
@@ -92,3 +95,37 @@ def test_transform_tanf_financial_data_extracts_cash_assistance_totals():
 def test_validate_supported_year_rejects_non_2024():
     with pytest.raises(ValueError, match="FY2024"):
         _validate_supported_year(2025)
+
+
+def test_acf_get_raises_on_waf_challenge():
+    response = requests.Response()
+    response.status_code = 202
+    response.headers["x-amzn-waf-action"] = "challenge"
+
+    class Session:
+        def get(self, url, timeout):
+            return response
+
+    with pytest.raises(requests.exceptions.HTTPError, match="WAF challenge"):
+        _acf_get(Session(), "https://acf.gov/workbook.xlsx")
+
+
+def test_fallback_tanf_targets_cover_national_and_all_states():
+    (
+        national_families,
+        state_caseload_df,
+        national_spending,
+        state_financial_df,
+    ) = fallback_tanf_targets_2024()
+
+    assert national_families == pytest.approx(841_208.6666666666)
+    assert national_spending == pytest.approx(7_788_317_474.55)
+    assert len(state_caseload_df) == 51
+    assert len(state_financial_df) == 51
+    assert state_caseload_df["state_fips"].is_unique
+    assert state_financial_df["state_fips"].is_unique
+    assert set(state_caseload_df["state_fips"]) == set(state_financial_df["state_fips"])
+    assert state_financial_df.loc[
+        state_financial_df["state_fips"] == 6,
+        "tanf",
+    ].iloc[0] == pytest.approx(3_742_540_224.36)

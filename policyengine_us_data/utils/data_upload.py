@@ -290,11 +290,13 @@ def get_repo_head_revision(
     api: HfApi,
     repo_id: str,
     repo_type: str,
+    revision: Optional[str] = None,
     token: Optional[str] = None,
 ) -> Optional[str]:
     repo_info = api.repo_info(
         repo_id=repo_id,
         repo_type=repo_type,
+        revision=revision,
         token=token,
     )
     return getattr(repo_info, "sha", None)
@@ -432,30 +434,53 @@ def create_release_manifest_commit_operations(
         data_package_git_sha=data_package_git_sha,
         existing_manifest=existing_manifest,
     )
+    operations = create_release_manifest_operations_from_manifest(
+        manifest,
+        version=version,
+    )
+    return manifest, operations
+
+
+def create_release_manifest_operations_from_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    version: str,
+    include_root_paths: bool = True,
+) -> List[CommitOperationAdd]:
+    """Create HF commit operations for an already-built release manifest."""
     manifest_payload = serialize_release_manifest(manifest)
     trace_tro_payload = serialize_trace_tro(
         build_trace_tro_from_release_manifest(manifest)
     )
 
-    operations = [
-        CommitOperationAdd(
-            path_in_repo=RELEASE_MANIFEST_PATH,
-            path_or_fileobj=BytesIO(manifest_payload),
-        ),
+    operations = []
+    if include_root_paths:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=RELEASE_MANIFEST_PATH,
+                path_or_fileobj=BytesIO(manifest_payload),
+            )
+        )
+    operations.append(
         CommitOperationAdd(
             path_in_repo=f"releases/{version}/{RELEASE_MANIFEST_PATH}",
             path_or_fileobj=BytesIO(manifest_payload),
-        ),
-        CommitOperationAdd(
-            path_in_repo=TRACE_TRO_FILENAME,
-            path_or_fileobj=BytesIO(trace_tro_payload),
-        ),
+        )
+    )
+    if include_root_paths:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=TRACE_TRO_FILENAME,
+                path_or_fileobj=BytesIO(trace_tro_payload),
+            )
+        )
+    operations.append(
         CommitOperationAdd(
             path_in_repo=f"releases/{version}/{TRACE_TRO_FILENAME}",
             path_or_fileobj=BytesIO(trace_tro_payload),
-        ),
-    ]
-    return manifest, operations
+        )
+    )
+    return operations
 
 
 def create_release_tag(
@@ -944,6 +969,8 @@ def hf_create_commit_with_retry(
     token: str,
     commit_message: str,
     parent_commit: Optional[str] = None,
+    revision: Optional[str] = None,
+    create_pr: Optional[bool] = None,
 ):
     """
     Create HuggingFace commit with retry logic for timeout errors.
@@ -957,6 +984,8 @@ def hf_create_commit_with_retry(
         repo_type=repo_type,
         commit_message=commit_message,
         parent_commit=parent_commit,
+        revision=revision,
+        create_pr=create_pr,
     )
 
 

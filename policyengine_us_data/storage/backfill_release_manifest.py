@@ -173,6 +173,7 @@ def upload_backfilled_release_manifest(
         api=api,
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,
+        revision=revision,
         token=token,
     )
     commit_info = hf_create_commit_with_retry(
@@ -180,6 +181,7 @@ def upload_backfilled_release_manifest(
         operations=create_release_manifest_operations_from_manifest(
             manifest,
             version=version,
+            include_root_paths=False,
         ),
         repo_id=hf_repo_name,
         repo_type=hf_repo_type,

@@ -124,9 +124,15 @@ def test_build_backfilled_release_manifest_records_exact_core_metadata():
 def test_upload_backfilled_release_manifest_uploads_manifest_and_trace(monkeypatch):
     api = MagicMock()
     api.create_commit.return_value = SimpleNamespace(oid="commit-sha")
+    head_calls = []
+
+    def fake_head(**kwargs):
+        head_calls.append(kwargs)
+        return "parent-sha"
+
     monkeypatch.setattr(
         "policyengine_us_data.storage.backfill_release_manifest.get_repo_head_revision",
-        lambda **kwargs: "parent-sha",
+        fake_head,
     )
 
     manifest = build_backfilled_release_manifest(
@@ -152,14 +158,21 @@ def test_upload_backfilled_release_manifest_uploads_manifest_and_trace(monkeypat
     )
 
     assert commit_sha == "commit-sha"
+    assert head_calls == [
+        {
+            "api": api,
+            "repo_id": "policyengine/policyengine-us-data",
+            "repo_type": "model",
+            "revision": "backfill-branch",
+            "token": "token",
+        }
+    ]
     call = api.create_commit.call_args.kwargs
     assert call["revision"] == "backfill-branch"
     assert call["create_pr"] is True
     assert call["parent_commit"] == "parent-sha"
     operation_paths = [operation.path_in_repo for operation in call["operations"]]
     assert operation_paths == [
-        "release_manifest.json",
         "releases/1.73.0/release_manifest.json",
-        "trace.tro.jsonld",
         "releases/1.73.0/trace.tro.jsonld",
     ]

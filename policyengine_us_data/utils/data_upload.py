@@ -290,11 +290,13 @@ def get_repo_head_revision(
     api: HfApi,
     repo_id: str,
     repo_type: str,
+    revision: Optional[str] = None,
     token: Optional[str] = None,
 ) -> Optional[str]:
     repo_info = api.repo_info(
         repo_id=repo_id,
         repo_type=repo_type,
+        revision=revision,
         token=token,
     )
     return getattr(repo_info, "sha", None)
@@ -443,6 +445,7 @@ def create_release_manifest_operations_from_manifest(
     manifest: Mapping[str, Any],
     *,
     version: str,
+    include_root_paths: bool = True,
 ) -> List[CommitOperationAdd]:
     """Create HF commit operations for an already-built release manifest."""
     manifest_payload = serialize_release_manifest(manifest)
@@ -450,24 +453,34 @@ def create_release_manifest_operations_from_manifest(
         build_trace_tro_from_release_manifest(manifest)
     )
 
-    return [
-        CommitOperationAdd(
-            path_in_repo=RELEASE_MANIFEST_PATH,
-            path_or_fileobj=BytesIO(manifest_payload),
-        ),
+    operations = []
+    if include_root_paths:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=RELEASE_MANIFEST_PATH,
+                path_or_fileobj=BytesIO(manifest_payload),
+            )
+        )
+    operations.append(
         CommitOperationAdd(
             path_in_repo=f"releases/{version}/{RELEASE_MANIFEST_PATH}",
             path_or_fileobj=BytesIO(manifest_payload),
-        ),
-        CommitOperationAdd(
-            path_in_repo=TRACE_TRO_FILENAME,
-            path_or_fileobj=BytesIO(trace_tro_payload),
-        ),
+        )
+    )
+    if include_root_paths:
+        operations.append(
+            CommitOperationAdd(
+                path_in_repo=TRACE_TRO_FILENAME,
+                path_or_fileobj=BytesIO(trace_tro_payload),
+            )
+        )
+    operations.append(
         CommitOperationAdd(
             path_in_repo=f"releases/{version}/{TRACE_TRO_FILENAME}",
             path_or_fileobj=BytesIO(trace_tro_payload),
-        ),
-    ]
+        )
+    )
+    return operations
 
 
 def create_release_tag(

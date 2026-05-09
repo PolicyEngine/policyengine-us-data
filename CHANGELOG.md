@@ -1,3 +1,10 @@
+## [1.110.2] - 2026-05-09
+
+### Changed
+
+- Update the locked data-build runtime to policyengine-us 1.690.3, policyengine-core 3.26.1, and spm-calculator 0.3.1.
+
+
 ## [1.110.1] - 2026-05-09
 
 ### Changed

@@ -1,3 +1,10 @@
+## [1.110.4] - 2026-05-09
+
+### Fixed
+
+- Fix stage-one release validation for future-period formula inputs and known high-error JCT diagnostics.
+
+
 ## [1.110.3] - 2026-05-09
 
 ### Changed

@@ -1,3 +1,10 @@
+## [1.110.5] - 2026-05-09
+
+### Fixed
+
+- Use saved calibration diagnostics for the sparse enhanced CPS validation gate instead of rebuilding the full loss matrix.
+
+
 ## [1.110.4] - 2026-05-09
 
 ### Fixed

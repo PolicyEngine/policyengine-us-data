@@ -153,20 +153,15 @@ def test_sparse_ecps_has_tips(sim):
 
 
 def test_sparse_ecps_replicates_jct_tax_expenditures():
+    from validation.stage_1.jct_calibration import (
+        assert_no_unexpected_high_error_jct_diagnostics,
+    )
+
     calibration_log = pd.read_csv(
         "calibration_log.csv",
     )
 
-    jct_rows = calibration_log[
-        (calibration_log["target_name"].str.contains("jct/"))
-        & (calibration_log["epoch"] == calibration_log["epoch"].max())
-    ]
-
-    assert jct_rows.rel_abs_error.max() < 0.5, (
-        "JCT tax expenditure targets not met (see the calibration log for details). Max relative error: {:.2%}".format(
-            jct_rows.rel_abs_error.max()
-        )
-    )
+    assert_no_unexpected_high_error_jct_diagnostics(calibration_log)
 
 
 def deprecated_test_sparse_ecps_replicates_jct_tax_expenditures_full(sim):

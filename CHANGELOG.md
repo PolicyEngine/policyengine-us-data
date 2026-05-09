@@ -1,3 +1,10 @@
+## [1.110.0] - 2026-05-09
+
+### Added
+
+- Added a release-manifest backfill command for building bundle-certifiable manifests from existing Hugging Face artifact metadata.
+
+
 ## [1.109.0] - 2026-05-08
 
 ### Added

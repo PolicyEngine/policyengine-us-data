@@ -28,6 +28,19 @@ SUPPORTED_TAX_UNIT_CONSTRUCTION_MODES = frozenset(
         CENSUS_DOCUMENTED_MODE,
     }
 )
+DISABILITY_FLAGS = (
+    "PEDISDRS",
+    "PEDISEAR",
+    "PEDISEYE",
+    "PEDISOUT",
+    "PEDISPHY",
+    "PEDISREM",
+)
+_GROSS_INCOME_COLUMN = "_tax_unit_gross_income"
+_CLAIMANT_INCOME_COLUMN = "_tax_unit_claimant_income"
+_TOTAL_MONEY_INCOME_COLUMN = "_tax_unit_total_money_income"
+_HAS_DISABILITY_COLUMN = "_tax_unit_has_disability"
+_IS_FULL_TIME_STUDENT_COLUMN = "_tax_unit_is_full_time_student"
 
 
 @dataclass(frozen=True)
@@ -88,17 +101,27 @@ def _to_optional_parent_line(value) -> int | None:
     return value if value > 0 else None
 
 
-def _positive_series(person: pd.DataFrame, column: str) -> np.ndarray:
+def _numeric_array(
+    person: pd.DataFrame,
+    column: str,
+    *,
+    default: float = 0,
+) -> np.ndarray:
     if column not in person:
-        return np.zeros(len(person), dtype=float)
-    values = (
-        pd.to_numeric(person[column], errors="coerce")
-        .fillna(0)
-        .to_numpy(
+        return np.full(len(person), default, dtype=float)
+    series = person[column]
+    if pd.api.types.is_numeric_dtype(series):
+        values = series.to_numpy(dtype=float, copy=False)
+    else:
+        values = pd.to_numeric(series, errors="coerce").to_numpy(
             dtype=float,
             copy=False,
         )
-    )
+    return np.nan_to_num(values, nan=default)
+
+
+def _positive_series(person: pd.DataFrame, column: str) -> np.ndarray:
+    values = _numeric_array(person, column)
     return np.maximum(values, 0)
 
 
@@ -122,64 +145,71 @@ def _estimate_claimant_income(person: pd.DataFrame) -> np.ndarray:
     return estimate_dependent_gross_income(person) + _positive_series(person, "SS_VAL")
 
 
+def _has_disability(person: pd.DataFrame) -> np.ndarray:
+    has_disability = np.zeros(len(person), dtype=bool)
+    for flag in DISABILITY_FLAGS:
+        if flag in person:
+            has_disability |= _numeric_array(person, flag) == 1
+    return has_disability
+
+
+def _is_full_time_student(person: pd.DataFrame) -> np.ndarray:
+    enrolled_values = _numeric_array(person, "A_ENRLW")
+    full_time_values = _numeric_array(person, "A_FTPT")
+    school_level_values = _numeric_array(person, "A_HSCOL")
+    # Limit this to tax-unit construction: CPS TAX_ID behavior treats current
+    # high-school or college enrollment as strong student evidence for young
+    # adults even when the full-time flag is absent or part-time.
+    return ((enrolled_values == 1) & (full_time_values == 1)) | (
+        (enrolled_values == 1) & np.isin(school_level_values, [1, 2])
+    )
+
+
+def _precompute_tax_unit_inputs(person: pd.DataFrame) -> pd.DataFrame:
+    gross_income = estimate_dependent_gross_income(person)
+    person[_GROSS_INCOME_COLUMN] = gross_income
+    person[_CLAIMANT_INCOME_COLUMN] = gross_income + _positive_series(person, "SS_VAL")
+    person[_TOTAL_MONEY_INCOME_COLUMN] = (
+        _numeric_array(person, "PTOTVAL")
+        if "PTOTVAL" in person
+        else person[_CLAIMANT_INCOME_COLUMN].to_numpy(dtype=float, copy=False)
+    )
+    person[_HAS_DISABILITY_COLUMN] = _has_disability(person)
+    person[_IS_FULL_TIME_STUDENT_COLUMN] = _is_full_time_student(person)
+    return person
+
+
 def _prepare_household_people(
     household: pd.DataFrame,
     household_id: int,
 ) -> list[_HouseholdPerson]:
-    disability_flags = [
-        "PEDISDRS",
-        "PEDISEAR",
-        "PEDISEYE",
-        "PEDISOUT",
-        "PEDISPHY",
-        "PEDISREM",
-    ]
-    gross_income = estimate_dependent_gross_income(household)
-    claimant_income = _estimate_claimant_income(household)
+    gross_income = (
+        household[_GROSS_INCOME_COLUMN].to_numpy(dtype=float, copy=False)
+        if _GROSS_INCOME_COLUMN in household
+        else estimate_dependent_gross_income(household)
+    )
+    claimant_income = (
+        household[_CLAIMANT_INCOME_COLUMN].to_numpy(dtype=float, copy=False)
+        if _CLAIMANT_INCOME_COLUMN in household
+        else _estimate_claimant_income(household)
+    )
     total_money_income = (
-        pd.to_numeric(household["PTOTVAL"], errors="coerce")
-        .fillna(0)
-        .to_numpy(dtype=float, copy=False)
+        household[_TOTAL_MONEY_INCOME_COLUMN].to_numpy(dtype=float, copy=False)
+        if _TOTAL_MONEY_INCOME_COLUMN in household
+        else _numeric_array(household, "PTOTVAL")
         if "PTOTVAL" in household
         else claimant_income.copy()
     )
     has_disability = (
-        pd.DataFrame(
-            {
-                flag: household[flag] if flag in household else 0
-                for flag in disability_flags
-            },
-            index=household.index,
-        )
-        .eq(1)
-        .any(axis=1)
-        .to_numpy()
+        household[_HAS_DISABILITY_COLUMN].to_numpy(dtype=bool, copy=False)
+        if _HAS_DISABILITY_COLUMN in household
+        else _has_disability(household)
     )
-    enrolled = (
-        household["A_ENRLW"]
-        if "A_ENRLW" in household
-        else pd.Series(0, index=household.index)
-    )
-    full_time = (
-        household["A_FTPT"]
-        if "A_FTPT" in household
-        else pd.Series(0, index=household.index)
-    )
-    school_level = (
-        household["A_HSCOL"]
-        if "A_HSCOL" in household
-        else pd.Series(0, index=household.index)
-    )
-    enrolled_values = pd.to_numeric(enrolled, errors="coerce").fillna(0)
-    full_time_values = pd.to_numeric(full_time, errors="coerce").fillna(0)
-    school_level_values = pd.to_numeric(school_level, errors="coerce").fillna(0)
-    # Limit this to tax-unit construction: CPS TAX_ID behavior treats current
-    # high-school or college enrollment as strong student evidence for young
-    # adults even when the full-time flag is absent or part-time.
     is_full_time_student = (
-        ((enrolled_values == 1) & (full_time_values == 1))
-        | ((enrolled_values == 1) & school_level_values.isin([1, 2]))
-    ).to_numpy()
+        household[_IS_FULL_TIME_STUDENT_COLUMN].to_numpy(dtype=bool, copy=False)
+        if _IS_FULL_TIME_STUDENT_COLUMN in household
+        else _is_full_time_student(household)
+    )
     people = []
     for row_number, (index, row) in enumerate(household.iterrows()):
         line_no = int(row["A_LINENO"])
@@ -788,7 +818,7 @@ def construct_tax_units(
         )
 
     original_index = person.index
-    person = person.reset_index(drop=True)
+    person = _precompute_tax_unit_inputs(person.reset_index(drop=True))
     person_assignments = pd.DataFrame(index=original_index)
     unit_key_records: list[tuple] = []
     unit_filing_records: list[str] = []

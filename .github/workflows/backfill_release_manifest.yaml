@@ -20,6 +20,11 @@ on:
         description: "Exact policyengine-core version used with this data release"
         required: true
         type: string
+      compatible_core_package_versions:
+        description: "Optional newline-separated additional exact policyengine-core runtime versions to certify"
+        required: false
+        default: ""
+        type: string
       model_package_git_sha:
         description: "Optional policyengine-us git SHA"
         required: false
@@ -103,6 +108,7 @@ jobs:
           ARTIFACTS: ${{ inputs.artifacts }}
           MODEL_PACKAGE_VERSION: ${{ inputs.model_package_version }}
           CORE_PACKAGE_VERSION: ${{ inputs.core_package_version }}
+          COMPATIBLE_CORE_PACKAGE_VERSIONS: ${{ inputs.compatible_core_package_versions }}
           MODEL_PACKAGE_GIT_SHA: ${{ inputs.model_package_git_sha }}
           MODEL_PACKAGE_DATA_BUILD_FINGERPRINT: ${{ inputs.model_package_data_build_fingerprint }}
           DATA_PACKAGE_GIT_SHA: ${{ inputs.data_package_git_sha }}
@@ -147,6 +153,17 @@ jobs:
             --output "release_manifest-${VERSION}.json"
             "${artifact_args[@]}"
           )
+
+          while IFS= read -r core_version; do
+            if [ -z "${core_version}" ]; then
+              continue
+            fi
+            if [[ ! "${core_version}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+              echo "::error::Compatible core version must use x.y.z form, got '${core_version}'."
+              exit 1
+            fi
+            cmd+=(--compatible-core-package-version "${core_version}")
+          done <<< "${COMPATIBLE_CORE_PACKAGE_VERSIONS}"
 
           if [ -n "${MODEL_PACKAGE_GIT_SHA}" ]; then
             cmd+=(--model-package-git-sha "${MODEL_PACKAGE_GIT_SHA}")

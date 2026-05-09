@@ -31,15 +31,16 @@ def tax_benefit_system():
 
 @pytest.fixture(scope="module")
 def formula_variables(tax_benefit_system):
-    """Return set of variable names computed by policyengine-us.
+    """Return variable names computed by policyengine-us for this dataset year.
 
     Includes variables with explicit formulas as well as those using
     ``adds`` or ``subtracts`` (which the engine auto-sums at runtime).
     """
+    period = ExtendedCPS_2024.time_period
     return {
         name
         for name, var in tax_benefit_system.variables.items()
-        if (hasattr(var, "formulas") and len(var.formulas) > 0)
+        if var.get_formula(period)
         or getattr(var, "adds", None)
         or getattr(var, "subtracts", None)
     }
@@ -73,8 +74,8 @@ def test_no_formula_variables_stored(formula_variables, stored_variables):
     if overlap:
         msg = (
             f"These {len(overlap)} variables are computed by "
-            f"policyengine-us (formulas/adds/subtracts) but are "
-            f"stored in the dataset "
+            f"policyengine-us in {ExtendedCPS_2024.time_period} "
+            f"(formulas/adds/subtracts) but are stored in the dataset "
             f"(stored values will be IGNORED by the simulation):\n"
         )
         for v in sorted(overlap):

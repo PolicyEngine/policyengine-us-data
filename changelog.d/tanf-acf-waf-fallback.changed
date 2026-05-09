@@ -1,1 +1,0 @@
-Add a FY2024 TANF target fallback so Modal data builds can continue when acf.gov blocks workbook downloads with an AWS WAF challenge.

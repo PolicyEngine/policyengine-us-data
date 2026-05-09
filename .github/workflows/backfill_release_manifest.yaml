@@ -1,0 +1,179 @@
+name: Backfill release manifest
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing policyengine-us-data HF revision/version to backfill"
+        required: true
+        type: string
+      artifacts:
+        description: "Newline-separated artifact paths in the HF revision"
+        required: true
+        default: "enhanced_cps_2024.h5"
+        type: string
+      model_package_version:
+        description: "Exact policyengine-us version used with this data release"
+        required: true
+        type: string
+      core_package_version:
+        description: "Exact policyengine-core version used with this data release"
+        required: true
+        type: string
+      model_package_git_sha:
+        description: "Optional policyengine-us git SHA"
+        required: false
+        default: ""
+        type: string
+      model_package_data_build_fingerprint:
+        description: "Optional policyengine-us data-build fingerprint"
+        required: false
+        default: ""
+        type: string
+      data_package_git_sha:
+        description: "Optional policyengine-us-data git SHA"
+        required: false
+        default: ""
+        type: string
+      upload:
+        description: "Upload the generated manifest and TRACE TRO to Hugging Face"
+        required: true
+        default: false
+        type: boolean
+      upload_revision:
+        description: "Optional HF base branch for the PR; blank targets main"
+        required: true
+        default: ""
+        type: string
+      confirm_publish:
+        description: "Required when upload=true: set to the exact version"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backfill-release-manifest-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - uses: astral-sh/setup-uv@v8.1.0
+
+      - name: Install package
+        run: uv sync --dev
+
+      - name: Validate publish confirmation
+        if: inputs.upload
+        env:
+          CONFIRM_PUBLISH: ${{ inputs.confirm_publish }}
+          VERSION: ${{ inputs.version }}
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+        run: |
+          if [ "${CONFIRM_PUBLISH}" != "${VERSION}" ]; then
+            echo "::error::Set confirm_publish to '${VERSION}' to upload."
+            exit 1
+          fi
+          if [ -z "${HUGGING_FACE_TOKEN}" ]; then
+            echo "::error::HUGGING_FACE_TOKEN is not configured."
+            exit 1
+          fi
+
+      - name: Build release manifest
+        env:
+          VERSION: ${{ inputs.version }}
+          ARTIFACTS: ${{ inputs.artifacts }}
+          MODEL_PACKAGE_VERSION: ${{ inputs.model_package_version }}
+          CORE_PACKAGE_VERSION: ${{ inputs.core_package_version }}
+          MODEL_PACKAGE_GIT_SHA: ${{ inputs.model_package_git_sha }}
+          MODEL_PACKAGE_DATA_BUILD_FINGERPRINT: ${{ inputs.model_package_data_build_fingerprint }}
+          DATA_PACKAGE_GIT_SHA: ${{ inputs.data_package_git_sha }}
+          UPLOAD: ${{ inputs.upload }}
+          UPLOAD_REVISION: ${{ inputs.upload_revision }}
+          HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
+        run: |
+          if [[ ! "${VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "::error::Version must use x.y.z form, got '${VERSION}'."
+            exit 1
+          fi
+
+          artifact_args=()
+          artifact_count=0
+          while IFS= read -r artifact; do
+            if [ -z "${artifact}" ]; then
+              continue
+            fi
+            if [[ "${artifact}" = /* ]] ||
+              [[ "${artifact}" == *".."* ]] ||
+              [[ "${artifact}" == "release_manifest.json" ]] ||
+              [[ "${artifact}" == "trace.tro.jsonld" ]] ||
+              [[ "${artifact}" == releases/* ]] ||
+              [[ "${artifact}" == staging/* ]]; then
+              echo "::error::Unsafe artifact path '${artifact}'."
+              exit 1
+            fi
+            artifact_args+=(--artifact "${artifact}")
+            artifact_count=$((artifact_count + 1))
+          done <<< "${ARTIFACTS}"
+          if [ "${artifact_count}" -eq 0 ]; then
+            echo "::error::At least one artifact path is required."
+            exit 1
+          fi
+
+          cmd=(
+            uv run python -m policyengine_us_data.storage.backfill_release_manifest
+            --version "${VERSION}"
+            --model-package-version "${MODEL_PACKAGE_VERSION}"
+            --core-package-version "${CORE_PACKAGE_VERSION}"
+            --output "release_manifest-${VERSION}.json"
+            "${artifact_args[@]}"
+          )
+
+          if [ -n "${MODEL_PACKAGE_GIT_SHA}" ]; then
+            cmd+=(--model-package-git-sha "${MODEL_PACKAGE_GIT_SHA}")
+          fi
+          if [ -n "${MODEL_PACKAGE_DATA_BUILD_FINGERPRINT}" ]; then
+            cmd+=(
+              --model-package-data-build-fingerprint
+              "${MODEL_PACKAGE_DATA_BUILD_FINGERPRINT}"
+            )
+          fi
+          if [ -n "${DATA_PACKAGE_GIT_SHA}" ]; then
+            cmd+=(--data-package-git-sha "${DATA_PACKAGE_GIT_SHA}")
+          fi
+          if [ "${UPLOAD}" = "true" ]; then
+            cmd+=(--upload --create-pr)
+            if [ -n "${UPLOAD_REVISION}" ]; then
+              cmd+=(--upload-revision "${UPLOAD_REVISION}")
+            fi
+          fi
+
+          "${cmd[@]}"
+
+          {
+            echo "## Release manifest backfill"
+            echo ""
+            echo "- Version: \`${VERSION}\`"
+            echo "- Manifest artifact: \`release_manifest-${VERSION}.json\`"
+            echo "- Upload requested: \`${UPLOAD}\`"
+            if [ "${UPLOAD}" = "true" ]; then
+              echo "- HF base branch: \`${UPLOAD_REVISION:-main}\`"
+              echo "- HF pull request requested: \`true\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload generated manifest artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-manifest-${{ inputs.version }}
+          path: release_manifest-${{ inputs.version }}.json

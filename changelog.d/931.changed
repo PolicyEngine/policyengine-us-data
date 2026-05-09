@@ -1,1 +1,0 @@
-Allow release manifest backfills to certify additional exact policyengine-core runtime versions without changing recorded build-core metadata.

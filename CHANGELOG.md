@@ -1,3 +1,10 @@
+## [1.110.1] - 2026-05-09
+
+### Changed
+
+- Allow release manifest backfills to certify additional exact policyengine-core runtime versions without changing recorded build-core metadata.
+
+
 ## [1.110.0] - 2026-05-09
 
 ### Added

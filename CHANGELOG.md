@@ -1,3 +1,10 @@
+## [1.110.7] - 2026-05-09
+
+### Fixed
+
+- Precompute tax-unit construction inputs once per dataset to speed ACS builds.
+
+
 ## [1.110.6] - 2026-05-09
 
 ### Fixed

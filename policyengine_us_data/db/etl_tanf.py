@@ -55,6 +55,62 @@ TANF_WORKBOOK_URLS: dict[int, dict[str, str]] = {
     },
 }
 
+TANF_FALLBACK_NATIONAL_FAMILIES_2024 = 841_208.6666666666
+TANF_FALLBACK_NATIONAL_SPENDING_2024 = 7_788_317_474.55
+TANF_FALLBACK_STATE_TARGETS_2024 = (
+    (1, 5_792.91666666667, 32_124_953.24),
+    (2, 1_221.91666666667, 18_434_755.86),
+    (4, 4_892.75, 14_421_889.43),
+    (5, 891.416666666667, 2_434_783.67),
+    (6, 290_247.75, 3_742_540_224.36),
+    (8, 12_456.0833333333, 69_699_677.55),
+    (9, 5_194.83333333333, 42_471_684.66),
+    (10, 2_560.75, 5_754_067.35),
+    (11, 5_056.25, 45_666_113.5),
+    (12, 30_186.8333333333, 100_340_059.95),
+    (13, 4_153.25, 10_671_069),
+    (15, 2_813.41666666667, 21_359_319),
+    (16, 1_482.33333333333, 1_742_622),
+    (17, 9_852.83333333333, 57_606_210.68),
+    (18, 5_473.41666666667, 19_540_752.5),
+    (19, 4_083.33333333333, 16_037_703.13),
+    (20, 2_933.08333333333, 9_818_693.75),
+    (21, 14_567.6666666667, 73_589_710.67),
+    (22, 4_836.66666666667, 33_332_996),
+    (23, 3_679.33333333333, 54_834_900.32),
+    (24, 12_918.5, 139_982_898.46),
+    (25, 36_646.4166666667, 353_175_296.67),
+    (26, 7_964.33333333333, 47_781_011.05),
+    (27, 13_334.5, 126_664_367),
+    (28, 1_463.66666666667, 2_001_203),
+    (29, 4_821.66666666667, 14_512_152.22),
+    (30, 1_598.41666666667, 11_855_832),
+    (31, 2_563.33333333333, 18_973_261.21),
+    (32, 5_477.41666666667, 24_607_810),
+    (33, 2_499.25, 27_637_906.62),
+    (34, 9_513.41666666667, 101_463_207.58),
+    (35, 7_008.08333333333, 49_470_156.42),
+    (36, 128_334.583333333, 1_498_630_368),
+    (37, 7_116.16666666667, 16_855_606),
+    (38, 628.75, 4_710_100),
+    (39, 39_233.75, 218_767_214.6),
+    (40, 3_390.75, 9_712_053),
+    (41, 18_196.1666666667, 78_534_753.73),
+    (42, 24_170.25, 89_266_129),
+    (44, 3_391, 28_690_264.33),
+    (45, 5_605.16666666667, 23_327_185.48),
+    (46, 2_486.16666666667, 12_891_592.56),
+    (47, 12_117.25, 62_576_685.35),
+    (48, 9_462.66666666667, 19_825_675.13),
+    (49, 1_892.25, 20_275_644),
+    (50, 1_654.83333333333, 13_584_363.3),
+    (51, 13_187.9166666667, 68_554_925),
+    (53, 33_068.25, 221_730_922.64),
+    (54, 4_696.75, 41_374_940.75),
+    (55, 11_287.6666666667, 62_580_997.86),
+    (56, 478.583333333333, 5_880_764.97),
+)
+
 
 @retry(
     stop=stop_after_attempt(5),
@@ -71,6 +127,11 @@ TANF_WORKBOOK_URLS: dict[int, dict[str, str]] = {
 )
 def _acf_get(session: requests.Session, url: str) -> requests.Response:
     response = session.get(url, timeout=ACF_REQUEST_TIMEOUT)
+    if response.status_code == 202 and response.headers.get("x-amzn-waf-action"):
+        raise requests.exceptions.HTTPError(
+            "ACF returned an AWS WAF challenge instead of a workbook",
+            response=response,
+        )
     response.raise_for_status()
     return response
 
@@ -225,6 +286,39 @@ def transform_tanf_financial_data(
     return national_spending, state_df
 
 
+def fallback_tanf_targets_2024() -> tuple[
+    float,
+    pd.DataFrame,
+    float,
+    pd.DataFrame,
+]:
+    """Return FY2024 TANF targets when acf.gov blocks non-browser downloads.
+
+    The values are the ACF FY2024 workbook targets extracted by the prior
+    successful data-build checkpoint. They keep Modal builds reproducible when
+    ACF's AWS WAF returns a JavaScript challenge to batch downloads.
+    """
+    state_by_fips = {int(fips): state for state, fips in STATE_NAME_TO_FIPS.items()}
+    rows = []
+    for state_fips, recipient_families, tanf in TANF_FALLBACK_STATE_TARGETS_2024:
+        rows.append(
+            {
+                "state": state_by_fips[state_fips],
+                "state_fips": state_fips,
+                "ucgid_str": f"0400000US{state_fips:02d}",
+                "recipient_families": recipient_families,
+                "tanf": tanf,
+            }
+        )
+    state_df = pd.DataFrame(rows).sort_values("state_fips").reset_index(drop=True)
+    return (
+        TANF_FALLBACK_NATIONAL_FAMILIES_2024,
+        state_df[["state", "state_fips", "ucgid_str", "recipient_families"]],
+        TANF_FALLBACK_NATIONAL_SPENDING_2024,
+        state_df[["state", "state_fips", "tanf"]],
+    )
+
+
 def load_tanf_data(
     national_families: float,
     national_spending: float,
@@ -339,14 +433,34 @@ def load_tanf_data(
 
 def main():
     _, year = etl_argparser("ETL for TANF administrative calibration targets")
-    caseload_raw = extract_tanf_caseload_data(year)
-    national_families, state_caseload_df = transform_tanf_caseload_data(caseload_raw)
+    try:
+        caseload_raw = extract_tanf_caseload_data(year)
+        national_families, state_caseload_df = transform_tanf_caseload_data(
+            caseload_raw
+        )
 
-    financial_national_df, financial_state_sheets = extract_tanf_financial_data(year)
-    national_spending, state_financial_df = transform_tanf_financial_data(
-        financial_national_df,
-        financial_state_sheets,
-    )
+        financial_national_df, financial_state_sheets = extract_tanf_financial_data(
+            year
+        )
+        national_spending, state_financial_df = transform_tanf_financial_data(
+            financial_national_df,
+            financial_state_sheets,
+        )
+    except requests.exceptions.RequestException as exc:
+        if year != ACF_DATA_YEAR:
+            raise
+        logger.warning(
+            "Using bundled FY%s TANF fallback targets because ACF workbook "
+            "download failed: %s",
+            ACF_DATA_YEAR,
+            exc,
+        )
+        (
+            national_families,
+            state_caseload_df,
+            national_spending,
+            state_financial_df,
+        ) = fallback_tanf_targets_2024()
 
     load_tanf_data(
         national_families=national_families,

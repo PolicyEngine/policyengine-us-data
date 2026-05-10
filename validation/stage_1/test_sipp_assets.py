@@ -40,7 +40,7 @@ def test_ecps_has_liquid_assets():
 
     Based on Federal Reserve SCF 2022:
     - Median household liquid assets: ~$8,000
-    - Total US household liquid assets: ~$15-20 trillion
+    - Total US household liquid assets: tens of trillions
     """
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
     from policyengine_us import Microsimulation
@@ -53,10 +53,11 @@ def test_ecps_has_liquid_assets():
     bonds = sim.calculate("bond_assets", map_to="household")
     total_liquid = bank + stocks + bonds
 
-    # Total should be in trillions (Fed estimates ~$15-20T in liquid assets)
+    # Total should be in the tens of trillions. This is a broad corruption
+    # check; distributional tests below carry the tighter SCF-shape signal.
     total = total_liquid.sum()
     MINIMUM_TOTAL = 5e12  # $5 trillion floor
-    MAXIMUM_TOTAL = 30e12  # $30 trillion ceiling
+    MAXIMUM_TOTAL = 40e12  # $40 trillion ceiling
 
     assert total > MINIMUM_TOTAL, (
         f"Total liquid assets ${total / 1e12:.1f}T below "

@@ -1,3 +1,10 @@
+## [1.110.12] - 2026-05-10
+
+### Changed
+
+- Update the data-build dependency floor to policyengine-us 1.690.6.
+
+
 ## [1.110.11] - 2026-05-10
 
 ### Changed

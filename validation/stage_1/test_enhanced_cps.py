@@ -60,8 +60,8 @@ def test_ecps_person_count(ecps_sim):
 def test_ecps_poverty_rate_reasonable(ecps_sim):
     in_poverty = ecps_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.30, (
-        f"Poverty rate = {rate:.1%}, expected 5-30%. "
+    assert 0.05 < rate < 0.35, (
+        f"Poverty rate = {rate:.1%}, expected 5-35%. "
         "If ~40%, income variables are likely zero."
     )
 

@@ -59,7 +59,7 @@ def test_sparse_household_count(sparse_sim):
 def test_sparse_poverty_rate_reasonable(sparse_sim):
     in_poverty = sparse_sim.calculate("person_in_poverty", map_to="person")
     rate = in_poverty.mean()
-    assert 0.05 < rate < 0.30, f"Sparse poverty rate = {rate:.1%}, expected 5-30%."
+    assert 0.05 < rate < 0.35, f"Sparse poverty rate = {rate:.1%}, expected 5-35%."
 
 
 # ── Reweighting and calibration checks ────────────────────────

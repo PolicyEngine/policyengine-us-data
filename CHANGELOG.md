@@ -1,3 +1,10 @@
+## [1.110.8] - 2026-05-10
+
+### Fixed
+
+- Relaxed stage-one validation sanity bounds for the current enhanced CPS poverty rate and liquid-asset totals.
+
+
 ## [1.110.7] - 2026-05-09
 
 ### Fixed

@@ -1,3 +1,10 @@
+## [1.110.9] - 2026-05-10
+
+### Changed
+
+- Speed up cloned household geography assignment for large local-area calibration builds.
+
+
 ## [1.110.8] - 2026-05-10
 
 ### Fixed

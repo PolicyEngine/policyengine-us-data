@@ -43,6 +43,23 @@ def sample_data():
 
 
 class TestDropTargetGroups:
+    def test_target_groups_separate_null_and_string_domains(self):
+        targets_df = pd.DataFrame(
+            {
+                "variable": ["person_count", "person_count", "snap"],
+                "domain_variable": [None, "age", "snap"],
+                "geographic_id": ["US", "US", "US"],
+                "value": [1000, 200, 300],
+            }
+        )
+
+        target_groups, group_info = create_target_groups(targets_df)
+
+        assert len(set(target_groups)) == 3
+        assert target_groups[0] != target_groups[1]
+        assert any("Person Count" in info for info in group_info)
+        assert any("AGE Person Count" in info for info in group_info)
+
     def test_drops_matching_group(self, sample_data):
         targets_df, X, target_groups, group_info = sample_data
         n_before = len(targets_df)

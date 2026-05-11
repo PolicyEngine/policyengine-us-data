@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
+import sqlite3
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Optional
@@ -100,13 +103,91 @@ def artifacts_dir(run_id: str) -> Path:
     return Path(artifacts_dir_for_run(run_id))
 
 
+def _quote_sql_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _canonical_sqlite_value(value):
+    if isinstance(value, bytes):
+        return {"__bytes__": value.hex()}
+    return value
+
+
+def _canonical_sqlite_sha256(path: Path) -> str:
+    """Hash logical SQLite contents instead of mutable file metadata."""
+    digest = hashlib.sha256()
+
+    def update(payload) -> None:
+        digest.update(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+        digest.update(b"\n")
+
+    with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
+        conn.row_factory = sqlite3.Row
+        schema_rows = conn.execute(
+            """
+            SELECT type, name, tbl_name, sql
+            FROM sqlite_master
+            WHERE name NOT LIKE 'sqlite_%'
+            ORDER BY type, name
+            """
+        ).fetchall()
+        update(
+            {
+                "schema": [
+                    {
+                        "type": row["type"],
+                        "name": row["name"],
+                        "tbl_name": row["tbl_name"],
+                        "sql": row["sql"],
+                    }
+                    for row in schema_rows
+                ]
+            }
+        )
+
+        table_names = [row["name"] for row in schema_rows if row["type"] == "table"]
+        for table_name in table_names:
+            columns = [
+                row["name"]
+                for row in conn.execute(
+                    f"PRAGMA table_info({_quote_sql_identifier(table_name)})"
+                )
+            ]
+            quoted_columns = [_quote_sql_identifier(column) for column in columns]
+            select_columns = ", ".join(quoted_columns)
+            order_columns = ", ".join(quoted_columns)
+            for row in conn.execute(
+                f"""
+                SELECT {select_columns}
+                FROM {_quote_sql_identifier(table_name)}
+                ORDER BY {order_columns}
+                """
+            ):
+                update(
+                    {
+                        "table": table_name,
+                        "row": [
+                            _canonical_sqlite_value(row[column]) for column in columns
+                        ],
+                    }
+                )
+    return digest.hexdigest()
+
+
 def artifact_identity(path: str | Path) -> dict:
     artifact = ArtifactReference.from_path(path)
-    return {
+    identity = {
         "path": artifact.path,
         "size_bytes": artifact.size_bytes,
         "sha256": artifact.sha256,
     }
+    if Path(path).suffix == ".db":
+        identity["sha256"] = _canonical_sqlite_sha256(Path(path))
+        identity.pop("size_bytes", None)
+        identity["identity_kind"] = "sqlite_content"
+    return identity
 
 
 def artifact_identities(paths: dict[str, str | Path]) -> dict:

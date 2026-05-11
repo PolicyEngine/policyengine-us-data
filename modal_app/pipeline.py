@@ -143,7 +143,7 @@ def _calibration_package_parameters(
 ) -> dict:
     """Return manifest parameters that affect package construction."""
     effective_parallel = bool(chunked_matrix and parallel_matrix)
-    return {
+    params = {
         "workers": workers if not chunked_matrix else None,
         "n_clones": n_clones,
         "target_config": target_config,
@@ -153,6 +153,7 @@ def _calibration_package_parameters(
         "parallel_matrix": effective_parallel,
         "num_matrix_workers": num_matrix_workers if effective_parallel else None,
     }
+    return {key: value for key, value in params.items() if value is not None}
 
 
 def get_pinned_sha(branch: str) -> str:
@@ -1092,6 +1093,15 @@ def run_pipeline(
             expected_input_identities=package_inputs,
             expected_parameters=package_parameters,
         )
+        if not package_reuse.reusable:
+            previous = package_reuse.manifest
+            print(f"  Package reuse invalidated: {package_reuse.reason}")
+            if previous is not None:
+                print(f"    prior status: {previous.status}")
+                print(f"    prior parameters: {previous.parameters}")
+                print(f"    expected parameters: {package_parameters}")
+                print(f"    prior inputs: {previous.input_identities}")
+                print(f"    expected inputs: {package_inputs}")
         if package_reuse.reusable:
             _mark_step_reused(
                 meta,
@@ -1502,9 +1512,8 @@ def run_pipeline(
                     vol=pipeline_volume,
                 )
 
-            pipeline_volume.reload()
-
-            # Now wait for H5 builds to finish
+            # Now wait for H5 builds to finish. Do not reload the shared
+            # volume until the child jobs release SQLite handles.
             print("  Waiting for regional H5 build...")
             regional_h5_result = regional_h5_handle.get()
             regional_msg = (
@@ -1513,6 +1522,20 @@ def run_pipeline(
                 else regional_h5_result
             )
             print(f"  Regional H5: {regional_msg}")
+
+            national_h5_result = None
+            if national_h5_handle is not None:
+                print("  Waiting for national H5 build...")
+                national_h5_result = national_h5_handle.get()
+                national_msg = (
+                    national_h5_result.get("message", national_h5_result)
+                    if isinstance(national_h5_result, dict)
+                    else national_h5_result
+                )
+                print(f"  National H5: {national_msg}")
+
+            pipeline_volume.reload()
+            staging_volume.reload()
 
             if isinstance(regional_h5_result, dict) and regional_h5_result.get(
                 "fingerprint"
@@ -1542,16 +1565,7 @@ def run_pipeline(
             )
             active_step_manifest = national_h5_manifest
 
-            national_h5_result = None
             if national_h5_handle is not None:
-                print("  Waiting for national H5 build...")
-                national_h5_result = national_h5_handle.get()
-                national_msg = (
-                    national_h5_result.get("message", national_h5_result)
-                    if isinstance(national_h5_result, dict)
-                    else national_h5_result
-                )
-                print(f"  National H5: {national_msg}")
                 if isinstance(national_h5_result, dict) and national_h5_result.get(
                     "fingerprint"
                 ):

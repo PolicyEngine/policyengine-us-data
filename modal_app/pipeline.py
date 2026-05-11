@@ -109,6 +109,8 @@ app = modal.App(
     or "policyengine-us-data-pipeline"
 )
 
+NATIONAL_FIT_LAMBDA_L0 = 1e-4
+
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
 
@@ -1170,7 +1172,7 @@ def run_pipeline(
             "epochs": national_epochs,
             "target_config": "policyengine_us_data/calibration/target_config.yaml",
             "beta": 0.65,
-            "lambda_l0": 2e-2,
+            "lambda_l0": NATIONAL_FIT_LAMBDA_L0,
             "lambda_l2": 1e-12,
             "log_freq": 100,
             "skip_national": skip_national,
@@ -1257,7 +1259,7 @@ def run_pipeline(
                     volume_package_path=vol_path,
                     target_config=target_cfg,
                     beta=0.65,
-                    lambda_l0=2e-2,
+                    lambda_l0=NATIONAL_FIT_LAMBDA_L0,
                     lambda_l2=1e-12,
                     log_freq=100,
                 )

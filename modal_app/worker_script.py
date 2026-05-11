@@ -12,8 +12,6 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 
 def _validate_in_subprocess(
     h5_path,
@@ -150,6 +148,26 @@ def parse_args(argv: list[str] | None = None):
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Pipeline run ID used for traceability and bootstrap lookup",
+    )
+    parser.add_argument(
+        "--version",
+        default="0.0.0",
+        help="Package or release version associated with the worker run",
+    )
+    parser.add_argument(
+        "--artifacts-dir",
+        default=None,
+        help="Optional run-scoped pipeline artifacts directory containing bootstrap artifacts",
+    )
+    parser.add_argument(
+        "--run-config-path",
+        default=None,
+        help="Optional unified run configuration JSON used for traceability",
+    )
+    parser.add_argument(
         "--geography-path",
         default=None,
         help="Optional explicit path to geography_assignment.npz",
@@ -210,6 +228,51 @@ def _load_request_inputs_from_args(
         )
 
     return "work_items", tuple(json.loads(args.work_items))
+
+
+def _infer_worker_scope(request_input_mode: str, request_inputs) -> str:
+    """Infer which bootstrap scope matches the queued request set."""
+
+    if request_input_mode == "requests":
+        all_national = all(
+            getattr(request, "area_type", None) == "national"
+            for request in request_inputs
+        )
+    else:
+        all_national = all(
+            isinstance(item, dict) and item.get("type") == "national"
+            for item in request_inputs
+        )
+    return "national" if all_national else "regional"
+
+
+def _build_publishing_inputs(*, args, run_id: str):
+    """Build the traceability input bundle consumed by worker setup services."""
+
+    from policyengine_us_data.build_outputs.fingerprinting import (
+        PublishingInputBundle,
+    )
+
+    return PublishingInputBundle(
+        weights_path=Path(args.weights_path),
+        source_dataset_path=Path(args.dataset_path),
+        target_db_path=Path(args.db_path) if args.db_path else None,
+        exact_geography_path=(
+            Path(args.geography_path) if args.geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(args.calibration_package_path)
+            if args.calibration_package_path is not None
+            else None
+        ),
+        run_config_path=(
+            Path(args.run_config_path) if args.run_config_path is not None else None
+        ),
+        run_id=run_id,
+        version=args.version,
+        n_clones=args.n_clones,
+        seed=args.seed,
+    )
 
 
 def _build_kwargs_from_request(request) -> dict[str, Any]:
@@ -299,10 +362,9 @@ def _resolve_request_input(
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
-    weights_path = Path(args.weights_path)
     dataset_path = Path(args.dataset_path)
-    db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
+    run_id = args.run_id or output_dir.name or "local-worker"
 
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,
@@ -315,100 +377,56 @@ def main(argv: list[str] | None = None):
 
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        load_calibration_geography,
     )
     from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog
     from policyengine_us_data.build_outputs.requests import AreaBuildRequest
+    from policyengine_us_data.build_outputs.validation import ValidationPolicy
+    from policyengine_us_data.build_outputs.worker_session import WorkerSessionFactory
 
-    weights = np.load(weights_path)
-
-    from policyengine_us import Microsimulation
-
-    _sim = Microsimulation(dataset=str(dataset_path))
-    n_records = len(_sim.calculate("household_id", map_to="household").values)
-    del _sim
-
-    geography = load_calibration_geography(
-        weights_path=weights_path,
-        n_records=n_records,
-        n_clones=args.n_clones,
-        geography_path=(
-            Path(args.geography_path) if args.geography_path is not None else None
-        ),
-        calibration_package_path=(
-            Path(args.calibration_package_path)
-            if args.calibration_package_path is not None
-            else None
-        ),
-    )
-    print(
-        f"Loaded geography: "
-        f"{geography.n_clones} clones x "
-        f"{geography.n_records} records",
-        file=sys.stderr,
-    )
     area_catalog = USAreaCatalog.default()
     request_input_mode, request_inputs = _load_request_inputs_from_args(
         args=args,
         area_build_request_cls=AreaBuildRequest,
     )
+    scope = _infer_worker_scope(request_input_mode, request_inputs)
+    inputs = _build_publishing_inputs(args=args, run_id=run_id)
 
-    # ── Validation setup (once per worker) ──
-    validation_targets = None
-    training_mask_full = None
-    constraints_map = None
-    if not args.no_validate:
-        from sqlalchemy import create_engine
-        from policyengine_us_data.calibration.validate_staging import (
-            _query_all_active_targets,
-            _batch_stratum_constraints,
-        )
-        from policyengine_us_data.calibration.unified_calibration import (
-            load_target_config,
-            _match_rules,
-        )
-
-        engine = create_engine(f"sqlite:///{db_path}")
-        validation_targets = _query_all_active_targets(engine, args.period)
-        print(
-            f"Loaded {len(validation_targets)} validation targets",
-            file=sys.stderr,
-        )
-
-        # Apply exclude/include from validation config
-        if args.validation_config:
-            val_cfg = load_target_config(args.validation_config)
-            exc_rules = val_cfg.get("exclude", [])
-            if exc_rules:
-                exc_mask = _match_rules(validation_targets, exc_rules)
-                validation_targets = validation_targets[~exc_mask].reset_index(
-                    drop=True
-                )
-            inc_rules = val_cfg.get("include", [])
-            if inc_rules:
-                inc_mask = _match_rules(validation_targets, inc_rules)
-                validation_targets = validation_targets[inc_mask].reset_index(drop=True)
-
-        # Compute training mask from training config
-        if args.target_config:
-            tr_cfg = load_target_config(args.target_config)
-            tr_inc = tr_cfg.get("include", [])
-            if tr_inc:
-                training_mask_full = np.asarray(
-                    _match_rules(validation_targets, tr_inc),
-                    dtype=bool,
-                )
-            else:
-                training_mask_full = np.ones(len(validation_targets), dtype=bool)
-        else:
-            training_mask_full = np.ones(len(validation_targets), dtype=bool)
-
-        # Batch-load constraints
-        stratum_ids = validation_targets["stratum_id"].unique().tolist()
-        constraints_map = _batch_stratum_constraints(engine, stratum_ids)
+    session = WorkerSessionFactory().create(
+        inputs=inputs,
+        scope=scope,
+        validation_policy=ValidationPolicy(enabled=not args.no_validate),
+        period=args.period,
+        target_config_path=Path(args.target_config) if args.target_config else None,
+        validation_config_path=(
+            Path(args.validation_config) if args.validation_config else None
+        ),
+        artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
+    )
+    weights = session.weights.values
+    n_records = session.weights.n_records
+    geography = session.geography
+    validation_context = session.validation_context
+    validation_targets = (
+        validation_context.validation_targets
+        if validation_context is not None
+        else None
+    )
+    training_mask_full = (
+        validation_context.training_mask if validation_context is not None else None
+    )
+    constraints_map = (
+        validation_context.constraints_map if validation_context is not None else None
+    )
+    print(
+        "Worker session ready: "
+        f"scope={scope}, bootstrap={session.bootstrap_status}, "
+        f"{geography.n_clones} clones x {geography.n_records} records",
+        file=sys.stderr,
+    )
+    if validation_targets is not None:
         print(
             f"Validation ready: {len(validation_targets)} targets, "
-            f"{len(stratum_ids)} strata",
+            f"{len(constraints_map or {})} strata",
             file=sys.stderr,
         )
 
@@ -486,7 +504,7 @@ def main(argv: list[str] | None = None):
                             validation_targets=validation_targets,
                             training_mask_full=training_mask_full,
                             constraints_map=constraints_map,
-                            db_path=str(db_path),
+                            db_path=str(inputs.target_db_path),
                             period=args.period,
                         )
                         results["validation_rows"].extend(v_rows)

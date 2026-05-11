@@ -8,6 +8,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from policyengine_us_data.build_outputs.bootstrap import WorkerBootstrapBuilder
+from policyengine_us_data.build_outputs.fingerprinting import PublishingInputBundle
 from policyengine_us_data.build_outputs.source_dataset import (
     DEFAULT_SUBENTITIES,
     PolicyEngineDatasetReader,
@@ -38,6 +40,9 @@ def _run_worker(
     validate: bool = False,
     target_config: Path | None = None,
     validation_config: Path | None = None,
+    run_id: str = "tiny-worker-run",
+    artifacts_dir: Path | None = None,
+    return_process: bool = False,
 ) -> dict:
     _require_worker_dependencies()
     if not isinstance(requests, (list, tuple)):
@@ -56,9 +61,15 @@ def _run_worker(
         str(artifacts.db_path),
         "--output-dir",
         str(output_dir),
+        "--run-id",
+        run_id,
+        "--run-config-path",
+        str(artifacts.run_config_path),
         "--n-clones",
         str(artifacts.n_clones),
     ]
+    if artifacts_dir is not None:
+        cmd.extend(["--artifacts-dir", str(artifacts_dir)])
     if not validate:
         cmd.append("--no-validate")
     if target_config is not None:
@@ -81,6 +92,8 @@ def _run_worker(
         text=True,
         check=True,
     )
+    if return_process:
+        return result
     return json.loads(result.stdout)
 
 
@@ -191,21 +204,64 @@ include:
         validate=True,
         target_config=target_config,
         validation_config=validation_config,
+        return_process=True,
     )
+    parsed = json.loads(result.stdout)
 
-    assert result["failed"] == []
-    assert result["errors"] == []
-    assert result["completed"] == ["district:NC-01", "state:NC", "national:US"]
-    assert len(result["validation_rows"]) == 3
-    assert set(result["validation_summary"]) == {
+    assert result.stderr.count("Worker session ready:") == 1
+    assert parsed["failed"] == []
+    assert parsed["errors"] == []
+    assert parsed["completed"] == ["district:NC-01", "state:NC", "national:US"]
+    assert len(parsed["validation_rows"]) == 3
+    assert set(parsed["validation_summary"]) == {
         "district:NC-01",
         "state:NC",
         "national:US",
     }
-    for summary in result["validation_summary"].values():
+    for summary in parsed["validation_summary"].values():
         assert summary["n_targets"] == 1
         assert summary["n_sanity_fail"] == 0
-    for row in result["validation_rows"]:
+    for row in parsed["validation_rows"]:
         assert row["variable"] == "household_count"
         assert row["sanity_check"] == "PASS"
         assert row["in_training"] is True
+
+
+def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
+    artifacts = seed_local_h5_artifacts(tmp_path / "bootstrap")
+    request = build_request("district", geography=artifacts.geography)
+    output_dir = tmp_path / "bootstrap-out"
+    artifacts_dir = tmp_path / "pipeline-artifacts" / "run-123"
+    inputs = PublishingInputBundle(
+        weights_path=artifacts.weights_path,
+        source_dataset_path=artifacts.dataset_path,
+        target_db_path=artifacts.db_path,
+        exact_geography_path=artifacts.geography_path,
+        calibration_package_path=artifacts.calibration_package_path,
+        run_config_path=artifacts.run_config_path,
+        run_id="run-123",
+        version="0.0.0",
+        n_clones=artifacts.n_clones,
+        seed=42,
+    )
+    WorkerBootstrapBuilder().build(
+        inputs=inputs,
+        scope="regional",
+        artifacts_dir=artifacts_dir,
+    )
+
+    result = _run_worker(
+        requests=request,
+        artifacts=artifacts,
+        output_dir=output_dir,
+        use_saved_geography=True,
+        run_id="run-123",
+        artifacts_dir=artifacts_dir,
+        return_process=True,
+    )
+    parsed = json.loads(result.stdout)
+
+    assert "Worker session ready: scope=regional, bootstrap=used" in result.stderr
+    assert parsed["failed"] == []
+    assert parsed["errors"] == []
+    assert parsed["completed"] == [f"district:{request.area_id}"]

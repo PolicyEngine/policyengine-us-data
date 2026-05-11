@@ -53,6 +53,33 @@ def test_parse_args_accepts_calibration_package_path():
     assert args.calibration_package_path == "/tmp/calibration_package.pkl"
 
 
+def test_parse_args_accepts_worker_session_paths():
+    args = worker_script.parse_args(
+        [
+            "--requests-json",
+            "[]",
+            "--weights-path",
+            "/tmp/weights.npy",
+            "--dataset-path",
+            "/tmp/source.h5",
+            "--db-path",
+            "/tmp/policy_data.db",
+            "--output-dir",
+            "/tmp/out",
+            "--run-id",
+            "run-123",
+            "--artifacts-dir",
+            "/tmp/artifacts/run-123",
+            "--run-config-path",
+            "/tmp/unified_run_config.json",
+        ]
+    )
+
+    assert args.run_id == "run-123"
+    assert args.artifacts_dir == "/tmp/artifacts/run-123"
+    assert args.run_config_path == "/tmp/unified_run_config.json"
+
+
 def test_load_request_inputs_from_args_uses_request_payloads_when_present():
     args = SimpleNamespace(
         requests_json=json.dumps([{"area_type": "national", "area_id": "US"}]),
@@ -82,6 +109,33 @@ def test_load_request_inputs_from_args_keeps_legacy_work_items_raw():
 
     assert mode == "work_items"
     assert work_items == ({"type": "national", "id": "US"},)
+
+
+def test_infer_worker_scope_uses_national_only_for_national_bootstrap():
+    assert (
+        worker_script._infer_worker_scope(
+            "requests",
+            (FakeRequest(area_type="national", area_id="US"),),
+        )
+        == "national"
+    )
+    assert (
+        worker_script._infer_worker_scope(
+            "requests",
+            (
+                FakeRequest(area_type="district", area_id="NC-01"),
+                FakeRequest(area_type="national", area_id="US"),
+            ),
+        )
+        == "regional"
+    )
+    assert (
+        worker_script._infer_worker_scope(
+            "work_items",
+            ({"type": "national", "id": "US"},),
+        )
+        == "national"
+    )
 
 
 def test_work_item_key_handles_missing_fields():

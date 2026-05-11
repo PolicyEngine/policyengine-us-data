@@ -715,6 +715,10 @@ def build_areas_worker(
         calibration_inputs["database"],
         "--output-dir",
         str(output_dir),
+        "--run-id",
+        run_id,
+        "--artifacts-dir",
+        str(Path("/pipeline/artifacts") / run_id),
     ]
     if "geography" in calibration_inputs:
         worker_cmd.extend(["--geography-path", calibration_inputs["geography"]])
@@ -729,6 +733,8 @@ def build_areas_worker(
         worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
     if "seed" in calibration_inputs:
         worker_cmd.extend(["--seed", str(calibration_inputs["seed"])])
+    if "run_config" in calibration_inputs:
+        worker_cmd.extend(["--run-config-path", calibration_inputs["run_config"]])
     repo_root = Path("/root/policyengine-us-data")
     cal_dir = repo_root / "policyengine_us_data" / "calibration"
     worker_cmd.extend(

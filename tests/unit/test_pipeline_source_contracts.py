@@ -87,6 +87,18 @@ def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> Non
     assert "Upload validation diagnostics even when H5 outputs are reused." in source
 
 
+def test_run_pipeline_fails_closed_when_h5_child_fingerprint_missing() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    helper = _function_def(tree, "_require_h5_scope_fingerprint")
+    helper_source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), helper)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    pipeline_source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), run_pipeline)
+
+    assert "did not include a fingerprint" in helper_source
+    assert "refusing to complete the H5 step manifest" in helper_source
+    assert pipeline_source.count("_require_h5_scope_fingerprint(") == 2
+
+
 def test_full_release_path_combines_base_regional_and_national_outputs():
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     helper = _function_def(tree, "_full_release_staging_rel_paths")

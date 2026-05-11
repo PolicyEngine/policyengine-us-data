@@ -158,6 +158,35 @@ def _calibration_package_parameters(
     return {key: value for key, value in params.items() if value is not None}
 
 
+def _require_h5_scope_fingerprint(
+    result,
+    *,
+    scope: str,
+    planned_fingerprint: str,
+) -> str:
+    """Return a child H5 publish fingerprint or fail closed."""
+
+    if not isinstance(result, dict):
+        raise RuntimeError(
+            f"{scope} H5 publish returned a non-dict result; "
+            "cannot verify scope fingerprint."
+        )
+    actual_fingerprint = result.get("fingerprint")
+    if not actual_fingerprint:
+        raise RuntimeError(
+            f"{scope} H5 publish result did not include a fingerprint; "
+            "refusing to complete the H5 step manifest."
+        )
+    if actual_fingerprint != planned_fingerprint:
+        raise RuntimeError(
+            f"{scope} H5 fingerprint changed between pipeline "
+            "reuse planning and child publish completion.\n"
+            f"  Planned: {planned_fingerprint}\n"
+            f"  Actual:  {actual_fingerprint}"
+        )
+    return actual_fingerprint
+
+
 def get_pinned_sha(branch: str) -> str:
     """Get the current tip SHA for a branch from GitHub."""
     result = subprocess.run(
@@ -1582,19 +1611,13 @@ def run_pipeline(
             pipeline_volume.reload()
             staging_volume.reload()
 
-            if isinstance(regional_h5_result, dict) and regional_h5_result.get(
-                "fingerprint"
-            ):
-                if regional_h5_result["fingerprint"] != regional_scope_fingerprint:
-                    raise RuntimeError(
-                        "Regional H5 fingerprint changed between pipeline "
-                        "reuse planning and child publish completion.\n"
-                        f"  Planned: {regional_scope_fingerprint}\n"
-                        f"  Actual:  {regional_h5_result['fingerprint']}"
-                    )
-                regional_h5_manifest.input_identities["h5_scope_fingerprint"] = (
-                    regional_h5_result["fingerprint"]
+            regional_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                _require_h5_scope_fingerprint(
+                    regional_h5_result,
+                    scope="Regional",
+                    planned_fingerprint=regional_scope_fingerprint,
                 )
+            )
             regional_reuse_measurement = ReuseMeasurement.from_dict(
                 regional_h5_result.get("reuse_measurement", {})
                 if isinstance(regional_h5_result, dict)
@@ -1615,19 +1638,13 @@ def run_pipeline(
             active_step_manifest = national_h5_manifest
 
             if national_h5_handle is not None:
-                if isinstance(national_h5_result, dict) and national_h5_result.get(
-                    "fingerprint"
-                ):
-                    if national_h5_result["fingerprint"] != national_scope_fingerprint:
-                        raise RuntimeError(
-                            "National H5 fingerprint changed between pipeline "
-                            "reuse planning and child publish completion.\n"
-                            f"  Planned: {national_scope_fingerprint}\n"
-                            f"  Actual:  {national_h5_result['fingerprint']}"
-                        )
-                    national_h5_manifest.input_identities["h5_scope_fingerprint"] = (
-                        national_h5_result["fingerprint"]
+                national_h5_manifest.input_identities["h5_scope_fingerprint"] = (
+                    _require_h5_scope_fingerprint(
+                        national_h5_result,
+                        scope="National",
+                        planned_fingerprint=national_scope_fingerprint,
                     )
+                )
                 national_reuse_measurement = ReuseMeasurement.from_dict(
                     national_h5_result.get("reuse_measurement", {})
                     if isinstance(national_h5_result, dict)

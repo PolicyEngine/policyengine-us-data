@@ -1,3 +1,10 @@
+## [1.110.13] - 2026-05-11
+
+### Changed
+
+- Update the production data-build runtime to policyengine-us 1.690.7 and harden Modal pipeline resume behavior.
+
+
 ## [1.110.12] - 2026-05-10
 
 ### Changed

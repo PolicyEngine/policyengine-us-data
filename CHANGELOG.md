@@ -1,3 +1,11 @@
+## [1.111.0] - 2026-05-11
+
+### Added
+
+- Stage 2 now emits and validates a semantic `calibration_package_contract.json`
+  sidecar next to `calibration_package.pkl`.
+
+
 ## [1.110.14] - 2026-05-11
 
 ### Fixed

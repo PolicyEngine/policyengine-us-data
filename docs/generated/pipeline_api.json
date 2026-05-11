@@ -722,7 +722,7 @@
     "docstring": "",
     "id": "calibration_diagnostics",
     "kind": "function",
-    "line": 1104,
+    "line": 1147,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
@@ -1055,7 +1055,7 @@
     "docstring": "Fit L0-regularized calibration weights.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets: Target values array.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    verbose_freq: Print frequency. Defaults to 10%.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n        None disables logging.\n    log_path: Path for the per-target calibration log CSV.\n    target_names: Human-readable target names for the log.\n    initial_weights: Pre-computed initial weights. If None,\n        computed from targets_df age targets.\n    targets_df: Targets DataFrame, used to compute\n        initial_weights when not provided.\n    target_groups: Optional group ID per target row for balanced loss.\n    resume_from: Path to a `.checkpoint.pt` file or `.npy`\n        weights file to continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "fit_model",
     "kind": "function",
-    "line": 748,
+    "line": 791,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
@@ -1233,7 +1233,7 @@
     "docstring": "Compute population-based initial weights from age targets.\n\nFor each congressional district, sums person_count targets where\ndomain_variable == \"age\" to get district population, then divides\nby the number of columns (households) active in that district.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets_df: Targets DataFrame with columns: variable,\n        domain_variable, geo_level, geographic_id, value.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "init_weights",
     "kind": "function",
-    "line": 669,
+    "line": 712,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
@@ -2098,7 +2098,7 @@
     "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1230,
+    "line": 1273,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"

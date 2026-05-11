@@ -10,6 +10,7 @@ import pytest
 modal = pytest.importorskip("modal")
 
 from modal_app.pipeline import (  # noqa: E402
+    NATIONAL_FIT_LAMBDA_L0,
     _build_diagnostics_upload_script,
     _calibration_package_parameters,
     _run_required_promotion_subprocess,
@@ -37,7 +38,7 @@ def test_calibration_package_parameters_track_matrix_mode():
     )
 
     assert params["chunked_matrix"] is True
-    assert params["workers"] is None
+    assert "workers" not in params
     assert params["chunk_size"] == 10_000
     assert params["parallel_matrix"] is True
     assert params["num_matrix_workers"] == 25
@@ -57,9 +58,13 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
 
     assert params["chunked_matrix"] is False
     assert params["workers"] == 50
-    assert params["chunk_size"] is None
+    assert "chunk_size" not in params
     assert params["parallel_matrix"] is False
-    assert params["num_matrix_workers"] is None
+    assert "num_matrix_workers" not in params
+
+
+def test_national_fit_lambda_matches_national_preset():
+    assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(1e-4)
 
 
 class TestRunMetadata:

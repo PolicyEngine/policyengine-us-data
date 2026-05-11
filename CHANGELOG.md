@@ -1,3 +1,10 @@
+## [1.110.14] - 2026-05-11
+
+### Fixed
+
+- Expose the national calibration GPU in the publication pipeline workflow.
+
+
 ## [1.110.13] - 2026-05-11
 
 ### Changed

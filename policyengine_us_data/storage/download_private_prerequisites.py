@@ -1,24 +1,7 @@
-from pathlib import Path
+"""Compatibility entry point for the historical private prerequisite script."""
 
-from policyengine_us_data.utils.huggingface import download
+from policyengine_us_data.storage.download_prerequisites import main
 
-FOLDER = Path(__file__).parent
 
-download(
-    repo="policyengine/irs-soi-puf",
-    repo_filename="puf_2015.csv",
-    local_folder=FOLDER,
-    version=None,
-)
-download(
-    repo="policyengine/irs-soi-puf",
-    repo_filename="demographics_2015.csv",
-    local_folder=FOLDER,
-    version=None,
-)
-download(
-    repo="policyengine/irs-soi-puf",
-    repo_filename="np2023_d5_mid.csv",
-    local_folder=FOLDER,
-    version=None,
-)
+if __name__ == "__main__":
+    main()

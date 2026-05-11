@@ -626,7 +626,7 @@ def build_datasets(
 
     # Download prerequisites
     run_script(
-        "policyengine_us_data/storage/download_private_prerequisites.py",
+        "policyengine_us_data/storage/download_prerequisites.py",
         env=env,
         log_file=log_file,
     )

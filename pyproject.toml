@@ -97,6 +97,10 @@ namespaces = false
 ]
 
 [tool.setuptools.exclude-package-data]
+"policyengine_us_data" = [
+    "storage/block_cd_distributions.csv.gz",
+    "storage/block_crosswalk.csv.gz",
+]
 "*" = ["**/__pycache__/*", "**/*.py[cod]"]
 
 [tool.pytest.ini_options]

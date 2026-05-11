@@ -44,7 +44,7 @@ changelog:
 	python .github/bump_version.py
 	towncrier build --yes --version $$(python -c "import re; print(re.search(r'version = \"(.+?)\"', open('pyproject.toml').read()).group(1))")
 download:
-	python -m policyengine_us_data.storage.download_private_prerequisites
+	python -m policyengine_us_data.storage.download_prerequisites
 
 upload:
 	python -m policyengine_us_data.storage.upload_completed_datasets
@@ -284,10 +284,10 @@ clean:
 	rm -rf policyengine_us_data/docs/_build
 
 build:
-	python -m build
+	python -m build --wheel
 
 publish:
-	twine upload dist/*
+	twine upload dist/*.whl
 
 paper-content:
 	@echo "Building paper sections and docs from unified content..."

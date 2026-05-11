@@ -344,7 +344,12 @@ def create_target_groups(
             pairs = sorted(
                 level_df[["domain_variable", "variable"]]
                 .drop_duplicates()
-                .itertuples(index=False, name=None)
+                .itertuples(index=False, name=None),
+                key=lambda pair: (
+                    pair[0] is not None,
+                    "" if pair[0] is None else str(pair[0]),
+                    str(pair[1]),
+                ),
             )
         else:
             pairs = [(None, v) for v in sorted(level_df["variable"].unique())]
@@ -353,8 +358,11 @@ def create_target_groups(
             var_mask = (
                 (targets_df["variable"] == var_name) & level_mask & ~processed_mask
             )
-            if has_domain and domain_var is not None:
-                var_mask &= targets_df["domain_variable"] == domain_var
+            if has_domain:
+                if domain_var is None:
+                    var_mask &= targets_df["domain_variable"].isna()
+                else:
+                    var_mask &= targets_df["domain_variable"] == domain_var
 
             if not var_mask.any():
                 continue

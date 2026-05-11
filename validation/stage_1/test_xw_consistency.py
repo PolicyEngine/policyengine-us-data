@@ -80,7 +80,10 @@ def test_xw_matches_stacked_sim():
         hierarchical_domains=["snap"],
         rerandomize_takeup=True,
         county_level=False,
-        workers=2,
+        # Keep this validation serial. In Modal's Python 3.14 runtime the
+        # short-lived ProcessPool path can leave the test waiting on futures
+        # after the worker processes have exited.
+        workers=1,
     )
 
     takeup_filter = [spec["variable"] for spec in SIMPLE_TAKEUP_VARS]

@@ -328,3 +328,47 @@ def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypa
     assert bundle.manifest_path == (
         artifacts_dir / "bootstrap" / "regional" / "worker_bootstrap.json"
     )
+
+
+def test_build_worker_calibration_inputs_includes_existing_run_config_and_package(
+    tmp_path,
+):
+    local_area = load_local_area_module()
+    run_config_path = tmp_path / "unified_run_config.json"
+    package_path = tmp_path / "calibration_package.pkl"
+    run_config_path.write_text("{}")
+    package_path.write_bytes(b"package")
+
+    inputs = local_area._build_worker_calibration_inputs(
+        weights_path=tmp_path / "calibration_weights.npy",
+        geography_path=tmp_path / "geography_assignment.npz",
+        dataset_path=tmp_path / "source.h5",
+        db_path=tmp_path / "policy_data.db",
+        n_clones=430,
+        seed=42,
+        run_config_path=run_config_path,
+        calibration_package_path=package_path,
+    )
+
+    assert inputs["run_config"] == str(run_config_path)
+    assert inputs["calibration_package"] == str(package_path)
+    assert inputs["n_clones"] == 430
+    assert inputs["seed"] == 42
+
+
+def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
+    local_area = load_local_area_module()
+
+    inputs = local_area._build_worker_calibration_inputs(
+        weights_path=tmp_path / "national_calibration_weights.npy",
+        geography_path=tmp_path / "national_geography_assignment.npz",
+        dataset_path=tmp_path / "source.h5",
+        db_path=tmp_path / "policy_data.db",
+        n_clones=430,
+        seed=42,
+        run_config_path=tmp_path / "missing_config.json",
+        calibration_package_path=tmp_path / "missing_package.pkl",
+    )
+
+    assert "run_config" not in inputs
+    assert "calibration_package" not in inputs

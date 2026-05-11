@@ -8,6 +8,23 @@ single census block GEOID.
 import numpy as np
 
 
+NY_BLOCK_DISTRIBUTIONS = {
+    "3610": {
+        "360610001001000": 0.45,
+        "360470001001000": 0.35,
+        "360810001001000": 0.20,
+    }
+}
+
+CA_BLOCK_DISTRIBUTIONS = {
+    "612": {
+        "060750001001000": 0.60,
+        "060010001001000": 0.25,
+        "060810001001000": 0.15,
+    }
+}
+
+
 class TestBlockAssignment:
     """Test census block assignment for CDs."""
 
@@ -18,7 +35,12 @@ class TestBlockAssignment:
         )
 
         n_households = 100
-        result = assign_blocks_for_cd("3610", n_households, seed=42)
+        result = assign_blocks_for_cd(
+            "3610",
+            n_households,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
         assert result.shape == (n_households,)
         # Block GEOIDs are 15-character strings
         assert all(len(geoid) == 15 for geoid in result)
@@ -29,8 +51,18 @@ class TestBlockAssignment:
             assign_blocks_for_cd,
         )
 
-        result1 = assign_blocks_for_cd("3610", 50, seed=42)
-        result2 = assign_blocks_for_cd("3610", 50, seed=42)
+        result1 = assign_blocks_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
+        result2 = assign_blocks_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
         np.testing.assert_array_equal(result1, result2)
 
     def test_different_seeds_different_results(self):
@@ -39,8 +71,18 @@ class TestBlockAssignment:
             assign_blocks_for_cd,
         )
 
-        result1 = assign_blocks_for_cd("3610", 100, seed=42)
-        result2 = assign_blocks_for_cd("3610", 100, seed=99)
+        result1 = assign_blocks_for_cd(
+            "3610",
+            100,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
+        result2 = assign_blocks_for_cd(
+            "3610",
+            100,
+            seed=99,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
         assert not np.array_equal(result1, result2)
 
     def test_ny_cd_gets_ny_blocks(self):
@@ -50,7 +92,12 @@ class TestBlockAssignment:
         )
 
         # NY-10 (Manhattan/Brooklyn area)
-        result = assign_blocks_for_cd("3610", 100, seed=42)
+        result = assign_blocks_for_cd(
+            "3610",
+            100,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         # All block GEOIDs should start with NY state FIPS (36)
         for geoid in result:
@@ -63,7 +110,12 @@ class TestBlockAssignment:
         )
 
         # CA-12 (San Francisco area)
-        result = assign_blocks_for_cd("612", 100, seed=42)
+        result = assign_blocks_for_cd(
+            "612",
+            100,
+            seed=42,
+            distributions=CA_BLOCK_DISTRIBUTIONS,
+        )
 
         # All block GEOIDs should start with CA state FIPS (06)
         for geoid in result:
@@ -154,7 +206,12 @@ class TestIntegratedAssignment:
         )
 
         n_households = 50
-        result = assign_geography_for_cd("3610", n_households, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            n_households,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         # Should return dict with arrays for each geography
         expected_fields = [
@@ -184,7 +241,12 @@ class TestIntegratedAssignment:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 100, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            100,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         # County should be derived from block
         for i in range(100):
@@ -232,7 +294,12 @@ class TestStateLegislativeDistricts:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         assert "sldu" in result
         assert "sldl" in result
@@ -260,7 +327,12 @@ class TestPlaceLookup:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         assert "place_fips" in result
         assert len(result["place_fips"]) == 50
@@ -286,7 +358,12 @@ class TestPUMALookup:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         assert "puma" in result
         assert len(result["puma"]) == 50
@@ -312,7 +389,12 @@ class TestVTDLookup:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         assert "vtd" in result
         assert len(result["vtd"]) == 50
@@ -374,7 +456,12 @@ class TestCountyEnumIntegration:
             County,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         # Should include county_index for backwards compatibility
         assert "county_index" in result
@@ -406,7 +493,12 @@ class TestZCTALookup:
             assign_geography_for_cd,
         )
 
-        result = assign_geography_for_cd("3610", 50, seed=42)
+        result = assign_geography_for_cd(
+            "3610",
+            50,
+            seed=42,
+            distributions=NY_BLOCK_DISTRIBUTIONS,
+        )
 
         assert "zcta" in result
         assert len(result["zcta"]) == 50

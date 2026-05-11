@@ -97,6 +97,13 @@ namespaces = false
 ]
 
 [tool.setuptools.exclude-package-data]
+"policyengine_us_data" = [
+    # Generated block geography prerequisites are downloaded from Hugging Face
+    # by policyengine_us_data.storage.download_prerequisites instead of being
+    # bundled in PyPI wheels.
+    "storage/block_cd_distributions.csv.gz",
+    "storage/block_crosswalk.csv.gz",
+]
 "*" = ["**/__pycache__/*", "**/*.py[cod]"]
 
 [tool.pytest.ini_options]

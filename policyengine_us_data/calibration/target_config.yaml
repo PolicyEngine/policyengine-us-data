@@ -48,15 +48,23 @@ include:
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state
+  - variable: household_count
+    geo_level: state
+    domain_variable: snap
   - variable: tanf
     geo_level: state
   - variable: adjusted_gross_income
+    geo_level: state
+  - variable: rent
     geo_level: state
   - variable: spm_unit_count
     geo_level: state
     domain_variable: tanf
   - variable: eitc
     geo_level: state
+  - variable: tax_unit_count
+    geo_level: state
+    domain_variable: eitc
   - variable: refundable_ctc
     geo_level: state
   - variable: non_refundable_ctc
@@ -107,6 +115,42 @@ include:
   - variable: adjusted_gross_income
     geo_level: national
     domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,irs_employment_income
+  - variable: irs_employment_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,irs_employment_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,irs_employment_income
+  - variable: irs_employment_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,irs_employment_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,pension_income
+  - variable: pension_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,pension_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,pension_income
+  - variable: pension_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,pension_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,social_security
+  - variable: social_security
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,social_security
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,social_security
+  - variable: social_security
+    geo_level: national
+    domain_variable: adjusted_gross_income,filing_status,income_tax_before_credits,social_security
 
   # === NATIONAL — wealth target (Federal Reserve SCF, no filer filter) ===
   - variable: net_worth
@@ -126,6 +170,9 @@ include:
     domain_variable: medicare_enrolled
   - variable: medicare_part_b_premium
     geo_level: national
+  - variable: medicare_part_b_premium
+    geo_level: national
+    domain_variable: age
   - variable: real_estate_taxes
     geo_level: national
   - variable: rent
@@ -149,6 +196,9 @@ include:
   - variable: spm_unit_count
     geo_level: national
     domain_variable: tanf
+  - variable: household_count
+    geo_level: national
+    domain_variable: spm_unit_energy_subsidy_reported
   - variable: tip_income
     geo_level: national
   - variable: unemployment_compensation
@@ -280,6 +330,12 @@ include:
   - variable: unemployment_compensation
     geo_level: national
     domain_variable: unemployment_compensation
+  - variable: refundable_american_opportunity_credit
+    geo_level: national
+    domain_variable: refundable_american_opportunity_credit
+  - variable: education_tax_credits
+    geo_level: national
+    domain_variable: education_tax_credits
 
   # === NATIONAL — IRS SOI filer count targets (restored: |rel_err| < 10%) ===
   - variable: tax_unit_count
@@ -311,6 +367,18 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: total_self_employment_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: refundable_american_opportunity_credit
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: education_tax_credits
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: real_estate_taxes,tax_unit_itemizes
+  - variable: tax_unit_count
+    geo_level: state
+    domain_variable: real_estate_taxes,tax_unit_itemizes
 
   # === NATIONAL — identity / population count targets from old loss.py ===
   - variable: person_count

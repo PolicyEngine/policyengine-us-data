@@ -471,6 +471,97 @@ class TestLoadTargetConfig:
             "domain_variable": "wic",
         } in include_rules
 
+    def test_training_config_includes_ported_loss_py_target_families(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "household_count",
+            "geo_level": "state",
+            "domain_variable": "snap",
+        } in include_rules
+        assert {
+            "variable": "household_count",
+            "geo_level": "national",
+            "domain_variable": "spm_unit_energy_subsidy_reported",
+        } in include_rules
+        assert {"variable": "rent", "geo_level": "state"} in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "state",
+            "domain_variable": "eitc",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "state",
+            "domain_variable": "real_estate_taxes,tax_unit_itemizes",
+        } in include_rules
+        assert {
+            "variable": "medicare_part_b_premium",
+            "geo_level": "national",
+            "domain_variable": "age",
+        } in include_rules
+        assert {
+            "variable": "refundable_american_opportunity_credit",
+            "geo_level": "national",
+            "domain_variable": "refundable_american_opportunity_credit",
+        } in include_rules
+        assert {
+            "variable": "tax_unit_count",
+            "geo_level": "national",
+            "domain_variable": "education_tax_credits",
+        } in include_rules
+
+    def test_training_config_includes_soi_income_agi_grid_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        variables = [
+            "irs_employment_income",
+            "pension_income",
+            "social_security",
+        ]
+        for variable in variables:
+            all_domain = f"adjusted_gross_income,income_tax_before_credits,{variable}"
+            filing_status_domain = (
+                "adjusted_gross_income,filing_status,"
+                f"income_tax_before_credits,{variable}"
+            )
+            assert {
+                "variable": variable,
+                "geo_level": "national",
+                "domain_variable": all_domain,
+            } in include_rules
+            assert {
+                "variable": "tax_unit_count",
+                "geo_level": "national",
+                "domain_variable": all_domain,
+            } in include_rules
+            assert {
+                "variable": variable,
+                "geo_level": "national",
+                "domain_variable": filing_status_domain,
+            } in include_rules
+            assert {
+                "variable": "tax_unit_count",
+                "geo_level": "national",
+                "domain_variable": filing_status_domain,
+            } in include_rules
+
 
 class TestCalibrationPackageRoundTrip:
     def test_round_trip(self, sample_targets, tmp_path):

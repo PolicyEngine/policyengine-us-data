@@ -202,6 +202,11 @@ SOI_TAXABLE_AGI_TARGET_VARIABLES = {
     "adjusted_gross_income": "adjusted_gross_income",
     "count": "tax_unit_count",
 }
+SOI_TAXABLE_AGI_DOMAIN_TARGET_VARIABLES = {
+    "employment_income": "irs_employment_income",
+    "total_pension_income": "pension_income",
+    "total_social_security": "social_security",
+}
 SOI_FILING_STATUS_CONSTRAINTS = {
     "Single": ("==", "SINGLE"),
     "Head of Household": ("==", "HEAD_OF_HOUSEHOLD"),
@@ -819,6 +824,79 @@ def _get_or_create_national_taxable_agi_filing_status_stratum(
     return stratum
 
 
+def _get_or_create_national_taxable_agi_domain_filing_status_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    domain_variable: str,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+    filing_status: str,
+) -> Stratum:
+    note = (
+        "National taxable filers, AGI >= "
+        f"{agi_lower_bound}, AGI < {agi_upper_bound}, {domain_variable} > 0"
+    )
+    filing_constraint = SOI_FILING_STATUS_CONSTRAINTS.get(filing_status)
+    if filing_constraint is not None:
+        note += f", filing status = {filing_status}"
+
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    constraints = [
+        StratumConstraint(
+            constraint_variable="tax_unit_is_filer",
+            operation="==",
+            value="1",
+        ),
+        StratumConstraint(
+            constraint_variable="income_tax_before_credits",
+            operation=">",
+            value="0",
+        ),
+        StratumConstraint(
+            constraint_variable="adjusted_gross_income",
+            operation=">=",
+            value=str(agi_lower_bound),
+        ),
+        StratumConstraint(
+            constraint_variable="adjusted_gross_income",
+            operation="<",
+            value=str(agi_upper_bound),
+        ),
+        StratumConstraint(
+            constraint_variable=domain_variable,
+            operation=">",
+            value="0",
+        ),
+    ]
+    if filing_constraint is not None:
+        operation, value = filing_constraint
+        constraints.append(
+            StratumConstraint(
+                constraint_variable="filing_status",
+                operation=operation,
+                value=value,
+            )
+        )
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(constraints)
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
 def load_national_geography_ctc_targets(
     session: Session, national_filer_stratum_id: int, geography_year: int
 ) -> None:
@@ -1002,6 +1080,46 @@ def load_national_taxable_agi_filing_status_targets(
         )
 
 
+def load_national_taxable_agi_domain_filing_status_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    target_year: int,
+) -> None:
+    """Create positive-domain SOI income targets by AGI band and filing status."""
+    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), target_year)
+    rows = soi[
+        soi["Variable"].isin(SOI_TAXABLE_AGI_DOMAIN_TARGET_VARIABLES)
+        & (soi["Taxable only"])
+        & (soi["AGI upper bound"] > 10_000)
+    ].copy()
+
+    for _, row in rows.iterrows():
+        source_variable = row["Variable"]
+        target_variable = SOI_TAXABLE_AGI_DOMAIN_TARGET_VARIABLES[source_variable]
+        stratum = _get_or_create_national_taxable_agi_domain_filing_status_stratum(
+            session,
+            national_filer_stratum_id,
+            domain_variable=target_variable,
+            agi_lower_bound=float(row["AGI lower bound"]),
+            agi_upper_bound=float(row["AGI upper bound"]),
+            filing_status=row["Filing status"],
+        )
+        notes = (
+            f"Publication 1304 {row['SOI table']} taxable AGI/filing-status "
+            f"{source_variable} target "
+            f"(source year {int(row['Year'])}, row {int(row['XLSX row'])})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count" if bool(row["Count"]) else target_variable,
+            period=int(row["Year"]),
+            value=float(row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
+
+
 def load_national_workbook_soi_targets(
     session: Session, national_filer_stratum_id: int, target_year: int
 ) -> None:
@@ -1048,6 +1166,78 @@ def load_national_workbook_soi_targets(
             value=float(amount_row["Value"]),
             source="IRS SOI",
             notes=notes,
+        )
+
+
+def load_state_eitc_claim_count_targets(
+    session: Session,
+    filer_strata: dict,
+    target_year: int,
+) -> None:
+    """Create state EITC claimant-count targets from IRS EITC Central controls."""
+    path = CALIBRATION_FOLDER / "eitc_claim_controls.csv"
+    if not path.exists():
+        return
+
+    controls = pd.read_csv(path, comment="#")
+    years = sorted(int(year) for year in controls["year"].unique())
+    prior_years = [year for year in years if year <= int(target_year)]
+    data_year = max(prior_years) if prior_years else min(years)
+    state_rows = controls[
+        (controls["year"].astype(int) == data_year)
+        & controls["GEO_ID"].str.startswith("0400000US")
+    ].copy()
+
+    for row in state_rows.itertuples(index=False):
+        state_fips = int(str(row.GEO_ID)[-2:])
+        parent_stratum_id = filer_strata["state"].get(state_fips)
+        if parent_stratum_id is None:
+            continue
+
+        note = f"State FIPS {state_fips} EITC claimants"
+        stratum = session.exec(
+            select(Stratum).where(
+                Stratum.parent_stratum_id == parent_stratum_id,
+                Stratum.notes == note,
+            )
+        ).first()
+        if not stratum:
+            stratum = Stratum(
+                parent_stratum_id=parent_stratum_id,
+                notes=note,
+            )
+            stratum.constraints_rel.extend(
+                [
+                    StratumConstraint(
+                        constraint_variable="tax_unit_is_filer",
+                        operation="==",
+                        value="1",
+                    ),
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(state_fips),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="eitc",
+                        operation=">",
+                        value="0",
+                    ),
+                ]
+            )
+            session.add(stratum)
+            session.flush()
+
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count",
+            period=data_year,
+            value=float(row.Returns),
+            source="IRS EITC Central",
+            notes=(
+                f"IRS EITC Central state EITC return count (source year {data_year})"
+            ),
         )
 
 
@@ -1399,7 +1589,12 @@ def transform_soi_data(raw_df):
     return converted
 
 
-def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
+def load_soi_data(
+    long_dfs,
+    year,
+    national_year: Optional[int] = None,
+    target_year: Optional[int] = None,
+):
     """Load a list of databases into the db, critically dependent on order"""
 
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
@@ -1519,10 +1714,20 @@ def load_soi_data(long_dfs, year, national_year: Optional[int] = None):
             filer_strata["national"],
             national_year,
         )
+        load_national_taxable_agi_domain_filing_status_targets(
+            session,
+            filer_strata["national"],
+            national_year,
+        )
         load_national_fine_agi_targets(session, filer_strata["national"], national_year)
         load_national_ltcg_agi_targets(session, filer_strata["national"], national_year)
 
     load_state_fine_agi_targets(session, filer_strata, year)
+    load_state_eitc_claim_count_targets(
+        session,
+        filer_strata,
+        target_year or national_year or year,
+    )
     session.commit()
 
     # Load EITC data --------------------------------------------------------
@@ -2027,7 +2232,12 @@ def main():
     long_dfs = transform_soi_data(raw_df)
 
     # Load ---------------------
-    load_soi_data(long_dfs, geography_year, national_year=national_year)
+    load_soi_data(
+        long_dfs,
+        geography_year,
+        national_year=national_year,
+        target_year=dataset_year,
+    )
 
 
 if __name__ == "__main__":

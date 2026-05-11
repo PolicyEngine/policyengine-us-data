@@ -28,7 +28,10 @@ def _append_summary(function_call_id: str, context: RunContext) -> None:
         handle.write("## Pipeline Launched\n\n")
         handle.write("| Field | Value |\n")
         handle.write("|-------|-------|\n")
-        handle.write(f"| GPU | `{os.environ['GPU']}` |\n")
+        handle.write(f"| Regional GPU | `{os.environ['GPU']}` |\n")
+        handle.write(
+            f"| National GPU | `{_env('NATIONAL_GPU', os.environ['GPU'])}` |\n"
+        )
         handle.write(
             "| Epochs | "
             f"`{os.environ['EPOCHS']}` / "
@@ -58,6 +61,7 @@ def main() -> None:
     kwargs = {
         "branch": os.environ.get("PIPELINE_BRANCH", "main"),
         "gpu": os.environ["GPU"],
+        "national_gpu": _env("NATIONAL_GPU", os.environ["GPU"]),
         "epochs": int(os.environ["EPOCHS"]),
         "national_epochs": int(os.environ["NATIONAL_EPOCHS"]),
         "num_workers": int(os.environ["NUM_WORKERS"]),

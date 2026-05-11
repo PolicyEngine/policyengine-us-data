@@ -368,18 +368,10 @@ class WorkerBootstrapBuilder:
             inputs=inputs,
             scope=scope,
         )
-        computed_scope_fingerprint = (
-            self._fingerprinting_service.compute_scope_fingerprint(traceability)
-        )
-        if (
-            scope_fingerprint is not None
-            and scope_fingerprint != computed_scope_fingerprint
-        ):
-            raise ValueError(
-                f"Bootstrap fingerprint {scope_fingerprint!r} does not match "
-                f"computed {scope} fingerprint {computed_scope_fingerprint!r}"
+        if scope_fingerprint is None:
+            scope_fingerprint = self._fingerprinting_service.compute_scope_fingerprint(
+                traceability
             )
-        scope_fingerprint = computed_scope_fingerprint
 
         entity_graph_path = store.entity_graph_path(scope)
         save_entity_graph(snapshot.entity_graph, entity_graph_path)

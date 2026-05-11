@@ -427,23 +427,20 @@ def _resolve_scope_fingerprint(
     scope: str,
     expected_fingerprint: str = "",
 ) -> str:
-    """Compute the scope fingerprint while preserving pinned resume values."""
+    """Compute the scope fingerprint and reject stale resume fingerprints."""
 
     service = FingerprintingService()
     traceability = service.build_traceability(inputs=inputs, scope=scope)
     computed_fingerprint = service.compute_scope_fingerprint(traceability)
     if expected_fingerprint:
         if expected_fingerprint != computed_fingerprint:
-            print(
-                "WARNING: Pinned fingerprint differs from current "
-                f"{scope} scope fingerprint. "
-                "Preserving pinned value for backward-compatible resume.\n"
-                f"  Pinned:   {expected_fingerprint}\n"
-                f"  Current:  {computed_fingerprint}"
+            raise RuntimeError(
+                f"Cannot resume {scope} H5 build with changed inputs.\n"
+                f"  Expected: {expected_fingerprint}\n"
+                f"  Current:  {computed_fingerprint}\n"
+                "Start a fresh run or clear stale staged outputs explicitly."
             )
-        else:
-            print(f"Using pinned fingerprint from pipeline: {expected_fingerprint}")
-        return expected_fingerprint
+        print(f"Validated expected {scope} fingerprint: {expected_fingerprint}")
     return computed_fingerprint
 
 

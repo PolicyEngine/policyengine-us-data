@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from tests.support.modal_local_area import load_local_area_module
 
 
@@ -202,7 +204,9 @@ def test_resolve_scope_fingerprint_computes_when_no_pin(monkeypatch):
     assert seen["traceability"] == {"scope": "regional", "run_id": "run-123"}
 
 
-def test_resolve_scope_fingerprint_preserves_matching_pin(monkeypatch, capsys):
+def test_resolve_scope_fingerprint_validates_matching_expected_value(
+    monkeypatch, capsys
+):
     local_area = load_local_area_module(stub_policyengine=False)
 
     class FakeFingerprintingService:
@@ -210,7 +214,7 @@ def test_resolve_scope_fingerprint_preserves_matching_pin(monkeypatch, capsys):
             return scope
 
         def compute_scope_fingerprint(self, traceability):
-            return "pinned-fingerprint"
+            return "expected-fingerprint"
 
     monkeypatch.setattr(
         local_area,
@@ -234,17 +238,15 @@ def test_resolve_scope_fingerprint_preserves_matching_pin(monkeypatch, capsys):
     fingerprint = local_area._resolve_scope_fingerprint(
         inputs=bundle,
         scope="regional",
-        expected_fingerprint="pinned-fingerprint",
+        expected_fingerprint="expected-fingerprint",
     )
 
     captured = capsys.readouterr()
-    assert fingerprint == "pinned-fingerprint"
-    assert "Using pinned fingerprint from pipeline" in captured.out
+    assert fingerprint == "expected-fingerprint"
+    assert "Validated expected regional fingerprint" in captured.out
 
 
-def test_resolve_scope_fingerprint_warns_and_preserves_mismatched_pin(
-    monkeypatch, capsys
-):
+def test_resolve_scope_fingerprint_rejects_mismatched_expected_value(monkeypatch):
     local_area = load_local_area_module(stub_policyengine=False)
 
     class FakeFingerprintingService:
@@ -273,19 +275,15 @@ def test_resolve_scope_fingerprint_warns_and_preserves_mismatched_pin(
         seed=42,
     )
 
-    fingerprint = local_area._resolve_scope_fingerprint(
-        inputs=bundle,
-        scope="national",
-        expected_fingerprint="legacy-fingerprint",
-    )
-
-    captured = capsys.readouterr()
-    assert fingerprint == "legacy-fingerprint"
-    assert "Pinned fingerprint differs from current national scope fingerprint" in (
-        captured.out
-    )
-    assert "legacy-fingerprint" in captured.out
-    assert "computed-fingerprint" in captured.out
+    with pytest.raises(
+        RuntimeError,
+        match="Cannot resume national H5 build with changed inputs",
+    ):
+        local_area._resolve_scope_fingerprint(
+            inputs=bundle,
+            scope="national",
+            expected_fingerprint="legacy-fingerprint",
+        )
 
 
 def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypatch):

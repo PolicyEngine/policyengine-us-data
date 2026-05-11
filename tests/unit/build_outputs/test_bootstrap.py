@@ -95,7 +95,7 @@ def test_worker_bootstrap_builder_persists_manifest_and_entity_graph(tmp_path):
     assert manifest["inputs"]["weights"]["sha256"] == "sha256:weights"
 
 
-def test_worker_bootstrap_builder_preserves_resolved_fingerprint_override(tmp_path):
+def test_worker_bootstrap_builder_accepts_matching_resolved_fingerprint(tmp_path):
     artifacts = make_bootstrap_test_artifacts(tmp_path / "inputs")
 
     bundle = WorkerBootstrapBuilder(
@@ -106,11 +106,27 @@ def test_worker_bootstrap_builder_preserves_resolved_fingerprint_override(tmp_pa
         inputs=artifacts.inputs,
         scope="regional",
         artifacts_dir=tmp_path / "artifacts",
-        scope_fingerprint="pinned-fingerprint",
+        scope_fingerprint="regional-fingerprint",
     )
 
     manifest = json.loads(bundle.manifest_path.read_text())
-    assert manifest["traceability"]["scope_fingerprint"] == "pinned-fingerprint"
+    assert manifest["traceability"]["scope_fingerprint"] == "regional-fingerprint"
+
+
+def test_worker_bootstrap_builder_rejects_mismatched_resolved_fingerprint(tmp_path):
+    artifacts = make_bootstrap_test_artifacts(tmp_path / "inputs")
+
+    with pytest.raises(ValueError, match="Bootstrap fingerprint"):
+        WorkerBootstrapBuilder(
+            dataset_reader=FakeDatasetReader(artifacts.snapshot),
+            geography_loader=FakeGeographyLoader(artifacts),
+            fingerprinting_service=FakeFingerprintingService(),
+        ).build(
+            inputs=artifacts.inputs,
+            scope="regional",
+            artifacts_dir=tmp_path / "artifacts",
+            scope_fingerprint="stale-fingerprint",
+        )
 
 
 def test_worker_bootstrap_store_loads_persisted_bundle(tmp_path):

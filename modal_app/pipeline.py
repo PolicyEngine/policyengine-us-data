@@ -249,6 +249,8 @@ from modal_app.local_area import app as _local_area_app  # noqa: E402
 from modal_app.local_area import (  # noqa: E402
     coordinate_publish,
     coordinate_national_publish,
+    _build_publishing_input_bundle,
+    _resolve_scope_fingerprint,
 )
 
 app.include(_local_area_app)
@@ -1419,6 +1421,50 @@ def run_pipeline(
             "skip_upload": False,
             "skip_national": skip_national,
         }
+        regional_fingerprint_inputs = _build_publishing_input_bundle(
+            weights_path=_artifacts_dir(run_id) / "calibration_weights.npy",
+            dataset_path=_artifacts_dir(run_id)
+            / "source_imputed_stratified_extended_cps.h5",
+            db_path=_artifacts_dir(run_id) / "policy_data.db",
+            geography_path=_artifacts_dir(run_id) / "geography_assignment.npz",
+            calibration_package_path=_artifacts_dir(run_id) / "calibration_package.pkl",
+            run_config_path=_artifacts_dir(run_id) / "unified_run_config.json",
+            run_id=run_id,
+            version=version,
+            n_clones=n_clones,
+            seed=42,
+            legacy_blocks_path=_artifacts_dir(run_id) / "stacked_blocks.npy",
+        )
+        regional_scope_fingerprint = _resolve_scope_fingerprint(
+            inputs=regional_fingerprint_inputs,
+            scope="regional",
+        )
+        regional_h5_inputs["h5_scope_fingerprint"] = regional_scope_fingerprint
+
+        national_scope_fingerprint = None
+        if not skip_national:
+            national_fingerprint_inputs = _build_publishing_input_bundle(
+                weights_path=_artifacts_dir(run_id)
+                / "national_calibration_weights.npy",
+                dataset_path=_artifacts_dir(run_id)
+                / "source_imputed_stratified_extended_cps.h5",
+                db_path=_artifacts_dir(run_id) / "policy_data.db",
+                geography_path=_artifacts_dir(run_id)
+                / "national_geography_assignment.npz",
+                calibration_package_path=None,
+                run_config_path=_artifacts_dir(run_id)
+                / "national_unified_run_config.json",
+                run_id=run_id,
+                version=version,
+                n_clones=n_clones,
+                seed=42,
+            )
+            national_scope_fingerprint = _resolve_scope_fingerprint(
+                inputs=national_fingerprint_inputs,
+                scope="national",
+            )
+            national_h5_inputs["h5_scope_fingerprint"] = national_scope_fingerprint
+
         regional_h5_reuse = _step_reusable(
             meta,
             LOCAL_AREA_H5_REGIONAL,
@@ -1475,9 +1521,6 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
                 run_id=run_id,
-                expected_fingerprint=(
-                    meta.regional_fingerprint or meta.fingerprint or ""
-                ),
             )
             print(f"    → coordinate_publish fc: {regional_h5_handle.object_id}")
             regional_h5_manifest = _start_step_manifest(
@@ -1542,12 +1585,16 @@ def run_pipeline(
             if isinstance(regional_h5_result, dict) and regional_h5_result.get(
                 "fingerprint"
             ):
-                meta.regional_fingerprint = regional_h5_result["fingerprint"]
-                meta.fingerprint = regional_h5_result["fingerprint"]
+                if regional_h5_result["fingerprint"] != regional_scope_fingerprint:
+                    raise RuntimeError(
+                        "Regional H5 fingerprint changed between pipeline "
+                        "reuse planning and child publish completion.\n"
+                        f"  Planned: {regional_scope_fingerprint}\n"
+                        f"  Actual:  {regional_h5_result['fingerprint']}"
+                    )
                 regional_h5_manifest.input_identities["h5_scope_fingerprint"] = (
                     regional_h5_result["fingerprint"]
                 )
-                write_run_meta(meta, pipeline_volume)
             regional_reuse_measurement = ReuseMeasurement.from_dict(
                 regional_h5_result.get("reuse_measurement", {})
                 if isinstance(regional_h5_result, dict)
@@ -1571,6 +1618,13 @@ def run_pipeline(
                 if isinstance(national_h5_result, dict) and national_h5_result.get(
                     "fingerprint"
                 ):
+                    if national_h5_result["fingerprint"] != national_scope_fingerprint:
+                        raise RuntimeError(
+                            "National H5 fingerprint changed between pipeline "
+                            "reuse planning and child publish completion.\n"
+                            f"  Planned: {national_scope_fingerprint}\n"
+                            f"  Actual:  {national_h5_result['fingerprint']}"
+                        )
                     national_h5_manifest.input_identities["h5_scope_fingerprint"] = (
                         national_h5_result["fingerprint"]
                     )

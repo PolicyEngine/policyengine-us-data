@@ -16,7 +16,7 @@ from .bootstrap import (
     WorkerBootstrapStore,
     load_entity_graph,
 )
-from .fingerprinting import FingerprintingService, PublishingInputBundle
+from .fingerprinting import PublishingInputBundle
 from .geography_loader import CalibrationGeographyLoader
 from .source_dataset import PolicyEngineDatasetReader, SourceDatasetSnapshot
 from .validation import AreaValidationService, ValidationContext, ValidationPolicy
@@ -97,7 +97,6 @@ class WorkerSessionFactory:
         dataset_reader: PolicyEngineDatasetReader | None = None,
         geography_loader: CalibrationGeographyLoader | None = None,
         validation_service: AreaValidationService | None = None,
-        fingerprinting_service: FingerprintingService | None = None,
         bootstrap_store: WorkerBootstrapStore | None = None,
     ) -> None:
         """Create a session factory with injectable seams for tests."""
@@ -105,9 +104,6 @@ class WorkerSessionFactory:
         self._dataset_reader = dataset_reader or PolicyEngineDatasetReader()
         self._geography_loader = geography_loader or CalibrationGeographyLoader()
         self._validation_service = validation_service or AreaValidationService()
-        self._fingerprinting_service = fingerprinting_service or FingerprintingService(
-            geography_loader=self._geography_loader
-        )
         self._bootstrap_store = bootstrap_store
 
     def create(
@@ -245,39 +241,27 @@ class WorkerSessionFactory:
                 f"worker scope {scope!r}"
             )
 
-        traceability = self._fingerprinting_service.build_traceability(
-            inputs=inputs,
-            scope=scope,
-        )
-        current_inputs = {
-            "weights": _artifact_identity_manifest(traceability.weights),
-            "source_dataset": _artifact_identity_manifest(traceability.source_dataset),
-            "exact_geography": _artifact_identity_manifest(
-                traceability.exact_geography
-            ),
-            "target_db": _artifact_identity_manifest(traceability.target_db),
-            "calibration_package": _artifact_identity_manifest(
-                traceability.calibration_package
-            ),
-            "run_config": _artifact_identity_manifest(traceability.run_config),
+        expected_paths = {
+            "weights": inputs.weights_path,
+            "source_dataset": inputs.source_dataset_path,
+            "exact_geography": inputs.exact_geography_path,
+            "target_db": inputs.target_db_path,
+            "calibration_package": inputs.calibration_package_path,
+            "run_config": inputs.run_config_path,
         }
-
-        for logical_name, current_identity in current_inputs.items():
-            _assert_manifest_identity_matches(
+        for logical_name, expected_path in expected_paths.items():
+            _assert_manifest_path_matches(
                 logical_name=logical_name,
-                expected=current_identity,
-                actual=bundle.inputs.get(logical_name),
+                expected_path=expected_path,
+                manifest_identity=bundle.inputs.get(logical_name),
             )
 
-        expected_fingerprint = self._fingerprinting_service.compute_scope_fingerprint(
-            traceability
+        _assert_summary_field_matches(
+            section="weights",
+            field="n_clones",
+            expected=inputs.n_clones,
+            actual=bundle.weights.get("n_clones"),
         )
-        actual_fingerprint = bundle.traceability.get("scope_fingerprint")
-        if actual_fingerprint != expected_fingerprint:
-            raise ValueError(
-                f"Bootstrap scope fingerprint {actual_fingerprint!r} does not "
-                f"match current fingerprint {expected_fingerprint!r}"
-            )
 
     def _load_source(
         self,
@@ -326,39 +310,41 @@ class WorkerSessionFactory:
         return weights
 
 
-def _artifact_identity_manifest(identity) -> dict[str, Any] | None:
-    if identity is None:
-        return None
-    return {
-        "logical_name": identity.logical_name,
-        "sha256": identity.sha256,
-        "size_bytes": identity.size_bytes,
-        "metadata": dict(identity.metadata),
-    }
-
-
-def _assert_manifest_identity_matches(
+def _assert_manifest_path_matches(
     *,
     logical_name: str,
-    expected: dict[str, Any] | None,
-    actual,
+    expected_path: Path | None,
+    manifest_identity,
 ) -> None:
-    if expected is None or actual is None:
-        if expected != actual:
+    if expected_path is None:
+        if manifest_identity is not None:
             raise ValueError(
                 f"Bootstrap {logical_name} identity presence does not match "
                 "current inputs"
             )
         return
 
-    actual_manifest = dict(actual)
-    comparable_actual = {
-        "logical_name": actual_manifest.get("logical_name"),
-        "sha256": actual_manifest.get("sha256"),
-        "size_bytes": actual_manifest.get("size_bytes"),
-        "metadata": dict(actual_manifest.get("metadata") or {}),
-    }
-    if comparable_actual != expected:
+    if manifest_identity is None:
         raise ValueError(
-            f"Bootstrap {logical_name} identity does not match current inputs"
+            f"Bootstrap {logical_name} identity presence does not match current inputs"
+        )
+
+    actual_path = manifest_identity.get("path")
+    if actual_path is None or Path(actual_path) != Path(expected_path):
+        raise ValueError(f"Bootstrap {logical_name} path does not match current inputs")
+
+
+def _assert_summary_field_matches(
+    *,
+    section: str,
+    field: str,
+    expected,
+    actual,
+) -> None:
+    if expected is None:
+        return
+    if actual != expected:
+        raise ValueError(
+            f"Bootstrap {section}.{field} {actual!r} does not match "
+            f"current value {expected!r}"
         )

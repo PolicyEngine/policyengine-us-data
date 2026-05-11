@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -75,17 +74,6 @@ class FakeValidationService:
         )
 
 
-class MismatchedWeightFingerprintingService(FakeFingerprintingService):
-    """Fingerprinting fake that reports a changed current weights identity."""
-
-    def build_traceability(self, **kwargs):
-        traceability = super().build_traceability(**kwargs)
-        return replace(
-            traceability,
-            weights=replace(traceability.weights, sha256="sha256:changed-weights"),
-        )
-
-
 def test_worker_session_caches_are_per_session(tmp_path):
     artifacts = make_bootstrap_test_artifacts(tmp_path / "inputs")
 
@@ -154,7 +142,6 @@ def test_worker_session_factory_prefers_bootstrap_entity_graph(tmp_path):
         dataset_reader=dataset_reader,
         geography_loader=SessionGeographyLoader(artifacts),
         validation_service=FakeValidationService(),
-        fingerprinting_service=FakeFingerprintingService(),
         bootstrap_store=store,
     ).create(
         inputs=artifacts.inputs,
@@ -192,7 +179,6 @@ def test_worker_session_factory_falls_back_when_bootstrap_source_load_fails(tmp_
         dataset_reader=dataset_reader,
         geography_loader=SessionGeographyLoader(artifacts),
         validation_service=FakeValidationService(),
-        fingerprinting_service=FakeFingerprintingService(),
         bootstrap_store=store,
     ).create(
         inputs=artifacts.inputs,
@@ -238,7 +224,6 @@ def test_worker_session_factory_falls_back_when_bootstrap_inputs_mismatch(tmp_pa
         dataset_reader=dataset_reader,
         geography_loader=SessionGeographyLoader(artifacts),
         validation_service=FakeValidationService(),
-        fingerprinting_service=FakeFingerprintingService(),
         bootstrap_store=store,
     ).create(
         inputs=changed_inputs,
@@ -267,16 +252,29 @@ def test_worker_session_factory_falls_back_when_bootstrap_artifact_identity_mism
         scope="regional",
         artifacts_dir=store.artifacts_dir,
     )
+    changed_inputs = type(artifacts.inputs)(
+        weights_path=tmp_path / "other_weights.npy",
+        source_dataset_path=artifacts.inputs.source_dataset_path,
+        target_db_path=artifacts.inputs.target_db_path,
+        exact_geography_path=artifacts.inputs.exact_geography_path,
+        calibration_package_path=artifacts.inputs.calibration_package_path,
+        run_config_path=artifacts.inputs.run_config_path,
+        run_id=artifacts.inputs.run_id,
+        version=artifacts.inputs.version,
+        n_clones=artifacts.inputs.n_clones,
+        seed=artifacts.inputs.seed,
+        legacy_blocks_path=artifacts.inputs.legacy_blocks_path,
+    )
+    changed_inputs.weights_path.write_bytes(artifacts.inputs.weights_path.read_bytes())
     dataset_reader = SessionDatasetReader(artifacts.snapshot)
 
     session = WorkerSessionFactory(
         dataset_reader=dataset_reader,
         geography_loader=SessionGeographyLoader(artifacts),
         validation_service=FakeValidationService(),
-        fingerprinting_service=MismatchedWeightFingerprintingService(),
         bootstrap_store=store,
     ).create(
-        inputs=artifacts.inputs,
+        inputs=changed_inputs,
         scope="regional",
         validation_policy=ValidationPolicy(),
         period=2024,
@@ -285,7 +283,7 @@ def test_worker_session_factory_falls_back_when_bootstrap_artifact_identity_mism
     assert session.bootstrap_status == "fallback"
     assert session.bootstrap_bundle is None
     assert dataset_reader.loaded_paths == [artifacts.inputs.source_dataset_path]
-    assert "weights identity does not match" in session.caches["bootstrap_error"]
+    assert "weights path does not match" in session.caches["bootstrap_error"]
 
 
 def test_worker_session_factory_marks_corrupt_bootstrap_as_fallback(tmp_path):

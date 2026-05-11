@@ -420,6 +420,19 @@ def _build_package_impl(
     if build_rc != 0:
         raise RuntimeError(f"Package build failed with code {build_rc}")
 
+    from policyengine_us_data.stage_contracts.calibration_package import (
+        CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        validate_persisted_calibration_package_contract,
+    )
+
+    contract_path = f"{artifacts}/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}"
+    validate_persisted_calibration_package_contract(
+        package_path=Path(pkg_path),
+        contract_path=Path(contract_path),
+        dataset_path=Path(dataset_path),
+        db_path=Path(db_path),
+    )
+
     sidecar_ok = _write_package_sidecar(pkg_path)
     if not sidecar_ok:
         print(

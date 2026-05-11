@@ -31,12 +31,14 @@ Before creating or sharing any PR, all developers and agents must:
    `gh repo view PolicyEngine/policyengine-us-data --json nameWithOwner`.
 2. Push the branch to that repository, for example:
    `git push upstream HEAD:<branch-name>`.
-3. Create the PR from the same repository, for example:
-   `gh pr create --repo PolicyEngine/policyengine-us-data --head <branch-name> --base main`.
-4. Verify the PR head repository before reporting it:
-   `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json headRepositoryOwner,headRepository`.
+3. Create the PR as a draft from the same repository, for example:
+   `gh pr create --draft --repo PolicyEngine/policyengine-us-data --head <branch-name> --base main`.
+4. Verify the PR is draft and the head repository is canonical before reporting
+   it:
+   `gh pr view <PR> --repo PolicyEngine/policyengine-us-data --json isDraft,headRepositoryOwner,headRepository`.
 
-The PR is valid only if the head repository is `PolicyEngine/policyengine-us-data`.
+The PR is valid only if `isDraft` is `true` and the head repository is
+`PolicyEngine/policyengine-us-data`.
 If you cannot push to the canonical repository, stop and ask for access. Do not
 create a fork PR as a fallback. If you accidentally create one, immediately
-close it and replace it with a same-repository PR.
+close it and replace it with a same-repository draft PR.

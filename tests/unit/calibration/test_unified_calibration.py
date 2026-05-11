@@ -40,6 +40,81 @@ from policyengine_us_data.utils.takeup import (
 from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
 )
+from policyengine_us_data.calibration.unified_calibration import (
+    _calibration_package_contract_parameters,
+    check_package_staleness,
+)
+from policyengine_us_data.stage_contracts.calibration_package import (
+    CalibrationPackageParameters,
+)
+
+
+def test_calibration_package_contract_parameters_track_effective_matrix_mode():
+    params = _calibration_package_contract_parameters(
+        workers=8,
+        n_clones=430,
+        target_config_path="policyengine_us_data/calibration/target_config.yaml",
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=True,
+        chunk_size=25_000,
+        parallel=True,
+        num_matrix_workers=50,
+    )
+
+    assert isinstance(params, CalibrationPackageParameters)
+    assert params.to_dict() == {
+        "workers": None,
+        "n_clones": 430,
+        "target_config": "policyengine_us_data/calibration/target_config.yaml",
+        "skip_county": True,
+        "skip_source_impute": True,
+        "skip_takeup_rerandomize": False,
+        "chunked_matrix": True,
+        "chunk_size": 25_000,
+        "parallel_matrix": True,
+        "num_matrix_workers": 50,
+    }
+
+
+def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
+    params = _calibration_package_contract_parameters(
+        workers=8,
+        n_clones=430,
+        target_config_path=None,
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=False,
+        chunk_size=25_000,
+        parallel=True,
+        num_matrix_workers=50,
+    )
+
+    assert params.to_dict()["workers"] == 8
+    assert params.to_dict()["chunk_size"] is None
+    assert params.to_dict()["parallel_matrix"] is False
+    assert params.to_dict()["num_matrix_workers"] is None
+
+
+def test_check_package_staleness_warns_for_old_utc_timestamp(
+    capsys,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.unified_calibration.get_git_provenance",
+        lambda: {"git_branch": "main"},
+    )
+
+    check_package_staleness(
+        {
+            "created_at": "2000-01-01T00:00:00Z",
+            "git_branch": "main",
+        }
+    )
+
+    assert "WARNING: Package is" in capsys.readouterr().out
 
 
 class TestForbesStateOverrides:

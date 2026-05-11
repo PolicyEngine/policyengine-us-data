@@ -136,8 +136,18 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
     monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
     monkeypatch.setattr(remote_runner, "_write_package_sidecar", lambda _: True)
+    from policyengine_us_data.stage_contracts import calibration_package
 
     captured = {}
+
+    def fake_validate_persisted_contract(**kwargs):
+        captured["contract_validation"] = kwargs
+
+    monkeypatch.setattr(
+        calibration_package,
+        "validate_persisted_calibration_package_contract",
+        fake_validate_persisted_contract,
+    )
 
     def fake_run_streaming(cmd, env=None, label=""):
         captured["cmd"] = cmd
@@ -182,6 +192,18 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     assert (
         captured["env"]["US_DATA_PIPELINE_VOLUME_NAME"]
         == "pipeline-artifacts-bench-run"
+    )
+    assert captured["contract_validation"]["package_path"] == (
+        artifacts_dir / "calibration_package.pkl"
+    )
+    assert captured["contract_validation"]["contract_path"] == (
+        artifacts_dir / "calibration_package_contract.json"
+    )
+    assert captured["contract_validation"]["dataset_path"] == (
+        artifacts_dir / "source_imputed_stratified_extended_cps.h5"
+    )
+    assert captured["contract_validation"]["db_path"] == (
+        artifacts_dir / "policy_data.db"
     )
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()

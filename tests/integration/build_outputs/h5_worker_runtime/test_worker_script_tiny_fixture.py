@@ -41,6 +41,7 @@ def _run_worker(
     target_config: Path | None = None,
     validation_config: Path | None = None,
     run_id: str = "tiny-worker-run",
+    scope: str = "regional",
     artifacts_dir: Path | None = None,
     return_process: bool = False,
 ) -> dict:
@@ -61,6 +62,8 @@ def _run_worker(
         str(artifacts.db_path),
         "--output-dir",
         str(output_dir),
+        "--scope",
+        scope,
         "--run-id",
         run_id,
         "--run-config-path",
@@ -171,6 +174,7 @@ def test_worker_builds_national_h5_from_package_geography(tmp_path):
         artifacts=artifacts,
         output_dir=output_dir,
         use_package_geography=True,
+        scope="national",
     )
 
     assert result["failed"] == []

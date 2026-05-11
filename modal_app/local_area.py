@@ -618,6 +618,7 @@ def run_phase(
         handle = build_areas_worker.spawn(
             branch=branch,
             run_id=run_id,
+            scope="regional",
             work_items=chunk,
             calibration_inputs=calibration_inputs,
             validate=validate,
@@ -713,6 +714,7 @@ def run_phase(
 def build_areas_worker(
     branch: str,
     run_id: str,
+    scope: str,
     work_items: List[Dict],
     calibration_inputs: Dict[str, object],
     validate: bool = True,
@@ -743,6 +745,8 @@ def build_areas_worker(
         str(calibration_inputs["database"]),
         "--output-dir",
         str(output_dir),
+        "--scope",
+        scope,
         "--run-id",
         run_id,
         "--artifacts-dir",
@@ -1479,6 +1483,7 @@ def coordinate_national_publish(
     worker_result = build_areas_worker.remote(
         branch=branch,
         run_id=run_id,
+        scope="national",
         work_items=work_items,
         calibration_inputs=calibration_inputs,
         validate=validate,

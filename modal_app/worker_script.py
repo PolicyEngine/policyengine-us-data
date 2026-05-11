@@ -148,6 +148,12 @@ def parse_args(argv: list[str] | None = None):
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument(
+        "--scope",
+        choices=("regional", "national"),
+        required=True,
+        help="Worker bootstrap scope to use for this request batch",
+    )
+    parser.add_argument(
         "--run-id",
         default=None,
         help="Pipeline run ID used for traceability and bootstrap lookup",
@@ -223,22 +229,6 @@ def _load_request_inputs_from_args(
         )
 
     return "work_items", tuple(json.loads(args.work_items))
-
-
-def _infer_worker_scope(request_input_mode: str, request_inputs) -> str:
-    """Infer which bootstrap scope matches the queued request set."""
-
-    if request_input_mode == "requests":
-        all_national = all(
-            getattr(request, "area_type", None) == "national"
-            for request in request_inputs
-        )
-    else:
-        all_national = all(
-            isinstance(item, dict) and item.get("type") == "national"
-            for item in request_inputs
-        )
-    return "national" if all_national else "regional"
 
 
 def _build_publishing_inputs(*, args, run_id: str):
@@ -383,7 +373,7 @@ def main(argv: list[str] | None = None):
         args=args,
         area_build_request_cls=AreaBuildRequest,
     )
-    scope = _infer_worker_scope(request_input_mode, request_inputs)
+    scope = args.scope
     inputs = _build_publishing_inputs(args=args, run_id=run_id)
 
     session = WorkerSessionFactory().create(

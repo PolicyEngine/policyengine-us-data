@@ -25,6 +25,8 @@ def test_parse_args_accepts_requests_json():
             "/tmp/policy_data.db",
             "--output-dir",
             "/tmp/out",
+            "--scope",
+            "regional",
         ]
     )
 
@@ -45,6 +47,8 @@ def test_parse_args_accepts_calibration_package_path():
             "/tmp/policy_data.db",
             "--output-dir",
             "/tmp/out",
+            "--scope",
+            "regional",
             "--calibration-package-path",
             "/tmp/calibration_package.pkl",
         ]
@@ -66,6 +70,8 @@ def test_parse_args_accepts_worker_session_paths():
             "/tmp/policy_data.db",
             "--output-dir",
             "/tmp/out",
+            "--scope",
+            "national",
             "--run-id",
             "run-123",
             "--artifacts-dir",
@@ -76,6 +82,7 @@ def test_parse_args_accepts_worker_session_paths():
     )
 
     assert args.run_id == "run-123"
+    assert args.scope == "national"
     assert args.artifacts_dir == "/tmp/artifacts/run-123"
     assert args.run_config_path == "/tmp/unified_run_config.json"
     assert not hasattr(args, "version")
@@ -110,33 +117,6 @@ def test_load_request_inputs_from_args_keeps_legacy_work_items_raw():
 
     assert mode == "work_items"
     assert work_items == ({"type": "national", "id": "US"},)
-
-
-def test_infer_worker_scope_uses_national_only_for_national_bootstrap():
-    assert (
-        worker_script._infer_worker_scope(
-            "requests",
-            (FakeRequest(area_type="national", area_id="US"),),
-        )
-        == "national"
-    )
-    assert (
-        worker_script._infer_worker_scope(
-            "requests",
-            (
-                FakeRequest(area_type="district", area_id="NC-01"),
-                FakeRequest(area_type="national", area_id="US"),
-            ),
-        )
-        == "regional"
-    )
-    assert (
-        worker_script._infer_worker_scope(
-            "work_items",
-            ({"type": "national", "id": "US"},),
-        )
-        == "national"
-    )
 
 
 def test_work_item_key_handles_missing_fields():

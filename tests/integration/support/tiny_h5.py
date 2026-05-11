@@ -207,6 +207,8 @@ def run_local_h5_worker(
         str(artifacts.db_path),
         "--output-dir",
         str(output_dir),
+        "--scope",
+        "regional",
         "--n-clones",
         str(artifacts.n_clones),
         "--no-validate",

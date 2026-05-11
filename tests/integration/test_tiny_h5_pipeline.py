@@ -86,6 +86,7 @@ def test_saved_geography_h5_pipeline_builds_regional_and_national_outputs():
         build_result = build.remote(
             branch="main",
             run_id=run_id,
+            scope="regional",
             work_items=_work_items("district", "state", "national"),
             calibration_inputs=preflight_result["calibration_inputs"],
             validate=False,
@@ -139,6 +140,7 @@ def test_package_fallback_h5_pipeline_builds_district_output():
         build_result = build.remote(
             branch="main",
             run_id=run_id,
+            scope="regional",
             work_items=_work_items("district"),
             calibration_inputs=preflight_result["calibration_inputs"],
             validate=False,
@@ -176,6 +178,7 @@ def test_missing_geography_h5_pipeline_fails_clearly():
         build_result = build.remote(
             branch="main",
             run_id=run_id,
+            scope="regional",
             work_items=_work_items("district"),
             calibration_inputs=preflight_result["calibration_inputs"],
             validate=False,

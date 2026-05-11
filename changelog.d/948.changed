@@ -1,4 +1,0 @@
-Build PyPI wheels only and download generated block geography prerequisites from
-Hugging Face instead of bundling them in the package. The historical
-`download_private_prerequisites` entry point has been removed in favor of the
-canonical `download_prerequisites` downloader.

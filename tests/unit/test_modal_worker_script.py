@@ -78,6 +78,7 @@ def test_parse_args_accepts_worker_session_paths():
     assert args.run_id == "run-123"
     assert args.artifacts_dir == "/tmp/artifacts/run-123"
     assert args.run_config_path == "/tmp/unified_run_config.json"
+    assert not hasattr(args, "version")
 
 
 def test_load_request_inputs_from_args_uses_request_payloads_when_present():

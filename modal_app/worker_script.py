@@ -153,11 +153,6 @@ def parse_args(argv: list[str] | None = None):
         help="Pipeline run ID used for traceability and bootstrap lookup",
     )
     parser.add_argument(
-        "--version",
-        default="0.0.0",
-        help="Package or release version associated with the worker run",
-    )
-    parser.add_argument(
         "--artifacts-dir",
         default=None,
         help="Optional run-scoped pipeline artifacts directory containing bootstrap artifacts",
@@ -269,7 +264,7 @@ def _build_publishing_inputs(*, args, run_id: str):
             Path(args.run_config_path) if args.run_config_path is not None else None
         ),
         run_id=run_id,
-        version=args.version,
+        version="",
         n_clones=args.n_clones,
         seed=args.seed,
     )

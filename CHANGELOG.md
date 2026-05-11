@@ -1,3 +1,10 @@
+## [1.111.1] - 2026-05-11
+
+### Fixed
+
+- Use the national calibration preset L0 penalty in the Modal pipeline.
+
+
 ## [1.111.0] - 2026-05-11
 
 ### Added

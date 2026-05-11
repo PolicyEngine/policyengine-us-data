@@ -1888,7 +1888,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    version: Override version (default: from run\n        metadata).\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1725,
+    "line": 1727,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -2167,7 +2167,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 787,
+    "line": 789,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -2507,7 +2507,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 448,
+    "line": 450,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

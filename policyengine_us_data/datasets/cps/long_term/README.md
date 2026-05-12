@@ -10,10 +10,10 @@ Run projections using `run_household_projection.py`:
 python run_household_projection.py 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --save-h5
 
 # Experimental: role-based donor composites assembled into late-year support
-python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 5.0
+python run_household_projection.py 2075 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 5.0 --support-augmentation-sanitize-clone-non-target-income
 
 # Experimental: target-year blueprint calibration over donor-composite support
-python run_household_projection.py 2100 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 5.0 --save-h5
+python run_household_projection.py 2100 2100 --profile ss-payroll-tob --target-source trustees_2025_current_law --support-augmentation-profile donor-backed-composite-v1 --support-augmentation-target-year 2100 --support-augmentation-blueprint-base-weight-scale 5.0 --support-augmentation-sanitize-clone-non-target-income --save-h5
 
 # IPF with only age distribution constraints (faster, less accurate)
 python run_household_projection.py 2050 --profile age-only
@@ -35,7 +35,11 @@ python run_long_term_production.py \
   --jobs 4 \
   --output-dir ./projected_datasets_production \
   --profile ss-payroll-tob \
-  --target-source trustees_2025_current_law
+  --target-source trustees_2025_current_law \
+  --support-augmentation-profile donor-backed-composite-v1 \
+  --support-augmentation-target-year 2100 \
+  --support-augmentation-blueprint-base-weight-scale 5.0 \
+  --support-augmentation-sanitize-clone-non-target-income
 ```
 
 **Arguments:**
@@ -53,6 +57,8 @@ python run_long_term_production.py \
 - `--support-augmentation-max-distance`: Maximum donor-match distance retained for cloning (default `3.0`).
 - `--support-augmentation-clone-weight-scale`: Baseline weight multiplier applied to each donor-backed clone (default `0.1`).
 - `--support-augmentation-blueprint-base-weight-scale`: When donor-composite augmentation is active at its target year, scales the original household priors before replacing clone priors with synthetic blueprint shares (default `5.0`).
+- `--support-augmentation-sanitize-worker-non-target-income`: For `donor-backed-composite-v1`, zero investment and retirement income on worker-sourced donor clone rows.
+- `--support-augmentation-sanitize-clone-non-target-income`: For `donor-backed-composite-v1`, zero investment and retirement income on all donor clone rows.
 - `--greg`: Use GREG calibration instead of IPF
 - `--use-ss`: Include Social Security benefit totals as calibration target (requires `--greg`)
 - `--use-payroll`: Include taxable payroll totals as calibration target (requires `--greg`)
@@ -141,7 +147,7 @@ python run_long_term_production.py \
 - Current status:
   - Fixing the long-run payroll-cap bug in `policyengine-us` changed the picture materially. With the correct SSA wage base extended through `2100`, the donor-composite synthetic support is exact-feasible and dense at the archetype level.
   - The runner now supports a target-year calibration blueprint for donor-composite augmentation. At the augmentation target year, it applies target age composition to clone rows, uses realized PolicyEngine Social Security and payroll values for the same rows, and keeps synthetic prior shares for clone households.
-  - In the current `2075` OACT probe, that blueprint path hits actual Social Security, taxable payroll, and TOB targets exactly with nonnegative weights when `--support-augmentation-blueprint-base-weight-scale 5.0`.
+  - In the current `2100` Trustees current-law probe, that blueprint path hits actual Social Security, taxable payroll, and TOB targets exactly with nonnegative weights when `--support-augmentation-blueprint-base-weight-scale 5.0 --support-augmentation-sanitize-clone-non-target-income`.
   - The runner now also has a dynamic mode, `--support-augmentation-align-to-run-year`, that rebuilds donor-composite support for each run year and writes per-year augmentation reports.
   - This is still experimental. The blueprint path is now structurally capable of handling year-specific support, but the full `2075-2100` production sweep still needs runtime tuning and caching work.
 

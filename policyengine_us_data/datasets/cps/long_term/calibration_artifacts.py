@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
+from importlib import metadata as importlib_metadata
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 try:
@@ -26,6 +29,138 @@ SUPPORT_AUGMENTATION_REPORT_FILENAME = "support_augmentation_report.json"
 
 def metadata_path_for(h5_path: str | Path) -> Path:
     return Path(f"{Path(h5_path)}.metadata.json")
+
+
+def _json_clone(value: Any) -> Any:
+    return json.loads(json.dumps(value))
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _find_git_repo_root(path: Path) -> Path | None:
+    current = path if path.is_dir() else path.parent
+    for candidate in (current, *current.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
+def capture_policyengine_us_provenance() -> dict[str, Any]:
+    import policyengine_us
+
+    package_file = Path(policyengine_us.__file__).resolve()
+    version = getattr(policyengine_us, "__version__", None)
+    if version is None:
+        try:
+            version = importlib_metadata.version("policyengine-us")
+        except importlib_metadata.PackageNotFoundError:
+            version = None
+    provenance: dict[str, Any] = {
+        "package_file": str(package_file),
+        "package_file_sha256": _sha256_file(package_file),
+        "package_mtime_ns": package_file.stat().st_mtime_ns,
+        "package_size": package_file.stat().st_size,
+        "version": version,
+    }
+    repo_root = _find_git_repo_root(package_file)
+    if repo_root is None:
+        return provenance
+
+    provenance["repo_root"] = str(repo_root)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if head.returncode == 0:
+        provenance["git_head"] = head.stdout.strip()
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1"],
+        cwd=repo_root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if status.returncode == 0:
+        provenance["git_dirty"] = bool(status.stdout.strip())
+    return provenance
+
+
+def _resolve_base_dataset_path(base_dataset_path: str) -> Path | None:
+    if base_dataset_path.startswith("hf://"):
+        try:
+            from huggingface_hub import hf_hub_download
+        except ImportError:
+            return None
+        rel = base_dataset_path.removeprefix("hf://")
+        parts = rel.split("/")
+        if len(parts) < 3:
+            return None
+        repo_id = "/".join(parts[:2])
+        filename = "/".join(parts[2:])
+        try:
+            return Path(
+                hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                    local_files_only=True,
+                )
+            ).resolve()
+        except Exception:
+            return None
+
+    candidate = Path(base_dataset_path).expanduser()
+    if candidate.exists():
+        return candidate.resolve()
+    return None
+
+
+def capture_base_dataset_snapshot(base_dataset_path: str) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {"requested_path": base_dataset_path}
+    resolved = _resolve_base_dataset_path(base_dataset_path)
+    if resolved is None or not resolved.exists():
+        return snapshot
+
+    snapshot["resolved_path"] = str(resolved)
+    snapshot["resolved_file_sha256"] = _sha256_file(resolved)
+    snapshot["resolved_size"] = resolved.stat().st_size
+    snapshot["resolved_mtime_ns"] = resolved.stat().st_mtime_ns
+    if "snapshots" in resolved.parts:
+        snapshot_index = resolved.parts.index("snapshots")
+        if snapshot_index + 1 < len(resolved.parts):
+            snapshot["huggingface_snapshot"] = resolved.parts[snapshot_index + 1]
+    return snapshot
+
+
+def _normalize_tax_assumption_contract(
+    value: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    normalized = _json_clone(value)
+    # One-year long-run runs stamp the run year into end_year even when the
+    # underlying tax-assumption contract is otherwise identical. Ignore that
+    # run-local field when deciding whether multiple artifacts share a manifest.
+    normalized.pop("end_year", None)
+    return normalized
+
+
+def _normalize_support_augmentation_contract(
+    value: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    normalized = _json_clone(value)
+    # Dynamic support augmentation records run-local reporting details that vary
+    # by year even when the augmentation contract is otherwise identical.
+    normalized.pop("target_year", None)
+    normalized.pop("report_file", None)
+    normalized.pop("report_summary", None)
+    return normalized
 
 
 def normalize_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
@@ -102,6 +237,8 @@ def write_year_metadata(
     target_source: dict[str, Any] | None = None,
     tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
+    policyengine_us: dict[str, Any] | None = None,
+    base_dataset_snapshot: dict[str, Any] | None = None,
 ) -> Path:
     metadata = {
         "contract_version": CONTRACT_VERSION,
@@ -116,6 +253,10 @@ def write_year_metadata(
         metadata["tax_assumption"] = tax_assumption
     if support_augmentation is not None:
         metadata["support_augmentation"] = support_augmentation
+    if policyengine_us is not None:
+        metadata["policyengine_us"] = policyengine_us
+    if base_dataset_snapshot is not None:
+        metadata["base_dataset_snapshot"] = base_dataset_snapshot
     metadata = normalize_metadata(metadata)
     metadata_path = metadata_path_for(h5_path)
     metadata_path.write_text(
@@ -153,13 +294,17 @@ def update_dataset_manifest(
     target_source: dict[str, Any] | None = None,
     tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
+    policyengine_us: dict[str, Any] | None = None,
+    base_dataset_snapshot: dict[str, Any] | None = None,
 ) -> Path:
     output_dir = Path(output_dir)
     manifest_path = output_dir / MANIFEST_FILENAME
-    profile = json.loads(json.dumps(profile))
-    target_source = json.loads(json.dumps(target_source))
-    tax_assumption = json.loads(json.dumps(tax_assumption))
-    support_augmentation = json.loads(json.dumps(support_augmentation))
+    profile = _json_clone(profile)
+    target_source = _json_clone(target_source)
+    tax_assumption = _json_clone(tax_assumption)
+    support_augmentation = _json_clone(support_augmentation)
+    policyengine_us = _json_clone(policyengine_us)
+    base_dataset_snapshot = _json_clone(base_dataset_snapshot)
 
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -172,6 +317,8 @@ def update_dataset_manifest(
             "target_source": target_source,
             "tax_assumption": tax_assumption,
             "support_augmentation": support_augmentation,
+            "policyengine_us": policyengine_us,
+            "base_dataset_snapshot": base_dataset_snapshot,
             "years": [],
             "datasets": {},
         }
@@ -181,7 +328,7 @@ def update_dataset_manifest(
             "Output directory already contains a different base dataset path: "
             f"{manifest['base_dataset_path']} != {base_dataset_path}"
         )
-    manifest_profile = json.loads(json.dumps(manifest["profile"]))
+    manifest_profile = _json_clone(manifest["profile"])
     if manifest_profile != profile:
         if manifest_profile.get("name") == profile.get("name") and manifest_profile.get(
             "calibration_method"
@@ -201,20 +348,45 @@ def update_dataset_manifest(
         )
     if manifest.get("tax_assumption") is None and tax_assumption is not None:
         manifest["tax_assumption"] = tax_assumption
-    elif manifest.get("tax_assumption") != tax_assumption:
+    elif _normalize_tax_assumption_contract(
+        manifest.get("tax_assumption")
+    ) != _normalize_tax_assumption_contract(tax_assumption):
         raise ValueError(
             "Output directory already contains a different tax assumption: "
             f"{manifest.get('tax_assumption')} != {tax_assumption}"
         )
+    elif tax_assumption is not None:
+        manifest["tax_assumption"] = tax_assumption
     if (
         manifest.get("support_augmentation") is None
         and support_augmentation is not None
     ):
         manifest["support_augmentation"] = support_augmentation
-    elif manifest.get("support_augmentation") != support_augmentation:
+    elif _normalize_support_augmentation_contract(
+        manifest.get("support_augmentation")
+    ) != _normalize_support_augmentation_contract(support_augmentation):
         raise ValueError(
             "Output directory already contains a different support augmentation: "
             f"{manifest.get('support_augmentation')} != {support_augmentation}"
+        )
+    elif support_augmentation is not None:
+        manifest["support_augmentation"] = support_augmentation
+    if manifest.get("policyengine_us") is None and policyengine_us is not None:
+        manifest["policyengine_us"] = policyengine_us
+    elif manifest.get("policyengine_us") != policyengine_us:
+        raise ValueError(
+            "Output directory already contains a different policyengine_us provenance: "
+            f"{manifest.get('policyengine_us')} != {policyengine_us}"
+        )
+    if (
+        manifest.get("base_dataset_snapshot") is None
+        and base_dataset_snapshot is not None
+    ):
+        manifest["base_dataset_snapshot"] = base_dataset_snapshot
+    elif manifest.get("base_dataset_snapshot") != base_dataset_snapshot:
+        raise ValueError(
+            "Output directory already contains a different base dataset snapshot: "
+            f"{manifest.get('base_dataset_snapshot')} != {base_dataset_snapshot}"
         )
 
     datasets = manifest.setdefault("datasets", {})
@@ -290,6 +462,8 @@ def rebuild_dataset_manifest_with_target_source(
             target_source=metadata.get("target_source"),
             tax_assumption=metadata.get("tax_assumption"),
             support_augmentation=metadata.get("support_augmentation"),
+            policyengine_us=metadata.get("policyengine_us"),
+            base_dataset_snapshot=metadata.get("base_dataset_snapshot"),
         )
 
     assert manifest_path is not None

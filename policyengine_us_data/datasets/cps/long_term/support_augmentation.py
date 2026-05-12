@@ -467,6 +467,8 @@ def build_targeted_donor_augmented_dataset(
     max_distance_for_clone: float = 3.0,
     clone_weight_scale: float = 0.1,
     reform: Any | None = None,
+    sanitize_worker_non_target_income: bool = False,
+    sanitize_clone_non_target_income: bool = False,
 ) -> tuple[Dataset, dict[str, Any]]:
     if profile not in TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES:
         valid = ", ".join(sorted(TARGETED_DONOR_SUPPORT_AUGMENTATION_PROFILES))
@@ -508,6 +510,8 @@ def build_targeted_donor_augmented_dataset(
             max_worker_distance=max_distance_for_clone,
             clone_weight_scale=clone_weight_scale,
             reform=reform,
+            sanitize_worker_non_target_income=sanitize_worker_non_target_income,
+            sanitize_clone_non_target_income=sanitize_clone_non_target_income,
         )
 
     report["profile"] = profile
@@ -526,6 +530,7 @@ def build_targeted_role_composite_calibration_blueprint(
     base_weight_scale: float = 0.5,
     ss_values_actual: np.ndarray | None = None,
     payroll_values_actual: np.ndarray | None = None,
+    include_value_overrides: bool = True,
 ) -> dict[str, Any] | None:
     try:
         from .prototype_synthetic_2100_support import (
@@ -545,6 +550,7 @@ def build_targeted_role_composite_calibration_blueprint(
         base_weight_scale=base_weight_scale,
         ss_values_actual=ss_values_actual,
         payroll_values_actual=payroll_values_actual,
+        include_value_overrides=include_value_overrides,
     )
 
 

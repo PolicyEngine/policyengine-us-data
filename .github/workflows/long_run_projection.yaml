@@ -78,6 +78,16 @@ on:
         required: false
         default: ""
         type: string
+      support_augmentation_sanitize_worker_non_target_income:
+        description: "Zero worker-donor clone investment and retirement income"
+        required: false
+        default: false
+        type: boolean
+      support_augmentation_sanitize_clone_non_target_income:
+        description: "Zero all donor-clone investment and retirement income"
+        required: false
+        default: false
+        type: boolean
       allow_validation_failures:
         description: "Allow invalid artifacts to be written for diagnostics"
         required: false
@@ -146,6 +156,8 @@ jobs:
           SUPPORT_AUGMENTATION_DONORS_PER_TARGET: ${{ inputs.support_augmentation_donors_per_target }}
           SUPPORT_AUGMENTATION_MAX_DISTANCE: ${{ inputs.support_augmentation_max_distance }}
           SUPPORT_AUGMENTATION_PROFILE: ${{ inputs.support_augmentation_profile }}
+          SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME: ${{ inputs.support_augmentation_sanitize_clone_non_target_income }}
+          SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME: ${{ inputs.support_augmentation_sanitize_worker_non_target_income }}
           SUPPORT_AUGMENTATION_START_YEAR: ${{ inputs.support_augmentation_start_year }}
           SUPPORT_AUGMENTATION_TARGET_YEAR: ${{ inputs.support_augmentation_target_year }}
           SUPPORT_AUGMENTATION_TOP_N_TARGETS: ${{ inputs.support_augmentation_top_n_targets }}
@@ -198,6 +210,12 @@ jobs:
           fi
           if [ -n "${SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}" ]; then
             cmd+=(--support-augmentation-blueprint-base-weight-scale "${SUPPORT_AUGMENTATION_BLUEPRINT_BASE_WEIGHT_SCALE}")
+          fi
+          if [ "${SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME}" = "true" ]; then
+            cmd+=(--support-augmentation-sanitize-worker-non-target-income)
+          fi
+          if [ "${SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME}" = "true" ]; then
+            cmd+=(--support-augmentation-sanitize-clone-non-target-income)
           fi
           if [ "${ALLOW_VALIDATION_FAILURES}" = "true" ]; then
             cmd+=(--allow-validation-failures)

@@ -1,3 +1,10 @@
+## [1.112.1] - 2026-05-12
+
+### Fixed
+
+- Use cached ACS S0101 state data for pregnancy population denominators and validate Census API fallbacks before caching them.
+
+
 ## [1.112.0] - 2026-05-12
 
 ### Added

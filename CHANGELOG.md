@@ -1,3 +1,10 @@
+## [1.112.2] - 2026-05-12
+
+### Changed
+
+- Remove reported SPM WIC, school meals, broadband, and tax inputs from CPS outputs in favor of policyengine-us formulas.
+
+
 ## [1.112.1] - 2026-05-12
 
 ### Fixed

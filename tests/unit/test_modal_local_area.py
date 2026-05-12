@@ -350,10 +350,11 @@ def test_build_worker_calibration_inputs_includes_existing_run_config_and_packag
         calibration_package_path=package_path,
     )
 
-    assert inputs["run_config"] == str(run_config_path)
-    assert inputs["calibration_package"] == str(package_path)
-    assert inputs["n_clones"] == 430
-    assert inputs["seed"] == 42
+    assert inputs.run_config_path == run_config_path
+    assert inputs.calibration_package_path == package_path
+    assert inputs.n_clones == 430
+    assert inputs.seed == 42
+    assert inputs.to_wire_dict()["run_config"] == str(run_config_path)
 
 
 def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
@@ -370,8 +371,10 @@ def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
         calibration_package_path=tmp_path / "missing_package.pkl",
     )
 
-    assert "run_config" not in inputs
-    assert "calibration_package" not in inputs
+    assert inputs.run_config_path is None
+    assert inputs.calibration_package_path is None
+    assert "run_config" not in inputs.to_wire_dict()
+    assert "calibration_package" not in inputs.to_wire_dict()
 
 
 def test_build_areas_worker_surfaces_successful_worker_stderr(

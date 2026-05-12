@@ -234,15 +234,15 @@ def _load_request_inputs_from_args(
 def _build_publishing_inputs(*, args, run_id: str):
     """Build the traceability input bundle consumed by worker setup services."""
 
-    from policyengine_us_data.build_outputs.fingerprinting import (
-        PublishingInputBundle,
+    from policyengine_us_data.build_outputs.worker_inputs import (
+        WorkerCalibrationInputs,
     )
 
-    return PublishingInputBundle(
+    worker_inputs = WorkerCalibrationInputs(
         weights_path=Path(args.weights_path),
-        source_dataset_path=Path(args.dataset_path),
-        target_db_path=Path(args.db_path) if args.db_path else None,
-        exact_geography_path=(
+        dataset_path=Path(args.dataset_path),
+        database_path=Path(args.db_path),
+        geography_path=(
             Path(args.geography_path) if args.geography_path is not None else None
         ),
         calibration_package_path=(
@@ -253,11 +253,10 @@ def _build_publishing_inputs(*, args, run_id: str):
         run_config_path=(
             Path(args.run_config_path) if args.run_config_path is not None else None
         ),
-        run_id=run_id,
-        version="",
         n_clones=args.n_clones,
         seed=args.seed,
     )
+    return worker_inputs.to_publishing_input_bundle(run_id=run_id)
 
 
 def _build_kwargs_from_request(request) -> dict[str, Any]:

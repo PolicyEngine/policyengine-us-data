@@ -17,7 +17,7 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Mapping
 
 import modal
 
@@ -38,6 +38,9 @@ from policyengine_us_data.build_outputs.fingerprinting import (  # noqa: E402
 )
 from policyengine_us_data.build_outputs.partitioning import (  # noqa: E402
     partition_weighted_work_items,
+)
+from policyengine_us_data.build_outputs.worker_inputs import (  # noqa: E402
+    WorkerCalibrationInputs,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
@@ -499,22 +502,19 @@ def _build_worker_calibration_inputs(
     seed: int,
     run_config_path: Path | None = None,
     calibration_package_path: Path | None = None,
-) -> Dict[str, object]:
-    """Build the calibration input payload passed to H5 worker subprocesses."""
+) -> WorkerCalibrationInputs:
+    """Build the normalized H5 worker input payload."""
 
-    calibration_inputs: Dict[str, object] = {
-        "weights": str(weights_path),
-        "geography": str(geography_path),
-        "dataset": str(dataset_path),
-        "database": str(db_path),
-        "n_clones": n_clones,
-        "seed": seed,
-    }
-    if run_config_path is not None and run_config_path.exists():
-        calibration_inputs["run_config"] = str(run_config_path)
-    if calibration_package_path is not None and calibration_package_path.exists():
-        calibration_inputs["calibration_package"] = str(calibration_package_path)
-    return calibration_inputs
+    return WorkerCalibrationInputs.from_artifact_paths(
+        weights_path=weights_path,
+        geography_path=geography_path,
+        dataset_path=dataset_path,
+        database_path=db_path,
+        n_clones=n_clones,
+        seed=seed,
+        run_config_path=run_config_path,
+        calibration_package_path=calibration_package_path,
+    )
 
 
 @pipeline_node(
@@ -589,7 +589,7 @@ def run_phase(
     completed: set,
     branch: str,
     run_id: str,
-    calibration_inputs: Dict[str, str],
+    calibration_inputs: WorkerCalibrationInputs | Mapping[str, object],
     run_dir: Path,
     validate: bool = True,
 ) -> tuple:
@@ -603,6 +603,9 @@ def run_phase(
     """
     work_chunks = partition_work(work_items, num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
+    worker_input_payload = WorkerCalibrationInputs.from_wire_dict(
+        calibration_inputs
+    ).to_wire_dict()
 
     print(f"\n--- Phase: {phase_name} ---")
     print(f"Remaining work: {total_remaining} items across {len(work_chunks)} workers")
@@ -620,7 +623,7 @@ def run_phase(
             run_id=run_id,
             scope="regional",
             work_items=chunk,
-            calibration_inputs=calibration_inputs,
+            calibration_inputs=worker_input_payload,
             validate=validate,
         )
         print(f"    → fc: {handle.object_id}")
@@ -716,7 +719,7 @@ def build_areas_worker(
     run_id: str,
     scope: str,
     work_items: List[Dict],
-    calibration_inputs: Dict[str, object],
+    calibration_inputs: WorkerCalibrationInputs | Mapping[str, object],
     validate: bool = True,
 ) -> Dict:
     """
@@ -732,17 +735,13 @@ def build_areas_worker(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     work_items_json = json.dumps(work_items)
+    worker_inputs = WorkerCalibrationInputs.from_wire_dict(calibration_inputs)
 
     worker_cmd = [
         *_python_cmd("-m", "modal_app.worker_script"),
         "--work-items",
         work_items_json,
-        "--weights-path",
-        str(calibration_inputs["weights"]),
-        "--dataset-path",
-        str(calibration_inputs["dataset"]),
-        "--db-path",
-        str(calibration_inputs["database"]),
+        *worker_inputs.to_worker_cli_args(),
         "--output-dir",
         str(output_dir),
         "--scope",
@@ -752,21 +751,6 @@ def build_areas_worker(
         "--artifacts-dir",
         str(Path("/pipeline/artifacts") / run_id),
     ]
-    if "geography" in calibration_inputs:
-        worker_cmd.extend(["--geography-path", str(calibration_inputs["geography"])])
-    if "calibration_package" in calibration_inputs:
-        worker_cmd.extend(
-            [
-                "--calibration-package-path",
-                str(calibration_inputs["calibration_package"]),
-            ]
-        )
-    if "n_clones" in calibration_inputs:
-        worker_cmd.extend(["--n-clones", str(calibration_inputs["n_clones"])])
-    if "seed" in calibration_inputs:
-        worker_cmd.extend(["--seed", str(calibration_inputs["seed"])])
-    if "run_config" in calibration_inputs:
-        worker_cmd.extend(["--run-config-path", str(calibration_inputs["run_config"])])
     repo_root = Path("/root/policyengine-us-data")
     cal_dir = repo_root / "policyengine_us_data" / "calibration"
     worker_cmd.extend(
@@ -1487,7 +1471,7 @@ def coordinate_national_publish(
         run_id=run_id,
         scope="national",
         work_items=work_items,
-        calibration_inputs=calibration_inputs,
+        calibration_inputs=calibration_inputs.to_wire_dict(),
         validate=validate,
     )
 

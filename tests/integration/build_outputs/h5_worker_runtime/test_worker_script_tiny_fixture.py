@@ -9,12 +9,12 @@ import numpy as np
 import pytest
 
 from policyengine_us_data.build_outputs.bootstrap import WorkerBootstrapBuilder
-from policyengine_us_data.build_outputs.fingerprinting import PublishingInputBundle
 from policyengine_us_data.build_outputs.source_dataset import (
     DEFAULT_SUBENTITIES,
     PolicyEngineDatasetReader,
 )
 from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
+from policyengine_us_data.build_outputs.worker_inputs import WorkerCalibrationInputs
 from tests.integration.build_outputs.fixtures import (
     build_request,
     seed_local_h5_artifacts,
@@ -48,28 +48,31 @@ def _run_worker(
     _require_worker_dependencies()
     if not isinstance(requests, (list, tuple)):
         requests = (requests,)
+    worker_inputs = WorkerCalibrationInputs(
+        weights_path=artifacts.weights_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path if use_saved_geography else None,
+        calibration_package_path=(
+            artifacts.calibration_package_path if use_package_geography else None
+        ),
+        run_config_path=artifacts.run_config_path,
+        n_clones=artifacts.n_clones,
+        seed=42,
+    )
     cmd = [
         sys.executable,
         "-m",
         "modal_app.worker_script",
         "--requests-json",
         json.dumps([request.to_dict() for request in requests]),
-        "--weights-path",
-        str(artifacts.weights_path),
-        "--dataset-path",
-        str(artifacts.dataset_path),
-        "--db-path",
-        str(artifacts.db_path),
+        *worker_inputs.to_worker_cli_args(),
         "--output-dir",
         str(output_dir),
         "--scope",
         scope,
         "--run-id",
         run_id,
-        "--run-config-path",
-        str(artifacts.run_config_path),
-        "--n-clones",
-        str(artifacts.n_clones),
     ]
     if artifacts_dir is not None:
         cmd.extend(["--artifacts-dir", str(artifacts_dir)])
@@ -79,15 +82,6 @@ def _run_worker(
         cmd.extend(["--target-config", str(target_config)])
     if validation_config is not None:
         cmd.extend(["--validation-config", str(validation_config)])
-    if use_saved_geography:
-        cmd.extend(["--geography-path", str(artifacts.geography_path)])
-    if use_package_geography:
-        cmd.extend(
-            [
-                "--calibration-package-path",
-                str(artifacts.calibration_package_path),
-            ]
-        )
 
     result = subprocess.run(
         cmd,
@@ -236,18 +230,16 @@ def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
     request = build_request("district", geography=artifacts.geography)
     output_dir = tmp_path / "bootstrap-out"
     artifacts_dir = tmp_path / "pipeline-artifacts" / "run-123"
-    inputs = PublishingInputBundle(
+    inputs = WorkerCalibrationInputs(
         weights_path=artifacts.weights_path,
-        source_dataset_path=artifacts.dataset_path,
-        target_db_path=artifacts.db_path,
-        exact_geography_path=artifacts.geography_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path,
         calibration_package_path=artifacts.calibration_package_path,
         run_config_path=artifacts.run_config_path,
-        run_id="run-123",
-        version="0.0.0",
         n_clones=artifacts.n_clones,
         seed=42,
-    )
+    ).to_publishing_input_bundle(run_id="run-123", version="0.0.0")
     WorkerBootstrapBuilder().build(
         inputs=inputs,
         scope="regional",

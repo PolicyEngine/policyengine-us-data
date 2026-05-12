@@ -9,7 +9,11 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from policyengine_us_data.build_outputs.worker_inputs import (
+    WorkerCalibrationInputPayload,
+    WorkerCalibrationInputs,
+)
 
 FIXTURE_DATASET_PATH = Path(
     "/root/policyengine-us-data/tests/integration/test_fixture_50hh.h5"
@@ -28,7 +32,7 @@ class SeededCase:
     """Description of one tiny end-to-end H5 test case."""
 
     name: str
-    calibration_inputs: dict[str, Any]
+    calibration_inputs: WorkerCalibrationInputPayload
     expected_district_name: str = DISTRICT_NAME
     n_clones: int = N_CLONES
     seed: int = SEED
@@ -192,13 +196,8 @@ def seed_case(
     weights_path = _write_weights(artifact_dir, n_records=n_records)
     db_path = _write_db(artifact_dir)
 
-    calibration_inputs: dict[str, Any] = {
-        "weights": str(weights_path),
-        "dataset": str(dataset_path),
-        "database": str(db_path),
-        "n_clones": N_CLONES,
-        "seed": SEED,
-    }
+    geography_path = None
+    package_path = None
 
     if case_name == "saved_geography_success":
         geography_path = _write_saved_geography(artifact_dir, n_records=n_records)
@@ -207,11 +206,9 @@ def seed_case(
             weights_path=weights_path,
             geography_path=geography_path,
         )
-        calibration_inputs["geography"] = str(geography_path)
     elif case_name == "package_fallback_success":
         package_path = _write_calibration_package(artifact_dir, n_records=n_records)
         _write_run_config(artifact_dir, weights_path=weights_path)
-        calibration_inputs["calibration_package"] = str(package_path)
     elif case_name == "misnamed_package":
         _write_misnamed_package(artifact_dir, n_records=n_records)
         _write_run_config(artifact_dir, weights_path=weights_path)
@@ -220,5 +217,13 @@ def seed_case(
 
     return SeededCase(
         name=case_name,
-        calibration_inputs=calibration_inputs,
+        calibration_inputs=WorkerCalibrationInputs(
+            weights_path=weights_path,
+            dataset_path=dataset_path,
+            database_path=db_path,
+            geography_path=geography_path,
+            calibration_package_path=package_path,
+            n_clones=N_CLONES,
+            seed=SEED,
+        ).to_wire_dict(),
     )

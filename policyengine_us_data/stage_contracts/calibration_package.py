@@ -47,18 +47,9 @@ def summarize_geography_assignment(
     has_cds = raw_cds is not None
 
     if not has_blocks and not has_cds:
-        return GeographyAssignmentSummary(
-            source_kind="unavailable",
+        return _unavailable_geography_assignment_summary(
             n_records=n_records,
             n_clones=n_clones,
-            n_rows=None,
-            has_block_geoid=False,
-            has_cd_geoid=False,
-            block_geoid_length=None,
-            cd_geoid_length=None,
-            block_geoid_sha256=None,
-            cd_geoid_sha256=None,
-            canonical_geography_sha256=None,
         )
     if not has_blocks or not has_cds:
         raise ValueError(
@@ -106,6 +97,28 @@ def summarize_geography_assignment(
             n_records=n_records,
             n_clones=n_clones,
         ),
+    )
+
+
+def _unavailable_geography_assignment_summary(
+    *,
+    n_records: int | None,
+    n_clones: int | None,
+) -> GeographyAssignmentSummary:
+    """Create a summary for legacy packages without geography assignment arrays."""
+
+    return GeographyAssignmentSummary(
+        source_kind="unavailable",
+        n_records=n_records,
+        n_clones=n_clones,
+        n_rows=None,
+        has_block_geoid=False,
+        has_cd_geoid=False,
+        block_geoid_length=None,
+        cd_geoid_length=None,
+        block_geoid_sha256=None,
+        cd_geoid_sha256=None,
+        canonical_geography_sha256=None,
     )
 
 

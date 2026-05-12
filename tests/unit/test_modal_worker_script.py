@@ -202,3 +202,21 @@ def test_resolve_output_path_rejects_escaped_request_path(tmp_path):
         assert "must stay within the worker output_dir" in str(exc)
     else:
         raise AssertionError("Expected _resolve_output_path to reject traversal")
+
+
+def test_log_worker_session_ready_includes_bootstrap_fallback_reason(capsys):
+    session = SimpleNamespace(
+        bootstrap_status="fallback",
+        caches={"bootstrap_error": "entity graph load failed"},
+    )
+    geography = SimpleNamespace(n_clones=2, n_records=10)
+
+    worker_script._log_worker_session_ready(
+        scope="regional",
+        session=session,
+        geography=geography,
+    )
+
+    captured = capsys.readouterr()
+    assert "Worker session ready: scope=regional, bootstrap=fallback" in captured.err
+    assert "Worker bootstrap fallback reason: entity graph load failed" in captured.err

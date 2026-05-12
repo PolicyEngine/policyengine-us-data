@@ -348,6 +348,23 @@ def _resolve_request_input(
     return _request_key(request), request
 
 
+def _log_worker_session_ready(*, scope: str, session, geography) -> None:
+    """Write worker-session setup details to stderr for Modal diagnostics."""
+
+    print(
+        "Worker session ready: "
+        f"scope={scope}, bootstrap={session.bootstrap_status}, "
+        f"{geography.n_clones} clones x {geography.n_records} records",
+        file=sys.stderr,
+    )
+    bootstrap_error = session.caches.get("bootstrap_error")
+    if bootstrap_error:
+        print(
+            f"Worker bootstrap fallback reason: {bootstrap_error}",
+            file=sys.stderr,
+        )
+
+
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
@@ -407,12 +424,7 @@ def main(argv: list[str] | None = None):
     constraints_map = (
         validation_context.constraints_map if validation_context is not None else None
     )
-    print(
-        "Worker session ready: "
-        f"scope={scope}, bootstrap={session.bootstrap_status}, "
-        f"{geography.n_clones} clones x {geography.n_records} records",
-        file=sys.stderr,
-    )
+    _log_worker_session_ready(scope=scope, session=session, geography=geography)
     if validation_targets is not None:
         print(
             f"Validation ready: {len(validation_targets)} targets, "

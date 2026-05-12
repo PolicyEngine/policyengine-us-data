@@ -83,22 +83,32 @@ def test_saved_geography_h5_pipeline_builds_regional_and_national_outputs():
         assert preflight_result["geography_source"] == "saved_geography"
         assert len(preflight_result["fingerprint"]) == 16
 
-        build_result = build.remote(
+        regional_result = build.remote(
             branch="main",
             run_id=run_id,
             scope="regional",
-            work_items=_work_items("district", "state", "national"),
+            work_items=_work_items("district", "state"),
+            calibration_inputs=preflight_result["calibration_inputs"],
+            validate=False,
+        )
+        national_result = build.remote(
+            branch="main",
+            run_id=run_id,
+            scope="national",
+            work_items=_work_items("national"),
             calibration_inputs=preflight_result["calibration_inputs"],
             validate=False,
         )
 
-        assert build_result["failed"] == []
-        assert build_result["errors"] == []
-        assert build_result["completed"] == [
+        assert regional_result["failed"] == []
+        assert regional_result["errors"] == []
+        assert regional_result["completed"] == [
             "district:NC-01",
             "state:NC",
-            "national:US",
         ]
+        assert national_result["failed"] == []
+        assert national_result["errors"] == []
+        assert national_result["completed"] == ["national:US"]
 
         manifest = validate.remote(branch="main", run_id=run_id, version="0.0.0")
         assert manifest["totals"]["districts"] == 1

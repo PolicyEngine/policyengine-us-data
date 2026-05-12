@@ -1,3 +1,10 @@
+## [1.111.4] - 2026-05-12
+
+### Fixed
+
+- Drop formulaic SPM poverty outputs from cloned and local-area H5 exports.
+
+
 ## [1.111.3] - 2026-05-12
 
 ### Fixed

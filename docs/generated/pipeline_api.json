@@ -447,7 +447,7 @@
     "docstring": "Build city H5 files with checkpointing, optionally uploading.",
     "id": "build_cities",
     "kind": "function",
-    "line": 944,
+    "line": 947,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_cities"
@@ -506,7 +506,7 @@
     "docstring": "Build district H5 files with checkpointing, optionally uploading.",
     "id": "build_districts",
     "kind": "function",
-    "line": 857,
+    "line": 860,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_districts"
@@ -533,7 +533,7 @@
     "docstring": "Build an H5 file by cloning records for each nonzero weight.\n\nArgs:\n    weights: Clone-level weight vector, shape (n_clones_total * n_hh,).\n    geography: GeographyAssignment from assign_random_geography.\n    dataset_path: Path to base dataset H5 file.\n    output_path: Where to write the output H5 file.\n    cd_subset: If provided, only include clones for these CDs.\n    county_fips_filter: If provided, zero out weights for clones\n        whose county FIPS is not in this set.\n    takeup_filter: List of takeup vars to apply.\n\nReturns:\n    Path to the output H5 file.",
     "id": "build_h5",
     "kind": "function",
-    "line": 325,
+    "line": 328,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_h5"
@@ -663,7 +663,7 @@
     "docstring": "Build state H5 files with checkpointing, optionally uploading.",
     "id": "build_states",
     "kind": "function",
-    "line": 771,
+    "line": 774,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_states"
@@ -1263,7 +1263,7 @@
     "docstring": "",
     "id": "load_calibration_geography",
     "kind": "function",
-    "line": 137,
+    "line": 140,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
@@ -1431,7 +1431,7 @@
     "docstring": "",
     "id": "local_h5_input_fingerprint",
     "kind": "function",
-    "line": 78,
+    "line": 81,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",

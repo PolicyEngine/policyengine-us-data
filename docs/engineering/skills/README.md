@@ -16,5 +16,7 @@ Current skills:
   conventions.
 - `pipeline_docs.md`: decorator-backed pipeline map maintenance and generated
   pydoc-style artifacts.
+- `pipeline_operations.md`: model-neutral workflow for diagnosing deployed Modal
+  pipeline status and durable error records.
 - `testing.md`: test layout, fixture scope, helper placement, and quality guard
   expectations.

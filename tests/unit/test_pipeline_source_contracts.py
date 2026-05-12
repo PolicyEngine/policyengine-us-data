@@ -16,6 +16,10 @@ def _function_def(tree: ast.Module, name: str) -> ast.FunctionDef:
     raise AssertionError(f"Could not find function {name}")
 
 
+def _name(node: ast.AST) -> str | None:
+    return node.id if isinstance(node, ast.Name) else None
+
+
 def test_promote_run_uses_single_full_release_promotion() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     promote_run = _function_def(tree, "promote_run")
@@ -56,8 +60,24 @@ def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     promote_run = _function_def(tree, "promote_run")
     source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+    fail_step_calls = [
+        node
+        for node in ast.walk(promote_run)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_fail_step_manifest"
+    ]
 
-    assert "_fail_step_manifest(promote_manifest, exc, pipeline_volume)" in source
+    assert any(
+        [_name(arg) for arg in call.args[:3]]
+        == ["promote_manifest", "exc", "pipeline_volume"]
+        for call in fail_step_calls
+    )
+    assert any(
+        any(keyword.arg == "traceback_ref" for keyword in call.keywords)
+        for call in fail_step_calls
+    )
+    assert "meta.error =" in source
     assert "WARNING: Base dataset promotion" not in source
     assert "WARNING: Regional promote" not in source
     assert "WARNING: National promote" not in source

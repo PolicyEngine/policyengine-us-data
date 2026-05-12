@@ -17,6 +17,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from policyengine_us_data.utils.canonical_json import (
     canonical_json_dumps as _canonical_json_dumps,
 )
+from policyengine_us_data.utils.error_redaction import redact_error_text
 
 
 STEP_MANIFEST_SCHEMA_VERSION = "1"
@@ -261,10 +262,17 @@ class StepManifest:
         exc: BaseException,
         *,
         completed_at: str | None = None,
+        error_details: Mapping[str, Any] | None = None,
     ) -> "StepManifest":
         completed = completed_at or utc_now()
         started = datetime.fromisoformat(self.started_at)
         ended = datetime.fromisoformat(completed)
+        error = {
+            "type": type(exc).__name__,
+            "message": redact_error_text(str(exc)),
+        }
+        if error_details:
+            error.update(dict(error_details))
         return StepManifest(
             run_id=self.run_id,
             step_id=self.step_id,
@@ -290,10 +298,7 @@ class StepManifest:
             reuse_decision="failed",
             reuse_reason="step_failed",
             reuse_measurement=self.reuse_measurement,
-            error={
-                "type": type(exc).__name__,
-                "message": str(exc),
-            },
+            error=error,
             schema_version=self.schema_version,
         )
 

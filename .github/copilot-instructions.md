@@ -13,3 +13,6 @@ from branches in `PolicyEngine/policyengine-us-data`; never create fork PRs.
 For PRs that change pipeline behavior, stage boundaries, generated artifacts, or
 public library functions, read
 `docs/engineering/skills/documentation_review.md` during review.
+
+For deployed Modal pipeline run status or failure diagnosis, read
+`docs/engineering/skills/pipeline_operations.md`.

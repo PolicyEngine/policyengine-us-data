@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 DEFAULT_ERROR_TEXT_MAX_CHARS = 24_000
+DEFAULT_ERROR_MESSAGE_MAX_CHARS = 2_000
 
 _SECRET_KEY_MARKERS = (
     "TOKEN",

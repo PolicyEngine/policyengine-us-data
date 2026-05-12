@@ -14,6 +14,7 @@ from policyengine_us_data.utils.canonical_json import (
     canonical_json_loads,
 )
 from policyengine_us_data.utils.error_redaction import (
+    DEFAULT_ERROR_MESSAGE_MAX_CHARS,
     DEFAULT_ERROR_TEXT_MAX_CHARS,
     bound_error_text,
     redact_error_text,
@@ -112,16 +113,28 @@ class PipelineErrorRecord:
     traceback_format: str = "python"
     schema_version: str = PIPELINE_ERROR_RECORD_SCHEMA_VERSION
 
-    def to_dict(
+    def to_dict(self) -> dict[str, Any]:
+        return _drop_none(asdict(self))
+
+    def to_status_dict(
         self,
         *,
+        message_max_chars: int | None = DEFAULT_ERROR_MESSAGE_MAX_CHARS,
         traceback_max_chars: int | None = DEFAULT_ERROR_TEXT_MAX_CHARS,
     ) -> dict[str, Any]:
-        payload = asdict(self)
+        payload = self.to_dict()
+        bounded_message = bound_error_text(
+            self.message,
+            max_chars=message_max_chars,
+        )
         bounded_traceback = bound_error_text(
             self.traceback,
             max_chars=traceback_max_chars,
         )
+        payload["message"] = bounded_message.text
+        payload["message_truncated"] = bounded_message.truncated
+        if bounded_message.truncated:
+            payload["message_omitted_chars"] = bounded_message.omitted_chars
         payload["traceback"] = bounded_traceback.text
         payload["traceback_available"] = bool(self.traceback)
         payload["traceback_truncated"] = bounded_traceback.truncated
@@ -279,7 +292,7 @@ def write_pipeline_error_record(
         record_path=_relative_path(record_path, root),
         latest_path=_relative_path(latest_path, root),
     )
-    payload = canonical_json_dumps(record_with_paths.to_dict(traceback_max_chars=None))
+    payload = canonical_json_dumps(record_with_paths.to_dict())
     record_path.write_text(payload)
     latest_path.write_text(payload)
     return PipelineErrorWriteResult(

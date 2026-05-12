@@ -13,6 +13,7 @@ from modal_app.pipeline import (  # noqa: E402
     NATIONAL_FIT_LAMBDA_L0,
     _build_diagnostics_upload_script,
     _calibration_package_parameters,
+    _pipeline_error_summary,
     _run_required_promotion_subprocess,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
@@ -20,6 +21,7 @@ from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
     write_run_meta,
 )
+from policyengine_us_data.utils.step_manifest import ArtifactReference  # noqa: E402
 
 
 # -- RunMetadata tests ------------------------------------------
@@ -65,6 +67,39 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
 
 def test_national_fit_lambda_matches_national_preset():
     assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(1e-4)
+
+
+def test_pipeline_error_summary_uses_traceback_ref_when_available():
+    ref = ArtifactReference(
+        path="runs/run-1/errors/error.json",
+        size_bytes=10,
+        sha256="abc",
+        role="error",
+        media_type="application/json",
+    )
+
+    summary = _pipeline_error_summary(
+        RuntimeError("boom"),
+        traceback_ref=ref,
+        traceback_text="full traceback should not be duplicated",
+    )
+
+    assert summary == "RuntimeError: boom; traceback_ref=runs/run-1/errors/error.json"
+
+
+def test_pipeline_error_summary_falls_back_to_bounded_traceback(monkeypatch):
+    monkeypatch.setenv("API_TOKEN", "secret-value")
+    traceback_text = "old traceback\n" + ("x" * 30_000) + "\nnewest secret-value"
+
+    summary = _pipeline_error_summary(
+        RuntimeError("failed with secret-value"),
+        traceback_text=traceback_text,
+    )
+
+    assert "secret-value" not in summary
+    assert summary.startswith("\n[truncated older error text; omitted ")
+    assert summary.endswith("newest <redacted:API_TOKEN>")
+    assert "old traceback" not in summary
 
 
 class TestRunMetadata:

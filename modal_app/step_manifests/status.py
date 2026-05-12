@@ -12,6 +12,7 @@ from policyengine_us_data.utils.step_manifest import (
     step_manifest_dir,
 )
 from policyengine_us_data.utils.error_redaction import (
+    DEFAULT_ERROR_MESSAGE_MAX_CHARS,
     bound_error_text,
     redacted_bounded_error_text,
     redact_error_text,
@@ -46,7 +47,7 @@ def _error_payload(
 ) -> dict[str, Any] | None:
     if error_record is None:
         return None
-    return error_record.to_dict()
+    return error_record.to_status_dict()
 
 
 def _legacy_error_payload(error_text: str | None) -> dict[str, Any] | None:
@@ -62,17 +63,24 @@ def _legacy_error_payload(error_text: str | None) -> dict[str, Any] | None:
         if maybe_type.strip():
             error_type = maybe_type.strip()
             message = maybe_message.strip() or first_line
+    bounded_message = bound_error_text(
+        message,
+        max_chars=DEFAULT_ERROR_MESSAGE_MAX_CHARS,
+    )
     payload = {
         "source": "run_manifest.error",
         "surface": "run_manifest",
         "stage_id": None,
         "substage_id": None,
         "error_type": error_type,
-        "message": message,
+        "message": bounded_message.text,
+        "message_truncated": bounded_message.truncated,
         "traceback": bounded.text,
         "traceback_available": bool(bounded.text),
         "traceback_truncated": bounded.truncated,
     }
+    if bounded_message.truncated:
+        payload["message_omitted_chars"] = bounded_message.omitted_chars
     if bounded.truncated:
         payload["traceback_omitted_chars"] = bounded.omitted_chars
     return payload
@@ -105,7 +113,10 @@ def _message(
 
 def _sanitize_error_value(value: Any) -> Any:
     if isinstance(value, str):
-        return redacted_bounded_error_text(value).text
+        return redacted_bounded_error_text(
+            value,
+            max_chars=DEFAULT_ERROR_MESSAGE_MAX_CHARS,
+        ).text
     if isinstance(value, dict):
         return {key: _sanitize_error_value(item) for key, item in value.items()}
     if isinstance(value, list):
@@ -116,7 +127,10 @@ def _sanitize_error_value(value: Any) -> Any:
 def _run_manifest_payload(run_manifest) -> dict[str, Any]:
     payload = run_manifest.to_dict()
     if payload.get("error"):
-        payload["error"] = redacted_bounded_error_text(payload["error"]).text
+        payload["error"] = redacted_bounded_error_text(
+            payload["error"],
+            max_chars=DEFAULT_ERROR_MESSAGE_MAX_CHARS,
+        ).text
     return payload
 
 

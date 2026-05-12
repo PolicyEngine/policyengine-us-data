@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -69,6 +70,36 @@ def test_pipeline_error_record_uses_stage_and_substage_ids(tmp_path):
     assert result.record.message == (
         "failed with <redacted:API_TOKEN> and API_TOKEN=<redacted>"
     )
+
+
+def test_pipeline_error_record_persists_exact_schema_and_bounds_status_payload(
+    tmp_path,
+):
+    long_message = "old message " + ("m" * 3_000) + " newest message"
+    long_traceback = "old traceback\n" + ("x" * 30_000) + "\nnewest traceback"
+    record = build_pipeline_error_record(
+        RuntimeError(long_message),
+        run_id="run-1",
+        manifest=_manifest(BUILD_DATASETS.id),
+        traceback_text=long_traceback,
+        occurred_at="2026-05-12T12:00:00+00:00",
+    )
+    result = write_pipeline_error_record(record, run_dir=tmp_path / "runs" / "run-1")
+
+    persisted = json.loads((tmp_path / result.record.record_path).read_text())
+    status_payload = result.record.to_status_dict()
+
+    assert persisted["message"] == long_message
+    assert persisted["traceback"] == long_traceback
+    assert "traceback_available" not in persisted
+    assert "traceback_truncated" not in persisted
+    assert "message_truncated" not in persisted
+    assert status_payload["message_truncated"] is True
+    assert status_payload["message"].endswith("newest message")
+    assert "old message" not in status_payload["message"]
+    assert status_payload["traceback_truncated"] is True
+    assert status_payload["traceback"].endswith("newest traceback")
+    assert "old traceback" not in status_payload["traceback"]
 
 
 def test_pipeline_error_record_infers_canonical_stage_without_manifest_parent():
@@ -257,6 +288,32 @@ def test_status_payload_falls_back_to_run_manifest_error(tmp_path, monkeypatch):
         "Traceback contains <redacted:API_TOKEN>"
     )
     assert "secret-value" not in payload["run_manifest"]["error"]
+
+
+def test_status_payload_bounds_legacy_error_message(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="failed",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+            error="RuntimeError: old message " + ("m" * 3_000) + " newest message",
+        ),
+    )
+
+    payload = build_pipeline_status_payload("run-1", runs_dir=runs_dir)
+
+    assert payload["error"]["message_truncated"] is True
+    assert payload["error"]["message"].endswith("newest message")
+    assert "old message" not in payload["error"]["message"]
+    assert payload["run_manifest"]["error"].endswith("newest message")
+    assert "old message" not in payload["run_manifest"]["error"]
 
 
 def test_status_payload_truncates_oldest_traceback_text(tmp_path):

@@ -158,6 +158,7 @@ class TestVariableListConsistency:
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "spm_unit_spm_threshold" not in ExtendedCPS._keep_formula_vars()
         assert "spm_unit_geographic_adjustment" not in ExtendedCPS._keep_formula_vars()
+        assert "person_in_poverty" not in ExtendedCPS._keep_formula_vars()
 
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
         assert "weeks_worked" in ExtendedCPS._keep_formula_vars()

@@ -110,7 +110,15 @@ def test_materialize_clone_household_chunk_drops_legacy_spm_threshold_input(
     fixture_entity_maps,
 ):
     original_input_variables = list(fixture_sim.input_variables)
-    fixture_sim.input_variables.append("spm_unit_spm_threshold")
+    fixture_sim.input_variables.extend(
+        [
+            "person_in_poverty",
+            "in_poverty",
+            "in_deep_poverty",
+            "spm_unit_spm_threshold",
+            "spm_unit_geographic_adjustment",
+        ]
+    )
     monkeypatch.setattr(
         "policyengine_us_data.calibration.entity_clone.derive_geography_from_blocks",
         _fake_geography_from_blocks,
@@ -131,6 +139,9 @@ def test_materialize_clone_household_chunk_drops_legacy_spm_threshold_input(
         fixture_sim.input_variables = original_input_variables
 
     with h5py.File(output_path, "r") as h5:
+        assert "person_in_poverty" not in h5
+        assert "in_poverty" not in h5
+        assert "in_deep_poverty" not in h5
         assert "spm_unit_spm_threshold" not in h5
         assert "spm_unit_geographic_adjustment" not in h5
 

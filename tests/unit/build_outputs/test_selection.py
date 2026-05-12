@@ -61,6 +61,27 @@ def test_area_selector_applies_cd_and_county_filters_as_conjunction():
     np.testing.assert_array_equal(selection.block_geoids, np.array(["block-4"]))
 
 
+def test_area_selector_preserves_legacy_numeric_cd_geoid_filtering():
+    weights = CloneWeightMatrix.from_vector(
+        np.array([1.0, 1.0, 1.0, 1.0]),
+        n_records=2,
+    )
+    filters = (AreaFilter(geography_field="cd_geoid", op="in", value=("3702",)),)
+
+    selection = AreaSelector().select(
+        weights=weights,
+        geography=_geography(cd_geoid=np.array([3701, 3702, 3701, 3702])),
+        filters=filters,
+    )
+
+    np.testing.assert_array_equal(selection.clone_indices, np.array([0, 1]))
+    np.testing.assert_array_equal(selection.source_household_indices, np.array([1, 1]))
+    np.testing.assert_array_equal(
+        selection.congressional_district_geoids,
+        np.array(["3702", "3702"]),
+    )
+
+
 def test_area_selector_rejects_zero_active_clones():
     weights = CloneWeightMatrix.from_vector(
         np.array([1.0, 1.0, 1.0, 1.0]),

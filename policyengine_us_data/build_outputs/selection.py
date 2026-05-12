@@ -206,6 +206,8 @@ def _geography_matrix(
             f"Geography field {field!r} length {vector.size} does not equal "
             f"n_clones * n_records={expected_length}"
         )
+    if field == "cd_geoid":
+        vector = vector.astype(str)
     return vector.reshape(weights.n_clones, weights.n_records)
 
 

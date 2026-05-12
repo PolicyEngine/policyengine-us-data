@@ -7,12 +7,19 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from policyengine_us_data.utils.step_manifest import sha256_file
+from policyengine_us_data.utils.geography_checksum import (
+    canonical_geography_checksum,
+    hash_string_array,
+)
 
 from .artifacts import ArtifactRef
 from .calibration_package_schema import (
     CalibrationPackageParameters,
     CalibrationPackageSummary,
+    GeographyAssignmentSummary,
 )
 from .contracts import StageContract
 from .execution import ExecutionRecord, ReuseSummary
@@ -26,6 +33,82 @@ CALIBRATION_PACKAGE_CONTRACT_TYPE = contract_type_for_stage(
     STAGE_2_BUILD_CALIBRATION_PACKAGE
 )
 CALIBRATION_PACKAGE_SUBSTAGE_ID = "2a_matrix_build_calibration_target_construction"
+
+
+def summarize_geography_assignment(
+    package: Mapping[str, Any],
+) -> GeographyAssignmentSummary:
+    """Return a contract-safe summary of package-backed geography assignment."""
+
+    metadata = _package_metadata(package)
+    n_records = _optional_metadata_int(metadata, "base_n_records")
+    n_clones = _optional_metadata_int(metadata, "n_clones")
+    raw_blocks = package.get("block_geoid")
+    raw_cds = package.get("cd_geoid")
+    has_blocks = raw_blocks is not None
+    has_cds = raw_cds is not None
+
+    if not has_blocks and not has_cds:
+        return GeographyAssignmentSummary(
+            source_kind="unavailable",
+            n_records=n_records,
+            n_clones=n_clones,
+            n_rows=None,
+            has_block_geoid=False,
+            has_cd_geoid=False,
+            block_geoid_length=None,
+            cd_geoid_length=None,
+            block_geoid_sha256=None,
+            cd_geoid_sha256=None,
+            canonical_geography_sha256=None,
+        )
+    if not has_blocks or not has_cds:
+        raise ValueError(
+            "Calibration package geography requires both block_geoid and cd_geoid"
+        )
+    if n_records is None or n_clones is None:
+        raise ValueError(
+            "Calibration package geography requires metadata base_n_records and n_clones"
+        )
+    if n_records <= 0 or n_clones <= 0:
+        raise ValueError(
+            "Calibration package geography requires positive base_n_records and n_clones"
+        )
+
+    block_geoids = _one_dimensional_string_array(raw_blocks, "block_geoid")
+    cd_geoids = _one_dimensional_string_array(raw_cds, "cd_geoid")
+    n_rows = int(len(block_geoids))
+    if n_rows == 0:
+        raise ValueError("Calibration package geography arrays must be non-empty")
+    if len(cd_geoids) != n_rows:
+        raise ValueError(
+            "Calibration package geography has mismatched block_geoid and cd_geoid "
+            f"lengths: {n_rows} != {len(cd_geoids)}"
+        )
+    if n_records * n_clones != n_rows:
+        raise ValueError(
+            "Calibration package geography length does not match metadata: "
+            f"{n_rows} rows for {n_records} records x {n_clones} clones"
+        )
+
+    return GeographyAssignmentSummary(
+        source_kind="calibration_package",
+        n_records=n_records,
+        n_clones=n_clones,
+        n_rows=n_rows,
+        has_block_geoid=True,
+        has_cd_geoid=True,
+        block_geoid_length=n_rows,
+        cd_geoid_length=int(len(cd_geoids)),
+        block_geoid_sha256=hash_string_array(block_geoids),
+        cd_geoid_sha256=hash_string_array(cd_geoids),
+        canonical_geography_sha256=canonical_geography_checksum(
+            block_geoid=block_geoids,
+            cd_geoid=cd_geoids,
+            n_records=n_records,
+            n_clones=n_clones,
+        ),
+    )
 
 
 def summarize_calibration_package(
@@ -109,6 +192,7 @@ def build_calibration_package_contract(
     parameter_payload = parameter_schema.to_dict()
     metadata = _package_metadata(package)
     package_summary = summarize_calibration_package(package).to_dict()
+    geography_summary = summarize_geography_assignment(package).to_dict()
     inputs = (
         _artifact_ref_from_path(
             logical_name="source_imputed_stratified_extended_cps",
@@ -165,6 +249,7 @@ def build_calibration_package_contract(
             "outputs": outputs,
             "parameters": parameter_payload,
             "package_summary": package_summary,
+            "geography_assignment": geography_summary,
         }
     )
     return StageContract(
@@ -193,6 +278,7 @@ def build_calibration_package_contract(
         metadata={
             "artifact_count": len(inputs) + len(outputs),
             "contract_file": CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+            "geography_assignment": geography_summary,
             "package_summary": package_summary,
         },
     )
@@ -288,6 +374,18 @@ def validate_calibration_package_contract(
     )
     if actual_summary != expected_summary:
         raise ValueError("Calibration package contract summary does not match pickle")
+    expected_geography = canonicalize_for_fingerprint(
+        summarize_geography_assignment(package).to_dict()
+    )
+    actual_geography = canonicalize_for_fingerprint(
+        GeographyAssignmentSummary.from_dict(
+            contract.metadata.get("geography_assignment", {})
+        ).to_dict()
+    )
+    if actual_geography != expected_geography:
+        raise ValueError(
+            "Calibration package contract geography assignment does not match pickle"
+        )
     return contract
 
 
@@ -358,6 +456,15 @@ def _optional_len(value: Any) -> int | None:
     if value is None:
         return None
     return int(len(value))
+
+
+def _one_dimensional_string_array(value: Any, key: str) -> np.ndarray:
+    array = np.asarray(value, dtype=str)
+    if array.ndim != 1:
+        raise ValueError(f"Calibration package geography {key} must be one-dimensional")
+    if np.any(array == ""):
+        raise ValueError(f"Calibration package geography {key} contains empty values")
+    return array
 
 
 def _calibration_package_parameters(

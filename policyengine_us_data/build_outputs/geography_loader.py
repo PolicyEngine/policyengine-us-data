@@ -20,6 +20,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
     load_geography,
     reconstruct_geography_from_blocks,
 )
+from policyengine_us_data.utils.geography_checksum import canonical_geography_checksum
 
 CALIBRATION_WEIGHTS_SUFFIX = "calibration_weights.npy"
 GEOGRAPHY_FILENAME = "geography_assignment.npz"
@@ -249,8 +250,6 @@ class CalibrationGeographyLoader:
             SHA-256 digest prefixed with `"sha256:"`.
         """
 
-        import hashlib
-
         geography = self.load(
             weights_path=weights_path,
             n_records=n_records,
@@ -259,14 +258,14 @@ class CalibrationGeographyLoader:
             blocks_path=blocks_path,
             calibration_package_path=calibration_package_path,
         )
-        digest = hashlib.sha256()
-        digest.update(np.asarray(geography.block_geoid, dtype="U").tobytes())
-        digest.update(np.asarray(geography.cd_geoid, dtype="U").tobytes())
-        digest.update(np.asarray(geography.county_fips, dtype="U").tobytes())
-        digest.update(np.asarray(geography.state_fips, dtype=np.int32).tobytes())
-        digest.update(str(int(geography.n_records)).encode())
-        digest.update(str(int(geography.n_clones)).encode())
-        return f"sha256:{digest.hexdigest()}"
+        return canonical_geography_checksum(
+            block_geoid=geography.block_geoid,
+            cd_geoid=geography.cd_geoid,
+            county_fips=geography.county_fips,
+            state_fips=geography.state_fips,
+            n_records=geography.n_records,
+            n_clones=geography.n_clones,
+        )
 
     def _load_saved_geography(
         self,

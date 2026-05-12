@@ -7,6 +7,9 @@ from tests.support.build_outputs.geography_loader import (
     load_geography_loader_exports,
     write_saved_geography,
 )
+from policyengine_us_data.stage_contracts.calibration_package import (
+    summarize_geography_assignment,
+)
 
 
 exports = load_geography_loader_exports()
@@ -154,3 +157,38 @@ def test_compute_canonical_checksum_is_stable_across_source_formats(tmp_path):
     )
 
     assert saved_checksum == package_checksum
+
+
+def test_compute_canonical_checksum_matches_stage_2_geography_summary(tmp_path):
+    weights_path = tmp_path / "calibration_weights.npy"
+    package_path = tmp_path / "calibration_package.pkl"
+    package = {
+        "metadata": {
+            "base_n_records": 2,
+            "n_clones": 2,
+        },
+        "block_geoid": np.array(
+            [
+                "010010000001",
+                "010010000002",
+                "010010000001",
+                "010010000002",
+            ],
+            dtype="<U15",
+        ),
+        "cd_geoid": np.array(["101", "102", "101", "102"], dtype="<U10"),
+    }
+    np.save(weights_path, np.array([1.0, 2.0]))
+    with open(package_path, "wb") as handle:
+        pickle.dump(package, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    loader = CalibrationGeographyLoader()
+    loader_checksum = loader.compute_canonical_checksum(
+        weights_path=weights_path,
+        n_records=2,
+        n_clones=2,
+        calibration_package_path=package_path,
+    )
+    summary = summarize_geography_assignment(package)
+
+    assert loader_checksum == summary.canonical_geography_sha256

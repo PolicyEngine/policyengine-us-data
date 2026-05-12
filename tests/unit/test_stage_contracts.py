@@ -1195,6 +1195,7 @@ def test_stage_contract_package_exports_public_api():
     assert contracts.ArtifactRef is ArtifactRef
     assert hasattr(contracts, "CalibrationPackageParameters")
     assert hasattr(contracts, "CalibrationPackageSummary")
+    assert hasattr(contracts, "GeographyAssignmentSummary")
     assert contracts.DiagnosticRef is DiagnosticRef
     assert contracts.Fingerprint is Fingerprint
     assert contracts.ValidationFinding is ValidationFinding
@@ -1219,6 +1220,7 @@ def test_stage_contract_package_exports_public_api():
         "CONTRACT_TYPE_BY_STAGE_ID",
         "CalibrationPackageParameters",
         "CalibrationPackageSummary",
+        "GeographyAssignmentSummary",
         "DiagnosticRef",
         "Fingerprint",
         "ValidationFinding",
@@ -1240,6 +1242,7 @@ def test_stage_contract_package_exports_public_api():
         "canonicalize_for_fingerprint",
         "fingerprint_material",
         "is_canonical_stage_id",
+        "summarize_geography_assignment",
         "substage_ids_for_stage",
     }
 

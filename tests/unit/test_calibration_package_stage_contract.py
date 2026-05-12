@@ -9,6 +9,7 @@ from policyengine_us_data.stage_contracts import (
     StageContract,
     contract_from_json,
     contract_to_json,
+    GeographyAssignmentSummary,
 )
 from policyengine_us_data.stage_contracts.calibration_package import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
@@ -17,9 +18,14 @@ from policyengine_us_data.stage_contracts.calibration_package import (
     build_calibration_package_contract,
     load_calibration_package_payload,
     summarize_calibration_package,
+    summarize_geography_assignment,
     validate_calibration_package_contract,
     validate_persisted_calibration_package_contract,
     write_calibration_package_contract,
+)
+from policyengine_us_data.utils.geography_checksum import (
+    canonical_geography_checksum,
+    hash_string_array,
 )
 
 
@@ -58,7 +64,7 @@ def _package() -> dict:
             "db_sha256": "sha256:db",
             "target_config_path": "policyengine_us_data/calibration/target_config.yaml",
             "target_config_sha256": "sha256:target-config",
-            "n_clones": 430,
+            "n_clones": 3,
             "seed": 42,
             "base_n_records": 1,
             "package_scope": "minimal",
@@ -84,7 +90,7 @@ def _write_package(path: Path, package: dict | None = None) -> dict:
 def _parameters() -> dict:
     return {
         "workers": None,
-        "n_clones": 430,
+        "n_clones": 3,
         "target_config": "policyengine_us_data/calibration/target_config.yaml",
         "skip_county": True,
         "skip_source_impute": True,
@@ -186,6 +192,54 @@ def test_calibration_package_summary_round_trips_through_schema():
     assert CalibrationPackageSummary.from_dict(summary.to_dict()) == summary
 
 
+def test_geography_assignment_summary_round_trips_through_schema():
+    summary = summarize_geography_assignment(_package())
+
+    assert isinstance(summary, GeographyAssignmentSummary)
+    assert GeographyAssignmentSummary.from_dict(summary.to_dict()) == summary
+    assert summary.source_kind == "calibration_package"
+    assert summary.n_records == 1
+    assert summary.n_clones == 3
+    assert summary.n_rows == 3
+    assert summary.block_geoid_sha256.startswith("sha256:")
+    assert summary.cd_geoid_sha256.startswith("sha256:")
+    assert summary.canonical_geography_sha256.startswith("sha256:")
+
+
+def test_geography_assignment_summary_hashes_are_dtype_width_independent():
+    narrow = np.array(["010010001", "010010002"], dtype="<U9")
+    wide = np.array(["010010001", "010010002"], dtype="<U15")
+    narrow_cd = np.array(["0101", "0102"], dtype="<U4")
+    wide_cd = np.array(["0101", "0102"], dtype="<U10")
+
+    assert hash_string_array(narrow) == hash_string_array(wide)
+    assert canonical_geography_checksum(
+        block_geoid=narrow,
+        cd_geoid=narrow_cd,
+        n_records=1,
+        n_clones=2,
+    ) == canonical_geography_checksum(
+        block_geoid=wide,
+        cd_geoid=wide_cd,
+        n_records=1,
+        n_clones=2,
+    )
+
+
+def test_geography_assignment_summary_allows_unavailable_package_geography():
+    package = _package()
+    package.pop("block_geoid")
+    package.pop("cd_geoid")
+
+    summary = summarize_geography_assignment(package)
+
+    assert summary.source_kind == "unavailable"
+    assert summary.n_records == 1
+    assert summary.n_clones == 3
+    assert summary.n_rows is None
+    assert summary.canonical_geography_sha256 is None
+
+
 def test_calibration_package_contract_rejects_invalid_parameter_mapping(tmp_path):
     dataset_path, db_path, package_path = _write_inputs(tmp_path)
     package = _write_package(package_path)
@@ -234,7 +288,7 @@ def test_calibration_package_contract_records_matrix_summary(tmp_path):
     assert summary["n_targets"] == 2
     assert summary["target_name_count"] == 2
     assert summary["target_config_sha256"] == "sha256:target-config"
-    assert summary["n_clones"] == 430
+    assert summary["n_clones"] == 3
     assert summary["seed"] == 42
     assert summary["matrix_builder"] == "chunked"
     assert summary["has_initial_weights"] is True
@@ -242,6 +296,24 @@ def test_calibration_package_contract_records_matrix_summary(tmp_path):
     assert summary["has_block_geoid"] is True
     assert summary["cd_geoid_length"] == 3
     assert summary["block_geoid_length"] == 3
+
+
+def test_calibration_package_contract_records_geography_assignment(tmp_path):
+    contract = _contract(tmp_path)
+
+    geography = contract.metadata["geography_assignment"]
+
+    assert geography["source_kind"] == "calibration_package"
+    assert geography["n_records"] == 1
+    assert geography["n_clones"] == 3
+    assert geography["n_rows"] == 3
+    assert geography["has_block_geoid"] is True
+    assert geography["has_cd_geoid"] is True
+    assert geography["block_geoid_length"] == 3
+    assert geography["cd_geoid_length"] == 3
+    assert geography["block_geoid_sha256"].startswith("sha256:")
+    assert geography["cd_geoid_sha256"].startswith("sha256:")
+    assert geography["canonical_geography_sha256"].startswith("sha256:")
 
 
 def test_calibration_package_contract_records_single_substage(tmp_path):
@@ -266,6 +338,40 @@ def test_calibration_package_contract_json_round_trip_is_deterministic(tmp_path)
     assert contract_to_json(restored) == payload
 
 
+def test_calibration_package_contract_fingerprint_changes_with_geography(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+    first = build_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    changed_path = tmp_path / "changed_calibration_package.pkl"
+    changed_package = _package()
+    changed_package["block_geoid"] = np.array(["030010001", "010010002", "020010001"])
+    _write_package(changed_path, changed_package)
+    second = build_calibration_package_contract(
+        package_path=changed_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=changed_package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    assert (
+        first.metadata["geography_assignment"]
+        != second.metadata["geography_assignment"]
+    )
+    assert first.fingerprint != second.fingerprint
+
+
 def test_calibration_package_summary_omits_bulky_payloads():
     summary = summarize_calibration_package(_package()).to_dict()
 
@@ -275,6 +381,18 @@ def test_calibration_package_summary_omits_bulky_payloads():
     assert "initial_weights" not in summary
     assert "cd_geoid" not in summary
     assert "block_geoid" not in summary
+
+
+def test_calibration_package_geography_summary_rejects_mismatched_arrays():
+    package = _package()
+    package["cd_geoid"] = np.array(["0101", "0102"])
+
+    try:
+        summarize_geography_assignment(package)
+    except ValueError as exc:
+        assert "mismatched" in str(exc)
+    else:
+        raise AssertionError("Mismatched geography arrays should fail")
 
 
 def test_calibration_package_summary_handles_empty_matrix():
@@ -358,6 +476,33 @@ def test_validate_persisted_calibration_package_contract_loads_pickle(tmp_path):
     assert validated == contract
 
 
+def test_write_and_validate_calibration_package_contract_without_geography(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _package()
+    package.pop("block_geoid")
+    package.pop("cd_geoid")
+    _write_package(package_path, package)
+
+    contract = write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+
+    validated = validate_calibration_package_contract(
+        package_path=package_path,
+        package=package,
+        dataset_path=dataset_path,
+        db_path=db_path,
+    )
+    assert validated == contract
+    assert contract.metadata["geography_assignment"]["source_kind"] == "unavailable"
+
+
 def test_validate_calibration_package_contract_fails_on_stale_summary(tmp_path):
     dataset_path, db_path, package_path = _write_inputs(tmp_path)
     package = _write_package(package_path)
@@ -382,6 +527,66 @@ def test_validate_calibration_package_contract_fails_on_stale_summary(tmp_path):
         assert "summary does not match" in str(exc)
     else:
         raise AssertionError("Stale calibration package summary should fail")
+
+
+def test_validate_calibration_package_contract_fails_on_stale_geography(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+    write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+    changed_package = _package()
+    changed_package["block_geoid"] = np.array(["030010001", "010010002", "020010001"])
+
+    try:
+        validate_calibration_package_contract(
+            package_path=package_path,
+            package=changed_package,
+        )
+    except ValueError as exc:
+        assert "geography assignment" in str(exc)
+    else:
+        raise AssertionError("Stale calibration package geography should fail")
+
+
+def test_validate_calibration_package_contract_fails_on_contract_geography(tmp_path):
+    dataset_path, db_path, package_path = _write_inputs(tmp_path)
+    package = _write_package(package_path)
+    contract = write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+    )
+    payload = contract.to_dict()
+    payload["metadata"]["geography_assignment"]["canonical_geography_sha256"] = (
+        "sha256:" + "0" * 64
+    )
+    contract_path = tmp_path / CALIBRATION_PACKAGE_CONTRACT_FILENAME
+    contract_path.write_text(
+        contract_to_json(StageContract.from_dict(payload)),
+        encoding="utf-8",
+    )
+
+    try:
+        validate_calibration_package_contract(
+            package_path=package_path,
+            contract_path=contract_path,
+            package=package,
+        )
+    except ValueError as exc:
+        assert "geography assignment" in str(exc)
+    else:
+        raise AssertionError("Stale contract geography should fail")
 
 
 def test_validate_calibration_package_contract_fails_on_package_checksum(tmp_path):

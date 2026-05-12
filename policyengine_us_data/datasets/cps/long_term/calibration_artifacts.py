@@ -136,7 +136,9 @@ def capture_base_dataset_snapshot(base_dataset_path: str) -> dict[str, Any]:
     return snapshot
 
 
-def _normalize_tax_assumption_contract(value: dict[str, Any] | None) -> dict[str, Any] | None:
+def _normalize_tax_assumption_contract(
+    value: dict[str, Any] | None,
+) -> dict[str, Any] | None:
     if value is None:
         return None
     normalized = _json_clone(value)

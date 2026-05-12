@@ -21,7 +21,9 @@ hf_secret = modal.Secret.from_name("huggingface-token")
 
 image = base_image
 
-_LONG_TERM_DIR = "/root/policyengine-us-data/policyengine_us_data/datasets/cps/long_term"
+_LONG_TERM_DIR = (
+    "/root/policyengine-us-data/policyengine_us_data/datasets/cps/long_term"
+)
 _VENV_PYTHON = "/root/policyengine-us-data/.venv/bin/python"
 
 

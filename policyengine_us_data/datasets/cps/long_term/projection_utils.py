@@ -208,9 +208,7 @@ def project_input_variable_values_to_person_rows(
             f"column in input dataframe."
         )
 
-    entity_ids = np.asarray(
-        sim.calculate(f"{entity_key}_id", map_to=entity_key).values
-    )
+    entity_ids = np.asarray(sim.calculate(f"{entity_key}_id", map_to=entity_key).values)
     if len(entity_ids) != len(values):
         raise ValueError(
             f"Unable to align {var_name} on {entity_key}: got "
@@ -373,13 +371,11 @@ def calculate_year_statistics(
 
     household_microseries = sim.calculate("household_id", map_to="household")
     baseline_weights_actual = household_microseries.weights.values
-    household_ids_hh = household_microseries.values
 
     ss_values = None
     ss_target = None
     if use_ss:
         ss_hh = sim.calculate("social_security", period=year, map_to="household")
-        ss_baseline_total = ss_hh.sum()
         ss_values = ss_hh.values
 
     w_new, iterations = calibrate_fn(

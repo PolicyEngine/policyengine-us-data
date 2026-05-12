@@ -62,6 +62,22 @@ def _setup_repo():
     os.chdir("/root/policyengine-us-data")
 
 
+def _ensure_geography_prerequisites() -> None:
+    """Download geography prerequisites excluded from the package wheel."""
+    from policyengine_us_data.storage.download_prerequisites import (
+        GEOGRAPHY_REPO,
+        PREREQUISITE_ARTIFACTS,
+        download_prerequisites,
+    )
+
+    geography_artifacts = tuple(
+        artifact
+        for artifact in PREREQUISITE_ARTIFACTS
+        if artifact.repo == GEOGRAPHY_REPO
+    )
+    download_prerequisites(geography_artifacts)
+
+
 def _append_hyperparams(cmd, beta, lambda_l0, lambda_l2, learning_rate, log_freq=None):
     """Append optional hyperparameter flags to a command list."""
     if beta is not None:
@@ -180,6 +196,7 @@ def _fit_weights_impl(
 ) -> dict:
     """Full pipeline: read data from pipeline volume, build matrix, fit."""
     _setup_repo()
+    _ensure_geography_prerequisites()
 
     pipeline_vol.reload()
     artifacts = artifacts_dir if artifacts_dir else f"{PIPELINE_MOUNT}/artifacts"
@@ -348,6 +365,7 @@ def _build_package_impl(
 ) -> str:
     """Read data from pipeline volume, build X matrix, save package."""
     _setup_repo()
+    _ensure_geography_prerequisites()
 
     pipeline_vol.reload()
     artifacts = f"{PIPELINE_MOUNT}/artifacts"

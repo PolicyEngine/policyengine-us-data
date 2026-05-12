@@ -88,6 +88,31 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
     }
 
 
+def test_ensure_geography_prerequisites_downloads_only_geography(monkeypatch):
+    remote_runner = _load_remote_calibration_runner_module()
+    from policyengine_us_data.storage import download_prerequisites as prereq_module
+
+    captured = {}
+
+    def fake_download_prerequisites(artifacts):
+        captured["artifacts"] = artifacts
+
+    monkeypatch.setattr(
+        prereq_module,
+        "download_prerequisites",
+        fake_download_prerequisites,
+    )
+
+    remote_runner._ensure_geography_prerequisites()
+
+    artifacts = captured["artifacts"]
+    assert {artifact.local_filename for artifact in artifacts} == {
+        "block_cd_distributions.csv.gz",
+        "block_crosswalk.csv.gz",
+    }
+    assert all(artifact.repo == prereq_module.GEOGRAPHY_REPO for artifact in artifacts)
+
+
 def test_fit_weights_impl_does_not_use_optimizer_checkpoint_artifacts(
     monkeypatch,
     tmp_path,
@@ -98,8 +123,14 @@ def test_fit_weights_impl_does_not_use_optimizer_checkpoint_artifacts(
     weights = tmp_path / "weights.npy"
 
     volume = SimpleNamespace(reload=Mock(), commit=Mock())
+    ensure_prereqs = Mock()
     monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
     monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+    monkeypatch.setattr(
+        remote_runner,
+        "_ensure_geography_prerequisites",
+        ensure_prereqs,
+    )
 
     def fake_run_streaming(cmd, env=None, label=""):
         assert "--resume-from" not in cmd
@@ -117,6 +148,7 @@ def test_fit_weights_impl_does_not_use_optimizer_checkpoint_artifacts(
 
     assert result["weights"] == b"weights"
     assert "checkpoint" not in result
+    ensure_prereqs.assert_called_once()
     volume.reload.assert_called_once()
     volume.commit.assert_not_called()
 
@@ -132,9 +164,15 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     (artifacts_dir / "source_imputed_stratified_extended_cps.h5").write_bytes(b"h5")
 
     volume = SimpleNamespace(reload=Mock(), commit=Mock())
+    ensure_prereqs = Mock()
     monkeypatch.setattr(remote_runner, "PIPELINE_MOUNT", str(tmp_path))
     monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
     monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+    monkeypatch.setattr(
+        remote_runner,
+        "_ensure_geography_prerequisites",
+        ensure_prereqs,
+    )
     monkeypatch.setattr(remote_runner, "_write_package_sidecar", lambda _: True)
     from policyengine_us_data.stage_contracts import calibration_package
 
@@ -205,5 +243,6 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     assert captured["contract_validation"]["db_path"] == (
         artifacts_dir / "policy_data.db"
     )
+    ensure_prereqs.assert_called_once()
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()

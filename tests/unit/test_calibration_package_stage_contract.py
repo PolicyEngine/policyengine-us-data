@@ -1,10 +1,17 @@
-import pickle
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-from scipy import sparse
-
+from tests.unit.fixtures.calibration_package_stage_contract import (
+    TARGET_CONFIG_PATH,
+    calibration_package_contract,
+    calibration_package_parameters,
+    calibration_package_payload,
+    calibration_package_payload_with_block_geoids,
+    calibration_package_payload_with_cd_geoids,
+    calibration_package_payload_without_geography,
+    contract_input_paths,
+    empty_matrix_calibration_package_payload,
+    write_calibration_package_payload,
+    write_non_mapping_calibration_package_payload,
+)
+from tests.unit.fixtures.geography import checksum_block_geoids, checksum_cd_geoids
 from policyengine_us_data.stage_contracts import (
     StageContract,
     contract_from_json,
@@ -29,97 +36,8 @@ from policyengine_us_data.utils.geography_checksum import (
 )
 
 
-def _write_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
-    dataset_path = tmp_path / "source_imputed_stratified_extended_cps.h5"
-    db_path = tmp_path / "policy_data.db"
-    package_path = tmp_path / "calibration_package.pkl"
-    dataset_path.write_bytes(b"dataset")
-    db_path.write_bytes(b"sqlite")
-    return dataset_path, db_path, package_path
-
-
-def _package() -> dict:
-    matrix = sparse.csr_matrix(
-        np.array(
-            [
-                [1.0, 0.0, 2.0],
-                [0.0, 3.0, 0.0],
-            ]
-        )
-    )
-    return {
-        "X_sparse": matrix,
-        "targets_df": pd.DataFrame(
-            {
-                "value": [100.0, 200.0],
-                "domain_variable": ["state", "state"],
-                "variable": ["income_tax", "snap"],
-                "geo_level": ["state", "state"],
-                "geographic_id": ["01", "02"],
-            }
-        ),
-        "target_names": ["state_income_tax_01", "state_snap_02"],
-        "metadata": {
-            "dataset_sha256": "sha256:dataset",
-            "db_sha256": "sha256:db",
-            "target_config_path": "policyengine_us_data/calibration/target_config.yaml",
-            "target_config_sha256": "sha256:target-config",
-            "n_clones": 3,
-            "seed": 42,
-            "base_n_records": 1,
-            "package_scope": "minimal",
-            "matrix_builder": "chunked",
-            "chunk_size": 25_000,
-            "chunk_dir": "/pipeline/artifacts/run-a/matrix_build",
-            "git_commit": "abc123",
-            "package_version": "1.98.2",
-        },
-        "initial_weights": np.array([1.0, 1.0, 1.0]),
-        "cd_geoid": np.array(["0101", "0102", "0201"]),
-        "block_geoid": np.array(["010010001", "010010002", "020010001"]),
-    }
-
-
-def _write_package(path: Path, package: dict | None = None) -> dict:
-    package = package or _package()
-    with path.open("wb") as handle:
-        pickle.dump(package, handle)
-    return package
-
-
-def _parameters() -> dict:
-    return {
-        "workers": None,
-        "n_clones": 3,
-        "target_config": "policyengine_us_data/calibration/target_config.yaml",
-        "skip_county": True,
-        "skip_source_impute": True,
-        "skip_takeup_rerandomize": False,
-        "chunked_matrix": True,
-        "chunk_size": 25_000,
-        "parallel_matrix": False,
-        "num_matrix_workers": None,
-    }
-
-
-def _contract(tmp_path: Path) -> StageContract:
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
-    return build_calibration_package_contract(
-        package_path=package_path,
-        dataset_path=dataset_path,
-        db_path=db_path,
-        package=package,
-        parameters=_parameters(),
-        run_id="run-a",
-        started_at="2026-05-08T12:00:00Z",
-        completed_at="2026-05-08T12:02:00Z",
-        duration_s=120.0,
-    )
-
-
 def test_calibration_package_contract_records_stage_2_handoff(tmp_path):
-    contract = _contract(tmp_path)
+    contract = calibration_package_contract(tmp_path)
 
     assert contract.stage_id == "2_build_calibration_package"
     assert contract.contract_type == "calibration_package"
@@ -141,7 +59,7 @@ def test_calibration_package_parameters_parse_runtime_args():
     params = CalibrationPackageParameters.from_runtime_args(
         workers=8,
         n_clones=430,
-        target_config_path="policyengine_us_data/calibration/target_config.yaml",
+        target_config_path=TARGET_CONFIG_PATH,
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -160,7 +78,7 @@ def test_calibration_package_parameters_parse_runtime_args():
         "skip_county": True,
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,
-        "target_config": "policyengine_us_data/calibration/target_config.yaml",
+        "target_config": TARGET_CONFIG_PATH,
         "workers": None,
     }
 
@@ -186,14 +104,14 @@ def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
 
 
 def test_calibration_package_summary_round_trips_through_schema():
-    summary = summarize_calibration_package(_package())
+    summary = summarize_calibration_package(calibration_package_payload())
 
     assert isinstance(summary, CalibrationPackageSummary)
     assert CalibrationPackageSummary.from_dict(summary.to_dict()) == summary
 
 
 def test_geography_assignment_summary_round_trips_through_schema():
-    summary = summarize_geography_assignment(_package())
+    summary = summarize_geography_assignment(calibration_package_payload())
 
     assert isinstance(summary, GeographyAssignmentSummary)
     assert GeographyAssignmentSummary.from_dict(summary.to_dict()) == summary
@@ -207,10 +125,10 @@ def test_geography_assignment_summary_round_trips_through_schema():
 
 
 def test_geography_assignment_summary_hashes_are_dtype_width_independent():
-    narrow = np.array(["010010001", "010010002"], dtype="<U9")
-    wide = np.array(["010010001", "010010002"], dtype="<U15")
-    narrow_cd = np.array(["0101", "0102"], dtype="<U4")
-    wide_cd = np.array(["0101", "0102"], dtype="<U10")
+    narrow = checksum_block_geoids(dtype="<U9")
+    wide = checksum_block_geoids(dtype="<U15")
+    narrow_cd = checksum_cd_geoids(dtype="<U4")
+    wide_cd = checksum_cd_geoids(dtype="<U10")
 
     assert hash_string_array(narrow) == hash_string_array(wide)
     assert canonical_geography_checksum(
@@ -227,9 +145,7 @@ def test_geography_assignment_summary_hashes_are_dtype_width_independent():
 
 
 def test_geography_assignment_summary_allows_unavailable_package_geography():
-    package = _package()
-    package.pop("block_geoid")
-    package.pop("cd_geoid")
+    package = calibration_package_payload_without_geography()
 
     summary = summarize_geography_assignment(package)
 
@@ -241,8 +157,8 @@ def test_geography_assignment_summary_allows_unavailable_package_geography():
 
 
 def test_calibration_package_contract_rejects_invalid_parameter_mapping(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
 
     try:
         build_calibration_package_contract(
@@ -261,15 +177,15 @@ def test_calibration_package_contract_rejects_invalid_parameter_mapping(tmp_path
 
 
 def test_calibration_package_contract_normalizes_empty_run_id_to_none(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
 
     contract = build_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -278,7 +194,7 @@ def test_calibration_package_contract_normalizes_empty_run_id_to_none(tmp_path):
 
 
 def test_calibration_package_contract_records_matrix_summary(tmp_path):
-    contract = _contract(tmp_path)
+    contract = calibration_package_contract(tmp_path)
 
     summary = contract.metadata["package_summary"]
 
@@ -299,7 +215,7 @@ def test_calibration_package_contract_records_matrix_summary(tmp_path):
 
 
 def test_calibration_package_contract_records_geography_assignment(tmp_path):
-    contract = _contract(tmp_path)
+    contract = calibration_package_contract(tmp_path)
 
     geography = contract.metadata["geography_assignment"]
 
@@ -317,7 +233,7 @@ def test_calibration_package_contract_records_geography_assignment(tmp_path):
 
 
 def test_calibration_package_contract_records_single_substage(tmp_path):
-    contract = _contract(tmp_path)
+    contract = calibration_package_contract(tmp_path)
 
     assert len(contract.substages) == 1
     substage = contract.substages[0]
@@ -329,7 +245,7 @@ def test_calibration_package_contract_records_single_substage(tmp_path):
 
 
 def test_calibration_package_contract_json_round_trip_is_deterministic(tmp_path):
-    contract = _contract(tmp_path)
+    contract = calibration_package_contract(tmp_path)
 
     payload = contract_to_json(contract)
     restored = contract_from_json(payload)
@@ -339,28 +255,27 @@ def test_calibration_package_contract_json_round_trip_is_deterministic(tmp_path)
 
 
 def test_calibration_package_contract_fingerprint_changes_with_geography(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     first = build_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
 
     changed_path = tmp_path / "changed_calibration_package.pkl"
-    changed_package = _package()
-    changed_package["block_geoid"] = np.array(["030010001", "010010002", "020010001"])
-    _write_package(changed_path, changed_package)
+    changed_package = calibration_package_payload_with_block_geoids()
+    write_calibration_package_payload(changed_path, changed_package)
     second = build_calibration_package_contract(
         package_path=changed_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=changed_package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -385,7 +300,7 @@ def test_calibration_package_contract_fingerprint_changes_with_geography(tmp_pat
 
 
 def test_calibration_package_summary_omits_bulky_payloads():
-    summary = summarize_calibration_package(_package()).to_dict()
+    summary = summarize_calibration_package(calibration_package_payload()).to_dict()
 
     assert "X_sparse" not in summary
     assert "targets_df" not in summary
@@ -396,8 +311,7 @@ def test_calibration_package_summary_omits_bulky_payloads():
 
 
 def test_calibration_package_geography_summary_rejects_mismatched_arrays():
-    package = _package()
-    package["cd_geoid"] = np.array(["0101", "0102"])
+    package = calibration_package_payload_with_cd_geoids(("0101", "0102"))
 
     try:
         summarize_geography_assignment(package)
@@ -408,10 +322,7 @@ def test_calibration_package_geography_summary_rejects_mismatched_arrays():
 
 
 def test_calibration_package_summary_handles_empty_matrix():
-    package = _package()
-    package["X_sparse"] = sparse.csr_matrix((0, 0))
-    package["targets_df"] = package["targets_df"].iloc[0:0]
-    package["target_names"] = []
+    package = empty_matrix_calibration_package_payload()
 
     summary = summarize_calibration_package(package).to_dict()
 
@@ -421,8 +332,8 @@ def test_calibration_package_summary_handles_empty_matrix():
 
 
 def test_calibration_package_contract_rejects_missing_artifact(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _package()
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = calibration_package_payload()
 
     try:
         build_calibration_package_contract(
@@ -430,7 +341,7 @@ def test_calibration_package_contract_rejects_missing_artifact(tmp_path):
             dataset_path=dataset_path,
             db_path=db_path,
             package=package,
-            parameters=_parameters(),
+            parameters=calibration_package_parameters(),
             run_id="run-a",
             completed_at="2026-05-08T12:02:00Z",
         )
@@ -441,15 +352,15 @@ def test_calibration_package_contract_rejects_missing_artifact(tmp_path):
 
 
 def test_write_and_validate_calibration_package_contract(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
 
     contract = write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -467,14 +378,14 @@ def test_write_and_validate_calibration_package_contract(tmp_path):
 
 
 def test_validate_persisted_calibration_package_contract_loads_pickle(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     contract = write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -489,18 +400,18 @@ def test_validate_persisted_calibration_package_contract_loads_pickle(tmp_path):
 
 
 def test_write_and_validate_calibration_package_contract_without_geography(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _package()
-    package.pop("block_geoid")
-    package.pop("cd_geoid")
-    _write_package(package_path, package)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(
+        package_path,
+        calibration_package_payload_without_geography(),
+    )
 
     contract = write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -516,19 +427,18 @@ def test_write_and_validate_calibration_package_contract_without_geography(tmp_p
 
 
 def test_validate_calibration_package_contract_fails_on_stale_summary(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
-    changed_package = _package()
-    changed_package["X_sparse"] = sparse.csr_matrix(np.ones((3, 3)))
+    changed_package = empty_matrix_calibration_package_payload()
 
     try:
         validate_calibration_package_contract(
@@ -542,19 +452,18 @@ def test_validate_calibration_package_contract_fails_on_stale_summary(tmp_path):
 
 
 def test_validate_calibration_package_contract_fails_on_stale_geography(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
-    changed_package = _package()
-    changed_package["block_geoid"] = np.array(["030010001", "010010002", "020010001"])
+    changed_package = calibration_package_payload_with_block_geoids()
 
     try:
         validate_calibration_package_contract(
@@ -568,14 +477,14 @@ def test_validate_calibration_package_contract_fails_on_stale_geography(tmp_path
 
 
 def test_validate_calibration_package_contract_fails_on_contract_geography(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     contract = write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -602,14 +511,14 @@ def test_validate_calibration_package_contract_fails_on_contract_geography(tmp_p
 
 
 def test_validate_calibration_package_contract_fails_on_package_checksum(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -624,14 +533,14 @@ def test_validate_calibration_package_contract_fails_on_package_checksum(tmp_pat
 
 
 def test_validate_calibration_package_contract_requires_package_for_summary(tmp_path):
-    dataset_path, db_path, package_path = _write_inputs(tmp_path)
-    package = _write_package(package_path)
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
     write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
         package=package,
-        parameters=_parameters(),
+        parameters=calibration_package_parameters(),
         run_id="run-a",
         completed_at="2026-05-08T12:02:00Z",
     )
@@ -646,8 +555,7 @@ def test_validate_calibration_package_contract_requires_package_for_summary(tmp_
 
 def test_load_calibration_package_payload_rejects_non_mapping(tmp_path):
     package_path = tmp_path / "calibration_package.pkl"
-    with package_path.open("wb") as handle:
-        pickle.dump(["not", "a", "mapping"], handle)
+    write_non_mapping_calibration_package_payload(package_path)
 
     try:
         load_calibration_package_payload(package_path)

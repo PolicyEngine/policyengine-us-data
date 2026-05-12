@@ -151,6 +151,45 @@ def test_validate_and_maybe_upload_datasets_stages_with_run_id(monkeypatch):
     ]
 
 
+def test_validate_and_maybe_upload_datasets_can_skip_small_enhanced_cps(
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+    calls = []
+
+    def fake_run_script(script_path, args=None, env=None, log_file=None):
+        calls.append((script_path, args or [], env))
+        return script_path
+
+    monkeypatch.setattr(data_build, "run_script", fake_run_script)
+
+    data_build.validate_and_maybe_upload_datasets(
+        upload=True,
+        skip_enhanced_cps=False,
+        require_small_enhanced_cps=False,
+        env={"TEST_ENV": "1"},
+        stage_only=True,
+        run_id="ecps-only",
+    )
+
+    assert calls == [
+        (
+            "policyengine_us_data/storage/upload_completed_datasets.py",
+            ["--validate-only", "--no-require-small-enhanced-cps"],
+            {"TEST_ENV": "1"},
+        ),
+        (
+            "policyengine_us_data/storage/upload_completed_datasets.py",
+            [
+                "--no-require-small-enhanced-cps",
+                "--stage-only",
+                "--run-id=ecps-only",
+            ],
+            {"TEST_ENV": "1"},
+        ),
+    ]
+
+
 def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
     monkeypatch,
 ):

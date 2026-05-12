@@ -53,6 +53,22 @@ REQUIRED_GROUPS = [
     "household_weight",
 ]
 
+PROHIBITED_DATASET_VARIABLES = {
+    "social_security_retirement_reported",
+    "snap_reported",
+    "ssi_reported",
+    "tanf_reported",
+    "wic_reported",
+    "free_school_meals_reported",
+    "reduced_price_school_meals_reported",
+    "spm_unit_wic_reported",
+    "spm_unit_broadband_subsidy",
+    "spm_unit_broadband_subsidy_reported",
+    "spm_unit_payroll_tax_reported",
+    "spm_unit_federal_tax_reported",
+    "spm_unit_state_tax_reported",
+}
+
 # At least one of these income groups must exist with data.
 INCOME_GROUPS = [
     "employment_income_before_lsr",
@@ -88,8 +104,9 @@ class DatasetValidationError(Exception):
 
 def _dataset_upload_specs(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
 ) -> list[tuple[Path, str, bool]]:
-    return [
+    specs = [
         (CPS_2024.file_path, CPS_2024.file_path.name, True),
         (
             STORAGE_FOLDER / "calibration" / "policy_data.db",
@@ -106,27 +123,37 @@ def _dataset_upload_specs(
             clone_diagnostics_path(EnhancedCPS_2024.file_path).name,
             require_enhanced_cps,
         ),
-        (
-            STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
-            "small_enhanced_cps_2024.h5",
-            require_enhanced_cps,
-        ),
     ]
+    if require_small_enhanced_cps:
+        specs.append(
+            (
+                STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
+                "small_enhanced_cps_2024.h5",
+                require_enhanced_cps,
+            )
+        )
+    return specs
 
 
-def _enhanced_dataset_files() -> list[Path]:
-    return [
+def _enhanced_dataset_files(require_small_enhanced_cps: bool = True) -> list[Path]:
+    files = [
         EnhancedCPS_2024.file_path,
         clone_diagnostics_path(EnhancedCPS_2024.file_path),
-        STORAGE_FOLDER / "small_enhanced_cps_2024.h5",
     ]
+    if require_small_enhanced_cps:
+        files.append(STORAGE_FOLDER / "small_enhanced_cps_2024.h5")
+    return files
 
 
 def _collect_existing_dataset_artifacts(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
 ) -> list[tuple[Path, str]]:
     existing_files = []
-    for file_path, repo_path, required in _dataset_upload_specs(require_enhanced_cps):
+    for file_path, repo_path, required in _dataset_upload_specs(
+        require_enhanced_cps,
+        require_small_enhanced_cps,
+    ):
         if file_path.exists():
             existing_files.append((file_path, repo_path))
             print(f"✓ Found{' (optional)' if not required else ''}: {file_path}")
@@ -143,6 +170,7 @@ def _collect_existing_dataset_artifacts(
 
 def _collect_staged_dataset_repo_paths(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
     run_id: str = "",
 ) -> list[str]:
     api = HfApi()
@@ -157,7 +185,10 @@ def _collect_staged_dataset_repo_paths(
 
     rel_paths = []
     missing_required = []
-    for _, repo_path, required in _dataset_upload_specs(require_enhanced_cps):
+    for _, repo_path, required in _dataset_upload_specs(
+        require_enhanced_cps,
+        require_small_enhanced_cps,
+    ):
         staged_path = f"{prefix}/{repo_path}"
         if staged_path in repo_files:
             rel_paths.append(repo_path)
@@ -250,6 +281,15 @@ def validate_dataset(file_path: Path) -> None:
 
     try:
         with h5py.File(file_path, "r") as f:
+            prohibited_variables = sorted(
+                PROHIBITED_DATASET_VARIABLES.intersection(f.keys())
+            )
+            if prohibited_variables:
+                errors.append(
+                    "Dataset contains temporary or retired variables: "
+                    + ", ".join(prohibited_variables)
+                )
+
             for group_name in REQUIRED_GROUPS:
                 if not _check_group_has_data(f, group_name):
                     errors.append(
@@ -410,13 +450,15 @@ def _clone_diagnostics_errors(diagnostics, *, context: str) -> list[str]:
 
 def stage_datasets(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
     version: str | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
     run_id = _resolve_run_id(run_id)
     version = version or DATA_PACKAGE_VERSION
     files_with_repo_paths = _collect_existing_dataset_artifacts(
-        require_enhanced_cps=require_enhanced_cps
+        require_enhanced_cps=require_enhanced_cps,
+        require_small_enhanced_cps=require_small_enhanced_cps,
     )
     _validate_dataset_artifacts(files_with_repo_paths)
 
@@ -433,6 +475,7 @@ def stage_datasets(
 
 def promote_datasets(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
     version: str | None = None,
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
@@ -445,6 +488,7 @@ def promote_datasets(
         if files_with_repo_paths
         else _collect_staged_dataset_repo_paths(
             require_enhanced_cps=require_enhanced_cps,
+            require_small_enhanced_cps=require_small_enhanced_cps,
             run_id=run_id,
         )
     )
@@ -524,6 +568,7 @@ def promote_datasets(
 
 def upload_datasets(
     require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
     *,
     stage_only: bool = False,
     promote_only: bool = False,
@@ -540,6 +585,7 @@ def upload_datasets(
     if promote_only:
         return promote_datasets(
             require_enhanced_cps=require_enhanced_cps,
+            require_small_enhanced_cps=require_small_enhanced_cps,
             version=version,
             run_id=run_id,
             cleanup_staging=cleanup_staging,
@@ -547,6 +593,7 @@ def upload_datasets(
 
     files_with_repo_paths = stage_datasets(
         require_enhanced_cps=require_enhanced_cps,
+        require_small_enhanced_cps=require_small_enhanced_cps,
         version=version,
         run_id=run_id,
     )
@@ -555,6 +602,7 @@ def upload_datasets(
 
     return promote_datasets(
         require_enhanced_cps=require_enhanced_cps,
+        require_small_enhanced_cps=require_small_enhanced_cps,
         version=version,
         run_id=run_id,
         files_with_repo_paths=files_with_repo_paths,
@@ -567,10 +615,13 @@ def validate_all_datasets():
     validate_built_datasets(require_enhanced_cps=True)
 
 
-def validate_built_datasets(require_enhanced_cps: bool = True):
+def validate_built_datasets(
+    require_enhanced_cps: bool = True,
+    require_small_enhanced_cps: bool = True,
+):
     required_files = [CPS_2024.file_path]
     if require_enhanced_cps:
-        required_files.extend(_enhanced_dataset_files())
+        required_files.extend(_enhanced_dataset_files(require_small_enhanced_cps))
 
     for file_path in required_files:
         if not file_path.exists():
@@ -587,6 +638,11 @@ if __name__ == "__main__":
         "--no-require-enhanced-cps",
         action="store_true",
         help="Treat enhanced_cps and small_enhanced_cps as optional.",
+    )
+    parser.add_argument(
+        "--no-require-small-enhanced-cps",
+        action="store_true",
+        help="Treat small_enhanced_cps as optional while still requiring enhanced_cps.",
     )
     parser.add_argument(
         "--validate-only",
@@ -615,11 +671,19 @@ if __name__ == "__main__":
         help="Override the policyengine-us-data version used for staging/promote.",
     )
     args = parser.parse_args()
+    require_enhanced_cps = not args.no_require_enhanced_cps
+    require_small_enhanced_cps = (
+        require_enhanced_cps and not args.no_require_small_enhanced_cps
+    )
     if args.validate_only:
-        validate_built_datasets(require_enhanced_cps=not args.no_require_enhanced_cps)
+        validate_built_datasets(
+            require_enhanced_cps=require_enhanced_cps,
+            require_small_enhanced_cps=require_small_enhanced_cps,
+        )
     else:
         upload_datasets(
-            require_enhanced_cps=not args.no_require_enhanced_cps,
+            require_enhanced_cps=require_enhanced_cps,
+            require_small_enhanced_cps=require_small_enhanced_cps,
             stage_only=args.stage_only,
             promote_only=args.promote_only,
             run_id=args.run_id,

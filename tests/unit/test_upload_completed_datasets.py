@@ -172,6 +172,35 @@ def test_validate_dataset_infers_time_period_for_flat_h5(tmp_path, monkeypatch):
     assert _TimePeriodCheckingAggregateMicrosimulation.last_dataset.time_period == 2024
 
 
+def test_validate_dataset_rejects_temporary_reported_source_variables(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "cps_2024.h5"
+    _write_h5(
+        file_path,
+        {
+            "person_id": np.array([101], dtype=np.int32),
+            "household_id": np.array([201], dtype=np.int32),
+            "employment_income": np.array([50_000.0], dtype=np.float32),
+            "household_weight": np.array([1.0], dtype=np.float32),
+            "snap_reported": np.array([1_200.0], dtype=np.float32),
+            "ssi_reported": np.array([600.0], dtype=np.float32),
+        },
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us.Microsimulation",
+        _TimePeriodCheckingAggregateMicrosimulation,
+    )
+
+    with pytest.raises(
+        DatasetValidationError,
+        match="temporary or retired variables: snap_reported, ssi_reported",
+    ):
+        validate_dataset(file_path)
+
+
 def _prepare_release_files(tmp_path, monkeypatch):
     cps_path = tmp_path / "cps_2024.h5"
     cps_path.write_bytes(b"cps")
@@ -355,6 +384,39 @@ def test_upload_datasets_stage_only_skips_promote(tmp_path, monkeypatch):
         }
     ]
     assert promote_calls == []
+
+
+def test_upload_datasets_can_stage_enhanced_cps_without_small(
+    tmp_path,
+    monkeypatch,
+):
+    _prepare_release_files(tmp_path, monkeypatch)
+    staged_files = []
+
+    monkeypatch.setattr(upload_module, "validate_dataset", lambda file_path: None)
+    monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")
+    monkeypatch.setattr(
+        upload_module,
+        "upload_to_staging_hf",
+        lambda files_with_paths, **kwargs: staged_files.append(
+            ([(Path(path), repo_path) for path, repo_path in files_with_paths], kwargs)
+        ),
+    )
+
+    upload_datasets(
+        require_small_enhanced_cps=False,
+        stage_only=True,
+        run_id="ecps-only",
+        version="1.73.0",
+    )
+
+    assert [repo_path for _, repo_path in staged_files[0][0]] == [
+        "cps_2024.h5",
+        "policy_data.db",
+        "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
+    ]
+    assert staged_files[0][1]["run_id"] == "ecps-only"
 
 
 def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatch):
@@ -611,3 +673,43 @@ def test_validate_built_datasets_requires_clone_diagnostics_sidecar(
 
     with pytest.raises(FileNotFoundError, match="clone_diagnostics"):
         validate_built_datasets(require_enhanced_cps=True)
+
+
+def test_validate_built_datasets_can_skip_small_enhanced_cps(tmp_path, monkeypatch):
+    storage_folder = tmp_path / "storage"
+    cps_path = storage_folder / "cps_2024.h5"
+    enhanced_path = storage_folder / "enhanced_cps_2024.h5"
+    diagnostics_path = enhanced_path.with_suffix(".clone_diagnostics.json")
+
+    storage_folder.mkdir(parents=True)
+    for path in [cps_path, enhanced_path, diagnostics_path]:
+        path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        upload_module,
+        "CPS_2024",
+        SimpleNamespace(file_path=cps_path),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "EnhancedCPS_2024",
+        SimpleNamespace(file_path=enhanced_path),
+    )
+    monkeypatch.setattr(upload_module, "STORAGE_FOLDER", storage_folder)
+    validated = []
+    monkeypatch.setattr(
+        upload_module,
+        "validate_dataset",
+        lambda file_path: validated.append(Path(file_path).name),
+    )
+
+    validate_built_datasets(
+        require_enhanced_cps=True,
+        require_small_enhanced_cps=False,
+    )
+
+    assert validated == [
+        "cps_2024.h5",
+        "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
+    ]

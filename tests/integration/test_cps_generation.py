@@ -3,6 +3,134 @@ import numpy as np
 import pandas as pd
 
 
+def test_drop_persisted_dataset_variables_removes_stale_h5_keys(tmp_path):
+    from policyengine_us_data.datasets.cps.cps import (
+        _drop_persisted_dataset_variables,
+    )
+
+    file_path = tmp_path / "cps_2024.h5"
+    with h5py.File(file_path, "w") as h5_file:
+        h5_file.create_dataset("snap_reported", data=np.array([1_200.0]))
+        h5_file.create_dataset("ssi_reported", data=np.array([600.0]))
+        h5_file.create_dataset("social_security_retirement", data=np.array([8_000.0]))
+
+    _drop_persisted_dataset_variables(
+        file_path,
+        ("snap_reported", "ssi_reported"),
+    )
+
+    with h5py.File(file_path, "r") as h5_file:
+        assert "snap_reported" not in h5_file
+        assert "ssi_reported" not in h5_file
+        assert h5_file["social_security_retirement"][:].tolist() == [8_000.0]
+
+
+def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
+    monkeypatch,
+    tmp_path,
+):
+    import policyengine_us
+    import policyengine_us_data.datasets.cps.cps as cps_module
+    import policyengine_us_data.db.etl_pregnancy as etl_pregnancy
+    from policyengine_us_data.datasets.cps.cps import add_takeup
+
+    class FakeResult:
+        def __init__(self, values):
+            self.values = np.asarray(values)
+
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = dataset
+
+        def calculate(self, variable_name):
+            values_by_variable = {
+                "eitc_child_count": [0],
+                "eitc": [0],
+                "state_code_str": ["CA"],
+                "wic_category_str": ["NONE", "NONE"],
+                "receives_wic": [False, False],
+                "tax_unit_child_dependents": [0],
+                "age_head": [40],
+            }
+            return FakeResult(values_by_variable[variable_name])
+
+    class FakeDataset:
+        def __init__(self, file_path):
+            self.file_path = file_path
+            self.time_period = 2024
+            self.data = {
+                "person_id": np.array([1, 2], dtype=np.int32),
+                "tax_unit_id": np.array([10], dtype=np.int32),
+                "spm_unit_id": np.array([100], dtype=np.int32),
+                "household_id": np.array([1_000], dtype=np.int32),
+                "person_tax_unit_id": np.array([10, 10], dtype=np.int32),
+                "person_household_id": np.array([1_000, 1_000], dtype=np.int32),
+                "snap_reported": np.array([1_200.0], dtype=np.float32),
+                "ssi_reported": np.array([600.0, 0.0], dtype=np.float32),
+                "reported_has_subsidized_marketplace_health_coverage_at_interview": np.array(
+                    [False, False]
+                ),
+                "has_medicaid_health_coverage_at_interview": np.array([False, False]),
+                "employment_income": np.array([20_000.0, 0.0], dtype=np.float32),
+                "age": np.array([40, 66], dtype=np.int32),
+                "is_female": np.array([True, False]),
+                "is_disabled": np.array([False, False]),
+            }
+
+        def load_dataset(self):
+            return {name: values.copy() for name, values in self.data.items()}
+
+        def save_dataset(self, data):
+            with h5py.File(self.file_path, "a") as h5_file:
+                for name, values in data.items():
+                    if name in h5_file:
+                        del h5_file[name]
+                    h5_file.create_dataset(name, data=values)
+
+    voluntary_filing_rates = {
+        children: {
+            wage: {"under_65": 0.0, "age_65_plus": 0.0}
+            for wage in ("zero", "low", "medium", "high")
+        }
+        for children in ("with_children", "no_children")
+    }
+    rates = {
+        "eitc": {0: 0.0},
+        "dc_ptc": 0.0,
+        "snap": 1.0,
+        "aca": 0.0,
+        "medicaid": {"CA": 0.0},
+        "head_start": 0.0,
+        "early_head_start": 0.0,
+        "ssi": 1.0,
+        "voluntary_filing": voluntary_filing_rates,
+        "tanf": 0.0,
+        "wic_takeup": {"NONE": 0.0},
+        "wic_nutritional_risk": {"NONE": 0.0},
+    }
+
+    monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
+    monkeypatch.setattr(cps_module, "load_take_up_rate", lambda name, year: rates[name])
+    monkeypatch.setattr(
+        etl_pregnancy,
+        "get_state_pregnancy_rates",
+        lambda cdc_year, acs_year: {"CA": 0.0},
+    )
+
+    file_path = tmp_path / "cps_2024.h5"
+    with h5py.File(file_path, "w") as h5_file:
+        h5_file.create_dataset("snap_reported", data=np.array([1_200.0]))
+        h5_file.create_dataset("ssi_reported", data=np.array([600.0, 0.0]))
+
+    add_takeup(FakeDataset(file_path))
+
+    with h5py.File(file_path, "r") as h5_file:
+        assert "snap_reported" not in h5_file
+        assert "ssi_reported" not in h5_file
+        assert "takes_up_snap_if_eligible" in h5_file
+        assert "takes_up_ssi_if_eligible" in h5_file
+
+
 def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     import policyengine_us_data.datasets.sipp as sipp_module
     from policyengine_us_data.datasets.cps.cps import add_tips

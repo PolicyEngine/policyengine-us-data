@@ -31,12 +31,19 @@ def _write_artifacts(
     artifacts_dir: Path,
     *,
     include_enhanced_cps: bool = True,
+    include_stage_5: bool = True,
 ) -> None:
     artifacts_dir.mkdir(exist_ok=True)
     for filename, payload in _ARTIFACT_BYTES.items():
         if not include_enhanced_cps and filename in {
             "enhanced_cps_2024.h5",
             "small_enhanced_cps_2024.h5",
+        }:
+            continue
+        if not include_stage_5 and filename in {
+            "small_enhanced_cps_2024.h5",
+            "source_imputed_stratified_extended_cps_2024.h5",
+            "source_imputed_stratified_extended_cps.h5",
         }:
             continue
         (artifacts_dir / filename).write_bytes(payload)
@@ -47,6 +54,7 @@ def _contract(
     *,
     run_id: str = "run-a",
     skip_enhanced_cps: bool = False,
+    skip_stage_5: bool = False,
 ) -> StageContract:
     return build_dataset_build_output_contract(
         artifacts_dir=artifacts_dir,
@@ -65,6 +73,7 @@ def _contract(
         upload_requested=True,
         stage_only=False,
         skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
     )
 
 
@@ -121,6 +130,22 @@ def test_dataset_build_contract_omits_enhanced_cps_when_skipped(tmp_path):
     records = {record.substage_id: record for record in contract.substages}
     assert records["1d_enhanced_cps_reweighting"].status == "skipped"
     assert records["1d_enhanced_cps_reweighting"].outputs == ()
+
+
+def test_dataset_build_contract_omits_phase_5_artifacts_when_skipped(tmp_path):
+    _write_artifacts(tmp_path, include_stage_5=False)
+
+    contract = _contract(tmp_path, skip_stage_5=True)
+
+    logical_names = {artifact.logical_name for artifact in contract.outputs}
+    assert "enhanced_cps_2024" in logical_names
+    assert "small_enhanced_cps_2024" not in logical_names
+    assert "source_imputed_stratified_extended_cps_2024" not in logical_names
+    assert "source_imputed_stratified_extended_cps" not in logical_names
+    assert contract.parameters["skip_stage_5"] is True
+    records = {record.substage_id: record for record in contract.substages}
+    assert records["1d_enhanced_cps_reweighting"].status == "completed"
+    assert records["1f_source_imputation"].status == "skipped"
 
 
 def test_dataset_build_contract_rejects_missing_required_stage_1_artifact(tmp_path):

@@ -450,6 +450,16 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
 
+TEMPORARY_TAKEUP_SOURCE_ANCHORS = ("snap_reported", "ssi_reported")
+
+
+def _drop_persisted_dataset_variables(file_path, variable_names):
+    with h5py.File(file_path, "a") as dataset_file:
+        for variable_name in variable_names:
+            if variable_name in dataset_file:
+                del dataset_file[variable_name]
+
+
 @pipeline_node(
     PipelineNode(
         id="add_takeup",
@@ -636,10 +646,14 @@ def add_takeup(self):
         data["age"],
     )
 
-    for source_anchor in ("snap_reported", "ssi_reported"):
+    for source_anchor in TEMPORARY_TAKEUP_SOURCE_ANCHORS:
         data.pop(source_anchor, None)
 
     self.save_dataset(data)
+    _drop_persisted_dataset_variables(
+        self.file_path,
+        TEMPORARY_TAKEUP_SOURCE_ANCHORS,
+    )
 
 
 def add_marketplace_plan_benchmark_ratio(self):

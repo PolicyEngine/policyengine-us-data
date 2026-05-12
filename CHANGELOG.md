@@ -1,3 +1,10 @@
+## [1.111.5] - 2026-05-12
+
+### Changed
+
+- Build datasets with policyengine-us 1.691.1 or later.
+
+
 ## [1.111.4] - 2026-05-12
 
 ### Fixed

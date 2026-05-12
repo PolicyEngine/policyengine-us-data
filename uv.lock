@@ -2139,7 +2139,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us-data"
-version = "1.111.4"
+version = "1.111.5"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },

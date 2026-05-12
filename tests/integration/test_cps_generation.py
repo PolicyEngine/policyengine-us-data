@@ -211,7 +211,7 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
     cps = {
         "age": np.array([40, 12, 70], dtype=np.int32),
         "is_household_head": np.array([True, False, True], dtype=bool),
-        "spm_unit_capped_housing_subsidy_reported": np.zeros(3, dtype=np.float32),
+        "spm_unit_capped_housing_subsidy_data": np.zeros(3, dtype=np.float32),
     }
     person = pd.DataFrame({"P_SEQ": [1, 2, 1]})
     household = pd.DataFrame({"H_TENURE": [2, 1]})
@@ -225,3 +225,46 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
         np.array([0, 0, 4000], dtype=np.int32),
     )
     assert not dataset.file_path.exists()
+
+
+def test_add_spm_variables_keeps_formulaic_outputs_out_of_dataset():
+    from policyengine_us_data.datasets.cps.cps import add_spm_variables
+
+    cps = {}
+    spm_unit = pd.DataFrame(
+        {
+            "SPM_TOTVAL": [50_000],
+            "SPM_RESOURCES": [45_000],
+            "SPM_SNAPSUB": [1_200],
+            "SPM_CAPHOUSESUB": [3_000],
+            "SPM_ENGVAL": [500],
+            "SPM_SCHLUNCH": [800],
+            "SPM_WICVAL": [200],
+            "SPM_BBSUBVAL": [360],
+            "SPM_FICA": [3_825],
+            "SPM_FEDTAX": [2_000],
+            "SPM_STTAX": [1_000],
+            "SPM_CAPWKCCXPNS": [4_000],
+            "SPM_CHILDCAREXPNS": [4_500],
+            "SPM_TENMORTSTATUS": [3],
+        }
+    )
+
+    add_spm_variables(None, cps, spm_unit)
+
+    assert cps["spm_unit_total_income_reported"].tolist() == [50_000]
+    assert cps["spm_unit_net_income_reported"].tolist() == [45_000]
+    assert cps["snap_reported"].tolist() == [1_200]
+    assert cps["spm_unit_capped_housing_subsidy_data"].tolist() == [3_000]
+    assert cps["spm_unit_energy_subsidy_data"].tolist() == [500]
+    assert cps["spm_unit_tenure_type"].tolist() == [b"RENTER"]
+    for variable in (
+        "free_school_meals_reported",
+        "reduced_price_school_meals_reported",
+        "spm_unit_wic_reported",
+        "spm_unit_broadband_subsidy_reported",
+        "spm_unit_payroll_tax_reported",
+        "spm_unit_federal_tax_reported",
+        "spm_unit_state_tax_reported",
+    ):
+        assert variable not in cps

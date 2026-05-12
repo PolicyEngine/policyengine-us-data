@@ -35,8 +35,6 @@ STAGE_3_PERSON_VARIABLES = tuple(
             "cps_race",
             "detailed_occupation_recode",
             "treasury_tipped_occupation_code",
-            "tanf_reported",
-            "ssi_reported",
             "is_puf_clone",
         )
     )
@@ -50,8 +48,7 @@ STAGE_3_GROUP_VARIABLES = tuple(
             "tax_unit_is_joint",
             "spm_unit_total_income_reported",
             "spm_unit_net_income_reported",
-            "spm_unit_capped_housing_subsidy_reported",
-            "snap_reported",
+            "spm_unit_capped_housing_subsidy_data",
             "household_is_puf_clone",
         )
     )
@@ -224,8 +221,6 @@ def _extended_person_arrays(
             person_count,
             dtype=np.int16,
         ),
-        "tanf_reported": np.zeros(person_count, dtype=np.float32),
-        "ssi_reported": np.zeros(person_count, dtype=np.float32),
         "is_puf_clone": np.concatenate(
             [
                 np.zeros(cps_person_count, dtype=np.bool_),
@@ -260,12 +255,11 @@ def _extended_group_arrays(
         "spm_unit_net_income_reported": np.round(total_income * 0.85, 2).astype(
             np.float32
         ),
-        "spm_unit_capped_housing_subsidy_reported": np.where(
+        "spm_unit_capped_housing_subsidy_data": np.where(
             arrays["tenure_type"] == b"RENTED",
             1_200,
             0,
         ).astype(np.float32),
-        "snap_reported": np.where(total_income < 50_000, 1_000, 0).astype(np.float32),
         "household_is_puf_clone": np.concatenate(
             [
                 np.zeros(cps_household_count, dtype=np.bool_),

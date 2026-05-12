@@ -444,7 +444,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
     cps["housing_assistance"] = np.zeros_like(
-        cps["spm_unit_capped_housing_subsidy_reported"]
+        cps["spm_unit_capped_housing_subsidy_data"]
     )
     cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
@@ -632,6 +632,9 @@ def add_takeup(self):
         reported_ssi,
         data["age"],
     )
+
+    for source_anchor in ("snap_reported", "ssi_reported"):
+        data.pop(source_anchor, None)
 
     self.save_dataset(data)
 
@@ -1260,9 +1263,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # The code for strike benefits is 12.
     cps["strike_benefits"] = (person.OI_OFF == 12) * person.OI_VAL
     cps["child_support_received"] = person.CSP_VAL
-    # Assume all public assistance / welfare dollars (PAW_VAL) are TANF.
-    # They could also include General Assistance.
-    cps["tanf_reported"] = person.PAW_VAL
+    # CPS SSI receipt anchors SSI take-up and disability alignment inside
+    # add_takeup; it is dropped before the dataset is saved.
     cps["ssi_reported"] = person.SSI_VAL
     # Allocate CPS RETCB_VAL (a single bundled retirement contribution
     # total) into account-type-specific variables using a proportional
@@ -1397,15 +1399,8 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     SPM_RENAMES = dict(
         spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
-        spm_unit_capped_housing_subsidy_reported="SPM_CAPHOUSESUB",
-        free_school_meals_reported="SPM_SCHLUNCH",
-        spm_unit_energy_subsidy_reported="SPM_ENGVAL",
-        spm_unit_wic_reported="SPM_WICVAL",
-        spm_unit_broadband_subsidy_reported="SPM_BBSUBVAL",
-        spm_unit_payroll_tax_reported="SPM_FICA",
-        spm_unit_federal_tax_reported="SPM_FEDTAX",
-        # State tax includes refundable credits.
-        spm_unit_state_tax_reported="SPM_STTAX",
+        spm_unit_capped_housing_subsidy_data="SPM_CAPHOUSESUB",
+        spm_unit_energy_subsidy_data="SPM_ENGVAL",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
         spm_unit_net_income_reported="SPM_RESOURCES",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
@@ -1424,8 +1419,6 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
         cps["spm_unit_tenure_type"] = (
             spm_unit.SPM_TENMORTSTATUS.map(tenure_map).fillna("RENTER").astype("S")
         )
-
-    cps["reduced_price_school_meals_reported"] = cps["free_school_meals_reported"] * 0
 
 
 @pipeline_node(

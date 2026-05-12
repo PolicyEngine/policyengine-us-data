@@ -482,9 +482,9 @@ def classify_national_target(
             target_name,
             index.match(
                 variable="household_count",
-                domain_variable="spm_unit_energy_subsidy_reported",
+                domain_variable="spm_unit_energy_subsidy_data",
                 period=period,
-                constraints=[_constraint("spm_unit_energy_subsidy_reported", ">", 0)],
+                constraints=[_constraint("spm_unit_energy_subsidy_data", ">", 0)],
             ),
             reason="structured_liheap_target",
         )

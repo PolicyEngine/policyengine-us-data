@@ -1815,10 +1815,9 @@ def _add_snap_metric_columns(
     """
     snap_targets = pd.read_csv(CALIBRATION_FOLDER / "snap_state.csv")
 
-    snap_cost = sim.calculate("snap_reported", map_to="household").values
-    snap_hhs = (sim.calculate("snap_reported", map_to="household").values > 0).astype(
-        int
-    )
+    snap = sim.calculate("snap", map_to="household").values
+    snap_cost = snap
+    snap_hhs = (snap > 0).astype(int)
 
     state = sim.calculate("state_code", map_to="person").values
     state = sim.map_result(state, "person", "household", how="value_from_first_person")

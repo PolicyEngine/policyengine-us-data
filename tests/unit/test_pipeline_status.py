@@ -260,7 +260,7 @@ def test_status_payload_orders_manifests_and_includes_bounded_traceback(
     assert payload["pipeline_volume_name"] == "pipeline-artifacts-run-1"
 
 
-def test_status_payload_falls_back_to_run_manifest_error(tmp_path, monkeypatch):
+def test_status_payload_uses_run_manifest_error_as_last_resort(tmp_path, monkeypatch):
     monkeypatch.setenv("API_TOKEN", "secret-value")
     runs_dir = tmp_path / "runs"
     run_dir = runs_dir / "run-1"
@@ -290,7 +290,7 @@ def test_status_payload_falls_back_to_run_manifest_error(tmp_path, monkeypatch):
     assert "secret-value" not in payload["run_manifest"]["error"]
 
 
-def test_status_payload_bounds_legacy_error_message(tmp_path):
+def test_status_payload_bounds_run_manifest_error_message(tmp_path):
     runs_dir = tmp_path / "runs"
     run_dir = runs_dir / "run-1"
     write_run_manifest(

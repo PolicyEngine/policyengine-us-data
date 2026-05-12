@@ -50,7 +50,7 @@ def _error_payload(
     return error_record.to_status_dict()
 
 
-def _legacy_error_payload(error_text: str | None) -> dict[str, Any] | None:
+def _run_manifest_error_payload(error_text: str | None) -> dict[str, Any] | None:
     if not error_text:
         return None
     redacted = redact_error_text(error_text)
@@ -198,7 +198,7 @@ def build_pipeline_status_payload(
     ]
     error = _error_payload(
         read_latest_pipeline_error(run_dir),
-    ) or _legacy_error_payload(run_manifest.error)
+    ) or _run_manifest_error_payload(run_manifest.error)
     status = run_manifest.status
     return {
         "schema_version": PIPELINE_STATUS_SCHEMA_VERSION,

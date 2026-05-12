@@ -5,11 +5,11 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-import numpy as np
-
 
 def hash_string_array(values: Any) -> str:
     """Hash one-dimensional string values independent of numpy dtype width."""
+
+    import numpy as np
 
     array = np.asarray(values, dtype=str)
     if array.ndim != 1:
@@ -35,6 +35,10 @@ def canonical_geography_checksum(
 ) -> str:
     """Hash normalized geography independent of source artifact format."""
 
+    import numpy as np
+
+    _validate_positive_int(n_records, "n_records")
+    _validate_positive_int(n_clones, "n_clones")
     block_geoids = np.asarray(block_geoid, dtype=str)
     cd_geoids = np.asarray(cd_geoid, dtype=str)
     if block_geoids.ndim != 1:
@@ -43,6 +47,12 @@ def canonical_geography_checksum(
         raise ValueError("cd_geoid must be one-dimensional")
     if len(block_geoids) != len(cd_geoids):
         raise ValueError("block_geoid and cd_geoid must have the same length")
+    expected_rows = n_records * n_clones
+    if len(block_geoids) != expected_rows:
+        raise ValueError(
+            "geography arrays must have length n_records * n_clones: "
+            f"{len(block_geoids)} != {expected_rows}"
+        )
 
     if county_fips is None:
         county_fips = np.fromiter(
@@ -88,3 +98,8 @@ def canonical_geography_checksum(
     digest.update(b"\0")
     digest.update(str(int(n_clones)).encode("utf-8"))
     return f"sha256:{digest.hexdigest()}"
+
+
+def _validate_positive_int(value: Any, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{label} must be a positive integer")

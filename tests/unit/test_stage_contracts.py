@@ -1254,7 +1254,7 @@ import json
 import sys
 
 importlib.import_module("policyengine_us_data.stage_contracts")
-blocked = ["modal", "pandas", "h5py", "torch", "policyengine_us"]
+blocked = ["modal", "numpy", "pandas", "h5py", "torch", "policyengine_us"]
 print(json.dumps({name: name in sys.modules for name in blocked}, sort_keys=True))
 """
     result = subprocess.run(
@@ -1267,6 +1267,7 @@ print(json.dumps({name: name in sys.modules for name in blocked}, sort_keys=True
     assert json.loads(result.stdout) == {
         "h5py": False,
         "modal": False,
+        "numpy": False,
         "pandas": False,
         "policyengine_us": False,
         "torch": False,

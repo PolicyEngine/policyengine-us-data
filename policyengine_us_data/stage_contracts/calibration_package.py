@@ -7,8 +7,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 from policyengine_us_data.utils.step_manifest import sha256_file
 from policyengine_us_data.utils.geography_checksum import (
     canonical_geography_checksum,
@@ -458,7 +456,9 @@ def _optional_len(value: Any) -> int | None:
     return int(len(value))
 
 
-def _one_dimensional_string_array(value: Any, key: str) -> np.ndarray:
+def _one_dimensional_string_array(value: Any, key: str) -> Any:
+    import numpy as np
+
     array = np.asarray(value, dtype=str)
     if array.ndim != 1:
         raise ValueError(f"Calibration package geography {key} must be one-dimensional")

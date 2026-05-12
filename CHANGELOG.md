@@ -1,3 +1,10 @@
+## [1.112.3] - 2026-05-12
+
+### Fixed
+
+- Harden CPS pregnancy take-up rates to use the build year and fall back across nearby CDC and ACS vintages.
+
+
 ## [1.112.2] - 2026-05-12
 
 ### Changed

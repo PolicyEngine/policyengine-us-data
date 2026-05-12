@@ -339,6 +339,29 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.validation.AreaValidationService"
+      ],
+      "artifacts_in": [
+        "policy_data.db",
+        "target_config.yaml",
+        "target_config_full.yaml"
+      ],
+      "description": "Prepare local H5 validation targets once per worker session.",
+      "id": "local_h5_area_validation_service",
+      "label": "AreaValidationService",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.ArtifactIdentity"
       ],
       "description": "Stable content identity for one local H5 publication input artifact.",
@@ -535,6 +558,42 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.validation.ValidationContext"
+      ],
+      "description": "Prepared per-worker local H5 validation target context.",
+      "id": "local_h5_validation_context",
+      "label": "ValidationContext",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.validation.ValidationPolicy"
+      ],
+      "description": "Worker-scoped local H5 validation policy contract.",
+      "id": "local_h5_validation_policy",
+      "label": "ValidationPolicy",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder"
       ],
       "artifacts_in": [
@@ -609,6 +668,76 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_bootstrap.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_inputs.WorkerCalibrationInputs"
+      ],
+      "description": "Normalized worker-execution input payload for local H5 builds.",
+      "id": "local_h5_worker_calibration_inputs",
+      "label": "WorkerCalibrationInputs",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_inputs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_inputs.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_session.WorkerSession"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db",
+        "worker_bootstrap.json"
+      ],
+      "description": "Worker-scoped local H5 setup state reused across queued requests.",
+      "id": "local_h5_worker_session",
+      "label": "WorkerSession",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_session.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_session.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db",
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Load local H5 source, weights, geography, and validation context once per worker.",
+      "id": "local_h5_worker_session_factory",
+      "label": "WorkerSessionFactory",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_session.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_session.py",
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
       ]
     },
     {
@@ -858,9 +987,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 39,
+    "api_node_count": 45,
     "canonical_stage_count": 5,
-    "decorated_object_count": 88,
+    "decorated_object_count": 94,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

@@ -1,3 +1,10 @@
+## [1.113.0] - 2026-05-12
+
+### Added
+
+- Add worker-scoped setup and validation context contracts for local H5 builds.
+
+
 ## [1.112.3] - 2026-05-12
 
 ### Fixed

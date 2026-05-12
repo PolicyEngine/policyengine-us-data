@@ -753,7 +753,7 @@ Finalize release manifests, record run diagnostics paths, and clean staging stat
 ### `modal_app.local_area.build_areas_worker`
 
 ```python
-def build_areas_worker(branch: str, run_id: str, work_items: List[Dict], calibration_inputs: Dict[str, str], validate: bool = True) -> Dict
+def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict], calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], validate: bool = True, scope_fingerprint: str | None = None) -> Dict
 ```
 
 Worker function that builds a subset of H5 files.
@@ -878,6 +878,14 @@ class AreaBuildRequest
 
 Complete request for one local-area or national H5 file.
 
+### `policyengine_us_data.build_outputs.validation.AreaValidationService`
+
+```python
+class AreaValidationService
+```
+
+Build validation state for all H5 requests handled by one worker.
+
 ### `policyengine_us_data.build_outputs.fingerprinting.ArtifactIdentity`
 
 ```python
@@ -966,6 +974,22 @@ class TraceabilityBundle
 
 Full provenance record for one local H5 publish scope.
 
+### `policyengine_us_data.build_outputs.validation.ValidationContext`
+
+```python
+class ValidationContext
+```
+
+Prepared validation data reused across all requests in one worker.
+
+### `policyengine_us_data.build_outputs.validation.ValidationPolicy`
+
+```python
+class ValidationPolicy
+```
+
+Validation switch for a local H5 worker session.
+
 ### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder`
 
 ```python
@@ -989,6 +1013,30 @@ class WorkerBootstrapStore
 ```
 
 Filesystem adapter for scope-specific bootstrap bundle paths.
+
+### `policyengine_us_data.build_outputs.worker_inputs.WorkerCalibrationInputs`
+
+```python
+class WorkerCalibrationInputs
+```
+
+Input artifact paths and runtime settings for one H5 worker batch.
+
+### `policyengine_us_data.build_outputs.worker_session.WorkerSession`
+
+```python
+class WorkerSession
+```
+
+Prepared local H5 state for one worker process.
+
+### `policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory`
+
+```python
+class WorkerSessionFactory
+```
+
+Build worker-scoped setup from raw inputs or persisted bootstrap facts.
 
 ### `policyengine_us_data.calibration.promote_local_h5s.stage`
 
@@ -1017,7 +1065,7 @@ Run unified calibration pipeline.
 ### `modal_app.local_area.run_phase`
 
 ```python
-def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: Dict[str, str], run_dir: Path, validate: bool = True) -> tuple
+def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None) -> tuple
 ```
 
 Run a single build phase, spawning workers and collecting results.

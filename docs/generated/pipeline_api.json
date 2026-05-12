@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 685,
+    "line": 719,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -440,7 +440,7 @@
       ]
     },
     "object_path": "modal_app.local_area.build_areas_worker",
-    "signature": "def build_areas_worker(branch: str, run_id: str, work_items: List[Dict], calibration_inputs: Dict[str, str], validate: bool = True) -> Dict",
+    "signature": "def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict], calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], validate: bool = True, scope_fingerprint: str | None = None) -> Dict",
     "source_file": "modal_app/local_area.py"
   },
   "build_cities": {
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 377,
+    "line": 380,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
     "id": "build_worker_bootstrap",
     "kind": "function",
-    "line": 470,
+    "line": 473,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
@@ -873,7 +873,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 1032,
+    "line": 1061,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -908,7 +908,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 508,
+    "line": 536,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -1373,6 +1373,38 @@
     "signature": "class AreaBuildRequest",
     "source_file": "policyengine_us_data/build_outputs/requests.py"
   },
+  "local_h5_area_validation_service": {
+    "docstring": "Build validation state for all H5 requests handled by one worker.",
+    "id": "local_h5_area_validation_service",
+    "kind": "class",
+    "line": 127,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.validation.AreaValidationService"
+      ],
+      "artifacts_in": [
+        "policy_data.db",
+        "target_config.yaml",
+        "target_config_full.yaml"
+      ],
+      "description": "Prepare local H5 validation targets once per worker session.",
+      "id": "local_h5_area_validation_service",
+      "label": "AreaValidationService",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.validation.AreaValidationService",
+    "signature": "class AreaValidationService",
+    "source_file": "policyengine_us_data/build_outputs/validation.py"
+  },
   "local_h5_artifact_identity": {
     "docstring": "Stable identity for an input artifact used by traceability.\n\nAttributes:\n    logical_name: Semantic artifact name, such as `\"weights\"` or\n        `\"source_dataset\"`.\n    path: Physical artifact path when the artifact exists in the local\n        runtime.\n    sha256: Content digest prefixed with `\"sha256:\"`.\n    size_bytes: Artifact size in bytes, when available.\n    metadata: Additional normalized metadata, for example canonical\n        geography checksum or source kind.",
     "id": "local_h5_artifact_identity",
@@ -1668,6 +1700,60 @@
     "signature": "class TraceabilityBundle",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
   },
+  "local_h5_validation_context": {
+    "docstring": "Prepared validation data reused across all requests in one worker.",
+    "id": "local_h5_validation_context",
+    "kind": "class",
+    "line": 53,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.validation.ValidationContext"
+      ],
+      "description": "Prepared per-worker local H5 validation target context.",
+      "id": "local_h5_validation_context",
+      "label": "ValidationContext",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.validation.ValidationContext",
+    "signature": "class ValidationContext",
+    "source_file": "policyengine_us_data/build_outputs/validation.py"
+  },
+  "local_h5_validation_policy": {
+    "docstring": "Validation switch for a local H5 worker session.",
+    "id": "local_h5_validation_policy",
+    "kind": "class",
+    "line": 35,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.validation.ValidationPolicy"
+      ],
+      "description": "Worker-scoped local H5 validation policy contract.",
+      "id": "local_h5_validation_policy",
+      "label": "ValidationPolicy",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/validation.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.validation.ValidationPolicy",
+    "signature": "class ValidationPolicy",
+    "source_file": "policyengine_us_data/build_outputs/validation.py"
+  },
   "local_h5_worker_bootstrap_builder": {
     "docstring": "Build and persist one scope's local H5 worker bootstrap artifacts.",
     "id": "local_h5_worker_bootstrap_builder",
@@ -1772,6 +1858,103 @@
     "object_path": "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapStore",
     "signature": "class WorkerBootstrapStore",
     "source_file": "policyengine_us_data/build_outputs/bootstrap.py"
+  },
+  "local_h5_worker_calibration_inputs": {
+    "docstring": "Input artifact paths and runtime settings for one H5 worker batch.\n\nThis is the typed library contract. Modal entrypoints may still exchange the\n`to_wire_dict()` representation because it is easier to serialize and\ninspect, but all producers and consumers should normalize through this\nclass before using field values.",
+    "id": "local_h5_worker_calibration_inputs",
+    "kind": "class",
+    "line": 64,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_inputs.WorkerCalibrationInputs"
+      ],
+      "description": "Normalized worker-execution input payload for local H5 builds.",
+      "id": "local_h5_worker_calibration_inputs",
+      "label": "WorkerCalibrationInputs",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_inputs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_inputs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_inputs.WorkerCalibrationInputs",
+    "signature": "class WorkerCalibrationInputs",
+    "source_file": "policyengine_us_data/build_outputs/worker_inputs.py"
+  },
+  "local_h5_worker_session": {
+    "docstring": "Prepared local H5 state for one worker process.",
+    "id": "local_h5_worker_session",
+    "kind": "class",
+    "line": 55,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_session.WorkerSession"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db",
+        "worker_bootstrap.json"
+      ],
+      "description": "Worker-scoped local H5 setup state reused across queued requests.",
+      "id": "local_h5_worker_session",
+      "label": "WorkerSession",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_session.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_session.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_session.WorkerSession",
+    "signature": "class WorkerSession",
+    "source_file": "policyengine_us_data/build_outputs/worker_session.py"
+  },
+  "local_h5_worker_session_factory": {
+    "docstring": "Build worker-scoped setup from raw inputs or persisted bootstrap facts.",
+    "id": "local_h5_worker_session_factory",
+    "kind": "class",
+    "line": 91,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory"
+      ],
+      "artifacts_in": [
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "geography_assignment.npz",
+        "policy_data.db",
+        "bootstrap/{scope}/worker_bootstrap.json",
+        "bootstrap/{scope}/entity_graph.npz"
+      ],
+      "description": "Load local H5 source, weights, geography, and validation context once per worker.",
+      "id": "local_h5_worker_session_factory",
+      "label": "WorkerSessionFactory",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_session.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_session.py",
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory",
+    "signature": "class WorkerSessionFactory",
+    "source_file": "policyengine_us_data/build_outputs/worker_session.py"
   },
   "local_stage_upload": {
     "docstring": "",
@@ -2011,7 +2194,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 424,
+    "line": 427,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -2137,7 +2320,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 557,
+    "line": 585,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -2160,7 +2343,7 @@
       ]
     },
     "object_path": "modal_app.local_area.run_phase",
-    "signature": "def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: Dict[str, str], run_dir: Path, validate: bool = True) -> tuple",
+    "signature": "def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None) -> tuple",
     "source_file": "modal_app/local_area.py"
   },
   "run_modal_pipeline": {
@@ -2369,7 +2552,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 874,
+    "line": 903,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -2480,7 +2663,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 798,
+    "line": 827,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"

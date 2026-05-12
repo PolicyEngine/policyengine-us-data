@@ -1,3 +1,5 @@
+import pandas as pd
+
 from policyengine_us_data.db import etl_pregnancy
 
 
@@ -124,3 +126,37 @@ def test_extract_female_population_falls_back_to_acs5(monkeypatch):
         ),
     ]
     assert saved == [("census_b01001_female_15_44_2023.json", b01001_payload())]
+
+
+def test_get_state_pregnancy_rates_falls_back_to_available_years(monkeypatch):
+    calls = []
+
+    def fake_extract_cdc_births(year):
+        calls.append(("births", year))
+        if year == 2024:
+            raise RuntimeError("CDC unavailable")
+        return pd.DataFrame({"state_abbrev": ["AL"], "births": [52_000]})
+
+    def fake_extract_female_population(year):
+        calls.append(("population", year))
+        if year in (2024, 2023):
+            raise RuntimeError("ACS unavailable")
+        return pd.DataFrame({"state_abbrev": ["AL"], "female_15_44": [1_000_000]})
+
+    monkeypatch.setattr(etl_pregnancy, "extract_cdc_births", fake_extract_cdc_births)
+    monkeypatch.setattr(
+        etl_pregnancy,
+        "extract_female_population",
+        fake_extract_female_population,
+    )
+
+    rates = etl_pregnancy.get_state_pregnancy_rates(cdc_year=2024, acs_year=2024)
+
+    assert calls == [
+        ("births", 2024),
+        ("births", 2023),
+        ("population", 2024),
+        ("population", 2023),
+        ("population", 2022),
+    ]
+    assert rates == {"AL": 0.039}

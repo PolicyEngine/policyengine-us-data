@@ -91,9 +91,6 @@ from modal_app.step_manifests.store import (  # noqa: E402
     step_reusable as _step_reusable,
     write_run_meta,
 )
-from modal_app.step_manifests.status import (  # noqa: E402
-    build_pipeline_status_payload as _build_pipeline_status_payload,
-)
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
 from policyengine_us_data.utils.error_redaction import (  # noqa: E402
     redacted_bounded_error_text,
@@ -136,7 +133,6 @@ staging_volume = modal.Volume.from_name(
 )
 
 REPO_URL = "https://github.com/PolicyEngine/policyengine-us-data.git"
-status_image = image.pip_install("fastapi")
 
 
 def _python_cmd(*args: str) -> list[str]:
@@ -314,6 +310,11 @@ from modal_app.local_area import (  # noqa: E402
 )
 
 app.include(_local_area_app)
+
+from modal_app.pipeline_status import app as _pipeline_status_app  # noqa: E402
+from modal_app.pipeline_status import pipeline_status  # noqa: E402
+
+app.include(_pipeline_status_app)
 
 
 # ── Upload helpers ──────────────────────────────────────────────
@@ -519,6 +520,7 @@ def verify_runtime_seams() -> dict:
         "uv.lock",
         "modal_app/worker_script.py",
         "modal_app/local_area.py",
+        "modal_app/pipeline_status.py",
         "modal_app/h5_test_harness.py",
         "modal_app/step_manifests/specs.py",
         "modal_app/step_manifests/state.py",
@@ -562,6 +564,7 @@ def verify_runtime_seams() -> dict:
         "modal_app.fixtures.h5_cases",
         "modal_app.h5_test_harness",
         "modal_app.local_area",
+        "modal_app.pipeline_status",
         "modal_app.remote_calibration_runner",
         "modal_app.step_manifests.specs",
         "modal_app.step_manifests.state",
@@ -1964,117 +1967,6 @@ def promote_run(
     print("=" * 60)
 
     return f"Promoted run {run_id} as version {version}"
-
-
-# ── Status ───────────────────────────────────────────────────────
-
-
-@app.function(
-    image=image,
-    timeout=60,
-    volumes={PIPELINE_MOUNT: pipeline_volume},
-)
-def get_pipeline_status(
-    run_id: str,
-) -> dict:
-    """Get structured JSON status for a pipeline run."""
-
-    pipeline_volume.reload()
-    return _build_pipeline_status_payload(run_id)
-
-
-@app.function(
-    image=status_image,
-    timeout=60,
-    volumes={PIPELINE_MOUNT: pipeline_volume},
-)
-@modal.fastapi_endpoint(
-    method="GET",
-    docs=False,
-    requires_proxy_auth=True,
-)
-def pipeline_status_endpoint(
-    run_id: str,
-) -> dict:
-    """Protected HTTP endpoint for structured pipeline status."""
-
-    pipeline_volume.reload()
-    return _build_pipeline_status_payload(run_id)
-
-
-@app.function(
-    image=image,
-    timeout=60,
-    volumes={PIPELINE_MOUNT: pipeline_volume},
-)
-def pipeline_status(
-    run_id: str = None,
-) -> str:
-    """Get pipeline status.
-
-    If run_id is provided, show that run's details.
-    Otherwise, list all runs.
-    """
-    pipeline_volume.reload()
-    runs_dir = Path(RUNS_DIR)
-
-    if not runs_dir.exists():
-        return "No pipeline runs found."
-
-    if run_id:
-        payload = _build_pipeline_status_payload(run_id)
-        if payload["status"] == "not_found":
-            return payload["message"]
-        run_manifest = payload["run_manifest"]
-        lines = [
-            f"Run: {payload['run_id']}",
-            f"  Branch:  {run_manifest['branch']}",
-            f"  SHA:     {run_manifest['sha'][:12]}",
-            f"  Version: {run_manifest['version']}",
-            f"  Status:  {payload['status']}",
-            f"  Started: {run_manifest['started_at']}",
-        ]
-        if payload["error"]:
-            error = payload["error"]
-            lines.append(
-                f"  Error:   {error['error_type']}: {error.get('message', '')[:200]}"
-            )
-            if error.get("record_path"):
-                lines.append(f"  Error record: {error['record_path']}")
-        if payload["stage_manifests"]:
-            lines.append("  Step manifests:")
-            for item in payload["stage_manifests"]:
-                manifest = item["manifest"]
-                duration = (
-                    manifest["duration_s"]
-                    if manifest.get("duration_s") is not None
-                    else "?"
-                )
-                reuse = manifest.get("reuse_decision", "not_applicable")
-                lines.append(
-                    f"    {manifest['step_id']}: {duration}s "
-                    f"({manifest['status']}, {reuse})"
-                )
-        return "\n".join(lines)
-
-    # List all runs
-    runs = []
-    for entry in sorted(runs_dir.iterdir()):
-        manifest_path = entry / "run_manifest.json"
-        if manifest_path.exists():
-            with open(manifest_path) as f:
-                data = json.load(f)
-            runs.append(
-                f"  {data['run_id']}: "
-                f"{data['status']} "
-                f"(branch={data['branch']}, "
-                f"v={data['version']})"
-            )
-
-    if not runs:
-        return "No pipeline runs found."
-
-    return "Pipeline runs:\n" + "\n".join(runs)
 
 
 # ── Local entrypoint ─────────────────────────────────────────────

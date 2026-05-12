@@ -1,3 +1,10 @@
+## [1.111.6] - 2026-05-12
+
+### Fixed
+
+- Download generated block geography prerequisites before remote calibration package builds.
+
+
 ## [1.111.5] - 2026-05-12
 
 ### Changed

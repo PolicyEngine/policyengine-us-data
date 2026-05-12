@@ -791,8 +791,10 @@ def build_areas_worker(
         env=os.environ.copy(),
     )
 
-    if result.returncode != 0:
+    if result.stderr:
         print(f"Worker stderr:\n{result.stderr}", file=__import__("sys").stderr)
+
+    if result.returncode != 0:
         return {
             "completed": [],
             "failed": [f"{item['type']}:{item['id']}" for item in work_items],

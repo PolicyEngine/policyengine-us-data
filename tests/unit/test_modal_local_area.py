@@ -372,3 +372,50 @@ def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
 
     assert "run_config" not in inputs
     assert "calibration_package" not in inputs
+
+
+def test_build_areas_worker_surfaces_successful_worker_stderr(
+    monkeypatch,
+    capsys,
+    tmp_path,
+):
+    local_area = load_local_area_module()
+    monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+    monkeypatch.setattr(local_area, "VOLUME_MOUNT", str(tmp_path / "staging"))
+    monkeypatch.setattr(
+        local_area,
+        "pipeline_volume",
+        SimpleNamespace(reload=lambda: None),
+    )
+    monkeypatch.setattr(
+        local_area,
+        "staging_volume",
+        SimpleNamespace(reload=lambda: None, commit=lambda: None),
+    )
+
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"completed": ["district:NC-01"], "failed": [], "errors": []}',
+            stderr="Worker session ready: scope=regional, bootstrap=used\n",
+        )
+
+    monkeypatch.setattr(local_area.subprocess, "run", fake_run)
+
+    result = local_area.build_areas_worker(
+        branch="main",
+        run_id="run-123",
+        scope="regional",
+        work_items=[{"type": "district", "id": "NC-01"}],
+        calibration_inputs={
+            "weights": "/tmp/calibration_weights.npy",
+            "dataset": "/tmp/source.h5",
+            "database": "/tmp/policy_data.db",
+        },
+        validate=False,
+    )
+
+    captured = capsys.readouterr()
+    assert result["completed"] == ["district:NC-01"]
+    assert "Worker session ready: scope=regional, bootstrap=used" in captured.err

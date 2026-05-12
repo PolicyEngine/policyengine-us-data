@@ -153,6 +153,23 @@ def test_variable_provider_uses_first_known_period_when_period_is_omitted():
     assert holder.get_array_calls == [2023]
 
 
+def test_variable_provider_exposes_variable_metadata():
+    provider = MicrosimulationVariableProvider(
+        FakeSimulation(
+            {"rent": FakeHolder({2023: np.array([1, 2])})},
+            variable_entities={"rent": "household"},
+            value_types={"rent": float},
+        )
+    )
+
+    metadata = provider.get_metadata("rent")
+
+    assert provider.variable_names == ("rent",)
+    assert metadata.name == "rent"
+    assert metadata.entity_key == "household"
+    assert metadata.value_type is float
+
+
 def test_variable_provider_rejects_missing_variables():
     provider = MicrosimulationVariableProvider(FakeSimulation({}))
 

@@ -21,11 +21,21 @@ __all__ = [
     "EntityGraph",
     "MicrosimulationVariableProvider",
     "PolicyEngineDatasetReader",
+    "SourceVariableMetadata",
     "SourceDatasetSnapshot",
 ]
 
 
 DEFAULT_SUBENTITIES = ("tax_unit", "spm_unit", "family", "marital_unit")
+
+
+@dataclass(frozen=True)
+class SourceVariableMetadata:
+    """Entity and value metadata for one source variable."""
+
+    name: str
+    entity_key: str
+    value_type: object
 
 
 @dataclass(frozen=True)
@@ -399,6 +409,42 @@ class MicrosimulationVariableProvider:
 
         return frozenset(str(variable) for variable in self.simulation.input_variables)
 
+    @property
+    def variable_names(self) -> tuple[str, ...]:
+        """Return variables declared by the source tax-benefit system."""
+
+        variables = getattr(
+            getattr(self.simulation, "tax_benefit_system", None),
+            "variables",
+            None,
+        )
+        if variables is None:
+            return tuple(sorted(self.input_variables))
+        return tuple(str(variable) for variable in variables)
+
+    def get_metadata(self, variable: str) -> SourceVariableMetadata:
+        """Return entity and value metadata for one source variable."""
+
+        variables = getattr(
+            getattr(self.simulation, "tax_benefit_system", None),
+            "variables",
+            None,
+        )
+        if variables is None or variable not in variables:
+            raise KeyError(f"Variable {variable!r} metadata is not available")
+
+        variable_definition = variables[variable]
+        entity = getattr(variable_definition, "entity", None)
+        entity_key = getattr(entity, "key", None)
+        if not entity_key:
+            raise ValueError(f"Variable {variable!r} has no entity key")
+
+        return SourceVariableMetadata(
+            name=str(variable),
+            entity_key=str(entity_key),
+            value_type=getattr(variable_definition, "value_type", None),
+        )
+
     def known_periods(self, variable: str) -> tuple[Any, ...]:
         """Return periods known to the source holder for `variable`.
 
@@ -436,6 +482,11 @@ class MicrosimulationVariableProvider:
             array.setflags(write=False)
             self._array_cache[cache_key] = array
         return self._array_cache[cache_key]
+
+    def get_raw_array(self, variable: str, period: Any) -> Any:
+        """Return one holder array without normalizing the backing object."""
+
+        return self._get_holder(variable).get_array(period)
 
     def _get_holder(self, variable: str):
         try:

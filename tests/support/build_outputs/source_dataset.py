@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 
 
@@ -42,11 +44,27 @@ class FakeHolder:
 class FakeSimulation:
     """Small simulation test double for lazy-provider tests."""
 
-    def __init__(self, holders):
+    def __init__(self, holders, *, variable_entities=None, value_types=None):
         self.holders = dict(holders)
         self.input_variables = frozenset(holders)
         self.default_calculation_period = 2023
         self.get_holder_calls = []
+        variable_entities = dict(variable_entities or {})
+        value_types = dict(value_types or {})
+        self.tax_benefit_system = SimpleNamespace(
+            variables={
+                variable: SimpleNamespace(
+                    entity=SimpleNamespace(
+                        key=variable_entities.get(
+                            variable,
+                            _infer_entity_key(variable),
+                        )
+                    ),
+                    value_type=value_types.get(variable, float),
+                )
+                for variable in holders
+            }
+        )
 
     def get_holder(self, variable):
         self.get_holder_calls.append(variable)
@@ -70,3 +88,12 @@ class FakeCalculation:
 
     def __init__(self, values):
         self.values = np.asarray(values)
+
+
+def _infer_entity_key(variable: str) -> str:
+    if variable.startswith("person_") or variable in {"age", "employment_income"}:
+        return "person"
+    for entity_key in ("tax_unit", "spm_unit", "family", "marital_unit"):
+        if variable == f"{entity_key}_id" or variable.startswith(f"{entity_key}_"):
+            return entity_key
+    return "household"

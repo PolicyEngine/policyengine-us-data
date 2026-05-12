@@ -259,6 +259,7 @@ def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
         artifacts=artifacts,
         output_dir=output_dir,
         use_saved_geography=True,
+        use_package_geography=True,
         run_id="run-123",
         artifacts_dir=artifacts_dir,
         return_process=True,

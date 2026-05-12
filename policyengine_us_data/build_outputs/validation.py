@@ -15,6 +15,7 @@ from .fingerprinting import PublishingInputBundle
 __all__ = [
     "AreaValidationService",
     "ValidationContext",
+    "AreaValidationResult",
     "ValidationPolicy",
 ]
 
@@ -93,6 +94,24 @@ class ValidationContext:
             )
 
 
+@dataclass(frozen=True)
+class AreaValidationResult:
+    """Validation rows and summary for one built area H5."""
+
+    rows: tuple[Mapping[str, Any], ...] = ()
+    summary: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        rows = tuple(self.rows)
+        summary = (
+            dict(self.summary)
+            if self.summary is not None
+            else _validation_summary(rows)
+        )
+        object.__setattr__(self, "rows", rows)
+        object.__setattr__(self, "summary", summary)
+
+
 @pipeline_node(
     id="local_h5_area_validation_service",
     label="AreaValidationService",
@@ -116,6 +135,7 @@ class AreaValidationService:
         batch_constraints: Callable[[Any, list[int]], Mapping[int, Any]] | None = None,
         load_target_config: Callable[[Path | str], Mapping[str, Any]] | None = None,
         match_rules: Callable[[Any, list[Mapping[str, Any]]], Any] | None = None,
+        validate_h5: Callable[..., list[Mapping[str, Any]]] | None = None,
     ) -> None:
         """Create a validation service with injectable seams for tests."""
 
@@ -124,6 +144,7 @@ class AreaValidationService:
         self._batch_constraints = batch_constraints
         self._load_target_config = load_target_config
         self._match_rules = match_rules
+        self._validate_h5 = validate_h5
 
     def prepare_context(
         self,
@@ -182,6 +203,70 @@ class AreaValidationService:
             constraints_map=constraints_map,
             target_config_path=target_config_path,
             validation_config_path=validation_config_path,
+        )
+
+    def validate_request(
+        self,
+        *,
+        context: ValidationContext | None,
+        h5_path: Path | str,
+        request,
+    ) -> AreaValidationResult:
+        """Validate one built area H5 against a prepared worker context."""
+
+        if (
+            context is None
+            or context.validation_targets is None
+            or context.target_db_path is None
+        ):
+            return AreaValidationResult()
+
+        geo_level = request.validation_geo_level
+        geographic_ids = tuple(str(item) for item in request.validation_geographic_ids)
+        if geo_level is None:
+            return AreaValidationResult()
+
+        area_type = {
+            "state": "states",
+            "district": "districts",
+            "city": "cities",
+            "national": "national",
+        }.get(request.area_type)
+        if area_type is None:
+            return AreaValidationResult()
+
+        targets = context.validation_targets
+        if request.area_type == "national":
+            mask = targets["geo_level"] == geo_level
+        else:
+            mask = (targets["geo_level"] == geo_level) & (
+                targets["geographic_id"].astype(str).isin(geographic_ids)
+            )
+
+        area_targets = targets[mask].reset_index(drop=True)
+        if len(area_targets) == 0:
+            return AreaValidationResult()
+
+        area_training = self._area_training_mask(context.training_mask, mask)
+        area_constraints = self._area_constraints(
+            area_targets,
+            context.constraints_map or {},
+        )
+        rows = tuple(
+            self._run_validation(
+                h5_path=str(h5_path),
+                request=request,
+                area_type=area_type,
+                area_targets=area_targets,
+                area_training=area_training,
+                constraints_map=area_constraints,
+                db_path=str(context.target_db_path),
+                period=context.period,
+            )
+        )
+        return AreaValidationResult(
+            rows=rows,
+            summary=_validation_summary(rows),
         )
 
     def _create_engine(self, target_db_path: Path):
@@ -255,3 +340,151 @@ class AreaValidationService:
         if not include_rules:
             return np.ones(len(validation_targets), dtype=bool)
         return np.asarray(self._match(validation_targets, include_rules), dtype=bool)
+
+    def _area_training_mask(self, training_mask, area_mask):
+        if training_mask is None:
+            return np.ones(int(np.sum(area_mask.to_numpy())), dtype=bool)
+        return training_mask[area_mask.values]
+
+    def _area_constraints(
+        self,
+        area_targets,
+        constraints_map: Mapping[int, Any],
+    ) -> dict[int, Any]:
+        area_strata = area_targets["stratum_id"].unique().tolist()
+        return {
+            int(stratum): constraints_map.get(int(stratum), [])
+            for stratum in area_strata
+        }
+
+    def _run_validation(
+        self,
+        *,
+        h5_path: str,
+        request,
+        area_type: str,
+        area_targets,
+        area_training,
+        constraints_map: Mapping[int, Any],
+        db_path: str,
+        period: int,
+    ) -> list[Mapping[str, Any]]:
+        if self._validate_h5 is not None:
+            return self._validate_h5(
+                h5_path=h5_path,
+                request=request,
+                area_type=area_type,
+                area_targets=area_targets,
+                area_training=area_training,
+                constraints_map=constraints_map,
+                db_path=db_path,
+                period=period,
+            )
+        return _validate_h5_subprocess(
+            h5_path=h5_path,
+            request=request,
+            area_type=area_type,
+            area_targets=area_targets,
+            area_training=area_training,
+            constraints_map=constraints_map,
+            db_path=db_path,
+            period=period,
+        )
+
+
+def _validation_summary(rows: tuple[Mapping[str, Any], ...]) -> dict[str, Any]:
+    n_fail = sum(1 for row in rows if row.get("sanity_check") == "FAIL")
+    rae_values = [
+        row["rel_abs_error"]
+        for row in rows
+        if isinstance(row.get("rel_abs_error"), (int, float))
+        and row["rel_abs_error"] != float("inf")
+    ]
+    mean_rae = sum(rae_values) / len(rae_values) if rae_values else 0.0
+    return {
+        "n_targets": len(rows),
+        "n_sanity_fail": n_fail,
+        "mean_rel_abs_error": round(mean_rae, 4),
+    }
+
+
+def _validate_h5_subprocess(
+    *,
+    h5_path: str,
+    request,
+    area_type: str,
+    area_targets,
+    area_training,
+    constraints_map: Mapping[int, Any],
+    db_path: str,
+    period: int,
+) -> list[Mapping[str, Any]]:
+    """Spawn a subprocess to validate one H5 file and reclaim simulation memory."""
+
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(1) as pool:
+        return pool.apply(
+            _validate_area_in_subprocess,
+            (
+                h5_path,
+                area_type,
+                request.area_id,
+                request.display_name,
+                area_targets,
+                area_training,
+                constraints_map,
+                db_path,
+                period,
+            ),
+        )
+
+
+def _validate_area_in_subprocess(
+    h5_path,
+    area_type,
+    area_id,
+    display_id,
+    area_targets,
+    area_training,
+    constraints_map,
+    db_path,
+    period,
+):
+    """Run validation for one area in an isolated subprocess."""
+
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    from policyengine_us import Microsimulation
+    from sqlalchemy import create_engine
+    from policyengine_us_data.calibration.validate_staging import (
+        _build_variable_entity_map,
+        validate_area,
+    )
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        sim = Microsimulation(dataset=h5_path)
+        variable_entity_map = _build_variable_entity_map(sim)
+        return validate_area(
+            sim=sim,
+            targets_df=area_targets,
+            engine=engine,
+            area_type=area_type,
+            area_id=area_id,
+            display_id=display_id,
+            dataset_path=h5_path,
+            period=period,
+            training_mask=area_training,
+            variable_entity_map=variable_entity_map,
+            constraints_map=constraints_map,
+        )
+    finally:
+        dispose = getattr(engine, "dispose", None)
+        if callable(dispose):
+            dispose()

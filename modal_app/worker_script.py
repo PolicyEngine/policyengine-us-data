@@ -13,122 +13,6 @@ from pathlib import Path
 from typing import Any
 
 
-def _validate_in_subprocess(
-    h5_path,
-    area_type,
-    area_id,
-    display_id,
-    area_targets,
-    area_training,
-    constraints_map,
-    db_path,
-    period,
-):
-    """Run validation for one area inside a subprocess.
-
-    All Microsimulation memory is reclaimed when the
-    subprocess exits.
-    """
-    import logging
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
-    from policyengine_us import Microsimulation
-    from sqlalchemy import create_engine as _ce
-    from policyengine_us_data.calibration.validate_staging import (
-        validate_area,
-        _build_variable_entity_map,
-    )
-
-    engine = _ce(f"sqlite:///{db_path}")
-    sim = Microsimulation(dataset=h5_path)
-    variable_entity_map = _build_variable_entity_map(sim)
-
-    results = validate_area(
-        sim=sim,
-        targets_df=area_targets,
-        engine=engine,
-        area_type=area_type,
-        area_id=area_id,
-        display_id=display_id,
-        dataset_path=h5_path,
-        period=period,
-        training_mask=area_training,
-        variable_entity_map=variable_entity_map,
-        constraints_map=constraints_map,
-    )
-    return results
-
-
-def _validate_h5_subprocess(
-    h5_path,
-    request,
-    validation_targets,
-    training_mask_full,
-    constraints_map,
-    db_path,
-    period,
-):
-    """Spawn a subprocess to validate one H5 file.
-
-    Uses multiprocessing spawn to isolate memory.
-    """
-    import multiprocessing as _mp
-
-    geo_level = request.validation_geo_level
-    geographic_ids = tuple(str(item) for item in request.validation_geographic_ids)
-    if geo_level is None:
-        return []
-    area_type = {
-        "state": "states",
-        "district": "districts",
-        "city": "cities",
-        "national": "national",
-    }.get(request.area_type)
-    if area_type is None:
-        return []
-    display_id = request.display_name
-
-    # Filter targets to matching area
-    if request.area_type == "national":
-        mask = validation_targets["geo_level"] == geo_level
-    else:
-        mask = (validation_targets["geo_level"] == geo_level) & (
-            validation_targets["geographic_id"].astype(str).isin(geographic_ids)
-        )
-
-    area_targets = validation_targets[mask].reset_index(drop=True)
-    area_training = training_mask_full[mask.values]
-
-    if len(area_targets) == 0:
-        return []
-
-    # Filter constraints_map to relevant strata
-    area_strata = area_targets["stratum_id"].unique().tolist()
-    area_constraints = {int(s): constraints_map.get(int(s), []) for s in area_strata}
-
-    ctx = _mp.get_context("spawn")
-    with ctx.Pool(1) as pool:
-        results = pool.apply(
-            _validate_in_subprocess,
-            (
-                h5_path,
-                area_type,
-                request.area_id,
-                display_id,
-                area_targets,
-                area_training,
-                area_constraints,
-                db_path,
-                period,
-            ),
-        )
-
-    return results
-
-
 def parse_args(argv: list[str] | None = None):
     """Parse worker arguments for legacy and typed request inputs."""
 
@@ -386,7 +270,10 @@ def main(argv: list[str] | None = None):
     )
     from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog
     from policyengine_us_data.build_outputs.requests import AreaBuildRequest
-    from policyengine_us_data.build_outputs.validation import ValidationPolicy
+    from policyengine_us_data.build_outputs.validation import (
+        AreaValidationService,
+        ValidationPolicy,
+    )
     from policyengine_us_data.build_outputs.worker_session import WorkerSessionFactory
 
     area_catalog = USAreaCatalog.default()
@@ -396,8 +283,9 @@ def main(argv: list[str] | None = None):
     )
     scope = args.scope
     inputs = _build_publishing_inputs(args=args, run_id=run_id)
+    validation_service = AreaValidationService()
 
-    session = WorkerSessionFactory().create(
+    session = WorkerSessionFactory(validation_service=validation_service).create(
         inputs=inputs,
         scope=scope,
         validation_policy=ValidationPolicy(enabled=not args.no_validate),
@@ -413,22 +301,14 @@ def main(argv: list[str] | None = None):
     n_records = session.weights.n_records
     geography = session.geography
     validation_context = session.validation_context
-    validation_targets = (
-        validation_context.validation_targets
-        if validation_context is not None
-        else None
-    )
-    training_mask_full = (
-        validation_context.training_mask if validation_context is not None else None
-    )
-    constraints_map = (
-        validation_context.constraints_map if validation_context is not None else None
-    )
     _log_worker_session_ready(scope=scope, session=session, geography=geography)
-    if validation_targets is not None:
+    if (
+        validation_context is not None
+        and validation_context.validation_targets is not None
+    ):
         print(
-            f"Validation ready: {len(validation_targets)} targets, "
-            f"{len(constraints_map or {})} strata",
+            f"Validation ready: {len(validation_context.validation_targets)} targets, "
+            f"{len(validation_context.constraints_map or {})} strata",
             file=sys.stderr,
         )
 
@@ -497,42 +377,22 @@ def main(argv: list[str] | None = None):
                     file=sys.stderr,
                 )
 
-                # ── Per-item validation ──
-                if not args.no_validate and validation_targets is not None:
+                if not args.no_validate and validation_context is not None:
                     try:
-                        v_rows = _validate_h5_subprocess(
+                        validation_result = validation_service.validate_request(
+                            context=validation_context,
                             h5_path=str(path),
                             request=request,
-                            validation_targets=validation_targets,
-                            training_mask_full=training_mask_full,
-                            constraints_map=constraints_map,
-                            db_path=str(inputs.target_db_path),
-                            period=args.period,
                         )
+                        v_rows = list(validation_result.rows)
                         results["validation_rows"].extend(v_rows)
-                        n_fail = sum(
-                            1 for r in v_rows if r.get("sanity_check") == "FAIL"
-                        )
-                        rae_vals = [
-                            r["rel_abs_error"]
-                            for r in v_rows
-                            if isinstance(
-                                r.get("rel_abs_error"),
-                                (int, float),
-                            )
-                            and r["rel_abs_error"] != float("inf")
-                        ]
-                        mean_rae = sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
-                        results["validation_summary"][request_key] = {
-                            "n_targets": len(v_rows),
-                            "n_sanity_fail": n_fail,
-                            "mean_rel_abs_error": round(mean_rae, 4),
-                        }
+                        summary = dict(validation_result.summary)
+                        results["validation_summary"][request_key] = summary
                         print(
                             f"  Validated {request_key}: "
-                            f"{len(v_rows)} targets, "
-                            f"{n_fail} sanity fails, "
-                            f"mean RAE={mean_rae:.4f}",
+                            f"{summary['n_targets']} targets, "
+                            f"{summary['n_sanity_fail']} sanity fails, "
+                            f"mean RAE={summary['mean_rel_abs_error']:.4f}",
                             file=sys.stderr,
                         )
                     except Exception as ve:

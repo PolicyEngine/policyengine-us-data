@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -126,3 +127,145 @@ def test_validation_service_prepares_targets_training_mask_and_constraints(tmp_p
         2: ["constraint-2"],
     }
     assert constraint_calls == [(1, 2)]
+
+
+def test_validation_service_validates_one_area_from_prepared_context():
+    calls = []
+    targets = pd.DataFrame(
+        {
+            "variable": ["household_count", "state_income", "national_income"],
+            "stratum_id": [1, 2, 3],
+            "geo_level": ["district", "state", "national"],
+            "geographic_id": ["3701", "37", "US"],
+        }
+    )
+    context = ValidationContext(
+        policy=ValidationPolicy(),
+        target_db_path=Path("/tmp/policy_data.db"),
+        period=2024,
+        validation_targets=targets,
+        training_mask=np.array([True, False, True]),
+        constraints_map={1: ["constraint-1"], 2: ["constraint-2"], 3: ["constraint-3"]},
+    )
+    request = SimpleNamespace(
+        area_type="district",
+        area_id="NC-01",
+        display_name="NC-01",
+        validation_geo_level="district",
+        validation_geographic_ids=("3701",),
+    )
+
+    def validate_h5(**kwargs):
+        calls.append(kwargs)
+        return [
+            {"sanity_check": "PASS", "rel_abs_error": 0.25},
+            {"sanity_check": "FAIL", "rel_abs_error": float("inf")},
+        ]
+
+    result = AreaValidationService(validate_h5=validate_h5).validate_request(
+        context=context,
+        h5_path=Path("/tmp/NC-01.h5"),
+        request=request,
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["h5_path"] == "/tmp/NC-01.h5"
+    assert calls[0]["area_type"] == "districts"
+    assert calls[0]["area_targets"]["variable"].tolist() == ["household_count"]
+    assert np.array_equal(calls[0]["area_training"], np.array([True]))
+    assert calls[0]["constraints_map"] == {1: ["constraint-1"]}
+    assert calls[0]["db_path"] == "/tmp/policy_data.db"
+    assert calls[0]["period"] == 2024
+    assert result.summary == {
+        "n_targets": 2,
+        "n_sanity_fail": 1,
+        "mean_rel_abs_error": 0.25,
+    }
+
+
+def test_validation_service_filters_national_targets_without_geographic_id():
+    calls = []
+    targets = pd.DataFrame(
+        {
+            "variable": ["state_income", "national_income"],
+            "stratum_id": [2, 3],
+            "geo_level": ["state", "national"],
+            "geographic_id": ["37", "US"],
+        }
+    )
+    context = ValidationContext(
+        policy=ValidationPolicy(),
+        target_db_path=Path("/tmp/policy_data.db"),
+        period=2024,
+        validation_targets=targets,
+        training_mask=np.array([False, True]),
+        constraints_map={2: ["constraint-2"], 3: ["constraint-3"]},
+    )
+    request = SimpleNamespace(
+        area_type="national",
+        area_id="US",
+        display_name="US",
+        validation_geo_level="national",
+        validation_geographic_ids=("ignored",),
+    )
+
+    def validate_h5(**kwargs):
+        calls.append(kwargs)
+        return [{"sanity_check": "PASS", "rel_abs_error": 0.0}]
+
+    result = AreaValidationService(validate_h5=validate_h5).validate_request(
+        context=context,
+        h5_path=Path("/tmp/US.h5"),
+        request=request,
+    )
+
+    assert calls[0]["area_type"] == "national"
+    assert calls[0]["area_targets"]["variable"].tolist() == ["national_income"]
+    assert np.array_equal(calls[0]["area_training"], np.array([True]))
+    assert calls[0]["constraints_map"] == {3: ["constraint-3"]}
+    assert result.summary["n_targets"] == 1
+
+
+def test_validation_service_returns_empty_result_for_unmatched_area():
+    called = False
+    context = ValidationContext(
+        policy=ValidationPolicy(),
+        target_db_path=Path("/tmp/policy_data.db"),
+        period=2024,
+        validation_targets=pd.DataFrame(
+            {
+                "variable": ["state_income"],
+                "stratum_id": [2],
+                "geo_level": ["state"],
+                "geographic_id": ["37"],
+            }
+        ),
+        training_mask=np.array([True]),
+        constraints_map={2: ["constraint-2"]},
+    )
+    request = SimpleNamespace(
+        area_type="district",
+        area_id="NC-01",
+        display_name="NC-01",
+        validation_geo_level="district",
+        validation_geographic_ids=("3701",),
+    )
+
+    def validate_h5(**kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    result = AreaValidationService(validate_h5=validate_h5).validate_request(
+        context=context,
+        h5_path=Path("/tmp/NC-01.h5"),
+        request=request,
+    )
+
+    assert called is False
+    assert result.rows == ()
+    assert result.summary == {
+        "n_targets": 0,
+        "n_sanity_fail": 0,
+        "mean_rel_abs_error": 0.0,
+    }

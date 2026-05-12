@@ -17,6 +17,7 @@ Data sources:
 """
 
 import logging
+import os
 
 import pandas as pd
 from sqlmodel import Session, create_engine
@@ -47,6 +48,8 @@ PREGNANCY_DURATION_FRACTION = 39 / 52
 # CDC VSRR Socrata dataset ID for provisional natality.
 CDC_VSRR_DATASET = "hmz2-vwda"
 CDC_VSRR_BASE = f"https://data.cdc.gov/resource/{CDC_VSRR_DATASET}.json"
+CENSUS_FEMALE_15_44_S0101_COLUMN = "S0101_C05_024E"
+CENSUS_B01001_FEMALE_15_44_COLUMNS = [f"B01001_{i:03d}E" for i in range(30, 39)]
 
 # State name -> abbreviation for mapping CDC's uppercase names.
 STATE_NAME_TO_ABBREV = {
@@ -163,11 +166,78 @@ def extract_cdc_births(year: int) -> pd.DataFrame:
     return result[["state_abbrev", "births"]]
 
 
-def extract_female_population(year: int) -> pd.DataFrame:
-    """Fetch state-level female population aged 15-44 from ACS B01001.
+def _validate_census_table(
+    data: object,
+    required_columns: list[str],
+    source: str,
+) -> None:
+    """Validate the Census API table shape before caching or parsing it."""
+    if not isinstance(data, list) or len(data) < 2 or not isinstance(data[0], list):
+        raise ValueError(f"{source} did not return a Census table")
 
-    Variables B01001_030E..B01001_038E cover female age groups
-    15-17 through 40-44.
+    missing = set(required_columns) - set(data[0])
+    if missing:
+        missing_str = ", ".join(sorted(missing))
+        raise ValueError(f"{source} missing required columns: {missing_str}")
+
+
+def _female_population_from_s0101(data: object, source: str) -> pd.DataFrame:
+    """Parse S0101 female 15-44 state totals from a Census table."""
+    _validate_census_table(
+        data,
+        ["GEO_ID", CENSUS_FEMALE_15_44_S0101_COLUMN],
+        source,
+    )
+    headers, rows = data[0], data[1:]
+    df = pd.DataFrame(rows, columns=headers)
+    df["female_15_44"] = pd.to_numeric(
+        df[CENSUS_FEMALE_15_44_S0101_COLUMN],
+    )
+    df["state"] = df["GEO_ID"].str.extract(r"0400000US(\d{2})")
+    fips_to_abbrev = {v: k for k, v in STATE_ABBREV_TO_FIPS.items()}
+    df["state_abbrev"] = df["state"].map(fips_to_abbrev)
+    return df[["state_abbrev", "female_15_44"]].dropna(subset=["state_abbrev"])
+
+
+def _female_population_from_b01001(data: object, source: str) -> pd.DataFrame:
+    """Parse B01001 female age-band totals from a Census table."""
+    _validate_census_table(
+        data,
+        [*CENSUS_B01001_FEMALE_15_44_COLUMNS, "state"],
+        source,
+    )
+    headers, rows = data[0], data[1:]
+    df = pd.DataFrame(rows, columns=headers)
+    df[CENSUS_B01001_FEMALE_15_44_COLUMNS] = df[
+        CENSUS_B01001_FEMALE_15_44_COLUMNS
+    ].astype(int)
+    df["female_15_44"] = df[CENSUS_B01001_FEMALE_15_44_COLUMNS].sum(axis=1)
+    fips_to_abbrev = {v: k for k, v in STATE_ABBREV_TO_FIPS.items()}
+    df["state_abbrev"] = df["state"].map(fips_to_abbrev)
+    return df[["state_abbrev", "female_15_44"]].dropna(subset=["state_abbrev"])
+
+
+def _census_api_url(year: int, survey: str) -> str:
+    """Build a Census API URL."""
+    var_ids = ",".join(CENSUS_B01001_FEMALE_15_44_COLUMNS)
+    return f"https://api.census.gov/data/{year}/acs/{survey}?get={var_ids}&for=state:*"
+
+
+def _census_api_params() -> dict[str, str] | None:
+    """Return Census API params, keeping secrets out of logged URLs."""
+    census_api_key = os.getenv("CENSUS_API_KEY")
+    if census_api_key:
+        return {"key": census_api_key}
+    return None
+
+
+def extract_female_population(year: int) -> pd.DataFrame:
+    """Fetch state-level female population aged 15-44 from ACS.
+
+    Prefer the S0101 state table already cached by etl_age in this build,
+    which has a direct female 15-44 estimate. Fall back to B01001 variables
+    B01001_030E..B01001_038E, which cover female age groups 15-17 through
+    40-44.
 
     Args:
         year: ACS vintage year to query.
@@ -179,22 +249,44 @@ def extract_female_population(year: int) -> pd.DataFrame:
     if is_cached(cache_file):
         logger.info(f"Using cached {cache_file}")
         data = load_json(cache_file)
-    else:
-        var_ids = ",".join([f"B01001_{i:03d}E" for i in range(30, 39)])
-        url = f"https://api.census.gov/data/{year}/acs/acs1?get={var_ids}&for=state:*"
-        logger.info(f"Fetching ACS B01001 female 15-44 for {year}")
-        resp = get_with_exponential_backoff(url, timeout=30)
-        data = resp.json()
-        save_json(cache_file, data)
+        return _female_population_from_b01001(data, cache_file)
 
-    headers, rows = data[0], data[1:]
-    df = pd.DataFrame(rows, columns=headers)
-    age_cols = [c for c in df.columns if c.startswith("B01001_")]
-    df[age_cols] = df[age_cols].astype(int)
-    df["female_15_44"] = df[age_cols].sum(axis=1)
-    fips_to_abbrev = {v: k for k, v in STATE_ABBREV_TO_FIPS.items()}
-    df["state_abbrev"] = df["state"].map(fips_to_abbrev)
-    return df[["state_abbrev", "female_15_44"]].dropna(subset=["state_abbrev"])
+    s0101_cache_file = f"acs_S0101_state_{year}.json"
+    if is_cached(s0101_cache_file):
+        logger.info(f"Using cached {s0101_cache_file}")
+        data = load_json(s0101_cache_file)
+        return _female_population_from_s0101(data, s0101_cache_file)
+
+    errors = []
+    for survey in ["acs1", "acs5"]:
+        url = _census_api_url(year, survey)
+        try:
+            logger.info(f"Fetching ACS {survey} B01001 female 15-44 for {year}")
+            request_params = _census_api_params()
+            request_kwargs = {"params": request_params} if request_params else {}
+            resp = get_with_exponential_backoff(
+                url,
+                timeout=30,
+                **request_kwargs,
+            )
+            data = resp.json()
+            _validate_census_table(
+                data,
+                [*CENSUS_B01001_FEMALE_15_44_COLUMNS, "state"],
+                f"ACS {survey} B01001 {year}",
+            )
+        except Exception as e:
+            errors.append(f"{survey}: {e}")
+            logger.warning(f"ACS {survey} B01001 {year} not available: {e}")
+            continue
+
+        save_json(cache_file, data)
+        return _female_population_from_b01001(data, f"ACS {survey} B01001 {year}")
+
+    raise RuntimeError(
+        f"No ACS female population data for {year}. "
+        f"Tried cached {s0101_cache_file} and B01001 API: {'; '.join(errors)}"
+    )
 
 
 # ── Transform ────────────────────────────────────────────────────────
@@ -351,7 +443,7 @@ def main():
         raise RuntimeError(f"No CDC VSRR birth data for {year} or {year - 1}")
 
     pop_df = None
-    for acs_year in [year - 1, year - 2]:
+    for acs_year in [year, year - 1, year - 2]:
         try:
             pop_df = extract_female_population(acs_year)
             print(f"Using ACS {acs_year} female population data")
@@ -359,7 +451,9 @@ def main():
         except Exception as e:
             logger.warning(f"ACS {acs_year} not available: {e}")
     if pop_df is None:
-        raise RuntimeError(f"No ACS population data for {year - 1} or {year - 2}")
+        raise RuntimeError(
+            f"No ACS population data for {year}, {year - 1}, or {year - 2}"
+        )
 
     df = transform_pregnancy_data(births_df, pop_df)
 

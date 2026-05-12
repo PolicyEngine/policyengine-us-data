@@ -161,8 +161,6 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "social_security_survivors",
     # Transfer income
     "unemployment_compensation",
-    "tanf_reported",
-    "ssi_reported",
     "child_support_received",
     "veterans_benefits",
     "workers_compensation",
@@ -171,15 +169,8 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "receives_wic",
     # SPM variables
     "spm_unit_total_income_reported",
-    "snap_reported",
-    "spm_unit_capped_housing_subsidy_reported",
-    "free_school_meals_reported",
-    "spm_unit_energy_subsidy_reported",
-    "spm_unit_wic_reported",
-    "spm_unit_broadband_subsidy_reported",
-    "spm_unit_payroll_tax_reported",
-    "spm_unit_federal_tax_reported",
-    "spm_unit_state_tax_reported",
+    "spm_unit_capped_housing_subsidy_data",
+    "spm_unit_energy_subsidy_data",
     "spm_unit_net_income_reported",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses

@@ -587,7 +587,10 @@ def add_takeup(self):
         get_state_pregnancy_rates,
     )
 
-    pregnancy_rates = get_state_pregnancy_rates()
+    pregnancy_rates = get_state_pregnancy_rates(
+        cdc_year=self.time_period,
+        acs_year=self.time_period,
+    )
     national_rate = 0.041  # fallback
     pregnancy_rate_by_person = np.array(
         [pregnancy_rates.get(s, national_rate) for s in person_states]

@@ -30,6 +30,7 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS
 from policyengine_us_data.utils.db import (
+    DEFAULT_YEAR,
     get_geographic_strata,
     etl_argparser,
 )
@@ -395,8 +396,8 @@ def load_pregnancy_data(
 
 
 def get_state_pregnancy_rates(
-    cdc_year: int = 2023,
-    acs_year: int = 2023,
+    cdc_year: int = DEFAULT_YEAR,
+    acs_year: int = DEFAULT_YEAR,
 ) -> dict:
     """Return {state_abbrev: pregnancy_rate} for use by cps.py.
 
@@ -413,8 +414,39 @@ def get_state_pregnancy_rates(
         rate (probability that a woman aged 15-44 is currently
         pregnant).
     """
-    births_df = extract_cdc_births(cdc_year)
-    pop_df = extract_female_population(acs_year)
+    births_df = None
+    birth_errors = []
+    for candidate_cdc_year in [cdc_year, cdc_year - 1]:
+        try:
+            births_df = extract_cdc_births(candidate_cdc_year)
+            break
+        except Exception as e:
+            birth_errors.append(f"{candidate_cdc_year}: {e}")
+            logger.warning(
+                f"CDC VSRR {candidate_cdc_year} not available for take-up: {e}"
+            )
+    if births_df is None:
+        raise RuntimeError(
+            "No CDC VSRR birth data for pregnancy take-up rates. "
+            f"Tried {cdc_year} and {cdc_year - 1}: {'; '.join(birth_errors)}"
+        )
+
+    pop_df = None
+    population_errors = []
+    for candidate_acs_year in [acs_year, acs_year - 1, acs_year - 2]:
+        try:
+            pop_df = extract_female_population(candidate_acs_year)
+            break
+        except Exception as e:
+            population_errors.append(f"{candidate_acs_year}: {e}")
+            logger.warning(f"ACS {candidate_acs_year} not available for take-up: {e}")
+    if pop_df is None:
+        raise RuntimeError(
+            "No ACS female population data for pregnancy take-up rates. "
+            f"Tried {acs_year}, {acs_year - 1}, and {acs_year - 2}: "
+            f"{'; '.join(population_errors)}"
+        )
+
     df = transform_pregnancy_data(births_df, pop_df)
     return dict(zip(df["state_abbrev"], df["pregnancy_rate"]))
 

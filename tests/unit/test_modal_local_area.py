@@ -328,3 +328,102 @@ def test_build_worker_bootstrap_invokes_builder_without_changing_inputs(monkeypa
     assert bundle.manifest_path == (
         artifacts_dir / "bootstrap" / "regional" / "worker_bootstrap.json"
     )
+
+
+def test_build_worker_calibration_inputs_includes_existing_run_config_and_package(
+    tmp_path,
+):
+    local_area = load_local_area_module()
+    run_config_path = tmp_path / "unified_run_config.json"
+    package_path = tmp_path / "calibration_package.pkl"
+    run_config_path.write_text("{}")
+    package_path.write_bytes(b"package")
+
+    inputs = local_area._build_worker_calibration_inputs(
+        weights_path=tmp_path / "calibration_weights.npy",
+        geography_path=tmp_path / "geography_assignment.npz",
+        dataset_path=tmp_path / "source.h5",
+        db_path=tmp_path / "policy_data.db",
+        n_clones=430,
+        seed=42,
+        run_config_path=run_config_path,
+        calibration_package_path=package_path,
+    )
+
+    assert inputs.run_config_path == run_config_path
+    assert inputs.calibration_package_path == package_path
+    assert inputs.n_clones == 430
+    assert inputs.seed == 42
+    assert inputs.to_wire_dict()["run_config"] == str(run_config_path)
+
+
+def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
+    local_area = load_local_area_module()
+
+    inputs = local_area._build_worker_calibration_inputs(
+        weights_path=tmp_path / "national_calibration_weights.npy",
+        geography_path=tmp_path / "national_geography_assignment.npz",
+        dataset_path=tmp_path / "source.h5",
+        db_path=tmp_path / "policy_data.db",
+        n_clones=430,
+        seed=42,
+        run_config_path=tmp_path / "missing_config.json",
+        calibration_package_path=tmp_path / "missing_package.pkl",
+    )
+
+    assert inputs.run_config_path is None
+    assert inputs.calibration_package_path is None
+    assert "run_config" not in inputs.to_wire_dict()
+    assert "calibration_package" not in inputs.to_wire_dict()
+
+
+def test_build_areas_worker_surfaces_successful_worker_stderr(
+    monkeypatch,
+    capsys,
+    tmp_path,
+):
+    local_area = load_local_area_module()
+    monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+    monkeypatch.setattr(local_area, "VOLUME_MOUNT", str(tmp_path / "staging"))
+    monkeypatch.setattr(
+        local_area,
+        "pipeline_volume",
+        SimpleNamespace(reload=lambda: None),
+    )
+    monkeypatch.setattr(
+        local_area,
+        "staging_volume",
+        SimpleNamespace(reload=lambda: None, commit=lambda: None),
+    )
+    captured_cmd = {}
+
+    def fake_run(cmd, **kwargs):
+        captured_cmd["cmd"] = cmd
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"completed": ["district:NC-01"], "failed": [], "errors": []}',
+            stderr="Worker session ready: scope=regional, bootstrap=used\n",
+        )
+
+    monkeypatch.setattr(local_area.subprocess, "run", fake_run)
+
+    result = local_area.build_areas_worker(
+        branch="main",
+        run_id="run-123",
+        scope="regional",
+        work_items=[{"type": "district", "id": "NC-01"}],
+        calibration_inputs={
+            "weights": "/tmp/calibration_weights.npy",
+            "dataset": "/tmp/source.h5",
+            "database": "/tmp/policy_data.db",
+        },
+        validate=False,
+        scope_fingerprint="regional-fingerprint",
+    )
+
+    captured = capsys.readouterr()
+    assert result["completed"] == ["district:NC-01"]
+    assert "Worker session ready: scope=regional, bootstrap=used" in captured.err
+    assert "--scope-fingerprint" in captured_cmd["cmd"]
+    assert "regional-fingerprint" in captured_cmd["cmd"]

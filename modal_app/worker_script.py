@@ -12,124 +12,6 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
-
-def _validate_in_subprocess(
-    h5_path,
-    area_type,
-    area_id,
-    display_id,
-    area_targets,
-    area_training,
-    constraints_map,
-    db_path,
-    period,
-):
-    """Run validation for one area inside a subprocess.
-
-    All Microsimulation memory is reclaimed when the
-    subprocess exits.
-    """
-    import logging
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
-    )
-    from policyengine_us import Microsimulation
-    from sqlalchemy import create_engine as _ce
-    from policyengine_us_data.calibration.validate_staging import (
-        validate_area,
-        _build_variable_entity_map,
-    )
-
-    engine = _ce(f"sqlite:///{db_path}")
-    sim = Microsimulation(dataset=h5_path)
-    variable_entity_map = _build_variable_entity_map(sim)
-
-    results = validate_area(
-        sim=sim,
-        targets_df=area_targets,
-        engine=engine,
-        area_type=area_type,
-        area_id=area_id,
-        display_id=display_id,
-        dataset_path=h5_path,
-        period=period,
-        training_mask=area_training,
-        variable_entity_map=variable_entity_map,
-        constraints_map=constraints_map,
-    )
-    return results
-
-
-def _validate_h5_subprocess(
-    h5_path,
-    request,
-    validation_targets,
-    training_mask_full,
-    constraints_map,
-    db_path,
-    period,
-):
-    """Spawn a subprocess to validate one H5 file.
-
-    Uses multiprocessing spawn to isolate memory.
-    """
-    import multiprocessing as _mp
-
-    geo_level = request.validation_geo_level
-    geographic_ids = tuple(str(item) for item in request.validation_geographic_ids)
-    if geo_level is None:
-        return []
-    area_type = {
-        "state": "states",
-        "district": "districts",
-        "city": "cities",
-        "national": "national",
-    }.get(request.area_type)
-    if area_type is None:
-        return []
-    display_id = request.display_name
-
-    # Filter targets to matching area
-    if request.area_type == "national":
-        mask = validation_targets["geo_level"] == geo_level
-    else:
-        mask = (validation_targets["geo_level"] == geo_level) & (
-            validation_targets["geographic_id"].astype(str).isin(geographic_ids)
-        )
-
-    area_targets = validation_targets[mask].reset_index(drop=True)
-    area_training = training_mask_full[mask.values]
-
-    if len(area_targets) == 0:
-        return []
-
-    # Filter constraints_map to relevant strata
-    area_strata = area_targets["stratum_id"].unique().tolist()
-    area_constraints = {int(s): constraints_map.get(int(s), []) for s in area_strata}
-
-    ctx = _mp.get_context("spawn")
-    with ctx.Pool(1) as pool:
-        results = pool.apply(
-            _validate_in_subprocess,
-            (
-                h5_path,
-                area_type,
-                request.area_id,
-                display_id,
-                area_targets,
-                area_training,
-                area_constraints,
-                db_path,
-                period,
-            ),
-        )
-
-    return results
-
 
 def parse_args(argv: list[str] | None = None):
     """Parse worker arguments for legacy and typed request inputs."""
@@ -149,6 +31,32 @@ def parse_args(argv: list[str] | None = None):
     parser.add_argument("--dataset-path", required=True)
     parser.add_argument("--db-path", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--scope",
+        choices=("regional", "national"),
+        required=True,
+        help="Worker bootstrap scope to use for this request batch",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Pipeline run ID used for traceability and bootstrap lookup",
+    )
+    parser.add_argument(
+        "--artifacts-dir",
+        default=None,
+        help="Optional run-scoped pipeline artifacts directory containing bootstrap artifacts",
+    )
+    parser.add_argument(
+        "--run-config-path",
+        default=None,
+        help="Optional unified run configuration JSON used for traceability",
+    )
+    parser.add_argument(
+        "--scope-fingerprint",
+        default=None,
+        help="Coordinator-resolved scope fingerprint expected by bootstrap artifacts",
+    )
     parser.add_argument(
         "--geography-path",
         default=None,
@@ -210,6 +118,34 @@ def _load_request_inputs_from_args(
         )
 
     return "work_items", tuple(json.loads(args.work_items))
+
+
+def _build_publishing_inputs(*, args, run_id: str):
+    """Build the traceability input bundle consumed by worker setup services."""
+
+    from policyengine_us_data.build_outputs.worker_inputs import (
+        WorkerCalibrationInputs,
+    )
+
+    worker_inputs = WorkerCalibrationInputs(
+        weights_path=Path(args.weights_path),
+        dataset_path=Path(args.dataset_path),
+        database_path=Path(args.db_path),
+        geography_path=(
+            Path(args.geography_path) if args.geography_path is not None else None
+        ),
+        calibration_package_path=(
+            Path(args.calibration_package_path)
+            if args.calibration_package_path is not None
+            else None
+        ),
+        run_config_path=(
+            Path(args.run_config_path) if args.run_config_path is not None else None
+        ),
+        n_clones=args.n_clones,
+        seed=args.seed,
+    )
+    return worker_inputs.to_publishing_input_bundle(run_id=run_id)
 
 
 def _build_kwargs_from_request(request) -> dict[str, Any]:
@@ -296,13 +232,29 @@ def _resolve_request_input(
     return _request_key(request), request
 
 
+def _log_worker_session_ready(*, scope: str, session, geography) -> None:
+    """Write worker-session setup details to stderr for Modal diagnostics."""
+
+    print(
+        "Worker session ready: "
+        f"scope={scope}, bootstrap={session.bootstrap_status}, "
+        f"{geography.n_clones} clones x {geography.n_records} records",
+        file=sys.stderr,
+    )
+    bootstrap_error = session.caches.get("bootstrap_error")
+    if bootstrap_error:
+        print(
+            f"Worker bootstrap fallback reason: {bootstrap_error}",
+            file=sys.stderr,
+        )
+
+
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
-    weights_path = Path(args.weights_path)
     dataset_path = Path(args.dataset_path)
-    db_path = Path(args.db_path)
     output_dir = Path(args.output_dir)
+    run_id = args.run_id or output_dir.name or "local-worker"
 
     from policyengine_us_data.utils.takeup import (
         SIMPLE_TAKEUP_VARS,
@@ -315,100 +267,48 @@ def main(argv: list[str] | None = None):
 
     from policyengine_us_data.calibration.publish_local_area import (
         build_h5,
-        load_calibration_geography,
     )
     from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog
     from policyengine_us_data.build_outputs.requests import AreaBuildRequest
-
-    weights = np.load(weights_path)
-
-    from policyengine_us import Microsimulation
-
-    _sim = Microsimulation(dataset=str(dataset_path))
-    n_records = len(_sim.calculate("household_id", map_to="household").values)
-    del _sim
-
-    geography = load_calibration_geography(
-        weights_path=weights_path,
-        n_records=n_records,
-        n_clones=args.n_clones,
-        geography_path=(
-            Path(args.geography_path) if args.geography_path is not None else None
-        ),
-        calibration_package_path=(
-            Path(args.calibration_package_path)
-            if args.calibration_package_path is not None
-            else None
-        ),
+    from policyengine_us_data.build_outputs.validation import (
+        AreaValidationService,
+        ValidationPolicy,
     )
-    print(
-        f"Loaded geography: "
-        f"{geography.n_clones} clones x "
-        f"{geography.n_records} records",
-        file=sys.stderr,
-    )
+    from policyengine_us_data.build_outputs.worker_session import WorkerSessionFactory
+
     area_catalog = USAreaCatalog.default()
     request_input_mode, request_inputs = _load_request_inputs_from_args(
         args=args,
         area_build_request_cls=AreaBuildRequest,
     )
+    scope = args.scope
+    inputs = _build_publishing_inputs(args=args, run_id=run_id)
+    validation_service = AreaValidationService()
 
-    # ── Validation setup (once per worker) ──
-    validation_targets = None
-    training_mask_full = None
-    constraints_map = None
-    if not args.no_validate:
-        from sqlalchemy import create_engine
-        from policyengine_us_data.calibration.validate_staging import (
-            _query_all_active_targets,
-            _batch_stratum_constraints,
-        )
-        from policyengine_us_data.calibration.unified_calibration import (
-            load_target_config,
-            _match_rules,
-        )
-
-        engine = create_engine(f"sqlite:///{db_path}")
-        validation_targets = _query_all_active_targets(engine, args.period)
+    session = WorkerSessionFactory(validation_service=validation_service).create(
+        inputs=inputs,
+        scope=scope,
+        validation_policy=ValidationPolicy(enabled=not args.no_validate),
+        period=args.period,
+        target_config_path=Path(args.target_config) if args.target_config else None,
+        validation_config_path=(
+            Path(args.validation_config) if args.validation_config else None
+        ),
+        artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
+        expected_scope_fingerprint=args.scope_fingerprint,
+    )
+    weights = session.weights.values
+    n_records = session.weights.n_records
+    geography = session.geography
+    validation_context = session.validation_context
+    _log_worker_session_ready(scope=scope, session=session, geography=geography)
+    if (
+        validation_context is not None
+        and validation_context.validation_targets is not None
+    ):
         print(
-            f"Loaded {len(validation_targets)} validation targets",
-            file=sys.stderr,
-        )
-
-        # Apply exclude/include from validation config
-        if args.validation_config:
-            val_cfg = load_target_config(args.validation_config)
-            exc_rules = val_cfg.get("exclude", [])
-            if exc_rules:
-                exc_mask = _match_rules(validation_targets, exc_rules)
-                validation_targets = validation_targets[~exc_mask].reset_index(
-                    drop=True
-                )
-            inc_rules = val_cfg.get("include", [])
-            if inc_rules:
-                inc_mask = _match_rules(validation_targets, inc_rules)
-                validation_targets = validation_targets[inc_mask].reset_index(drop=True)
-
-        # Compute training mask from training config
-        if args.target_config:
-            tr_cfg = load_target_config(args.target_config)
-            tr_inc = tr_cfg.get("include", [])
-            if tr_inc:
-                training_mask_full = np.asarray(
-                    _match_rules(validation_targets, tr_inc),
-                    dtype=bool,
-                )
-            else:
-                training_mask_full = np.ones(len(validation_targets), dtype=bool)
-        else:
-            training_mask_full = np.ones(len(validation_targets), dtype=bool)
-
-        # Batch-load constraints
-        stratum_ids = validation_targets["stratum_id"].unique().tolist()
-        constraints_map = _batch_stratum_constraints(engine, stratum_ids)
-        print(
-            f"Validation ready: {len(validation_targets)} targets, "
-            f"{len(stratum_ids)} strata",
+            f"Validation ready: {len(validation_context.validation_targets)} targets, "
+            f"{len(validation_context.constraints_map or {})} strata",
             file=sys.stderr,
         )
 
@@ -477,42 +377,22 @@ def main(argv: list[str] | None = None):
                     file=sys.stderr,
                 )
 
-                # ── Per-item validation ──
-                if not args.no_validate and validation_targets is not None:
+                if not args.no_validate and validation_context is not None:
                     try:
-                        v_rows = _validate_h5_subprocess(
+                        validation_result = validation_service.validate_request(
+                            context=validation_context,
                             h5_path=str(path),
                             request=request,
-                            validation_targets=validation_targets,
-                            training_mask_full=training_mask_full,
-                            constraints_map=constraints_map,
-                            db_path=str(db_path),
-                            period=args.period,
                         )
+                        v_rows = list(validation_result.rows)
                         results["validation_rows"].extend(v_rows)
-                        n_fail = sum(
-                            1 for r in v_rows if r.get("sanity_check") == "FAIL"
-                        )
-                        rae_vals = [
-                            r["rel_abs_error"]
-                            for r in v_rows
-                            if isinstance(
-                                r.get("rel_abs_error"),
-                                (int, float),
-                            )
-                            and r["rel_abs_error"] != float("inf")
-                        ]
-                        mean_rae = sum(rae_vals) / len(rae_vals) if rae_vals else 0.0
-                        results["validation_summary"][request_key] = {
-                            "n_targets": len(v_rows),
-                            "n_sanity_fail": n_fail,
-                            "mean_rel_abs_error": round(mean_rae, 4),
-                        }
+                        summary = dict(validation_result.summary)
+                        results["validation_summary"][request_key] = summary
                         print(
                             f"  Validated {request_key}: "
-                            f"{len(v_rows)} targets, "
-                            f"{n_fail} sanity fails, "
-                            f"mean RAE={mean_rae:.4f}",
+                            f"{summary['n_targets']} targets, "
+                            f"{summary['n_sanity_fail']} sanity fails, "
+                            f"mean RAE={summary['mean_rel_abs_error']:.4f}",
                             file=sys.stderr,
                         )
                     except Exception as ve:

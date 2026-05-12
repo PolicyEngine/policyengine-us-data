@@ -556,3 +556,32 @@ class PolicyEngineDatasetReader:
         path = Path(dataset_path)
         simulation = Microsimulation(dataset=str(path))
         return SourceDatasetSnapshot.from_simulation(path, simulation)
+
+    def load_with_entity_graph(
+        self,
+        dataset_path: Path,
+        entity_graph: EntityGraph,
+    ) -> SourceDatasetSnapshot:
+        """Open a source H5 dataset using a prebuilt structural entity graph.
+
+        Args:
+            dataset_path: Source H5 dataset path.
+            entity_graph: Persisted structural entity graph for the dataset.
+
+        Returns:
+            A `SourceDatasetSnapshot` backed by a PolicyEngine microsimulation
+            and the supplied entity graph.
+        """
+
+        from policyengine_us import Microsimulation
+
+        path = Path(dataset_path)
+        simulation = Microsimulation(dataset=str(path))
+        provider = MicrosimulationVariableProvider(simulation)
+        return SourceDatasetSnapshot(
+            dataset_path=path,
+            time_period=int(simulation.default_calculation_period),
+            entity_graph=entity_graph,
+            input_variables=provider.input_variables,
+            variable_provider=provider,
+        )

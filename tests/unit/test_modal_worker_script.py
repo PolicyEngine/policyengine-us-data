@@ -25,6 +25,8 @@ def test_parse_args_accepts_requests_json():
             "/tmp/policy_data.db",
             "--output-dir",
             "/tmp/out",
+            "--scope",
+            "regional",
         ]
     )
 
@@ -45,12 +47,48 @@ def test_parse_args_accepts_calibration_package_path():
             "/tmp/policy_data.db",
             "--output-dir",
             "/tmp/out",
+            "--scope",
+            "regional",
             "--calibration-package-path",
             "/tmp/calibration_package.pkl",
         ]
     )
 
     assert args.calibration_package_path == "/tmp/calibration_package.pkl"
+
+
+def test_parse_args_accepts_worker_session_paths():
+    args = worker_script.parse_args(
+        [
+            "--requests-json",
+            "[]",
+            "--weights-path",
+            "/tmp/weights.npy",
+            "--dataset-path",
+            "/tmp/source.h5",
+            "--db-path",
+            "/tmp/policy_data.db",
+            "--output-dir",
+            "/tmp/out",
+            "--scope",
+            "national",
+            "--run-id",
+            "run-123",
+            "--artifacts-dir",
+            "/tmp/artifacts/run-123",
+            "--run-config-path",
+            "/tmp/unified_run_config.json",
+            "--scope-fingerprint",
+            "regional-fingerprint",
+        ]
+    )
+
+    assert args.run_id == "run-123"
+    assert args.scope == "national"
+    assert args.artifacts_dir == "/tmp/artifacts/run-123"
+    assert args.run_config_path == "/tmp/unified_run_config.json"
+    assert args.scope_fingerprint == "regional-fingerprint"
+    assert not hasattr(args, "version")
 
 
 def test_load_request_inputs_from_args_uses_request_payloads_when_present():
@@ -164,3 +202,21 @@ def test_resolve_output_path_rejects_escaped_request_path(tmp_path):
         assert "must stay within the worker output_dir" in str(exc)
     else:
         raise AssertionError("Expected _resolve_output_path to reject traversal")
+
+
+def test_log_worker_session_ready_includes_bootstrap_fallback_reason(capsys):
+    session = SimpleNamespace(
+        bootstrap_status="fallback",
+        caches={"bootstrap_error": "entity graph load failed"},
+    )
+    geography = SimpleNamespace(n_clones=2, n_records=10)
+
+    worker_script._log_worker_session_ready(
+        scope="regional",
+        session=session,
+        geography=geography,
+    )
+
+    captured = capsys.readouterr()
+    assert "Worker session ready: scope=regional, bootstrap=fallback" in captured.err
+    assert "Worker bootstrap fallback reason: entity graph load failed" in captured.err

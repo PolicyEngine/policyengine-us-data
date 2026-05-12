@@ -19,6 +19,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.local_area import VOLUME_MOUNT, pipeline_volume, staging_volume  # noqa: E402
+from policyengine_us_data.build_outputs.worker_inputs import (  # noqa: E402
+    WorkerCalibrationInputPayload,
+    WorkerCalibrationInputs,
+)
 
 
 app = modal.App(
@@ -70,19 +74,16 @@ def _calibration_inputs(
     calibration_package_path: Path | None = None,
     n_clones: int = 1,
     seed: int = 42,
-) -> dict:
-    inputs = {
-        "weights": str(weights_path),
-        "dataset": str(dataset_path),
-        "database": str(db_path),
-        "n_clones": n_clones,
-        "seed": seed,
-    }
-    if geography_path is not None:
-        inputs["geography"] = str(geography_path)
-    if calibration_package_path is not None:
-        inputs["calibration_package"] = str(calibration_package_path)
-    return inputs
+) -> WorkerCalibrationInputPayload:
+    return WorkerCalibrationInputs(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        database_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=calibration_package_path,
+        n_clones=n_clones,
+        seed=seed,
+    ).to_wire_dict()
 
 
 @app.function(
@@ -290,17 +291,15 @@ def preflight_h5_case(run_id: str, *, n_clones: int = 1) -> dict:
         calibration_package_path=package_path if package_path.exists() else None,
         blocks_path=artifact_dir / "stacked_blocks.npy",
     )
-    calibration_inputs = {
-        "weights": str(weights_path),
-        "dataset": str(dataset_path),
-        "database": str(db_path),
-        "n_clones": n_clones,
-        "seed": SEED,
-    }
-    if geography_path.exists():
-        calibration_inputs["geography"] = str(geography_path)
-    if package_path.exists():
-        calibration_inputs["calibration_package"] = str(package_path)
+    calibration_inputs = WorkerCalibrationInputs.from_artifact_paths(
+        weights_path=weights_path,
+        dataset_path=dataset_path,
+        database_path=db_path,
+        geography_path=geography_path,
+        calibration_package_path=package_path,
+        n_clones=n_clones,
+        seed=SEED,
+    ).to_wire_dict()
     return {
         "fingerprint": fingerprint,
         "geography_source": resolved.kind if resolved is not None else None,

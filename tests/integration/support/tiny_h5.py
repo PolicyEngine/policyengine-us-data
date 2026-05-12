@@ -23,6 +23,9 @@ from policyengine_us_data.build_outputs.requests import (
     AreaBuildRequest,
     AreaFilter,
 )
+from policyengine_us_data.build_outputs.worker_inputs import (
+    WorkerCalibrationInputs,
+)
 from tests.integration.support.pipeline_workspace import TinyPipelineWorkspace
 from tests.integration.support.tiny_pipeline import TinyPipelineArtifacts
 
@@ -167,19 +170,21 @@ def build_publishing_input_bundle(
 ) -> PublishingInputBundle:
     """Build the same traceability input shape used by local H5 publication."""
 
-    return PublishingInputBundle(
+    worker_inputs = WorkerCalibrationInputs(
         weights_path=artifacts.weights_path,
-        source_dataset_path=artifacts.dataset_path,
-        target_db_path=artifacts.db_path,
-        exact_geography_path=artifacts.geography_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path,
         calibration_package_path=(
             artifacts.calibration_package_path if scope == "regional" else None
         ),
         run_config_path=artifacts.run_config_path,
-        run_id=run_id,
-        version=VERSION,
         n_clones=artifacts.n_clones,
         seed=SEED,
+    )
+    return worker_inputs.to_publishing_input_bundle(
+        run_id=run_id,
+        version=VERSION,
     )
 
 
@@ -193,33 +198,30 @@ def run_local_h5_worker(
 ) -> dict:
     """Run the real local H5 worker subprocess for tiny fixture requests."""
 
+    worker_inputs = WorkerCalibrationInputs(
+        weights_path=artifacts.weights_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path if use_saved_geography else None,
+        calibration_package_path=(
+            artifacts.calibration_package_path if use_package_geography else None
+        ),
+        n_clones=artifacts.n_clones,
+        seed=SEED,
+    )
     cmd = [
         sys.executable,
         "-m",
         "modal_app.worker_script",
         "--requests-json",
         json.dumps([request.to_dict() for request in requests]),
-        "--weights-path",
-        str(artifacts.weights_path),
-        "--dataset-path",
-        str(artifacts.dataset_path),
-        "--db-path",
-        str(artifacts.db_path),
+        *worker_inputs.to_worker_cli_args(),
         "--output-dir",
         str(output_dir),
-        "--n-clones",
-        str(artifacts.n_clones),
+        "--scope",
+        "regional",
         "--no-validate",
     ]
-    if use_saved_geography:
-        cmd.extend(["--geography-path", str(artifacts.geography_path)])
-    if use_package_geography:
-        cmd.extend(
-            [
-                "--calibration-package-path",
-                str(artifacts.calibration_package_path),
-            ]
-        )
 
     result = subprocess.run(
         cmd,

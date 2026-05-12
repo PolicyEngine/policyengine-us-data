@@ -8,11 +8,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from policyengine_us_data.build_outputs.bootstrap import WorkerBootstrapBuilder
 from policyengine_us_data.build_outputs.source_dataset import (
     DEFAULT_SUBENTITIES,
     PolicyEngineDatasetReader,
 )
 from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
+from policyengine_us_data.build_outputs.worker_inputs import WorkerCalibrationInputs
 from tests.integration.build_outputs.fixtures import (
     build_request,
     seed_local_h5_artifacts,
@@ -38,42 +40,51 @@ def _run_worker(
     validate: bool = False,
     target_config: Path | None = None,
     validation_config: Path | None = None,
+    run_id: str = "tiny-worker-run",
+    scope: str = "regional",
+    scope_fingerprint: str | None = None,
+    artifacts_dir: Path | None = None,
+    return_process: bool = False,
 ) -> dict:
     _require_worker_dependencies()
     if not isinstance(requests, (list, tuple)):
         requests = (requests,)
+    worker_inputs = WorkerCalibrationInputs(
+        weights_path=artifacts.weights_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path if use_saved_geography else None,
+        calibration_package_path=(
+            artifacts.calibration_package_path if use_package_geography else None
+        ),
+        run_config_path=artifacts.run_config_path,
+        n_clones=artifacts.n_clones,
+        seed=42,
+    )
     cmd = [
         sys.executable,
         "-m",
         "modal_app.worker_script",
         "--requests-json",
         json.dumps([request.to_dict() for request in requests]),
-        "--weights-path",
-        str(artifacts.weights_path),
-        "--dataset-path",
-        str(artifacts.dataset_path),
-        "--db-path",
-        str(artifacts.db_path),
+        *worker_inputs.to_worker_cli_args(),
         "--output-dir",
         str(output_dir),
-        "--n-clones",
-        str(artifacts.n_clones),
+        "--scope",
+        scope,
+        "--run-id",
+        run_id,
     ]
+    if artifacts_dir is not None:
+        cmd.extend(["--artifacts-dir", str(artifacts_dir)])
+    if scope_fingerprint is not None:
+        cmd.extend(["--scope-fingerprint", scope_fingerprint])
     if not validate:
         cmd.append("--no-validate")
     if target_config is not None:
         cmd.extend(["--target-config", str(target_config)])
     if validation_config is not None:
         cmd.extend(["--validation-config", str(validation_config)])
-    if use_saved_geography:
-        cmd.extend(["--geography-path", str(artifacts.geography_path)])
-    if use_package_geography:
-        cmd.extend(
-            [
-                "--calibration-package-path",
-                str(artifacts.calibration_package_path),
-            ]
-        )
 
     result = subprocess.run(
         cmd,
@@ -81,6 +92,8 @@ def _run_worker(
         text=True,
         check=True,
     )
+    if return_process:
+        return result
     return json.loads(result.stdout)
 
 
@@ -158,6 +171,7 @@ def test_worker_builds_national_h5_from_package_geography(tmp_path):
         artifacts=artifacts,
         output_dir=output_dir,
         use_package_geography=True,
+        scope="national",
     )
 
     assert result["failed"] == []
@@ -191,21 +205,65 @@ include:
         validate=True,
         target_config=target_config,
         validation_config=validation_config,
+        return_process=True,
     )
+    parsed = json.loads(result.stdout)
 
-    assert result["failed"] == []
-    assert result["errors"] == []
-    assert result["completed"] == ["district:NC-01", "state:NC", "national:US"]
-    assert len(result["validation_rows"]) == 3
-    assert set(result["validation_summary"]) == {
+    assert result.stderr.count("Worker session ready:") == 1
+    assert parsed["failed"] == []
+    assert parsed["errors"] == []
+    assert parsed["completed"] == ["district:NC-01", "state:NC", "national:US"]
+    assert len(parsed["validation_rows"]) == 3
+    assert set(parsed["validation_summary"]) == {
         "district:NC-01",
         "state:NC",
         "national:US",
     }
-    for summary in result["validation_summary"].values():
+    for summary in parsed["validation_summary"].values():
         assert summary["n_targets"] == 1
         assert summary["n_sanity_fail"] == 0
-    for row in result["validation_rows"]:
+    for row in parsed["validation_rows"]:
         assert row["variable"] == "household_count"
         assert row["sanity_check"] == "PASS"
         assert row["in_training"] is True
+
+
+def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
+    artifacts = seed_local_h5_artifacts(tmp_path / "bootstrap")
+    request = build_request("district", geography=artifacts.geography)
+    output_dir = tmp_path / "bootstrap-out"
+    artifacts_dir = tmp_path / "pipeline-artifacts" / "run-123"
+    inputs = WorkerCalibrationInputs(
+        weights_path=artifacts.weights_path,
+        dataset_path=artifacts.dataset_path,
+        database_path=artifacts.db_path,
+        geography_path=artifacts.geography_path,
+        calibration_package_path=artifacts.calibration_package_path,
+        run_config_path=artifacts.run_config_path,
+        n_clones=artifacts.n_clones,
+        seed=42,
+    ).to_publishing_input_bundle(run_id="run-123", version="0.0.0")
+    WorkerBootstrapBuilder().build(
+        inputs=inputs,
+        scope="regional",
+        artifacts_dir=artifacts_dir,
+        scope_fingerprint="regional-fingerprint",
+    )
+
+    result = _run_worker(
+        requests=request,
+        artifacts=artifacts,
+        output_dir=output_dir,
+        use_saved_geography=True,
+        use_package_geography=True,
+        run_id="run-123",
+        scope_fingerprint="regional-fingerprint",
+        artifacts_dir=artifacts_dir,
+        return_process=True,
+    )
+    parsed = json.loads(result.stdout)
+
+    assert "Worker session ready: scope=regional, bootstrap=used" in result.stderr
+    assert parsed["failed"] == []
+    assert parsed["errors"] == []
+    assert parsed["completed"] == [f"district:{request.area_id}"]

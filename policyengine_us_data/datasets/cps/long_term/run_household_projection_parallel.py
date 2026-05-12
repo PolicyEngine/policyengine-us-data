@@ -89,16 +89,31 @@ def year_log_path(root: Path, year: int) -> Path:
     return root / ".parallel_logs" / f"{year}.log"
 
 
+def year_artifacts_complete(root: Path, year: int) -> bool:
+    output_dir = year_output_dir(root, year)
+    return (
+        (output_dir / f"{year}.h5").exists()
+        and (output_dir / f"{year}.h5.metadata.json").exists()
+        and (output_dir / "calibration_manifest.json").exists()
+    )
+
+
 def run_year(
     *,
     year: int,
     output_root: Path,
     forwarded_args: list[str],
-) -> tuple[int, Path]:
+) -> tuple[int, Path, bool]:
     output_dir = year_output_dir(output_root, year)
     log_path = year_log_path(output_root, year)
-    output_dir.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if year_artifacts_complete(output_root, year):
+        return year, output_dir, True
+
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     command = [
         sys.executable,
@@ -132,7 +147,7 @@ def run_year(
             f"Year {year} finished without expected artifacts in {output_dir}."
         )
 
-    return year, output_dir
+    return year, output_dir, False
 
 
 def copy_support_reports(temp_output_dir: Path, final_output_dir: Path) -> None:
@@ -253,12 +268,15 @@ def main() -> int:
         for future in as_completed(future_map):
             year = future_map[future]
             try:
-                future.result()
+                _, _, skipped = future.result()
             except Exception as error:
                 print(f"Year {year} failed: {error}", file=sys.stderr)
                 return 1
             completed_years.append(year)
-            print(f"Completed year {year}")
+            if skipped:
+                print(f"Skipped year {year} (existing complete temp output)")
+            else:
+                print(f"Completed year {year}")
 
     manifest_path = merge_outputs(
         years=years,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from argparse import Namespace
 from types import SimpleNamespace
 import numpy as np
@@ -76,7 +77,9 @@ from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_suppor
 from policyengine_us_data.datasets.cps.long_term.run_household_projection_parallel import (
     merge_outputs,
     parse_years,
+    run_year,
     validate_forwarded_args,
+    year_artifacts_complete,
     year_output_dir,
 )
 from policyengine_us_data.datasets.cps.long_term.run_long_term_production import (
@@ -2120,6 +2123,98 @@ def test_parallel_projection_merge_outputs_rebuilds_manifest(tmp_path):
     assert not (tmp_path / ".parallel_tmp").exists()
 
 
+def test_parallel_projection_run_year_skips_existing_complete_temp_output(
+    tmp_path, monkeypatch
+):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2048,
+        profile=profile,
+        audit=audit,
+        tax_assumption={"name": "trustees-core-thresholds-v1"},
+    )
+
+    called = False
+
+    def fake_run(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("subprocess.run should not be called for a complete year")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    year, output_dir, skipped = run_year(
+        year=2048,
+        output_root=tmp_path,
+        forwarded_args=[],
+    )
+
+    assert year == 2048
+    assert output_dir == year_output_dir(tmp_path, 2048)
+    assert skipped is True
+    assert called is False
+    assert year_artifacts_complete(tmp_path, 2048) is True
+
+
+def test_parallel_projection_run_year_replaces_partial_temp_output(
+    tmp_path, monkeypatch
+):
+    year = 2049
+    output_dir = year_output_dir(tmp_path, year)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stale_h5 = output_dir / f"{year}.h5"
+    stale_h5.write_bytes(b"stale")
+
+    def fake_run(command, cwd, stdout, stderr, check):
+        del command, cwd, stderr, check
+        assert not stale_h5.exists()
+        (output_dir / f"{year}.h5").write_bytes(b"fresh")
+        metadata_path = output_dir / f"{year}.h5.metadata.json"
+        metadata_path.write_text(
+            json.dumps(
+                {"year": year, "calibration_audit": {"calibration_quality": "exact"}}
+            ),
+            encoding="utf-8",
+        )
+        (output_dir / "calibration_manifest.json").write_text(
+            json.dumps({"ok": True}),
+            encoding="utf-8",
+        )
+        stdout.write("ok\n")
+        stdout.flush()
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result_year, result_dir, skipped = run_year(
+        year=year,
+        output_root=tmp_path,
+        forwarded_args=[],
+    )
+
+    assert result_year == year
+    assert result_dir == output_dir
+    assert skipped is False
+    assert (output_dir / f"{year}.h5").read_bytes() == b"fresh"
+    assert year_artifacts_complete(tmp_path, year) is True
+
+
 def test_parallel_projection_merge_outputs_rejects_mismatched_contract(tmp_path):
     profile = get_profile("ss-payroll-tob").to_dict()
     audit = {
@@ -2365,9 +2460,10 @@ def test_compose_role_donor_rows_can_sanitize_worker_non_target_income():
     assert worker_clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
     assert worker_clone["partnership_s_corp_income__2024"] == pytest.approx(0.0)
     assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(50_000.0)
-    assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
-        "sanitized_worker_non_target_income_columns"
-    ]
+    assert (
+        "long_term_capital_gains_before_response__2024"
+        in clone_df.attrs["sanitized_worker_non_target_income_columns"]
+    )
 
 
 def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
@@ -2448,10 +2544,9 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
         assert clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
         assert clone["partnership_s_corp_income__2024"] == pytest.approx(0.0)
     assert older_clone["social_security_retirement__2024"] == pytest.approx(20_000.0)
-    assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(
-        50_000.0
+    assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(50_000.0)
+    assert (
+        "long_term_capital_gains_before_response__2024"
+        in clone_df.attrs["sanitized_clone_non_target_income_columns"]
     )
-    assert "long_term_capital_gains_before_response__2024" in clone_df.attrs[
-        "sanitized_clone_non_target_income_columns"
-    ]
     assert "sanitized_worker_non_target_income_columns" not in clone_df.attrs

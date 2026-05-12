@@ -684,12 +684,9 @@ if SUPPORT_AUGMENTATION_PROFILE is not None:
             f"{sorted(SUPPORTED_AUGMENTATION_PROFILES)}"
         )
     if (
-        (
-            SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
-            or SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
-        )
-        and SUPPORT_AUGMENTATION_PROFILE != "donor-backed-composite-v1"
-    ):
+        SUPPORT_AUGMENTATION_SANITIZE_WORKER_NON_TARGET_INCOME
+        or SUPPORT_AUGMENTATION_SANITIZE_CLONE_NON_TARGET_INCOME
+    ) and SUPPORT_AUGMENTATION_PROFILE != "donor-backed-composite-v1":
         raise ValueError(
             "Support-augmentation non-target income sanitization is only "
             "supported with donor-backed-composite-v1."

@@ -119,6 +119,10 @@ def build_projection_command(args: argparse.Namespace, output_dir: Path) -> list
         "--support-augmentation-blueprint-base-weight-scale",
         args.support_augmentation_blueprint_base_weight_scale,
     )
+    if args.support_augmentation_sanitize_worker_non_target_income:
+        command.append("--support-augmentation-sanitize-worker-non-target-income")
+    if args.support_augmentation_sanitize_clone_non_target_income:
+        command.append("--support-augmentation-sanitize-clone-non-target-income")
     if args.allow_validation_failures:
         command.append("--allow-validation-failures")
     return command
@@ -214,6 +218,12 @@ def write_manifest(
                 "blueprint_base_weight_scale": (
                     args.support_augmentation_blueprint_base_weight_scale
                 ),
+                "sanitize_worker_non_target_income": (
+                    args.support_augmentation_sanitize_worker_non_target_income
+                ),
+                "sanitize_clone_non_target_income": (
+                    args.support_augmentation_sanitize_clone_non_target_income
+                ),
             },
         },
         "command": command,
@@ -292,6 +302,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--support-augmentation-blueprint-base-weight-scale",
         type=float,
+    )
+    parser.add_argument(
+        "--support-augmentation-sanitize-worker-non-target-income",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--support-augmentation-sanitize-clone-non-target-income",
+        action="store_true",
     )
     parser.add_argument("--run-id", default="")
     parser.add_argument("--source-sha", default="")

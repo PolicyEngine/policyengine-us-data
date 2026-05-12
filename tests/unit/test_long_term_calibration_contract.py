@@ -1994,6 +1994,8 @@ def test_long_term_production_command_carries_2100_contract(tmp_path):
         support_augmentation_max_distance=None,
         support_augmentation_clone_weight_scale=None,
         support_augmentation_blueprint_base_weight_scale=0.5,
+        support_augmentation_sanitize_worker_non_target_income=False,
+        support_augmentation_sanitize_clone_non_target_income=True,
         allow_validation_failures=True,
     )
 
@@ -2016,6 +2018,8 @@ def test_long_term_production_command_carries_2100_contract(tmp_path):
         command[command.index("--support-augmentation-blueprint-base-weight-scale") + 1]
         == "0.5"
     )
+    assert "--support-augmentation-sanitize-worker-non-target-income" not in command
+    assert "--support-augmentation-sanitize-clone-non-target-income" in command
     assert "--allow-validation-failures" in command
 
 

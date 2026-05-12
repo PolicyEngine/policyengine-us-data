@@ -35,7 +35,11 @@ python run_long_term_production.py \
   --jobs 4 \
   --output-dir ./projected_datasets_production \
   --profile ss-payroll-tob \
-  --target-source trustees_2025_current_law
+  --target-source trustees_2025_current_law \
+  --support-augmentation-profile donor-backed-composite-v1 \
+  --support-augmentation-target-year 2100 \
+  --support-augmentation-blueprint-base-weight-scale 5.0 \
+  --support-augmentation-sanitize-clone-non-target-income
 ```
 
 **Arguments:**

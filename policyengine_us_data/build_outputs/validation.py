@@ -32,19 +32,9 @@ __all__ = [
 )
 @dataclass(frozen=True)
 class ValidationPolicy:
-    """Validation switches for a local H5 worker session.
-
-    The current worker uses `enabled`; the other flags make the policy shape
-    explicit before later migration slices move validation behavior out of the
-    legacy worker subprocess.
-    """
+    """Validation switch for a local H5 worker session."""
 
     enabled: bool = True
-    fail_on_exception: bool = False
-    fail_on_validation_failure: bool = False
-    run_sanity_checks: bool = True
-    run_target_validation: bool = True
-    run_national_validation: bool = True
 
 
 @pipeline_node(

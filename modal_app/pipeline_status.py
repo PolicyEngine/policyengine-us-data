@@ -70,7 +70,7 @@ def pipeline_status_endpoint(
     timeout=60,
     volumes={PIPELINE_MOUNT: pipeline_volume},
 )
-def pipeline_status(
+def pipeline_status_snippet(
     run_id: str = None,
 ) -> str:
     """Get human-readable pipeline status."""

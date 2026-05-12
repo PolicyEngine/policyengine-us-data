@@ -17,6 +17,19 @@ The status system reports:
 - the latest durable error record, when one exists;
 - a redacted, bounded traceback when one exists.
 
+## Status Surfaces
+
+The structured status payload is canonical. The pipeline status sub-app exposes
+three Modal functions:
+
+- `get_pipeline_status`: Python-callable structured JSON for agents, scripts,
+  dashboards, and tests. Prefer this for diagnosis and automation.
+- `pipeline_status_endpoint`: protected HTTP endpoint returning the same
+  structured JSON for non-Python clients. Use Modal proxy auth headers.
+- `pipeline_status_snippet`: human-readable text used by
+  `modal run modal_app/pipeline.py::main --action status`. This is for quick
+  terminal inspection only and must not be treated as a schema.
+
 ## Fetch Status
 
 First identify the run context from the GitHub Actions summary, workflow logs, or

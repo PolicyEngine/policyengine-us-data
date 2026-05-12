@@ -312,7 +312,7 @@ from modal_app.local_area import (  # noqa: E402
 app.include(_local_area_app)
 
 from modal_app.pipeline_status import app as _pipeline_status_app  # noqa: E402
-from modal_app.pipeline_status import pipeline_status  # noqa: E402
+from modal_app.pipeline_status import pipeline_status_snippet  # noqa: E402
 
 app.include(_pipeline_status_app)
 
@@ -2015,7 +2015,7 @@ def main(
         print(f"\nPipeline run complete: {result}")
 
     elif action == "status":
-        result = pipeline_status.remote(
+        result = pipeline_status_snippet.remote(
             run_id=run_id,
         )
         print(result)

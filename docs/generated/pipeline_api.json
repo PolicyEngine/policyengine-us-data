@@ -752,7 +752,7 @@
     "docstring": "Resolve, load, and checksum exact geography artifacts.\n\nThe loader hides compatibility ordering across current saved geography\nbundles, calibration packages, and legacy block arrays. Public callers can\nuse `resolve_source` to inspect what would be loaded or `load` to return the\nnormalized `GeographyAssignment`.",
     "id": "calibration_geography_loader",
     "kind": "class",
-    "line": 89,
+    "line": 90,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader"
@@ -1564,7 +1564,7 @@
     "docstring": "Resolved physical source used to recover calibration geography.\n\nAttributes:\n    kind: Source format selected by `CalibrationGeographyLoader`.\n    path: Path to the selected source artifact.",
     "id": "local_h5_resolved_geography_source",
     "kind": "class",
-    "line": 53,
+    "line": 54,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource"

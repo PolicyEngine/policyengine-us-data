@@ -1,3 +1,10 @@
+## [1.112.0] - 2026-05-12
+
+### Added
+
+- Added Stage 2 geography assignment metadata to the calibration package stage contract.
+
+
 ## [1.111.6] - 2026-05-12
 
 ### Fixed

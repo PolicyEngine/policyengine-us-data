@@ -1,3 +1,10 @@
+## [1.111.3] - 2026-05-12
+
+### Fixed
+
+- Harden long-term donor-composite support so the 2100 Social Security, taxable payroll, and TOB calibration path validates with nonnegative weights.
+
+
 ## [1.111.2] - 2026-05-11
 
 ### Changed

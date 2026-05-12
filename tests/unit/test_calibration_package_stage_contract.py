@@ -369,6 +369,18 @@ def test_calibration_package_contract_fingerprint_changes_with_geography(tmp_pat
         first.metadata["geography_assignment"]
         != second.metadata["geography_assignment"]
     )
+    assert (
+        first.fingerprint.material["geography_assignment"]
+        == first.metadata["geography_assignment"]
+    )
+    assert (
+        second.fingerprint.material["geography_assignment"]
+        == second.metadata["geography_assignment"]
+    )
+    assert (
+        first.fingerprint.material["geography_assignment"]
+        != second.fingerprint.material["geography_assignment"]
+    )
     assert first.fingerprint != second.fingerprint
 
 

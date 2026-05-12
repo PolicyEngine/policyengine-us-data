@@ -149,3 +149,16 @@ def test_pipeline_status_http_endpoint_reports_missing_run():
     assert result["run_id"] == "missing-run-for-status-http-seam"
     assert result["stage_manifests"] == []
     assert result["error"] is None
+
+
+def test_pipeline_status_cli_snippet_reports_missing_run():
+    _require_modal_tokens()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "pipeline_status_snippet",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    result = fn.remote("missing-run-for-status-cli-seam")
+
+    assert result == "Pipeline run missing-run-for-status-cli-seam not found."

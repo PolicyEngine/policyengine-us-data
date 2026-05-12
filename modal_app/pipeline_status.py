@@ -76,11 +76,6 @@ def pipeline_status_snippet(
     """Get human-readable pipeline status."""
 
     pipeline_volume.reload()
-    runs_dir = Path(RUNS_DIR)
-
-    if not runs_dir.exists():
-        return "No pipeline runs found."
-
     if run_id:
         payload = build_pipeline_status_payload(run_id)
         if payload["status"] == "not_found":
@@ -116,6 +111,10 @@ def pipeline_status_snippet(
                     f"({manifest['status']}, {reuse})"
                 )
         return "\n".join(lines)
+
+    runs_dir = Path(RUNS_DIR)
+    if not runs_dir.exists():
+        return "No pipeline runs found."
 
     runs = []
     for entry in sorted(runs_dir.iterdir()):

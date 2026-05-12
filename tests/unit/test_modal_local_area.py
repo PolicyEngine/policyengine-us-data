@@ -396,8 +396,10 @@ def test_build_areas_worker_surfaces_successful_worker_stderr(
         "staging_volume",
         SimpleNamespace(reload=lambda: None, commit=lambda: None),
     )
+    captured_cmd = {}
 
     def fake_run(cmd, **kwargs):
+        captured_cmd["cmd"] = cmd
         return SimpleNamespace(
             returncode=0,
             stdout='{"completed": ["district:NC-01"], "failed": [], "errors": []}',
@@ -417,8 +419,11 @@ def test_build_areas_worker_surfaces_successful_worker_stderr(
             "database": "/tmp/policy_data.db",
         },
         validate=False,
+        scope_fingerprint="regional-fingerprint",
     )
 
     captured = capsys.readouterr()
     assert result["completed"] == ["district:NC-01"]
     assert "Worker session ready: scope=regional, bootstrap=used" in captured.err
+    assert "--scope-fingerprint" in captured_cmd["cmd"]
+    assert "regional-fingerprint" in captured_cmd["cmd"]

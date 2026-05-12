@@ -78,6 +78,8 @@ def test_parse_args_accepts_worker_session_paths():
             "/tmp/artifacts/run-123",
             "--run-config-path",
             "/tmp/unified_run_config.json",
+            "--scope-fingerprint",
+            "regional-fingerprint",
         ]
     )
 
@@ -85,6 +87,7 @@ def test_parse_args_accepts_worker_session_paths():
     assert args.scope == "national"
     assert args.artifacts_dir == "/tmp/artifacts/run-123"
     assert args.run_config_path == "/tmp/unified_run_config.json"
+    assert args.scope_fingerprint == "regional-fingerprint"
     assert not hasattr(args, "version")
 
 

@@ -16,7 +16,7 @@ from .bootstrap import (
     WorkerBootstrapStore,
     load_entity_graph,
 )
-from .fingerprinting import FingerprintingService, PublishingInputBundle
+from .fingerprinting import PublishingInputBundle
 from .geography_loader import CalibrationGeographyLoader
 from .source_dataset import PolicyEngineDatasetReader, SourceDatasetSnapshot
 from .validation import AreaValidationService, ValidationContext, ValidationPolicy
@@ -97,7 +97,6 @@ class WorkerSessionFactory:
         dataset_reader: PolicyEngineDatasetReader | None = None,
         geography_loader: CalibrationGeographyLoader | None = None,
         validation_service: AreaValidationService | None = None,
-        fingerprinting_service: FingerprintingService | None = None,
         bootstrap_store: WorkerBootstrapStore | None = None,
     ) -> None:
         """Create a session factory with injectable seams for tests."""
@@ -105,9 +104,6 @@ class WorkerSessionFactory:
         self._dataset_reader = dataset_reader or PolicyEngineDatasetReader()
         self._geography_loader = geography_loader or CalibrationGeographyLoader()
         self._validation_service = validation_service or AreaValidationService()
-        self._fingerprinting_service = fingerprinting_service or FingerprintingService(
-            geography_loader=self._geography_loader
-        )
         self._bootstrap_store = bootstrap_store
 
     def create(
@@ -120,6 +116,7 @@ class WorkerSessionFactory:
         target_config_path: Path | None = None,
         validation_config_path: Path | None = None,
         artifacts_dir: Path | None = None,
+        expected_scope_fingerprint: str | None = None,
     ) -> WorkerSession:
         """Create a worker session for one local H5 scope.
 
@@ -141,6 +138,7 @@ class WorkerSessionFactory:
                 bundle=bundle,
                 inputs=inputs,
                 scope=scope,
+                expected_scope_fingerprint=expected_scope_fingerprint,
             )
             if bootstrap_error is not None:
                 bundle = None
@@ -216,12 +214,14 @@ class WorkerSessionFactory:
         bundle: WorkerBootstrapBundle,
         inputs: PublishingInputBundle,
         scope: BootstrapScope,
+        expected_scope_fingerprint: str | None,
     ) -> Exception | None:
         try:
             self._raise_for_bootstrap_mismatch(
                 bundle=bundle,
                 inputs=inputs,
                 scope=scope,
+                expected_scope_fingerprint=expected_scope_fingerprint,
             )
         except Exception as exc:
             return exc
@@ -233,6 +233,7 @@ class WorkerSessionFactory:
         bundle: WorkerBootstrapBundle,
         inputs: PublishingInputBundle,
         scope: BootstrapScope,
+        expected_scope_fingerprint: str | None,
     ) -> None:
         if bundle.run_id != inputs.run_id:
             raise ValueError(
@@ -245,38 +246,22 @@ class WorkerSessionFactory:
                 f"worker scope {scope!r}"
             )
 
-        traceability = self._fingerprinting_service.build_traceability(
-            inputs=inputs,
-            scope=scope,
-        )
-        current_inputs = {
-            "weights": _artifact_identity_manifest(traceability.weights),
-            "source_dataset": _artifact_identity_manifest(traceability.source_dataset),
-            "exact_geography": _artifact_identity_manifest(
-                traceability.exact_geography
-            ),
-            "target_db": _artifact_identity_manifest(traceability.target_db),
-            "calibration_package": _artifact_identity_manifest(
-                traceability.calibration_package
-            ),
-            "run_config": _artifact_identity_manifest(traceability.run_config),
-        }
-
-        for logical_name, current_identity in current_inputs.items():
-            _assert_manifest_identity_matches(
-                logical_name=logical_name,
-                expected=current_identity,
-                actual=bundle.inputs.get(logical_name),
+        if not bundle.entity_graph_path.exists():
+            raise FileNotFoundError(
+                f"Bootstrap entity graph not found: {bundle.entity_graph_path}"
             )
 
-        expected_fingerprint = self._fingerprinting_service.compute_scope_fingerprint(
-            traceability
-        )
-        actual_fingerprint = bundle.traceability.get("scope_fingerprint")
-        if actual_fingerprint != expected_fingerprint:
+        actual_scope_fingerprint = bundle.traceability.get("scope_fingerprint")
+        if expected_scope_fingerprint is None:
             raise ValueError(
-                f"Bootstrap scope fingerprint {actual_fingerprint!r} does not "
-                f"match current fingerprint {expected_fingerprint!r}"
+                "Bootstrap scope fingerprint cannot be validated without an "
+                "expected scope fingerprint"
+            )
+
+        if actual_scope_fingerprint != expected_scope_fingerprint:
+            raise ValueError(
+                f"Bootstrap scope fingerprint {actual_scope_fingerprint!r} "
+                f"does not match expected fingerprint {expected_scope_fingerprint!r}"
             )
 
     def _load_source(
@@ -324,41 +309,3 @@ class WorkerSessionFactory:
                 f"expected {inputs.n_clones}"
             )
         return weights
-
-
-def _artifact_identity_manifest(identity) -> dict[str, Any] | None:
-    if identity is None:
-        return None
-    return {
-        "logical_name": identity.logical_name,
-        "sha256": identity.sha256,
-        "size_bytes": identity.size_bytes,
-        "metadata": dict(identity.metadata),
-    }
-
-
-def _assert_manifest_identity_matches(
-    *,
-    logical_name: str,
-    expected: dict[str, Any] | None,
-    actual,
-) -> None:
-    if expected is None or actual is None:
-        if expected != actual:
-            raise ValueError(
-                f"Bootstrap {logical_name} identity presence does not match "
-                "current inputs"
-            )
-        return
-
-    actual_manifest = dict(actual)
-    comparable_actual = {
-        "logical_name": actual_manifest.get("logical_name"),
-        "sha256": actual_manifest.get("sha256"),
-        "size_bytes": actual_manifest.get("size_bytes"),
-        "metadata": dict(actual_manifest.get("metadata") or {}),
-    }
-    if comparable_actual != expected:
-        raise ValueError(
-            f"Bootstrap {logical_name} identity does not match current inputs"
-        )

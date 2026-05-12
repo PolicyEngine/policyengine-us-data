@@ -592,6 +592,7 @@ def run_phase(
     calibration_inputs: WorkerCalibrationInputs | Mapping[str, object],
     run_dir: Path,
     validate: bool = True,
+    scope_fingerprint: str | None = None,
 ) -> tuple:
     """Run a single build phase, spawning workers and collecting results.
 
@@ -625,6 +626,7 @@ def run_phase(
             work_items=chunk,
             calibration_inputs=worker_input_payload,
             validate=validate,
+            scope_fingerprint=scope_fingerprint,
         )
         print(f"    → fc: {handle.object_id}")
         handles.append(handle)
@@ -721,6 +723,7 @@ def build_areas_worker(
     work_items: List[Dict],
     calibration_inputs: WorkerCalibrationInputs | Mapping[str, object],
     validate: bool = True,
+    scope_fingerprint: str | None = None,
 ) -> Dict:
     """
     Worker function that builds a subset of H5 files.
@@ -751,6 +754,8 @@ def build_areas_worker(
         "--artifacts-dir",
         str(Path("/pipeline/artifacts") / run_id),
     ]
+    if scope_fingerprint:
+        worker_cmd.extend(["--scope-fingerprint", scope_fingerprint])
     repo_root = Path("/root/policyengine-us-data")
     cal_dir = repo_root / "policyengine_us_data" / "calibration"
     worker_cmd.extend(
@@ -1239,6 +1244,7 @@ def coordinate_publish(
         calibration_inputs=calibration_inputs,
         run_dir=run_dir,
         validate=validate,
+        scope_fingerprint=fingerprint,
     )
 
     accumulated_errors = []
@@ -1473,6 +1479,7 @@ def coordinate_national_publish(
         work_items=work_items,
         calibration_inputs=calibration_inputs.to_wire_dict(),
         validate=validate,
+        scope_fingerprint=fingerprint,
     )
 
     print(

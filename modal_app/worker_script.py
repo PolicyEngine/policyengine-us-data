@@ -169,6 +169,11 @@ def parse_args(argv: list[str] | None = None):
         help="Optional unified run configuration JSON used for traceability",
     )
     parser.add_argument(
+        "--scope-fingerprint",
+        default=None,
+        help="Coordinator-resolved scope fingerprint expected by bootstrap artifacts",
+    )
+    parser.add_argument(
         "--geography-path",
         default=None,
         help="Optional explicit path to geography_assignment.npz",
@@ -385,6 +390,7 @@ def main(argv: list[str] | None = None):
             Path(args.validation_config) if args.validation_config else None
         ),
         artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
+        expected_scope_fingerprint=args.scope_fingerprint,
     )
     weights = session.weights.values
     n_records = session.weights.n_records

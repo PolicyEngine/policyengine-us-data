@@ -42,6 +42,7 @@ def _run_worker(
     validation_config: Path | None = None,
     run_id: str = "tiny-worker-run",
     scope: str = "regional",
+    scope_fingerprint: str | None = None,
     artifacts_dir: Path | None = None,
     return_process: bool = False,
 ) -> dict:
@@ -76,6 +77,8 @@ def _run_worker(
     ]
     if artifacts_dir is not None:
         cmd.extend(["--artifacts-dir", str(artifacts_dir)])
+    if scope_fingerprint is not None:
+        cmd.extend(["--scope-fingerprint", scope_fingerprint])
     if not validate:
         cmd.append("--no-validate")
     if target_config is not None:
@@ -244,6 +247,7 @@ def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
         inputs=inputs,
         scope="regional",
         artifacts_dir=artifacts_dir,
+        scope_fingerprint="regional-fingerprint",
     )
 
     result = _run_worker(
@@ -253,6 +257,7 @@ def test_worker_consumes_scope_bootstrap_when_available(tmp_path):
         use_saved_geography=True,
         use_package_geography=True,
         run_id="run-123",
+        scope_fingerprint="regional-fingerprint",
         artifacts_dir=artifacts_dir,
         return_process=True,
     )

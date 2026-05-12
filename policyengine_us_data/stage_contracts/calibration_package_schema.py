@@ -7,6 +7,27 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS = frozenset(
+    {
+        "calibration_package",
+        "unavailable",
+    }
+)
+GEOGRAPHY_ASSIGNMENT_SUMMARY_KEYS = frozenset(
+    {
+        "block_geoid_length",
+        "block_geoid_sha256",
+        "canonical_geography_sha256",
+        "cd_geoid_length",
+        "cd_geoid_sha256",
+        "has_block_geoid",
+        "has_cd_geoid",
+        "n_clones",
+        "n_records",
+        "n_rows",
+        "source_kind",
+    }
+)
 CALIBRATION_PACKAGE_PARAMETER_KEYS = frozenset(
     {
         "chunk_size",
@@ -47,6 +68,136 @@ CALIBRATION_PACKAGE_SUMMARY_KEYS = frozenset(
         "target_name_count",
     }
 )
+
+
+@dataclass(frozen=True, kw_only=True)
+class GeographyAssignmentSummary:
+    """Canonical summary of package-backed Stage 2 geography assignment."""
+
+    source_kind: str
+    n_records: int | None
+    n_clones: int | None
+    n_rows: int | None
+    has_block_geoid: bool
+    has_cd_geoid: bool
+    block_geoid_length: int | None
+    cd_geoid_length: int | None
+    block_geoid_sha256: str | None
+    cd_geoid_sha256: str | None
+    canonical_geography_sha256: str | None
+
+    def __post_init__(self) -> None:
+        if self.source_kind not in GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS:
+            raise ValueError(
+                "source_kind must be one of "
+                f"{sorted(GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS)}"
+            )
+        _validate_optional_non_negative_int(self.n_records, "n_records")
+        _validate_optional_non_negative_int(self.n_clones, "n_clones")
+        _validate_optional_non_negative_int(self.n_rows, "n_rows")
+        _validate_optional_non_negative_int(
+            self.block_geoid_length,
+            "block_geoid_length",
+        )
+        _validate_optional_non_negative_int(
+            self.cd_geoid_length,
+            "cd_geoid_length",
+        )
+        _validate_bool(self.has_block_geoid, "has_block_geoid")
+        _validate_bool(self.has_cd_geoid, "has_cd_geoid")
+        _validate_optional_sha256(self.block_geoid_sha256, "block_geoid_sha256")
+        _validate_optional_sha256(self.cd_geoid_sha256, "cd_geoid_sha256")
+        _validate_optional_sha256(
+            self.canonical_geography_sha256,
+            "canonical_geography_sha256",
+        )
+        if self.source_kind == "calibration_package":
+            for key in (
+                "n_records",
+                "n_clones",
+                "n_rows",
+                "block_geoid_length",
+                "cd_geoid_length",
+                "block_geoid_sha256",
+                "cd_geoid_sha256",
+                "canonical_geography_sha256",
+            ):
+                if getattr(self, key) is None:
+                    raise ValueError(
+                        f"{key} is required for calibration_package geography"
+                    )
+            if not self.has_block_geoid or not self.has_cd_geoid:
+                raise ValueError(
+                    "calibration_package geography requires block and CD arrays"
+                )
+            if self.n_records * self.n_clones != self.n_rows:
+                raise ValueError(
+                    "n_records * n_clones must equal n_rows for geography summary"
+                )
+            if self.block_geoid_length != self.n_rows:
+                raise ValueError("block_geoid_length must equal n_rows")
+            if self.cd_geoid_length != self.n_rows:
+                raise ValueError("cd_geoid_length must equal n_rows")
+        else:
+            if self.has_block_geoid or self.has_cd_geoid:
+                raise ValueError("unavailable geography cannot report present arrays")
+            for key in (
+                "n_rows",
+                "block_geoid_length",
+                "cd_geoid_length",
+                "block_geoid_sha256",
+                "cd_geoid_sha256",
+                "canonical_geography_sha256",
+            ):
+                if getattr(self, key) is not None:
+                    raise ValueError(
+                        f"{key} must be None when geography is unavailable"
+                    )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "GeographyAssignmentSummary":
+        """Parse geography assignment summary JSON into a typed schema object."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("geography assignment summary must be a mapping")
+        _require_exact_keys(
+            data,
+            "geography assignment summary",
+            GEOGRAPHY_ASSIGNMENT_SUMMARY_KEYS,
+        )
+        return cls(
+            source_kind=_required_string_field(data, "source_kind"),
+            n_records=_optional_int_field(data, "n_records"),
+            n_clones=_optional_int_field(data, "n_clones"),
+            n_rows=_optional_int_field(data, "n_rows"),
+            has_block_geoid=_required_bool_field(data, "has_block_geoid"),
+            has_cd_geoid=_required_bool_field(data, "has_cd_geoid"),
+            block_geoid_length=_optional_int_field(data, "block_geoid_length"),
+            cd_geoid_length=_optional_int_field(data, "cd_geoid_length"),
+            block_geoid_sha256=_optional_string_field(data, "block_geoid_sha256"),
+            cd_geoid_sha256=_optional_string_field(data, "cd_geoid_sha256"),
+            canonical_geography_sha256=_optional_string_field(
+                data,
+                "canonical_geography_sha256",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible geography assignment summary."""
+
+        return {
+            "block_geoid_length": self.block_geoid_length,
+            "block_geoid_sha256": self.block_geoid_sha256,
+            "canonical_geography_sha256": self.canonical_geography_sha256,
+            "cd_geoid_length": self.cd_geoid_length,
+            "cd_geoid_sha256": self.cd_geoid_sha256,
+            "has_block_geoid": self.has_block_geoid,
+            "has_cd_geoid": self.has_cd_geoid,
+            "n_clones": self.n_clones,
+            "n_records": self.n_records,
+            "n_rows": self.n_rows,
+            "source_kind": self.source_kind,
+        }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -349,6 +500,15 @@ def _optional_string_field(data: Mapping[str, Any], key: str) -> str | None:
     return value
 
 
+def _required_string_field(data: Mapping[str, Any], key: str) -> str:
+    value = data[key]
+    if not isinstance(value, str) or not value:
+        raise ValueError(
+            f"Calibration package field {key!r} must be a non-empty string"
+        )
+    return value
+
+
 def _required_float_field(data: Mapping[str, Any], key: str) -> float:
     value = data[key]
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -410,3 +570,12 @@ def _validate_non_negative_float(value: Any, key: str) -> None:
         raise ValueError(
             f"Calibration package field {key!r} must be a finite non-negative number"
         )
+
+
+def _validate_optional_sha256(value: Any, key: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        raise ValueError(f"Calibration package field {key!r} must be a SHA-256 digest")
+    if len(value) != len("sha256:") + 64:
+        raise ValueError(f"Calibration package field {key!r} must be a SHA-256 digest")

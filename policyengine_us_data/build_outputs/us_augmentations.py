@@ -18,6 +18,7 @@ from policyengine_us_data.utils.takeup import (
     reported_subsidized_marketplace_by_tax_unit,
 )
 
+from .builder import PayloadPostProcessorSpec
 from .payload import H5Payload, PayloadBuildContext
 from .selection import CloneSelection
 from .simulation_access import calculate_variable_values
@@ -25,6 +26,9 @@ from .variables import GEOGRAPHY_VARIABLES
 
 __all__ = [
     "TAKEUP_VARIABLE_ENTITIES",
+    "US_ENTITY_POSTPROCESSOR_KEY",
+    "US_GEOGRAPHY_POSTPROCESSOR_KEY",
+    "US_TAKEUP_POSTPROCESSOR_KEY",
     "USEntityPostProcessor",
     "USEntityPostProcessorResult",
     "USGeographyPostProcessor",
@@ -42,6 +46,9 @@ TAKEUP_VARIABLE_ENTITIES = {
     str(spec["variable"]): str(spec["entity"]) for spec in SIMPLE_TAKEUP_VARS
 }
 REQUIRED_TAKEUP_SUBENTITIES = ("tax_unit", "spm_unit")
+US_ENTITY_POSTPROCESSOR_KEY = "us_entity"
+US_GEOGRAPHY_POSTPROCESSOR_KEY = "us_geography"
+US_TAKEUP_POSTPROCESSOR_KEY = "us_takeup"
 
 
 @pipeline_node(
@@ -141,6 +148,8 @@ class USTakeupPostProcessorResult:
 class USEntityPostProcessor:
     """Apply US entity IDs and calibrated household weights."""
 
+    spec = PayloadPostProcessorSpec(key=US_ENTITY_POSTPROCESSOR_KEY)
+
     def apply(
         self,
         *,
@@ -191,6 +200,8 @@ class USEntityPostProcessor:
 @dataclass(frozen=True)
 class USGeographyPostProcessor:
     """Apply block-derived US geography overrides."""
+
+    spec = PayloadPostProcessorSpec(key=US_GEOGRAPHY_POSTPROCESSOR_KEY)
 
     geography_deriver: GeographyDeriver = derive_geography_from_blocks
     _string_geography_variables: tuple[str, ...] = field(
@@ -295,6 +306,10 @@ class USGeographyPostProcessor:
 class USTakeupPostProcessor:
     """Apply US take-up draws after entity and geography postprocessing."""
 
+    spec = PayloadPostProcessorSpec(
+        key=US_TAKEUP_POSTPROCESSOR_KEY,
+        requires=(US_ENTITY_POSTPROCESSOR_KEY, US_GEOGRAPHY_POSTPROCESSOR_KEY),
+    )
     takeup_applier: TakeupApplier = apply_block_takeup_to_arrays
     sum_person_values_to_tax_units: Callable[
         [np.ndarray, np.ndarray, np.ndarray],
@@ -312,6 +327,7 @@ class USTakeupPostProcessor:
         self._validate_required_subentities(context)
         output = _copy_payload(payload.data)
         time_period = context.time_period
+        self._validate_required_payload_fields(output, time_period)
         results = self._build_takeup_results(output, context)
         takeup_variables = tuple(str(variable) for variable in results)
         self._validate_takeup_variables(takeup_variables)
@@ -348,6 +364,32 @@ class USTakeupPostProcessor:
             raise ValueError(
                 f"US take-up requires reindexed subentities: {', '.join(missing)}"
             )
+
+    def _validate_required_payload_fields(
+        self,
+        data: PayloadData,
+        time_period: int,
+    ) -> None:
+        _required_period_array(
+            data,
+            "state_fips",
+            time_period,
+            "US take-up requires state_fips from USGeographyPostProcessor",
+        )
+        if _has_period_array(
+            data,
+            "reported_has_subsidized_marketplace_health_coverage_at_interview",
+            time_period,
+        ):
+            for variable in ("person_tax_unit_id", "tax_unit_id"):
+                _required_period_array(
+                    data,
+                    variable,
+                    time_period,
+                    "US take-up reported ACA anchors require "
+                    "person_tax_unit_id and tax_unit_id from "
+                    "USEntityPostProcessor",
+                )
 
     def _build_takeup_results(
         self,
@@ -479,6 +521,14 @@ def _required_period_array(
     if variable not in data or time_period not in data[variable]:
         raise ValueError(message)
     return np.asarray(data[variable][time_period])
+
+
+def _has_period_array(
+    data: Mapping[str, Mapping[Any, np.ndarray]],
+    variable: str,
+    time_period: int,
+) -> bool:
+    return variable in data and time_period in data[variable]
 
 
 def _build_reported_takeup_anchors(

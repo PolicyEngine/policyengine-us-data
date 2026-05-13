@@ -2,11 +2,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from policyengine_us_data.build_outputs.builder import (
     LocalAreaBuildResult,
     LocalAreaDatasetBuilder,
     PayloadPostProcessorRun,
+    PayloadPostProcessorSpec,
 )
 from policyengine_us_data.build_outputs.payload import H5Payload
 from policyengine_us_data.build_outputs.reindexing import ReindexedEntities
@@ -181,11 +183,13 @@ def test_local_area_build_result_retains_duplicate_postprocessor_runs():
         summary={},
         postprocessor_runs=(
             PayloadPostProcessorRun(
+                key="first",
                 name="_PostProcessor",
                 postprocessor_type=_PostProcessor,
                 result=first,
             ),
             PayloadPostProcessorRun(
+                key="second",
                 name="_PostProcessor",
                 postprocessor_type=_PostProcessor,
                 result=second,
@@ -194,7 +198,34 @@ def test_local_area_build_result_retains_duplicate_postprocessor_runs():
     )
 
     assert result.postprocessor_result(_PostProcessor) is first
+    assert result.postprocessor_result("second") is second
     assert result.postprocessor_results(_PostProcessor) == (first, second)
+
+
+def test_local_area_dataset_builder_rejects_missing_postprocessor_dependency():
+    class _DependentPostProcessor:
+        spec = PayloadPostProcessorSpec(
+            key="dependent",
+            requires=("upstream",),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="_DependentPostProcessor requires postprocessor\\(s\\) "
+        "to run first: upstream",
+    ):
+        LocalAreaDatasetBuilder(postprocessors=(_DependentPostProcessor(),))
+
+
+def test_local_area_dataset_builder_rejects_duplicate_postprocessor_keys():
+    class _PostProcessor:
+        spec = PayloadPostProcessorSpec(key="duplicate")
+
+    with pytest.raises(
+        ValueError,
+        match="Duplicate payload postprocessor key: duplicate",
+    ):
+        LocalAreaDatasetBuilder(postprocessors=(_PostProcessor(), _PostProcessor()))
 
 
 def _payload(label: str) -> H5Payload:

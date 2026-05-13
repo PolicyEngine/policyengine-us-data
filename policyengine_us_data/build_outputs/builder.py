@@ -22,6 +22,7 @@ __all__ = [
     "LocalAreaDatasetBuilder",
     "PayloadPostProcessor",
     "PayloadPostProcessorRun",
+    "PayloadPostProcessorSpec",
     "PayloadPostProcessorResult",
 ]
 
@@ -38,6 +39,8 @@ PostProcessorReturn: TypeAlias = H5Payload | PayloadPostProcessorResult
 class PayloadPostProcessor(Protocol):
     """Country- or product-specific processor for an H5 payload."""
 
+    spec: PayloadPostProcessorSpec
+
     def apply(
         self,
         *,
@@ -48,9 +51,18 @@ class PayloadPostProcessor(Protocol):
 
 
 @dataclass(frozen=True)
+class PayloadPostProcessorSpec:
+    """Stable identity and ordering requirements for a payload postprocessor."""
+
+    key: str
+    requires: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class PayloadPostProcessorRun:
     """Result metadata for one payload postprocessor invocation."""
 
+    key: str
     name: str
     postprocessor_type: type
     result: PostProcessorReturn
@@ -97,7 +109,7 @@ class LocalAreaBuildResult:
             postprocessor if isinstance(postprocessor, str) else postprocessor.__name__
         )
         for run in self.postprocessor_runs:
-            if run.name == key:
+            if run.key == key or run.name == key:
                 return run.result
             if not isinstance(postprocessor, str) and issubclass(
                 run.postprocessor_type,
@@ -115,7 +127,8 @@ class LocalAreaBuildResult:
         return tuple(
             run.result
             for run in self.postprocessor_runs
-            if run.name == key
+            if run.key == key
+            or run.name == key
             or (
                 not isinstance(postprocessor, str)
                 and issubclass(run.postprocessor_type, postprocessor)
@@ -142,6 +155,9 @@ class LocalAreaDatasetBuilder:
     reindexer: EntityReindexer = field(default_factory=EntityReindexer)
     variable_cloner: VariableCloner = field(default_factory=VariableCloner)
     postprocessors: tuple[PayloadPostProcessor, ...] = ()
+
+    def __post_init__(self) -> None:
+        _validate_postprocessor_order(self.postprocessors)
 
     def build(
         self,
@@ -185,6 +201,7 @@ class LocalAreaDatasetBuilder:
             result = postprocessor.apply(payload=h5_payload, context=context)
             postprocessor_runs.append(
                 PayloadPostProcessorRun(
+                    key=_postprocessor_spec(postprocessor).key,
                     name=type(postprocessor).__name__,
                     postprocessor_type=type(postprocessor),
                     result=result,
@@ -248,3 +265,31 @@ def _payload_from_postprocessor_result(result: PostProcessorReturn) -> H5Payload
         "Payload postprocessors must return H5Payload or an object exposing "
         "an H5Payload `.payload` attribute"
     )
+
+
+def _validate_postprocessor_order(
+    postprocessors: tuple[PayloadPostProcessor, ...],
+) -> None:
+    seen: set[str] = set()
+    for postprocessor in postprocessors:
+        spec = _postprocessor_spec(postprocessor)
+        if spec.key in seen:
+            raise ValueError(f"Duplicate payload postprocessor key: {spec.key}")
+        missing = tuple(
+            requirement for requirement in spec.requires if requirement not in seen
+        )
+        if missing:
+            raise ValueError(
+                f"{type(postprocessor).__name__} requires postprocessor(s) "
+                f"to run first: {', '.join(missing)}"
+            )
+        seen.add(spec.key)
+
+
+def _postprocessor_spec(
+    postprocessor: PayloadPostProcessor,
+) -> PayloadPostProcessorSpec:
+    spec = getattr(postprocessor, "spec", None)
+    if isinstance(spec, PayloadPostProcessorSpec):
+        return spec
+    return PayloadPostProcessorSpec(key=type(postprocessor).__name__)

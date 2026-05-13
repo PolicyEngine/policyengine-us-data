@@ -13,6 +13,9 @@ from policyengine_us_data.build_outputs.source_dataset import (
     SourceDatasetSnapshot,
 )
 from policyengine_us_data.build_outputs.us_augmentations import (
+    US_ENTITY_POSTPROCESSOR_KEY,
+    US_GEOGRAPHY_POSTPROCESSOR_KEY,
+    US_TAKEUP_POSTPROCESSOR_KEY,
     USEntityPostProcessor,
     USGeographyPostProcessor,
     USTakeupPostProcessor,
@@ -127,11 +130,22 @@ def _geography_payload(context=None) -> H5Payload:
 
 
 def test_default_us_postprocessors_are_in_runtime_order():
-    assert tuple(type(processor) for processor in default_us_postprocessors()) == (
+    postprocessors = default_us_postprocessors()
+
+    assert tuple(type(processor) for processor in postprocessors) == (
         USEntityPostProcessor,
         USGeographyPostProcessor,
         USTakeupPostProcessor,
     )
+    assert tuple(processor.spec.key for processor in postprocessors) == (
+        US_ENTITY_POSTPROCESSOR_KEY,
+        US_GEOGRAPHY_POSTPROCESSOR_KEY,
+        US_TAKEUP_POSTPROCESSOR_KEY,
+    )
+    seen = set()
+    for processor in postprocessors:
+        assert set(processor.spec.requires) <= seen
+        seen.add(processor.spec.key)
 
 
 def test_build_reported_takeup_anchors_skips_missing_period():
@@ -352,6 +366,27 @@ def test_us_takeup_postprocessor_requires_geography_first():
     ):
         USTakeupPostProcessor(takeup_applier=lambda **kwargs: {}).apply(
             payload=_entity_payload(),
+            context=_context(),
+        )
+
+
+def test_us_takeup_postprocessor_requires_entity_ids_for_reported_aca_anchor():
+    payload = _base_payload(
+        {
+            "state_fips": {2024: np.array([6, 37], dtype=np.int32)},
+            "reported_has_subsidized_marketplace_health_coverage_at_interview": {
+                2024: np.array([True, False, False])
+            },
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="US take-up reported ACA anchors require person_tax_unit_id "
+        "and tax_unit_id from USEntityPostProcessor",
+    ):
+        USTakeupPostProcessor(takeup_applier=lambda **kwargs: {}).apply(
+            payload=payload,
             context=_context(),
         )
 

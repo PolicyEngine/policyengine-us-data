@@ -11,6 +11,7 @@ from typing import Any, Literal, Mapping
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
 from .geography_loader import CalibrationGeographyLoader
+from .simulation_access import calculate_variable_values
 
 FingerprintScope = Literal["regional", "national"]
 ScopeFingerprint = str
@@ -409,4 +410,9 @@ class FingerprintingService:
         from policyengine_us import Microsimulation
 
         simulation = Microsimulation(dataset=str(source_dataset_path))
-        return int(len(simulation.calculate("household_id", map_to="household").values))
+        household_ids = calculate_variable_values(
+            simulation,
+            "household_id",
+            map_to="household",
+        )
+        return int(len(household_ids))

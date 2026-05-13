@@ -23,6 +23,12 @@ from policyengine_us_data.build_outputs.fingerprinting import (
 from policyengine_us_data.build_outputs.geography_loader import (
     CalibrationGeographyLoader,
 )
+from policyengine_us_data.build_outputs.reindexing import EntityReindexer
+from policyengine_us_data.build_outputs.requests import AreaFilter
+from policyengine_us_data.build_outputs.selection import AreaSelector
+from policyengine_us_data.build_outputs.source_dataset import SourceDatasetSnapshot
+from policyengine_us_data.build_outputs.variables import VariableCloner
+from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
@@ -33,12 +39,6 @@ from policyengine_us_data.calibration.calibration_utils import (
 )
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
-)
-from policyengine_us_data.calibration.formulaic_inputs import (
-    drop_formulaic_spm_inputs,
-)
-from policyengine_us_data.datasets.puf.variable_roles import (
-    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
 )
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -228,14 +228,6 @@ def validate_or_clear_checkpoints(fingerprint: str):
     META_FILE.write_text(json.dumps({"fingerprint": fingerprint}))
 
 
-SUB_ENTITIES = [
-    "tax_unit",
-    "spm_unit",
-    "family",
-    "marital_unit",
-]
-
-
 def load_completed_states() -> set:
     if CHECKPOINT_FILE.exists():
         content = CHECKPOINT_FILE.read_text().strip()
@@ -303,6 +295,31 @@ def _build_reported_takeup_anchors(
     return reported_anchors
 
 
+def _build_legacy_area_filters(
+    *,
+    cd_subset: List[str] | None,
+    county_fips_filter: set | None,
+) -> tuple[AreaFilter, ...]:
+    filters = []
+    if cd_subset is not None:
+        filters.append(
+            AreaFilter(
+                geography_field="cd_geoid",
+                op="in",
+                value=tuple(str(item) for item in cd_subset),
+            )
+        )
+    if county_fips_filter is not None:
+        filters.append(
+            AreaFilter(
+                geography_field="county_fips",
+                op="in",
+                value=tuple(sorted(str(item) for item in county_fips_filter)),
+            )
+        )
+    return tuple(filters)
+
+
 @pipeline_node(
     PipelineNode(
         id="build_h5",
@@ -350,42 +367,24 @@ def build_h5(
         Path to the output H5 file.
     """
     import h5py
-    from collections import defaultdict
-    from policyengine_core.enums import Enum
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     blocks = np.asarray(geography.block_geoid)
-    clone_cds = np.asarray(geography.cd_geoid, dtype=str)
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
-    time_period = int(sim.default_calculation_period)
-    household_ids = sim.calculate("household_id", map_to="household").values
-    n_hh = len(household_ids)
-
-    if weights.shape[0] % n_hh != 0:
-        raise ValueError(
-            f"Weight vector length {weights.shape[0]} is not divisible by n_hh={n_hh}"
-        )
-    n_clones_total = weights.shape[0] // n_hh
-
-    # === Reshape and filter weight matrix ===
-    W = weights.reshape(n_clones_total, n_hh).copy()
-    clone_cds_matrix = clone_cds.reshape(n_clones_total, n_hh)
-
-    # CD subset filtering: zero out cells whose CD isn't in subset
-    if cd_subset is not None:
-        cd_subset_set = set(cd_subset)
-        cd_mask = np.vectorize(lambda cd: cd in cd_subset_set)(clone_cds_matrix)
-        W[~cd_mask] = 0
-
-    # County FIPS filtering: zero out clones not in target counties
-    if county_fips_filter is not None:
-        fips_array = np.asarray(geography.county_fips).reshape(n_clones_total, n_hh)
-        fips_mask = np.isin(fips_array, list(county_fips_filter))
-        W[~fips_mask] = 0
+    source = SourceDatasetSnapshot.from_simulation(Path(dataset_path), sim)
+    time_period = int(source.time_period)
+    household_ids = source.household_ids
+    n_hh = source.n_households
+    weight_matrix = CloneWeightMatrix.from_vector(weights, n_records=n_hh)
+    n_clones_total = weight_matrix.n_clones
+    filters = _build_legacy_area_filters(
+        cd_subset=cd_subset,
+        county_fips_filter=county_fips_filter,
+    )
 
     label = (
         f"CD subset {cd_subset}"
@@ -396,118 +395,37 @@ def build_h5(
     print(f"Building {output_path.name} ({label}, {n_hh} households)")
     print(f"{'=' * 60}")
 
-    # === Identify active clones ===
-    active_geo, active_hh = np.where(W > 0)
-    n_clones = len(active_geo)
-    if n_clones == 0:
-        raise ValueError(
-            f"No active clones after filtering. "
-            f"cd_subset={cd_subset}, county_fips_filter={county_fips_filter}"
-        )
-    clone_weights = W[active_geo, active_hh]
-    active_blocks = blocks.reshape(n_clones_total, n_hh)[active_geo, active_hh]
-    active_clone_cds = clone_cds.reshape(n_clones_total, n_hh)[active_geo, active_hh]
-
-    empty_count = np.sum(active_blocks == "")
-    if empty_count > 0:
-        raise ValueError(f"{empty_count} active clones have empty block GEOIDs")
-
+    # === Select active clones ===
+    selection = AreaSelector().select(
+        weights=weight_matrix,
+        geography=geography,
+        filters=filters,
+    )
+    active_geo = selection.clone_indices
+    active_hh = selection.source_household_indices
+    n_clones = selection.n_selected_clones
+    clone_weights = selection.weights
+    active_blocks = selection.block_geoids
+    active_clone_cds = selection.congressional_district_geoids
     print(f"Active clones: {n_clones:,}")
     print(f"Total weight: {clone_weights.sum():,.0f}")
 
-    # === Build entity membership maps ===
-    hh_id_to_idx = {int(hid): i for i, hid in enumerate(household_ids)}
-    person_hh_ids = sim.calculate("household_id", map_to="person").values
-
-    hh_to_persons = defaultdict(list)
-    for p_idx, p_hh_id in enumerate(person_hh_ids):
-        hh_to_persons[hh_id_to_idx[int(p_hh_id)]].append(p_idx)
-
-    hh_to_entity = {}
-    entity_id_arrays = {}
-    person_entity_id_arrays = {}
-
-    for ek in SUB_ENTITIES:
-        eids = sim.calculate(f"{ek}_id", map_to=ek).values
-        peids = sim.calculate(f"person_{ek}_id", map_to="person").values
-        entity_id_arrays[ek] = eids
-        person_entity_id_arrays[ek] = peids
-        eid_to_idx = {int(eid): i for i, eid in enumerate(eids)}
-
-        mapping = defaultdict(list)
-        seen = defaultdict(set)
-        for p_idx in range(len(person_hh_ids)):
-            hh_idx = hh_id_to_idx[int(person_hh_ids[p_idx])]
-            e_idx = eid_to_idx[int(peids[p_idx])]
-            if e_idx not in seen[hh_idx]:
-                seen[hh_idx].add(e_idx)
-                mapping[hh_idx].append(e_idx)
-        for hh_idx in mapping:
-            mapping[hh_idx].sort()
-        hh_to_entity[ek] = mapping
-
-    # === Build clone index arrays ===
-    hh_clone_idx = active_hh
-
-    persons_per_clone = np.array([len(hh_to_persons.get(h, [])) for h in active_hh])
-    person_parts = [
-        np.array(hh_to_persons.get(h, []), dtype=np.int64) for h in active_hh
-    ]
-    person_clone_idx = (
-        np.concatenate(person_parts) if person_parts else np.array([], dtype=np.int64)
-    )
-
-    entity_clone_idx = {}
-    entities_per_clone = {}
-    for ek in SUB_ENTITIES:
-        epc = np.array([len(hh_to_entity[ek].get(h, [])) for h in active_hh])
-        entities_per_clone[ek] = epc
-        parts = [
-            np.array(hh_to_entity[ek].get(h, []), dtype=np.int64) for h in active_hh
-        ]
-        entity_clone_idx[ek] = (
-            np.concatenate(parts) if parts else np.array([], dtype=np.int64)
-        )
-
-    n_persons = len(person_clone_idx)
+    # === Reindex selected entities ===
+    reindexed = EntityReindexer().reindex(source=source, selection=selection)
+    person_clone_idx = reindexed.person_source_indices
+    entity_clone_idx = dict(reindexed.subentity_source_indices)
+    persons_per_clone = reindexed.persons_per_household_clone
+    entities_per_clone = dict(reindexed.subentities_per_household_clone)
+    n_persons = len(reindexed.person_ids)
     print(f"Cloned persons: {n_persons:,}")
-    for ek in SUB_ENTITIES:
+    for ek in entity_clone_idx:
         print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
 
-    # === Build new entity IDs and cross-references ===
-    new_hh_ids = np.arange(n_clones, dtype=np.int32)
-    new_person_ids = np.arange(n_persons, dtype=np.int32)
-    new_person_hh_ids = np.repeat(new_hh_ids, persons_per_clone)
-
-    new_entity_ids = {}
-    new_person_entity_ids = {}
-    clone_ids_for_persons = np.repeat(
-        np.arange(n_clones, dtype=np.int64), persons_per_clone
-    )
-
-    for ek in SUB_ENTITIES:
-        n_ents = len(entity_clone_idx[ek])
-        new_entity_ids[ek] = np.arange(n_ents, dtype=np.int32)
-
-        old_eids = entity_id_arrays[ek][entity_clone_idx[ek]].astype(np.int64)
-        clone_ids_e = np.repeat(
-            np.arange(n_clones, dtype=np.int64),
-            entities_per_clone[ek],
-        )
-
-        offset = int(old_eids.max()) + 1 if len(old_eids) > 0 else 1
-        entity_keys = clone_ids_e * offset + old_eids
-
-        sorted_order = np.argsort(entity_keys)
-        sorted_keys = entity_keys[sorted_order]
-        sorted_new = new_entity_ids[ek][sorted_order]
-
-        p_old_eids = person_entity_id_arrays[ek][person_clone_idx].astype(np.int64)
-        person_keys = clone_ids_for_persons * offset + p_old_eids
-
-        positions = np.searchsorted(sorted_keys, person_keys)
-        positions = np.clip(positions, 0, len(sorted_keys) - 1)
-        new_person_entity_ids[ek] = sorted_new[positions]
+    new_hh_ids = reindexed.household_ids
+    new_person_ids = reindexed.person_ids
+    new_person_hh_ids = reindexed.person_household_ids
+    new_entity_ids = dict(reindexed.subentity_ids)
+    new_person_entity_ids = dict(reindexed.person_subentity_ids)
 
     # === Derive geography from blocks (dedup optimization) ===
     print("Deriving geography from blocks...")
@@ -516,77 +434,14 @@ def build_h5(
     unique_geo = derive_geography_from_blocks(unique_blocks)
     clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
 
-    # === Determine variables to save ===
-    vars_to_save = (
-        set(sim.input_variables) - PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
-    )
-    drop_formulaic_spm_inputs(vars_to_save)
-    vars_to_save.add("county")
-    vars_to_save.add("congressional_district_geoid")
-    for gv in [
-        "block_geoid",
-        "tract_geoid",
-        "cbsa_code",
-        "sldu",
-        "sldl",
-        "place_fips",
-        "vtd",
-        "puma",
-        "zcta",
-    ]:
-        vars_to_save.add(gv)
-
     # === Clone variable arrays ===
-    clone_idx_map = {
-        "household": hh_clone_idx,
-        "person": person_clone_idx,
-    }
-    for ek in SUB_ENTITIES:
-        clone_idx_map[ek] = entity_clone_idx[ek]
-
-    data = {}
-    variables_saved = 0
-
-    for variable in sim.tax_benefit_system.variables:
-        if variable not in vars_to_save:
-            continue
-
-        holder = sim.get_holder(variable)
-        periods = holder.get_known_periods()
-        if not periods:
-            continue
-
-        var_def = sim.tax_benefit_system.variables.get(variable)
-        entity_key = var_def.entity.key
-        if entity_key not in clone_idx_map:
-            continue
-
-        cidx = clone_idx_map[entity_key]
-        var_data = {}
-
-        for period in periods:
-            values = holder.get_array(period)
-
-            if hasattr(values, "_pa_array") or hasattr(values, "_ndarray"):
-                values = np.asarray(values)
-
-            if var_def.value_type in (Enum, str) and variable != "county_fips":
-                if hasattr(values, "decode_to_str"):
-                    values = values.decode_to_str().astype("S")
-                else:
-                    values = np.asarray(values).astype("S")
-            elif variable == "county_fips":
-                values = np.asarray(values).astype("int32")
-            else:
-                values = np.asarray(values)
-
-            var_data[period] = values[cidx]
-            variables_saved += 1
-
-        if var_data:
-            data[variable] = var_data
-
-    print(f"Variables cloned: {variables_saved}")
+    payload = VariableCloner().clone(
+        source=source,
+        selection=selection,
+        reindexed=reindexed,
+    )
+    data = {variable: dict(periods) for variable, periods in payload.data.items()}
+    print(f"Variables cloned: {payload.values_saved}")
 
     # === Override entity IDs ===
     data["household_id"] = {time_period: new_hh_ids}
@@ -594,7 +449,7 @@ def build_h5(
     data["person_household_id"] = {
         time_period: new_person_hh_ids,
     }
-    for ek in SUB_ENTITIES:
+    for ek in new_entity_ids:
         data[f"{ek}_id"] = {
             time_period: new_entity_ids[ek],
         }

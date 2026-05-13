@@ -136,7 +136,7 @@ def test_variable_provider_loads_and_caches_requested_array():
 
     assert np.array_equal(first, np.array([40, 12, 8]))
     assert first is second
-    assert simulation.get_holder_calls == ["age", "age"]
+    assert simulation.get_holder_calls == ["age"]
     assert holder.get_array_calls == [2023]
     with pytest.raises(ValueError, match="read-only"):
         first[0] = 99
@@ -151,6 +151,23 @@ def test_variable_provider_uses_first_known_period_when_period_is_omitted():
     assert np.array_equal(values, np.array([1, 2]))
     assert holder.known_period_calls == 1
     assert holder.get_array_calls == [2023]
+
+
+def test_variable_provider_exposes_variable_metadata():
+    provider = MicrosimulationVariableProvider(
+        FakeSimulation(
+            {"rent": FakeHolder({2023: np.array([1, 2])})},
+            variable_entities={"rent": "household"},
+            value_types={"rent": float},
+        )
+    )
+
+    metadata = provider.get_metadata("rent")
+
+    assert provider.variable_names == ("rent",)
+    assert metadata.name == "rent"
+    assert metadata.entity_key == "household"
+    assert metadata.value_type is float
 
 
 def test_variable_provider_rejects_missing_variables():

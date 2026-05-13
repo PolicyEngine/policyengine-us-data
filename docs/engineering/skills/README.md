@@ -20,3 +20,7 @@ Current skills:
   pipeline status and durable error records.
 - `testing.md`: test layout, fixture scope, helper placement, and quality guard
   expectations.
+
+Stage-specific AI-facing engineering guides live under `docs/engineering/stages/`.
+Use them alongside these cross-cutting skills when modifying a stage-specific
+pipeline path.

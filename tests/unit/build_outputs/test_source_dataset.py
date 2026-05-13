@@ -136,7 +136,7 @@ def test_variable_provider_loads_and_caches_requested_array():
 
     assert np.array_equal(first, np.array([40, 12, 8]))
     assert first is second
-    assert simulation.get_holder_calls == ["age", "age"]
+    assert simulation.get_holder_calls == ["age"]
     assert holder.get_array_calls == [2023]
     with pytest.raises(ValueError, match="read-only"):
         first[0] = 99

@@ -17,6 +17,17 @@ from numpy.typing import ArrayLike
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
+from .simulation_access import (
+    calculate_variable_values,
+    get_default_calculation_period,
+    get_holder_array,
+    get_input_variables,
+    get_known_periods,
+    get_variable_entity_key,
+    get_variable_names,
+    get_variable_value_type,
+)
+
 __all__ = [
     "EntityGraph",
     "MicrosimulationVariableProvider",
@@ -156,32 +167,28 @@ class EntityGraph:
             A validated `EntityGraph`.
         """
 
-        household_ids = _calculation_values(
-            simulation.calculate(
-                "household_id",
-                map_to="household",
-            )
+        household_ids = calculate_variable_values(
+            simulation,
+            "household_id",
+            map_to="household",
         )
-        person_household_ids = _calculation_values(
-            simulation.calculate(
-                "household_id",
-                map_to="person",
-            )
+        person_household_ids = calculate_variable_values(
+            simulation,
+            "household_id",
+            map_to="person",
         )
         subentity_ids = {}
         person_subentity_ids = {}
         for entity_key in subentities:
-            subentity_ids[entity_key] = _calculation_values(
-                simulation.calculate(
-                    f"{entity_key}_id",
-                    map_to=entity_key,
-                )
+            subentity_ids[entity_key] = calculate_variable_values(
+                simulation,
+                f"{entity_key}_id",
+                map_to=entity_key,
             )
-            person_subentity_ids[entity_key] = _calculation_values(
-                simulation.calculate(
-                    f"person_{entity_key}_id",
-                    map_to="person",
-                )
+            person_subentity_ids[entity_key] = calculate_variable_values(
+                simulation,
+                f"person_{entity_key}_id",
+                map_to="person",
             )
         return cls(
             household_ids=household_ids,
@@ -360,16 +367,6 @@ def _normalized_id(value) -> object:
     return value
 
 
-def _calculation_values(calculation) -> np.ndarray:
-    if hasattr(calculation, "__array__"):
-        return np.asarray(calculation)
-    if hasattr(calculation, "to_numpy"):
-        return calculation.to_numpy()
-    if hasattr(calculation, "values"):
-        return calculation.values
-    return np.asarray(calculation)
-
-
 @pipeline_node(
     id="local_h5_microsimulation_variable_provider",
     label="MicrosimulationVariableProvider",
@@ -407,42 +404,21 @@ class MicrosimulationVariableProvider:
     def input_variables(self) -> frozenset[str]:
         """Return the source simulation input variable inventory."""
 
-        return frozenset(str(variable) for variable in self.simulation.input_variables)
+        return get_input_variables(self.simulation)
 
     @property
     def variable_names(self) -> tuple[str, ...]:
         """Return variables declared by the source tax-benefit system."""
 
-        variables = getattr(
-            getattr(self.simulation, "tax_benefit_system", None),
-            "variables",
-            None,
-        )
-        if variables is None:
-            return tuple(sorted(self.input_variables))
-        return tuple(str(variable) for variable in variables)
+        return get_variable_names(self.simulation)
 
     def get_metadata(self, variable: str) -> SourceVariableMetadata:
         """Return entity and value metadata for one source variable."""
 
-        variables = getattr(
-            getattr(self.simulation, "tax_benefit_system", None),
-            "variables",
-            None,
-        )
-        if variables is None or variable not in variables:
-            raise KeyError(f"Variable {variable!r} metadata is not available")
-
-        variable_definition = variables[variable]
-        entity = getattr(variable_definition, "entity", None)
-        entity_key = getattr(entity, "key", None)
-        if not entity_key:
-            raise ValueError(f"Variable {variable!r} has no entity key")
-
         return SourceVariableMetadata(
             name=str(variable),
-            entity_key=str(entity_key),
-            value_type=getattr(variable_definition, "value_type", None),
+            entity_key=get_variable_entity_key(self.simulation, variable),
+            value_type=get_variable_value_type(self.simulation, variable),
         )
 
     def known_periods(self, variable: str) -> tuple[Any, ...]:
@@ -455,8 +431,7 @@ class MicrosimulationVariableProvider:
             Tuple of holder periods.
         """
 
-        holder = self._get_holder(variable)
-        return tuple(holder.get_known_periods())
+        return get_known_periods(self.simulation, variable)
 
     def get_array(self, variable: str, period: Any | None = None) -> np.ndarray:
         """Return one source variable array, loading and caching it lazily.
@@ -469,16 +444,18 @@ class MicrosimulationVariableProvider:
             A read-only numpy array copy of the holder values.
         """
 
-        holder = self._get_holder(variable)
         if period is None:
-            periods = tuple(holder.get_known_periods())
+            periods = get_known_periods(self.simulation, variable)
             if not periods:
                 raise ValueError(f"Variable {variable!r} has no known periods")
             period = periods[0]
 
         cache_key = (str(variable), str(period))
         if cache_key not in self._array_cache:
-            array = np.array(holder.get_array(period), copy=True)
+            array = np.array(
+                get_holder_array(self.simulation, variable, period),
+                copy=True,
+            )
             array.setflags(write=False)
             self._array_cache[cache_key] = array
         return self._array_cache[cache_key]
@@ -486,16 +463,7 @@ class MicrosimulationVariableProvider:
     def get_raw_array(self, variable: str, period: Any) -> Any:
         """Return one holder array without normalizing the backing object."""
 
-        return self._get_holder(variable).get_array(period)
-
-    def _get_holder(self, variable: str):
-        try:
-            holder = self.simulation.get_holder(variable)
-        except Exception as exc:
-            raise KeyError(f"Variable {variable!r} is not available") from exc
-        if holder is None:
-            raise KeyError(f"Variable {variable!r} is not available")
-        return holder
+        return get_holder_array(self.simulation, variable, period)
 
 
 @pipeline_node(
@@ -568,7 +536,7 @@ class SourceDatasetSnapshot:
         provider = MicrosimulationVariableProvider(simulation)
         return cls(
             dataset_path=Path(dataset_path),
-            time_period=int(simulation.default_calculation_period),
+            time_period=get_default_calculation_period(simulation),
             entity_graph=EntityGraph.from_simulation(simulation),
             input_variables=provider.input_variables,
             variable_provider=provider,
@@ -631,7 +599,7 @@ class PolicyEngineDatasetReader:
         provider = MicrosimulationVariableProvider(simulation)
         return SourceDatasetSnapshot(
             dataset_path=path,
-            time_period=int(simulation.default_calculation_period),
+            time_period=get_default_calculation_period(simulation),
             entity_graph=entity_graph,
             input_variables=provider.input_variables,
             variable_provider=provider,

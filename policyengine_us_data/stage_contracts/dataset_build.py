@@ -31,6 +31,7 @@ class _Stage1ArtifactSpec:
     required_for_stage_2: bool = False
     yearless_alias: bool = False
     skip_when_enhanced_cps_skipped: bool = False
+    skip_when_stage_5_skipped: bool = False
 
 
 _STAGE_1_ARTIFACTS: tuple[_Stage1ArtifactSpec, ...] = (
@@ -84,6 +85,7 @@ _STAGE_1_ARTIFACTS: tuple[_Stage1ArtifactSpec, ...] = (
         period=2024,
         substage_id="1d_enhanced_cps_reweighting",
         skip_when_enhanced_cps_skipped=True,
+        skip_when_stage_5_skipped=True,
     ),
     _Stage1ArtifactSpec(
         filename="stratified_extended_cps_2024.h5",
@@ -99,6 +101,7 @@ _STAGE_1_ARTIFACTS: tuple[_Stage1ArtifactSpec, ...] = (
         period=2024,
         substage_id="1f_source_imputation",
         required_for_stage_2=True,
+        skip_when_stage_5_skipped=True,
     ),
     _Stage1ArtifactSpec(
         filename="source_imputed_stratified_extended_cps.h5",
@@ -108,6 +111,7 @@ _STAGE_1_ARTIFACTS: tuple[_Stage1ArtifactSpec, ...] = (
         substage_id="1f_source_imputation",
         required_for_stage_2=True,
         yearless_alias=True,
+        skip_when_stage_5_skipped=True,
     ),
     _Stage1ArtifactSpec(
         filename="policy_data.db",
@@ -154,6 +158,7 @@ def build_dataset_build_output_contract(
     upload_requested: bool = False,
     stage_only: bool = False,
     skip_enhanced_cps: bool = False,
+    skip_stage_5: bool = False,
 ) -> StageContract:
     """Build the Stage 1 handoff contract from copied pipeline artifacts."""
 
@@ -161,12 +166,14 @@ def build_dataset_build_output_contract(
     parameters = {
         "period": 2024,
         "skip_enhanced_cps": skip_enhanced_cps,
+        "skip_stage_5": skip_stage_5,
         "stage_only": stage_only,
         "upload_requested": upload_requested,
     }
     outputs = _stage_1_outputs(
         artifacts_dir=artifacts_dir,
         skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
     )
     execution = _execution_record(
         checkpoint_stats=checkpoint_stats,
@@ -193,6 +200,7 @@ def build_dataset_build_output_contract(
         substages=_stage_1_substages(
             outputs=outputs,
             skip_enhanced_cps=skip_enhanced_cps,
+            skip_stage_5=skip_stage_5,
         ),
         execution=execution,
         metadata={
@@ -207,11 +215,14 @@ def _stage_1_outputs(
     *,
     artifacts_dir: Path,
     skip_enhanced_cps: bool,
+    skip_stage_5: bool,
 ) -> tuple[ArtifactRef, ...]:
     outputs: list[ArtifactRef] = []
     missing_required: list[str] = []
     for spec in _STAGE_1_ARTIFACTS:
         if skip_enhanced_cps and spec.skip_when_enhanced_cps_skipped:
+            continue
+        if skip_stage_5 and spec.skip_when_stage_5_skipped:
             continue
         artifact_path = artifacts_dir / spec.filename
         if not artifact_path.exists():
@@ -276,6 +287,7 @@ def _stage_1_substages(
     *,
     outputs: tuple[ArtifactRef, ...],
     skip_enhanced_cps: bool,
+    skip_stage_5: bool,
 ) -> tuple[SubstageRecord, ...]:
     output_by_substage: dict[str, list[ArtifactRef]] = {
         substage_id: [] for substage_id in _SUBSTAGE_IDS
@@ -289,6 +301,8 @@ def _stage_1_substages(
     for substage_id in _SUBSTAGE_IDS:
         status = "completed"
         if substage_id == "1d_enhanced_cps_reweighting" and skip_enhanced_cps:
+            status = "skipped"
+        if substage_id == "1f_source_imputation" and skip_stage_5:
             status = "skipped"
         reuse_mode = "checkpointable"
         if substage_id in {

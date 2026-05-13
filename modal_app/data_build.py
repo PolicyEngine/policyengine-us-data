@@ -117,6 +117,7 @@ SCRIPT_OUTPUTS = {
     # enhanced_cps.py produces both the dataset and calibration log
     "policyengine_us_data/datasets/cps/enhanced_cps.py": [
         "policyengine_us_data/storage/enhanced_cps_2024.h5",
+        "policyengine_us_data/storage/enhanced_cps_2024.clone_diagnostics.json",
         "calibration_log.csv",
     ],
     "policyengine_us_data/calibration/create_stratified_cps.py": (
@@ -317,12 +318,15 @@ def validate_and_maybe_upload_datasets(
     upload: bool,
     skip_enhanced_cps: bool,
     env: dict,
+    require_small_enhanced_cps: bool = True,
     stage_only: bool = False,
     run_id: str = "",
 ) -> None:
     validation_args = ["--validate-only"]
     if skip_enhanced_cps:
         validation_args.append("--no-require-enhanced-cps")
+    elif not require_small_enhanced_cps:
+        validation_args.append("--no-require-small-enhanced-cps")
 
     print("=== Validating built datasets ===")
     run_script(
@@ -335,6 +339,8 @@ def validate_and_maybe_upload_datasets(
         upload_args = []
         if skip_enhanced_cps:
             upload_args.append("--no-require-enhanced-cps")
+        elif not require_small_enhanced_cps:
+            upload_args.append("--no-require-small-enhanced-cps")
         if stage_only:
             upload_args.append("--stage-only")
         if run_id:
@@ -504,6 +510,7 @@ def write_dataset_build_contract(
     upload_requested: bool,
     stage_only: bool,
     skip_enhanced_cps: bool,
+    skip_stage_5: bool = False,
 ) -> StageContract:
     """Write the Stage 1 semantic handoff contract next to copied artifacts."""
     contract = build_dataset_build_output_contract(
@@ -518,6 +525,7 @@ def write_dataset_build_contract(
         upload_requested=upload_requested,
         stage_only=stage_only,
         skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
     )
     write_contract(
         contract,
@@ -559,6 +567,7 @@ def build_datasets(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    skip_stage_5: bool = False,
     stage_only: bool = False,
     run_id: str = "",
 ):
@@ -572,6 +581,8 @@ def build_datasets(
         skip_tests: Skip running the test suite (useful for calibration runs).
         skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py
             (useful for calibration runs that only need source_imputed H5).
+        skip_stage_5: Skip source-imputed CPS and small enhanced CPS after
+            enhanced_cps_2024.h5 is built.
         stage_only: Upload to HF staging only, without promoting a release.
     """
     setup_gcp_credentials()
@@ -645,6 +656,12 @@ def build_datasets(
 
     if sequential:
         for script, output in SCRIPT_OUTPUTS.items():
+            if skip_stage_5 and script in (
+                "policyengine_us_data/calibration/create_source_imputed_cps.py",
+                "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+            ):
+                print(f"Skipping {script} (--skip-stage-5)")
+                continue
             if skip_enhanced_cps and script in (
                 "policyengine_us_data/datasets/cps/enhanced_cps.py",
                 "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
@@ -761,33 +778,21 @@ def build_datasets(
         # GROUP 4: After Phase 4 - run in parallel
         # create_source_imputed_cps needs stratified_cps
         # small_enhanced_cps needs enhanced_cps
-        print(
-            "=== Phase 5: Building source imputed CPS "
-            "and small enhanced CPS (parallel) ==="
-        )
-        phase5_futures = []
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            phase5_futures.append(
-                executor.submit(
-                    run_script_with_checkpoint,
-                    "policyengine_us_data/calibration/create_source_imputed_cps.py",
-                    SCRIPT_OUTPUTS[
-                        "policyengine_us_data/calibration/create_source_imputed_cps.py"
-                    ],
-                    branch,
-                    checkpoint_volume,
-                    env=env,
-                    log_file=log_file,
-                    checkpoint_stats=checkpoint_stats,
-                )
+        if skip_stage_5:
+            print("Skipping Phase 5 (--skip-stage-5)")
+        else:
+            print(
+                "=== Phase 5: Building source imputed CPS "
+                "and small enhanced CPS (parallel) ==="
             )
-            if not skip_enhanced_cps:
+            phase5_futures = []
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 phase5_futures.append(
                     executor.submit(
                         run_script_with_checkpoint,
-                        "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                        "policyengine_us_data/calibration/create_source_imputed_cps.py",
                         SCRIPT_OUTPUTS[
-                            "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                            "policyengine_us_data/calibration/create_source_imputed_cps.py"
                         ],
                         branch,
                         checkpoint_volume,
@@ -796,10 +801,25 @@ def build_datasets(
                         checkpoint_stats=checkpoint_stats,
                     )
                 )
-            else:
-                print("Skipping small_enhanced_cps.py (--skip-enhanced-cps)")
-            for future in as_completed(phase5_futures):
-                future.result()
+                if not skip_enhanced_cps:
+                    phase5_futures.append(
+                        executor.submit(
+                            run_script_with_checkpoint,
+                            "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                            SCRIPT_OUTPUTS[
+                                "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                            ],
+                            branch,
+                            checkpoint_volume,
+                            env=env,
+                            log_file=log_file,
+                            checkpoint_stats=checkpoint_stats,
+                        )
+                    )
+                else:
+                    print("Skipping small_enhanced_cps.py (--skip-enhanced-cps)")
+                for future in as_completed(phase5_futures):
+                    future.result()
 
     # Checkpoint the build log so it survives preemption
     log_file.flush()
@@ -857,6 +877,7 @@ def build_datasets(
         upload_requested=upload,
         stage_only=stage_only,
         skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
     )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
@@ -871,6 +892,7 @@ def build_datasets(
     validate_and_maybe_upload_datasets(
         upload=upload,
         skip_enhanced_cps=skip_enhanced_cps,
+        require_small_enhanced_cps=not skip_stage_5,
         env=env,
         stage_only=stage_only,
         run_id=run_id,
@@ -890,6 +912,7 @@ def main(
     clear_checkpoints: bool = False,
     skip_tests: bool = False,
     skip_enhanced_cps: bool = False,
+    skip_stage_5: bool = False,
     stage_only: bool = False,
     run_id: str = "",
 ):
@@ -905,6 +928,7 @@ def main(
         clear_checkpoints=clear_checkpoints,
         skip_tests=skip_tests,
         skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
         stage_only=stage_only,
         run_id=run_id,
     )

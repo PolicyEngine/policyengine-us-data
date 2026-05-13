@@ -51,9 +51,20 @@ class _AggregateResult:
     def sum(self):
         return float(self.values.sum())
 
+    def mean(self):
+        return float(self.values.mean())
+
+    def __ge__(self, other):
+        return self.values >= other
+
+    def __getitem__(self, key):
+        return _AggregateResult(self.values[key])
+
 
 class _TimePeriodCheckingAggregateMicrosimulation:
     last_dataset = None
+    calls = []
+    overrides = {}
 
     def __init__(self, dataset=None):
         _TimePeriodCheckingAggregateMicrosimulation.last_dataset = dataset
@@ -62,7 +73,14 @@ class _TimePeriodCheckingAggregateMicrosimulation:
                 "Expected a period (eg. '2017', '2017-01', '2017-01-01', ...); got: 'None'."
             )
 
-    def calculate(self, variable_name, period=None):
+    def calculate(self, variable_name, period=None, map_to=None):
+        _TimePeriodCheckingAggregateMicrosimulation.calls.append(
+            (variable_name, period, map_to)
+        )
+        if variable_name in _TimePeriodCheckingAggregateMicrosimulation.overrides:
+            return _AggregateResult(
+                _TimePeriodCheckingAggregateMicrosimulation.overrides[variable_name]
+            )
         if variable_name == "employment_income":
             return _AggregateResult([6e12])
         if variable_name == "household_weight":
@@ -73,9 +91,15 @@ class _TimePeriodCheckingAggregateMicrosimulation:
 def _fake_tax_benefit_system():
     variable_entities = {
         "person_id": "person",
+        "spm_unit_id": "spm_unit",
         "household_id": "household",
         "employment_income": "person",
         "household_weight": "household",
+        "takes_up_snap_if_eligible": "spm_unit",
+        "takes_up_ssi_if_eligible": "person",
+        "takes_up_tanf_if_eligible": "spm_unit",
+        "would_claim_wic": "person",
+        "is_wic_at_nutritional_risk": "person",
     }
     return SimpleNamespace(
         variables={
@@ -91,9 +115,34 @@ def _write_h5(path, datasets: dict[str, np.ndarray]) -> None:
             h5_file.create_dataset(name, data=values)
 
 
+def _minimal_enhanced_cps_contract_datasets(**overrides):
+    datasets = {
+        "person_id": np.array([101, 102, 103], dtype=np.int32),
+        "spm_unit_id": np.array([201, 202], dtype=np.int32),
+        "household_id": np.array([301, 302], dtype=np.int32),
+        "employment_income": np.array([50_000.0, 60_000.0, 0.0], dtype=np.float32),
+        "household_weight": np.array([1.0, 1.0], dtype=np.float32),
+    }
+    for key, value in overrides.items():
+        if value is None:
+            datasets.pop(key, None)
+        else:
+            datasets[key] = value
+    return datasets
+
+
 @pytest.fixture(autouse=True)
 def patch_contract_validation(monkeypatch):
     monkeypatch.setitem(upload_module.MIN_FILE_SIZES, "cps_2024.h5", 0)
+    monkeypatch.setitem(upload_module.MIN_FILE_SIZES, "enhanced_cps_2024.h5", 0)
+    monkeypatch.setattr(upload_module, "H5_SUM_CHECKS_BY_FILENAME", {})
+    monkeypatch.setattr(
+        upload_module,
+        "MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME",
+        {},
+    )
+    _TimePeriodCheckingAggregateMicrosimulation.calls = []
+    _TimePeriodCheckingAggregateMicrosimulation.overrides = {}
     monkeypatch.setattr(
         _dv_mod,
         "assert_locked_policyengine_us_version",
@@ -199,6 +248,85 @@ def test_validate_dataset_rejects_temporary_reported_source_variables(
         match="temporary or retired variables: snap_reported, ssi_reported",
     ):
         validate_dataset(file_path)
+
+
+def test_validate_enhanced_cps_rejects_missing_critical_leaf_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    _write_h5(
+        file_path,
+        _minimal_enhanced_cps_contract_datasets(),
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "REQUIRED_VARIABLES_BY_FILENAME",
+        {"enhanced_cps_2024.h5": ("required_leaf_input",)},
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us.Microsimulation",
+        _TimePeriodCheckingAggregateMicrosimulation,
+    )
+
+    with pytest.raises(
+        DatasetValidationError,
+        match="Required group 'required_leaf_input' missing or empty",
+    ):
+        validate_dataset(file_path)
+
+
+def test_validate_dataset_rejects_configured_implausible_mapped_aggregate(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    _write_h5(file_path, _minimal_enhanced_cps_contract_datasets())
+    _TimePeriodCheckingAggregateMicrosimulation.overrides = {
+        "generic_population_share": [0, 1, 1, 0, 1],
+        "generic_age": [30, 67, 66, 12, 78],
+    }
+    monkeypatch.setattr(
+        upload_module,
+        "REQUIRED_VARIABLES_BY_FILENAME",
+        {},
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME",
+        {
+            "enhanced_cps_2024.h5": (
+                upload_module.MicrosimulationAggregateCheck(
+                    variable="generic_population_share",
+                    label="generic senior share",
+                    statistic="mean",
+                    max_value=0.5,
+                    map_to="person",
+                    filter_variable="generic_age",
+                    filter_map_to="person",
+                    filter_min_value=65,
+                ),
+            )
+        },
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us.Microsimulation",
+        _TimePeriodCheckingAggregateMicrosimulation,
+    )
+
+    with pytest.raises(
+        DatasetValidationError,
+        match="generic senior share",
+    ):
+        validate_dataset(file_path)
+
+    assert (
+        "generic_population_share",
+        2024,
+        "person",
+    ) in _TimePeriodCheckingAggregateMicrosimulation.calls
 
 
 def _prepare_release_files(tmp_path, monkeypatch):

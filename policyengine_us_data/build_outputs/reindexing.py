@@ -12,7 +12,7 @@ from numpy.typing import ArrayLike
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
 from .selection import CloneSelection
-from .source_dataset import SourceDatasetSnapshot
+from .source_dataset import EntityGraph, SourceDatasetSnapshot
 
 __all__ = ["EntityReindexer", "ReindexedEntities"]
 
@@ -54,82 +54,58 @@ class EntityReindexer:
         household_source_indices = selection.source_household_indices
         n_household_clones = selection.n_selected_clones
 
-        person_counts = np.array(
-            [
-                len(graph.household_to_person_indices.get(int(household_index), ()))
-                for household_index in household_source_indices
-            ],
-            dtype=np.int64,
+        household_ids = _create_household_ids(n_household_clones)
+        person_reindexing = _build_person_reindexing(
+            graph=graph,
+            household_source_indices=household_source_indices,
+            household_ids=household_ids,
         )
-        person_source_indices = _concatenate_membership(
-            graph.household_to_person_indices,
-            household_source_indices,
+        subentity_reindexing = _build_subentity_reindexing(
+            graph=graph,
+            household_source_indices=household_source_indices,
+            person_source_indices=person_reindexing.source_indices,
+            person_household_clone_indices=(
+                person_reindexing.person_household_clone_indices
+            ),
+            n_household_clones=n_household_clones,
         )
-
-        subentity_source_indices: dict[str, np.ndarray] = {}
-        subentity_counts: dict[str, np.ndarray] = {}
-        for entity_key, membership in graph.household_to_subentity_indices.items():
-            subentity_counts[entity_key] = np.array(
-                [
-                    len(membership.get(int(household_index), ()))
-                    for household_index in household_source_indices
-                ],
-                dtype=np.int64,
-            )
-            subentity_source_indices[entity_key] = _concatenate_membership(
-                membership,
-                household_source_indices,
-            )
-
-        household_ids = np.arange(n_household_clones, dtype=np.int32)
-        person_ids = np.arange(len(person_source_indices), dtype=np.int32)
-        person_household_ids = np.repeat(household_ids, person_counts).astype(np.int32)
-        person_household_clone_indices = np.repeat(
-            np.arange(n_household_clones, dtype=np.int64),
-            person_counts,
-        )
-
-        subentity_ids: dict[str, np.ndarray] = {}
-        person_subentity_ids: dict[str, np.ndarray] = {}
-        subentity_household_clone_indices: dict[str, np.ndarray] = {}
-
-        for entity_key, entity_source_indices in subentity_source_indices.items():
-            entity_counts = subentity_counts[entity_key]
-            subentity_ids[entity_key] = np.arange(
-                len(entity_source_indices),
-                dtype=np.int32,
-            )
-            subentity_household_clone_indices[entity_key] = np.repeat(
-                np.arange(n_household_clones, dtype=np.int64),
-                entity_counts,
-            )
-            person_subentity_ids[entity_key] = _reindex_person_subentity_ids(
-                entity_key=entity_key,
-                graph_subentity_ids=graph.subentity_ids[entity_key],
-                graph_person_subentity_ids=graph.person_subentity_ids[entity_key],
-                person_source_indices=person_source_indices,
-                entity_source_indices=entity_source_indices,
-                new_entity_ids=subentity_ids[entity_key],
-                person_household_clone_indices=person_household_clone_indices,
-                entity_household_clone_indices=subentity_household_clone_indices[
-                    entity_key
-                ],
-            )
 
         return ReindexedEntities(
             household_ids=household_ids,
-            person_ids=person_ids,
-            person_household_ids=person_household_ids,
-            subentity_ids=subentity_ids,
-            person_subentity_ids=person_subentity_ids,
+            person_ids=person_reindexing.ids,
+            person_household_ids=person_reindexing.person_household_ids,
+            subentity_ids=subentity_reindexing.ids,
+            person_subentity_ids=subentity_reindexing.person_subentity_ids,
             household_source_indices=household_source_indices,
-            person_source_indices=person_source_indices,
-            subentity_source_indices=subentity_source_indices,
-            persons_per_household_clone=person_counts,
-            subentities_per_household_clone=subentity_counts,
-            person_household_clone_indices=person_household_clone_indices,
-            subentity_household_clone_indices=subentity_household_clone_indices,
+            person_source_indices=person_reindexing.source_indices,
+            subentity_source_indices=subentity_reindexing.source_indices,
+            persons_per_household_clone=person_reindexing.counts,
+            subentities_per_household_clone=subentity_reindexing.counts,
+            person_household_clone_indices=(
+                person_reindexing.person_household_clone_indices
+            ),
+            subentity_household_clone_indices=(
+                subentity_reindexing.subentity_household_clone_indices
+            ),
         )
+
+
+@dataclass(frozen=True)
+class _PersonReindexing:
+    counts: np.ndarray
+    source_indices: np.ndarray
+    ids: np.ndarray
+    person_household_ids: np.ndarray
+    person_household_clone_indices: np.ndarray
+
+
+@dataclass(frozen=True)
+class _SubentityReindexing:
+    counts: dict[str, np.ndarray]
+    source_indices: dict[str, np.ndarray]
+    ids: dict[str, np.ndarray]
+    person_subentity_ids: dict[str, np.ndarray]
+    subentity_household_clone_indices: dict[str, np.ndarray]
 
 
 @pipeline_node(
@@ -243,6 +219,141 @@ class ReindexedEntities:
             ),
         )
         _validate_reindexed_entities(self)
+
+
+def _create_household_ids(n_household_clones: int) -> np.ndarray:
+    return np.arange(n_household_clones, dtype=np.int32)
+
+
+def _build_person_reindexing(
+    *,
+    graph: EntityGraph,
+    household_source_indices: np.ndarray,
+    household_ids: np.ndarray,
+) -> _PersonReindexing:
+    person_counts = _create_person_counts(
+        graph.household_to_person_indices,
+        household_source_indices,
+    )
+    person_source_indices = _concatenate_membership(
+        graph.household_to_person_indices,
+        household_source_indices,
+    )
+    return _PersonReindexing(
+        counts=person_counts,
+        source_indices=person_source_indices,
+        ids=_create_entity_ids(len(person_source_indices)),
+        person_household_ids=_create_person_household_ids(
+            household_ids=household_ids,
+            person_counts=person_counts,
+        ),
+        person_household_clone_indices=_create_household_clone_indices(
+            n_household_clones=len(household_ids),
+            member_counts=person_counts,
+        ),
+    )
+
+
+def _build_subentity_reindexing(
+    *,
+    graph: EntityGraph,
+    household_source_indices: np.ndarray,
+    person_source_indices: np.ndarray,
+    person_household_clone_indices: np.ndarray,
+    n_household_clones: int,
+) -> _SubentityReindexing:
+    subentity_counts: dict[str, np.ndarray] = {}
+    subentity_source_indices: dict[str, np.ndarray] = {}
+    subentity_ids: dict[str, np.ndarray] = {}
+    person_subentity_ids: dict[str, np.ndarray] = {}
+    subentity_household_clone_indices: dict[str, np.ndarray] = {}
+
+    for entity_key, membership in graph.household_to_subentity_indices.items():
+        subentity_counts[entity_key] = _create_subentity_counts(
+            membership,
+            household_source_indices,
+        )
+        subentity_source_indices[entity_key] = _concatenate_membership(
+            membership,
+            household_source_indices,
+        )
+        subentity_ids[entity_key] = _create_entity_ids(
+            len(subentity_source_indices[entity_key]),
+        )
+        subentity_household_clone_indices[entity_key] = _create_household_clone_indices(
+            n_household_clones=n_household_clones,
+            member_counts=subentity_counts[entity_key],
+        )
+        person_subentity_ids[entity_key] = _reindex_person_subentity_ids(
+            entity_key=entity_key,
+            graph_subentity_ids=graph.subentity_ids[entity_key],
+            graph_person_subentity_ids=graph.person_subentity_ids[entity_key],
+            person_source_indices=person_source_indices,
+            entity_source_indices=subentity_source_indices[entity_key],
+            new_entity_ids=subentity_ids[entity_key],
+            person_household_clone_indices=person_household_clone_indices,
+            entity_household_clone_indices=subentity_household_clone_indices[
+                entity_key
+            ],
+        )
+
+    return _SubentityReindexing(
+        counts=subentity_counts,
+        source_indices=subentity_source_indices,
+        ids=subentity_ids,
+        person_subentity_ids=person_subentity_ids,
+        subentity_household_clone_indices=subentity_household_clone_indices,
+    )
+
+
+def _create_person_counts(
+    membership: Mapping[int, tuple[int, ...]],
+    household_source_indices: np.ndarray,
+) -> np.ndarray:
+    return _count_members_per_household(membership, household_source_indices)
+
+
+def _create_subentity_counts(
+    membership: Mapping[int, tuple[int, ...]],
+    household_source_indices: np.ndarray,
+) -> np.ndarray:
+    return _count_members_per_household(membership, household_source_indices)
+
+
+def _count_members_per_household(
+    membership: Mapping[int, tuple[int, ...]],
+    household_indices: np.ndarray,
+) -> np.ndarray:
+    return np.array(
+        [
+            len(membership.get(int(household_index), ()))
+            for household_index in household_indices
+        ],
+        dtype=np.int64,
+    )
+
+
+def _create_entity_ids(count: int) -> np.ndarray:
+    return np.arange(count, dtype=np.int32)
+
+
+def _create_person_household_ids(
+    *,
+    household_ids: np.ndarray,
+    person_counts: np.ndarray,
+) -> np.ndarray:
+    return np.repeat(household_ids, person_counts).astype(np.int32)
+
+
+def _create_household_clone_indices(
+    *,
+    n_household_clones: int,
+    member_counts: np.ndarray,
+) -> np.ndarray:
+    return np.repeat(
+        np.arange(n_household_clones, dtype=np.int64),
+        member_counts,
+    )
 
 
 def _concatenate_membership(

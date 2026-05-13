@@ -52,6 +52,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.resilience import ensure_resume_sha_compatible  # noqa: E402
+from modal_app.step_manifests.errors import (  # noqa: E402
+    clear_latest_pipeline_error as _clear_latest_pipeline_error,
+    record_pipeline_error as _record_pipeline_error,
+)
 from modal_app.step_manifests.specs import (  # noqa: E402
     BUILD_CALIBRATION_PACKAGE,
     BUILD_DATASETS,
@@ -88,6 +92,10 @@ from modal_app.step_manifests.store import (  # noqa: E402
     write_run_meta,
 )
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
+from policyengine_us_data.utils.error_redaction import (  # noqa: E402
+    redacted_bounded_error_text,
+    redact_error_text,
+)
 from policyengine_us_data.utils.step_manifest import (  # noqa: E402
     ArtifactReference,
     ReuseMeasurement,
@@ -156,6 +164,56 @@ def _calibration_package_parameters(
         "num_matrix_workers": num_matrix_workers if effective_parallel else None,
     }
     return {key: value for key, value in params.items() if value is not None}
+
+
+def _record_pipeline_failure(
+    exc: BaseException,
+    *,
+    run_id: str,
+    manifest: StepManifest | None,
+    meta: RunMetadata,
+    surface: str,
+    traceback_text: str,
+) -> ArtifactReference | None:
+    """Write durable error details without masking the original exception."""
+
+    try:
+        error_write = _record_pipeline_error(
+            exc,
+            run_id=run_id,
+            manifest=manifest,
+            meta=meta,
+            surface=surface,
+            traceback_text=traceback_text,
+            vol=pipeline_volume,
+        )
+        return error_write.record_ref
+    except Exception as record_exc:
+        print(f"WARNING: failed to write durable pipeline error record: {record_exc}")
+        return None
+
+
+def _pipeline_error_summary(
+    exc: BaseException,
+    *,
+    traceback_ref: ArtifactReference | None = None,
+    traceback_text: str | None = None,
+) -> str:
+    summary = redact_error_text(f"{type(exc).__name__}: {exc}")
+    if traceback_ref is None:
+        if traceback_text:
+            return redacted_bounded_error_text(f"{summary}\n{traceback_text}").text
+        return summary
+    return f"{summary}; traceback_ref={traceback_ref.path}"
+
+
+def _clear_pipeline_error_pointer(run_id: str) -> None:
+    cleared = _clear_latest_pipeline_error(_run_dir(run_id), vol=pipeline_volume)
+    if not cleared:
+        print(
+            "WARNING: failed to clear durable pipeline error pointer "
+            f"for run {run_id}; continuing after successful work."
+        )
 
 
 def get_pinned_sha(branch: str) -> str:
@@ -252,6 +310,11 @@ from modal_app.local_area import (  # noqa: E402
 )
 
 app.include(_local_area_app)
+
+from modal_app.pipeline_status import app as _pipeline_status_app  # noqa: E402
+from modal_app.pipeline_status import pipeline_status_snippet  # noqa: E402
+
+app.include(_pipeline_status_app)
 
 
 # ── Upload helpers ──────────────────────────────────────────────
@@ -457,10 +520,13 @@ def verify_runtime_seams() -> dict:
         "uv.lock",
         "modal_app/worker_script.py",
         "modal_app/local_area.py",
+        "modal_app/pipeline_status.py",
         "modal_app/h5_test_harness.py",
         "modal_app/step_manifests/specs.py",
         "modal_app/step_manifests/state.py",
         "modal_app/step_manifests/store.py",
+        "modal_app/step_manifests/errors.py",
+        "modal_app/step_manifests/status.py",
         "modal_app/fixtures/h5_cases.py",
         "tests/integration/test_fixture_50hh.h5",
         "policyengine_us_data/calibration/target_config.yaml",
@@ -498,10 +564,13 @@ def verify_runtime_seams() -> dict:
         "modal_app.fixtures.h5_cases",
         "modal_app.h5_test_harness",
         "modal_app.local_area",
+        "modal_app.pipeline_status",
         "modal_app.remote_calibration_runner",
         "modal_app.step_manifests.specs",
         "modal_app.step_manifests.state",
         "modal_app.step_manifests.store",
+        "modal_app.step_manifests.errors",
+        "modal_app.step_manifests.status",
         "modal_app.worker_script",
         "numpy",
         "pandas",
@@ -1635,6 +1704,8 @@ def run_pipeline(
         # ── Step 5: Finalize ──
         print("\n[Step 5/5] Finalizing run...")
         meta.status = "completed"
+        meta.error = None
+        _clear_pipeline_error_pointer(run_id)
         write_run_meta(meta, pipeline_volume)
 
         print("\n" + "=" * 60)
@@ -1654,9 +1725,27 @@ def run_pipeline(
         return run_id
 
     except Exception as e:
-        _fail_step_manifest(active_step_manifest, e, pipeline_volume)
+        traceback_text = traceback.format_exc()
+        traceback_ref = _record_pipeline_failure(
+            e,
+            run_id=run_id,
+            manifest=active_step_manifest,
+            meta=meta,
+            surface="run_pipeline",
+            traceback_text=traceback_text,
+        )
+        _fail_step_manifest(
+            active_step_manifest,
+            e,
+            pipeline_volume,
+            traceback_ref=traceback_ref,
+        )
         meta.status = "failed"
-        meta.error = f"{type(e).__name__}: {e}\n{traceback.format_exc()}"
+        meta.error = _pipeline_error_summary(
+            e,
+            traceback_ref=traceback_ref,
+            traceback_text=traceback_text,
+        )
         write_run_meta(meta, pipeline_volume)
         print(f"\nPIPELINE FAILED: {e}")
         print(f"Resume with: --resume-run-id {run_id}")
@@ -1835,6 +1924,8 @@ def promote_run(
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"
+        meta.error = None
+        _clear_pipeline_error_pointer(run_id)
         _complete_step_manifest(
             promote_manifest,
             outputs=[
@@ -1846,7 +1937,27 @@ def promote_run(
         )
         write_run_meta(meta, pipeline_volume)
     except Exception as exc:
-        _fail_step_manifest(promote_manifest, exc, pipeline_volume)
+        traceback_text = traceback.format_exc()
+        traceback_ref = _record_pipeline_failure(
+            exc,
+            run_id=run_id,
+            manifest=promote_manifest,
+            meta=meta,
+            surface="promote_run",
+            traceback_text=traceback_text,
+        )
+        _fail_step_manifest(
+            promote_manifest,
+            exc,
+            pipeline_volume,
+            traceback_ref=traceback_ref,
+        )
+        meta.error = _pipeline_error_summary(
+            exc,
+            traceback_ref=traceback_ref,
+            traceback_text=traceback_text,
+        )
+        write_run_meta(meta, pipeline_volume)
         raise
 
     print("\n" + "=" * 60)
@@ -1856,74 +1967,6 @@ def promote_run(
     print("=" * 60)
 
     return f"Promoted run {run_id} as version {version}"
-
-
-# ── Status ───────────────────────────────────────────────────────
-
-
-@app.function(
-    image=image,
-    timeout=60,
-    volumes={PIPELINE_MOUNT: pipeline_volume},
-)
-def pipeline_status(
-    run_id: str = None,
-) -> str:
-    """Get pipeline status.
-
-    If run_id is provided, show that run's details.
-    Otherwise, list all runs.
-    """
-    pipeline_volume.reload()
-    runs_dir = Path(RUNS_DIR)
-
-    if not runs_dir.exists():
-        return "No pipeline runs found."
-
-    if run_id:
-        meta = read_run_meta(run_id, pipeline_volume)
-        steps_dir = _run_dir(run_id) / "steps"
-        lines = [
-            f"Run: {meta.run_id}",
-            f"  Branch:  {meta.branch}",
-            f"  SHA:     {meta.sha[:12]}",
-            f"  Version: {meta.version}",
-            f"  Status:  {meta.status}",
-            f"  Started: {meta.start_time}",
-        ]
-        if meta.error:
-            lines.append(f"  Error:   {meta.error[:200]}")
-        if steps_dir.exists():
-            lines.append("  Step manifests:")
-            for manifest_path in sorted(steps_dir.glob("*.json")):
-                manifest = read_step_manifest(manifest_path)
-                duration = (
-                    manifest.duration_s if manifest.duration_s is not None else "?"
-                )
-                reuse = manifest.reuse_decision
-                lines.append(
-                    f"    {manifest.step_id}: {duration}s ({manifest.status}, {reuse})"
-                )
-        return "\n".join(lines)
-
-    # List all runs
-    runs = []
-    for entry in sorted(runs_dir.iterdir()):
-        manifest_path = entry / "run_manifest.json"
-        if manifest_path.exists():
-            with open(manifest_path) as f:
-                data = json.load(f)
-            runs.append(
-                f"  {data['run_id']}: "
-                f"{data['status']} "
-                f"(branch={data['branch']}, "
-                f"v={data['version']})"
-            )
-
-    if not runs:
-        return "No pipeline runs found."
-
-    return "Pipeline runs:\n" + "\n".join(runs)
 
 
 # ── Local entrypoint ─────────────────────────────────────────────
@@ -1972,7 +2015,7 @@ def main(
         print(f"\nPipeline run complete: {result}")
 
     elif action == "status":
-        result = pipeline_status.remote(
+        result = pipeline_status_snippet.remote(
             run_id=run_id,
         )
         print(result)

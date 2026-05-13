@@ -175,10 +175,19 @@ def fail_step_manifest(
     manifest: StepManifest | None,
     exc: BaseException,
     vol: Any,
+    *,
+    traceback_ref: ArtifactReference | dict[str, Any] | None = None,
 ) -> None:
     if manifest is None:
         return
-    failed = manifest.fail(exc)
+    error_details = {}
+    if traceback_ref is not None:
+        error_details["traceback_ref"] = (
+            traceback_ref.to_dict()
+            if isinstance(traceback_ref, ArtifactReference)
+            else dict(traceback_ref)
+        )
+    failed = manifest.fail(exc, error_details=error_details)
     write_step_manifest(
         step_manifest_path(run_dir(failed.run_id), failed.step_id), failed
     )

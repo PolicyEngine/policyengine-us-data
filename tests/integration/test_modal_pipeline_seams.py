@@ -9,6 +9,7 @@ inside the container.
 import os
 
 import pytest
+import requests
 
 modal = pytest.importorskip("modal")
 
@@ -21,6 +22,17 @@ pytestmark = pytest.mark.integration
 def _require_modal_tokens() -> None:
     if not (os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET")):
         pytest.skip("Modal credentials are required for deployed-image seam tests")
+
+
+def _modal_proxy_auth_headers() -> dict[str, str]:
+    key = os.environ.get("MODAL_PROXY_TOKEN_ID")
+    secret = os.environ.get("MODAL_PROXY_TOKEN_SECRET")
+    if not (key and secret):
+        pytest.skip("Modal proxy auth credentials are required for HTTP seam tests")
+    return {
+        "Modal-Key": key,
+        "Modal-Secret": secret,
+    }
 
 
 def test_pipeline_image_runtime_seams():
@@ -42,10 +54,13 @@ def test_pipeline_image_runtime_seams():
         "uv.lock": True,
         "modal_app/worker_script.py": True,
         "modal_app/local_area.py": True,
+        "modal_app/pipeline_status.py": True,
         "modal_app/h5_test_harness.py": True,
         "modal_app/step_manifests/specs.py": True,
         "modal_app/step_manifests/state.py": True,
         "modal_app/step_manifests/store.py": True,
+        "modal_app/step_manifests/errors.py": True,
+        "modal_app/step_manifests/status.py": True,
         "modal_app/fixtures/h5_cases.py": True,
         "tests/integration/test_fixture_50hh.h5": True,
         "policyengine_us_data/calibration/target_config.yaml": True,
@@ -62,10 +77,13 @@ def test_pipeline_image_runtime_seams():
         "modal_app.fixtures.h5_cases",
         "modal_app.h5_test_harness",
         "modal_app.local_area",
+        "modal_app.pipeline_status",
         "modal_app.remote_calibration_runner",
         "modal_app.step_manifests.specs",
         "modal_app.step_manifests.state",
         "modal_app.step_manifests.store",
+        "modal_app.step_manifests.errors",
+        "modal_app.step_manifests.status",
         "numpy",
         "policyengine_us",
         "policyengine_us_data",
@@ -87,3 +105,58 @@ def test_pipeline_image_runtime_seams():
     assert checkpoint_policy["runner_exposes_checkpoint_name"] is False
     assert checkpoint_policy["runner_passes_checkpoint_output"] is False
     assert checkpoint_policy["runner_collects_checkpoint_path"] is False
+
+
+def test_pipeline_status_callable_reports_missing_run():
+    _require_modal_tokens()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "get_pipeline_status",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    result = fn.remote("missing-run-for-status-seam")
+
+    assert result["status"] == "not_found"
+    assert result["run_id"] == "missing-run-for-status-seam"
+    assert result["stage_manifests"] == []
+
+
+def test_pipeline_status_http_endpoint_reports_missing_run():
+    _require_modal_tokens()
+    headers = _modal_proxy_auth_headers()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "pipeline_status_endpoint",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    endpoint = fn.get_web_url()
+    assert endpoint
+
+    response = requests.get(
+        endpoint,
+        params={"run_id": "missing-run-for-status-http-seam"},
+        headers=headers,
+        timeout=30,
+    )
+
+    assert response.status_code == 200, response.text[:500]
+    result = response.json()
+    assert result["status"] == "not_found"
+    assert result["run_id"] == "missing-run-for-status-http-seam"
+    assert result["stage_manifests"] == []
+    assert result["error"] is None
+
+
+def test_pipeline_status_cli_snippet_reports_missing_run():
+    _require_modal_tokens()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "pipeline_status_snippet",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    result = fn.remote("missing-run-for-status-cli-seam")
+
+    assert result == "Pipeline run missing-run-for-status-cli-seam not found."

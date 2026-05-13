@@ -17,6 +17,9 @@ When reviewing PRs that change pipeline behavior, stage boundaries, generated
 artifacts, or public library functions, read
 `docs/engineering/skills/documentation_review.md`.
 
+When diagnosing a deployed Modal pipeline run or a failed publication pipeline,
+read `docs/engineering/skills/pipeline_operations.md`.
+
 ## GitHub PRs
 
 Read `docs/engineering/skills/github-prs.md` before opening, replacing, or

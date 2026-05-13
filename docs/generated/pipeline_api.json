@@ -447,7 +447,7 @@
     "docstring": "Build city H5 files with checkpointing, optionally uploading.",
     "id": "build_cities",
     "kind": "function",
-    "line": 947,
+    "line": 802,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_cities"
@@ -506,7 +506,7 @@
     "docstring": "Build district H5 files with checkpointing, optionally uploading.",
     "id": "build_districts",
     "kind": "function",
-    "line": 860,
+    "line": 715,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_districts"
@@ -533,7 +533,7 @@
     "docstring": "Build an H5 file by cloning records for each nonzero weight.\n\nArgs:\n    weights: Clone-level weight vector, shape (n_clones_total * n_hh,).\n    geography: GeographyAssignment from assign_random_geography.\n    dataset_path: Path to base dataset H5 file.\n    output_path: Where to write the output H5 file.\n    cd_subset: If provided, only include clones for these CDs.\n    county_fips_filter: If provided, zero out weights for clones\n        whose county FIPS is not in this set.\n    takeup_filter: List of takeup vars to apply.\n\nReturns:\n    Path to the output H5 file.",
     "id": "build_h5",
     "kind": "function",
-    "line": 328,
+    "line": 345,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_h5"
@@ -663,7 +663,7 @@
     "docstring": "Build state H5 files with checkpointing, optionally uploading.",
     "id": "build_states",
     "kind": "function",
-    "line": 774,
+    "line": 629,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_states"
@@ -1373,6 +1373,33 @@
     "signature": "class AreaBuildRequest",
     "source_file": "policyengine_us_data/build_outputs/requests.py"
   },
+  "local_h5_area_selector": {
+    "docstring": "Apply request geography filters to clone-level calibration weights.",
+    "id": "local_h5_area_selector",
+    "kind": "class",
+    "line": 30,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.selection.AreaSelector"
+      ],
+      "description": "Select active clone-household rows for one local H5 output.",
+      "id": "local_h5_area_selector",
+      "label": "AreaSelector",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/selection.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_selection.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.selection.AreaSelector",
+    "signature": "class AreaSelector",
+    "source_file": "policyengine_us_data/build_outputs/selection.py"
+  },
   "local_h5_area_validation_service": {
     "docstring": "Build validation state for all H5 requests handled by one worker.",
     "id": "local_h5_area_validation_service",
@@ -1409,7 +1436,7 @@
     "docstring": "Stable identity for an input artifact used by traceability.\n\nAttributes:\n    logical_name: Semantic artifact name, such as `\"weights\"` or\n        `\"source_dataset\"`.\n    path: Physical artifact path when the artifact exists in the local\n        runtime.\n    sha256: Content digest prefixed with `\"sha256:\"`.\n    size_bytes: Artifact size in bytes, when available.\n    metadata: Additional normalized metadata, for example canonical\n        geography checksum or source kind.",
     "id": "local_h5_artifact_identity",
     "kind": "class",
-    "line": 91,
+    "line": 92,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.ArtifactIdentity"
@@ -1432,11 +1459,38 @@
     "signature": "class ArtifactIdentity",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
   },
+  "local_h5_clone_selection": {
+    "docstring": "Active clone rows selected for one H5 output.",
+    "id": "local_h5_clone_selection",
+    "kind": "class",
+    "line": 113,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.selection.CloneSelection"
+      ],
+      "description": "Selected clone-household rows for one local H5 output.",
+      "id": "local_h5_clone_selection",
+      "label": "CloneSelection",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/selection.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_selection.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.selection.CloneSelection",
+    "signature": "class CloneSelection",
+    "source_file": "policyengine_us_data/build_outputs/selection.py"
+  },
   "local_h5_entity_graph": {
     "docstring": "Structural relationships between source dataset entities.\n\n`EntityGraph` is the canonical in-memory shape for the source entity spine.\nIt stores raw ID arrays plus derived household-membership maps so later H5\nbuilder seams can select households without rebuilding joins.\n\nAttributes:\n    household_ids: Source household IDs, one per household row.\n    person_household_ids: Household ID for each source person row.\n    subentity_ids: Entity IDs by subentity key, such as `tax_unit`.\n    person_subentity_ids: Entity ID for each source person row by subentity.\n    household_to_person_indices: Household row index to person row indices.\n    household_to_subentity_indices: Subentity key to household row index to\n        subentity row indices.",
     "id": "local_h5_entity_graph",
     "kind": "class",
-    "line": 56,
+    "line": 77,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.EntityGraph"
@@ -1458,6 +1512,33 @@
     "object_path": "policyengine_us_data.build_outputs.source_dataset.EntityGraph",
     "signature": "class EntityGraph",
     "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
+  },
+  "local_h5_entity_reindexer": {
+    "docstring": "Build sequential entity IDs and relationship arrays after clone selection.",
+    "id": "local_h5_entity_reindexer",
+    "kind": "class",
+    "line": 31,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.reindexing.EntityReindexer"
+      ],
+      "description": "Reindex selected household, person, and subentity rows for local H5 outputs.",
+      "id": "local_h5_entity_reindexer",
+      "label": "EntityReindexer",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/reindexing.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_reindexing.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.reindexing.EntityReindexer",
+    "signature": "class EntityReindexer",
+    "source_file": "policyengine_us_data/build_outputs/reindexing.py"
   },
   "local_h5_input_fingerprint": {
     "docstring": "",
@@ -1491,7 +1572,7 @@
     "docstring": "Lazy holder-backed variable reader for a source microsimulation.\n\nThe provider intentionally reads arrays only when callers request a\nvariable/period pair. It caches the normalized array for repeated access\nwhile keeping construction lightweight.\n\nAttributes:\n    simulation: Source `policyengine_us.Microsimulation` or a compatible\n        test double with `input_variables` and `get_holder(...)`.",
     "id": "local_h5_microsimulation_variable_provider",
     "kind": "class",
-    "line": 377,
+    "line": 384,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider"
@@ -1545,7 +1626,7 @@
     "docstring": "Read PolicyEngine source H5 files into `SourceDatasetSnapshot` objects.",
     "id": "local_h5_policyengine_dataset_reader",
     "kind": "class",
-    "line": 541,
+    "line": 560,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader"
@@ -1572,7 +1653,7 @@
     "docstring": "Input artifact bundle for one local H5 publication scope.\n\nThe bundle is the library-level contract used by coordinators before\nfingerprinting. Paths point to local files already materialized in the\nworker or orchestration environment.\n\nAttributes:\n    weights_path: Path to `calibration_weights.npy`.\n    source_dataset_path: Path to the source-imputed dataset H5.\n    target_db_path: Optional `policy_data.db` path used for validation.\n    exact_geography_path: Optional saved `geography_assignment.npz` path.\n    calibration_package_path: Optional `calibration_package.pkl` path used\n        as a geography fallback.\n    run_config_path: Optional run configuration JSON with code and model\n        build metadata.\n    run_id: Pipeline run identifier.\n    version: Package or release version associated with the publish.\n    n_clones: Expected clone count, when known.\n    seed: Geography assignment seed used by the build.\n    legacy_blocks_path: Optional legacy `stacked_blocks.npy` fallback.",
     "id": "local_h5_publishing_input_bundle",
     "kind": "class",
-    "line": 41,
+    "line": 42,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle"
@@ -1591,6 +1672,33 @@
     "object_path": "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
     "signature": "class PublishingInputBundle",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
+  },
+  "local_h5_reindexed_entities": {
+    "docstring": "Entity IDs, relationship arrays, and source indices for one H5 output.",
+    "id": "local_h5_reindexed_entities",
+    "kind": "class",
+    "line": 123,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.reindexing.ReindexedEntities"
+      ],
+      "description": "Output entity IDs and source row indices after local H5 clone selection.",
+      "id": "local_h5_reindexed_entities",
+      "label": "ReindexedEntities",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/reindexing.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_reindexing.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.reindexing.ReindexedEntities",
+    "signature": "class ReindexedEntities",
+    "source_file": "policyengine_us_data/build_outputs/reindexing.py"
   },
   "local_h5_resolved_geography_source": {
     "docstring": "Resolved physical source used to recover calibration geography.\n\nAttributes:\n    kind: Source format selected by `CalibrationGeographyLoader`.\n    path: Path to the selected source artifact.",
@@ -1623,7 +1731,7 @@
     "docstring": "Explicit in-memory worker view of a source H5 dataset.\n\nThe snapshot groups source dataset structure and lazy variable access. It\ndoes not serialize artifacts or change current worker execution paths.\n\nAttributes:\n    dataset_path: Source H5 dataset path.\n    time_period: Default source calculation period.\n    entity_graph: Source entity relationship graph.\n    input_variables: Input variable names available from the source.\n    variable_provider: Lazy variable reader for the source simulation.",
     "id": "local_h5_source_dataset_snapshot",
     "kind": "class",
-    "line": 464,
+    "line": 483,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot"
@@ -1650,7 +1758,7 @@
     "docstring": "Build traceability bundles and derive deterministic scope fingerprints.\n\nThe service centralizes provenance rules for local H5 publishing. It avoids\nimporting heavy simulation machinery until a fallback record-count inference\nis needed.",
     "id": "local_h5_traceability",
     "kind": "class",
-    "line": 200,
+    "line": 201,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService"
@@ -1677,7 +1785,7 @@
     "docstring": "Full provenance record for one local H5 publish scope.\n\nAttributes:\n    scope: Publish scope being fingerprinted, currently `\"regional\"` or\n        `\"national\"`.\n    weights: Identity of the calibration weights artifact.\n    source_dataset: Identity of the source-imputed H5 artifact.\n    exact_geography: Identity of the geography source used for clone\n        selection, if available.\n    target_db: Optional target database identity.\n    calibration_package: Optional calibration package identity.\n    run_config: Optional run configuration identity.\n    code_version: Normalized code version metadata extracted from run\n        config.\n    model_build: Normalized model build metadata extracted from run config.\n    metadata: Scope-level metadata such as run ID, version, clone count, and\n        seed.",
     "id": "local_h5_traceability_bundle",
     "kind": "class",
-    "line": 126,
+    "line": 127,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.TraceabilityBundle"
@@ -1753,6 +1861,60 @@
     "object_path": "policyengine_us_data.build_outputs.validation.ValidationPolicy",
     "signature": "class ValidationPolicy",
     "source_file": "policyengine_us_data/build_outputs/validation.py"
+  },
+  "local_h5_variable_clone_payload": {
+    "docstring": "Cloned source variable arrays before H5-specific overrides.",
+    "id": "local_h5_variable_clone_payload",
+    "kind": "class",
+    "line": 138,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.variables.VariableClonePayload"
+      ],
+      "description": "Period-grouped cloned source variables for one local H5 output.",
+      "id": "local_h5_variable_clone_payload",
+      "label": "VariableClonePayload",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/variables.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_variables.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.variables.VariableClonePayload",
+    "signature": "class VariableClonePayload",
+    "source_file": "policyengine_us_data/build_outputs/variables.py"
+  },
+  "local_h5_variable_cloner": {
+    "docstring": "Clone source variable arrays using selected and reindexed entity rows.\n\nThe skip/error policy intentionally mirrors the first local H5 pipeline\nimplementation. Variables outside the local-H5 allowlist are skipped before\nholder access. Allowed variables are skipped when they have no known periods\nor belong to an entity that local H5s do not clone. Malformed metadata for\nan allowed variable is not skipped; it should fail so incomplete outputs are\nnot produced silently.",
+    "id": "local_h5_variable_cloner",
+    "kind": "class",
+    "line": 49,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.variables.VariableCloner"
+      ],
+      "description": "Clone selected source variables into period-grouped local H5 payloads.",
+      "id": "local_h5_variable_cloner",
+      "label": "VariableCloner",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/variables.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_variables.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.variables.VariableCloner",
+    "signature": "class VariableCloner",
+    "source_file": "policyengine_us_data/build_outputs/variables.py"
   },
   "local_h5_worker_bootstrap_builder": {
     "docstring": "Build and persist one scope's local H5 worker bootstrap artifacts.",

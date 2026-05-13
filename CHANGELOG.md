@@ -1,3 +1,10 @@
+## [1.114.0] - 2026-05-13
+
+### Added
+
+- Extract local H5 clone selection, entity reindexing, and variable cloning into dedicated build-output seams.
+
+
 ## [1.113.1] - 2026-05-13
 
 ### Fixed

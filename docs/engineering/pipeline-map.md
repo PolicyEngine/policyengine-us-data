@@ -878,6 +878,14 @@ class AreaBuildRequest
 
 Complete request for one local-area or national H5 file.
 
+### `policyengine_us_data.build_outputs.selection.AreaSelector`
+
+```python
+class AreaSelector
+```
+
+Apply request geography filters to clone-level calibration weights.
+
 ### `policyengine_us_data.build_outputs.validation.AreaValidationService`
 
 ```python
@@ -894,6 +902,14 @@ class ArtifactIdentity
 
 Stable identity for an input artifact used by traceability.
 
+### `policyengine_us_data.build_outputs.selection.CloneSelection`
+
+```python
+class CloneSelection
+```
+
+Active clone rows selected for one H5 output.
+
 ### `policyengine_us_data.build_outputs.source_dataset.EntityGraph`
 
 ```python
@@ -901,6 +917,14 @@ class EntityGraph
 ```
 
 Structural relationships between source dataset entities.
+
+### `policyengine_us_data.build_outputs.reindexing.EntityReindexer`
+
+```python
+class EntityReindexer
+```
+
+Build sequential entity IDs and relationship arrays after clone selection.
 
 ### `policyengine_us_data.calibration.publish_local_area.compute_input_fingerprint`
 
@@ -941,6 +965,14 @@ class PublishingInputBundle
 ```
 
 Input artifact bundle for one local H5 publication scope.
+
+### `policyengine_us_data.build_outputs.reindexing.ReindexedEntities`
+
+```python
+class ReindexedEntities
+```
+
+Entity IDs, relationship arrays, and source indices for one H5 output.
 
 ### `policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource`
 
@@ -989,6 +1021,22 @@ class ValidationPolicy
 ```
 
 Validation switch for a local H5 worker session.
+
+### `policyengine_us_data.build_outputs.variables.VariableClonePayload`
+
+```python
+class VariableClonePayload
+```
+
+Cloned source variable arrays before H5-specific overrides.
+
+### `policyengine_us_data.build_outputs.variables.VariableCloner`
+
+```python
+class VariableCloner
+```
+
+Clone source variable arrays using selected and reindexed entity rows.
 
 ### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder`
 

@@ -339,6 +339,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.selection.AreaSelector"
+      ],
+      "description": "Select active clone-household rows for one local H5 output.",
+      "id": "local_h5_area_selector",
+      "label": "AreaSelector",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/selection.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_selection.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.validation.AreaValidationService"
       ],
       "artifacts_in": [
@@ -380,6 +398,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.selection.CloneSelection"
+      ],
+      "description": "Selected clone-household rows for one local H5 output.",
+      "id": "local_h5_clone_selection",
+      "label": "CloneSelection",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/selection.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_selection.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.EntityGraph"
       ],
       "description": "Explicit source-dataset entity spine for local H5 worker setup.",
@@ -394,6 +430,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.reindexing.EntityReindexer"
+      ],
+      "description": "Reindex selected household, person, and subentity rows for local H5 outputs.",
+      "id": "local_h5_entity_reindexer",
+      "label": "EntityReindexer",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/reindexing.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_reindexing.py"
       ]
     },
     {
@@ -483,6 +537,24 @@
       "source_file": "policyengine_us_data/build_outputs/fingerprinting.py",
       "stability": "moving",
       "status": "current"
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.reindexing.ReindexedEntities"
+      ],
+      "description": "Output entity IDs and source row indices after local H5 clone selection.",
+      "id": "local_h5_reindexed_entities",
+      "label": "ReindexedEntities",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/reindexing.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_reindexing.py"
+      ]
     },
     {
       "api_refs": [
@@ -590,6 +662,42 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_validation.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.variables.VariableClonePayload"
+      ],
+      "description": "Period-grouped cloned source variables for one local H5 output.",
+      "id": "local_h5_variable_clone_payload",
+      "label": "VariableClonePayload",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/variables.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_variables.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.variables.VariableCloner"
+      ],
+      "description": "Clone selected source variables into period-grouped local H5 payloads.",
+      "id": "local_h5_variable_cloner",
+      "label": "VariableCloner",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/variables.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_variables.py"
       ]
     },
     {
@@ -987,9 +1095,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 45,
+    "api_node_count": 51,
     "canonical_stage_count": 5,
-    "decorated_object_count": 94,
+    "decorated_object_count": 100,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

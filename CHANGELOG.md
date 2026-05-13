@@ -1,3 +1,10 @@
+## [1.115.0] - 2026-05-13
+
+### Added
+
+- Add structured Modal pipeline status reporting with durable run-scoped error records.
+
+
 ## [1.114.0] - 2026-05-13
 
 ### Added

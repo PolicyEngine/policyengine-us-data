@@ -1,68 +1,13 @@
 import numpy as np
 from types import SimpleNamespace
 
+import policyengine_us_data.calibration.publish_local_area as publish_local_area
+from policyengine_us_data.build_outputs.payload import H5Payload
 from policyengine_us_data.calibration.publish_local_area import (
-    _build_reported_takeup_anchors,
+    build_h5,
     compute_input_fingerprint,
     load_calibration_geography,
 )
-
-
-def test_build_reported_takeup_anchors_skips_missing_period():
-    data = {
-        "person_tax_unit_id": {2024: np.array([1, 2], dtype=np.int64)},
-        "tax_unit_id": {2024: np.array([1, 2], dtype=np.int64)},
-        "reported_has_subsidized_marketplace_health_coverage_at_interview": {
-            2023: np.array([True, False])
-        },
-        "has_medicaid_health_coverage_at_interview": {2023: np.array([True, False])},
-    }
-
-    assert _build_reported_takeup_anchors(data, 2024) == {}
-
-
-def test_build_reported_takeup_anchors_uses_present_period():
-    data = {
-        "person_tax_unit_id": {2024: np.array([1, 1, 2], dtype=np.int64)},
-        "tax_unit_id": {2024: np.array([1, 2], dtype=np.int64)},
-        "reported_has_subsidized_marketplace_health_coverage_at_interview": {
-            2024: np.array([True, False, False])
-        },
-        "has_medicaid_health_coverage_at_interview": {
-            2024: np.array([False, True, False])
-        },
-    }
-
-    anchors = _build_reported_takeup_anchors(data, 2024)
-
-    np.testing.assert_array_equal(
-        anchors["takes_up_aca_if_eligible"],
-        np.array([True, False]),
-    )
-    np.testing.assert_array_equal(
-        anchors["takes_up_medicaid_if_eligible"],
-        np.array([False, True, False]),
-    )
-
-
-def test_build_reported_takeup_anchors_uses_subsidized_marketplace_only():
-    data = {
-        "person_tax_unit_id": {2024: np.array([1, 1, 2], dtype=np.int64)},
-        "tax_unit_id": {2024: np.array([1, 2], dtype=np.int64)},
-        "has_marketplace_health_coverage_at_interview": {
-            2024: np.array([True, False, True])
-        },
-        "reported_has_subsidized_marketplace_health_coverage_at_interview": {
-            2024: np.array([False, False, True])
-        },
-    }
-
-    anchors = _build_reported_takeup_anchors(data, 2024)
-
-    np.testing.assert_array_equal(
-        anchors["takes_up_aca_if_eligible"],
-        np.array([False, True]),
-    )
 
 
 def test_compute_input_fingerprint_uses_loader_canonical_geography_identity(
@@ -188,3 +133,102 @@ def test_load_calibration_geography_passes_calibration_package_path_to_loader(
     assert result == "geography"
     assert seen["resolve"]["calibration_package_path"] == package_path
     assert seen["load"]["calibration_package_path"] == package_path
+
+
+def test_build_h5_facade_delegates_to_builder_and_writer(tmp_path, monkeypatch):
+    output_path = tmp_path / "NC-01.h5"
+    source = SimpleNamespace(n_households=2, time_period=2024)
+    seen = {}
+
+    class FakeBuilder:
+        def __init__(self, **kwargs):
+            seen["builder_init"] = kwargs
+
+        def build(self, **kwargs):
+            seen["build"] = kwargs
+            payload = H5Payload(
+                data={"household_id": {2024: np.array([0])}},
+                time_period=2024,
+                entity_lengths={"household": 1},
+            )
+            return FakeBuildResult(payload)
+
+    class FakeBuildResult:
+        def __init__(self, payload):
+            self.payload = payload
+            self.data = payload.data
+            self.time_period = payload.time_period
+            self.selection = SimpleNamespace(
+                n_selected_clones=1,
+                block_geoids=np.array(["block-1"]),
+            )
+            self.reindexed = SimpleNamespace(
+                person_ids=np.array([0]),
+                subentity_source_indices={"tax_unit": np.array([0])},
+            )
+            self.variables_saved = 1
+            self.summary = {"total_weight": 2.0}
+
+        def postprocessor_result(self, postprocessor):
+            return SimpleNamespace(takeup_variables=("takes_up_snap",))
+
+    class FakeWriter:
+        def write(self, **kwargs):
+            seen["write"] = kwargs
+            return SimpleNamespace(
+                households=1,
+                persons=1,
+                household_weight_sum=2.0,
+                person_weight_sum=None,
+            )
+
+    monkeypatch.setattr(
+        publish_local_area,
+        "Microsimulation",
+        lambda dataset: SimpleNamespace(dataset=dataset),
+    )
+    monkeypatch.setattr(
+        publish_local_area.SourceDatasetSnapshot,
+        "from_simulation",
+        classmethod(lambda cls, dataset_path, simulation: source),
+    )
+    monkeypatch.setattr(
+        publish_local_area,
+        "LocalAreaDatasetBuilder",
+        FakeBuilder,
+    )
+    monkeypatch.setattr(publish_local_area, "H5Writer", lambda: FakeWriter())
+
+    result = build_h5(
+        weights=np.array([1.0, 2.0, 3.0, 4.0]),
+        geography=SimpleNamespace(),
+        dataset_path=tmp_path / "source.h5",
+        output_path=output_path,
+        cd_subset=["3701"],
+        county_fips_filter={"37183"},
+        takeup_filter=["takes_up_snap"],
+    )
+
+    assert result == output_path
+    assert [
+        type(postprocessor).__name__
+        for postprocessor in seen["builder_init"]["postprocessors"]
+    ] == [
+        "USEntityPostProcessor",
+        "USGeographyPostProcessor",
+        "USTakeupPostProcessor",
+    ]
+    assert seen["build"]["source"] is source
+    assert seen["build"]["takeup_filter"] == ("takes_up_snap",)
+    request = seen["build"]["request"]
+    assert request.area_id == "NC-01"
+    assert [area_filter.geography_field for area_filter in request.filters] == [
+        "cd_geoid",
+        "county_fips",
+    ]
+    assert seen["write"]["output_path"] == output_path
+    assert seen["write"]["payload"].time_period == 2024
+    np.testing.assert_array_equal(
+        seen["write"]["payload"].data["household_id"][2024],
+        np.array([0]),
+    )

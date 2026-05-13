@@ -1167,10 +1167,6 @@ stages:
     label: Modal Worker Container
     node_type: external
     description: 16GB RAM, 1 CPU each, 8-hour timeout
-  - id: spm_recalc
-    label: SPM Threshold Recalculation
-    node_type: process
-    description: Local median rents, family composition, tenure type
   - id: takeup_apply
     label: Takeup Re-application
     node_type: process
@@ -1235,9 +1231,6 @@ stages:
     target: geo_derive
     edge_type: data_flow
   - source: geo_derive
-    target: spm_recalc
-    edge_type: data_flow
-  - source: spm_recalc
     target: takeup_apply
     edge_type: data_flow
   - source: modal_coord

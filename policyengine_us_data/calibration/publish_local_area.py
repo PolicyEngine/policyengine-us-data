@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from policyengine_us import Microsimulation
+from policyengine_us_data.build_outputs.builder import LocalAreaDatasetBuilder
 from policyengine_us_data.build_outputs.fingerprinting import (
     FingerprintingService,
     PublishingInputBundle,
@@ -23,12 +24,14 @@ from policyengine_us_data.build_outputs.fingerprinting import (
 from policyengine_us_data.build_outputs.geography_loader import (
     CalibrationGeographyLoader,
 )
-from policyengine_us_data.build_outputs.reindexing import EntityReindexer
-from policyengine_us_data.build_outputs.requests import AreaFilter
-from policyengine_us_data.build_outputs.selection import AreaSelector
+from policyengine_us_data.build_outputs.requests import AreaBuildRequest, AreaFilter
 from policyengine_us_data.build_outputs.source_dataset import SourceDatasetSnapshot
-from policyengine_us_data.build_outputs.variables import VariableCloner
+from policyengine_us_data.build_outputs.us_augmentations import (
+    USTakeupPostProcessor,
+    default_us_postprocessors,
+)
 from policyengine_us_data.build_outputs.weights import CloneWeightMatrix
+from policyengine_us_data.build_outputs.writer import H5Writer
 from policyengine_us_data.utils.huggingface import download_calibration_inputs
 from policyengine_us_data.utils.data_upload import (
     upload_local_area_file,
@@ -37,14 +40,8 @@ from policyengine_us_data.utils.data_upload import (
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
-from policyengine_us_data.calibration.block_assignment import (
-    derive_geography_from_blocks,
-)
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
-    _sum_person_values_to_tax_units,
-    apply_block_takeup_to_arrays,
-    reported_subsidized_marketplace_by_tax_unit,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -267,34 +264,6 @@ def record_completed_city(city_name: str):
         f.write(f"{city_name}\n")
 
 
-def _build_reported_takeup_anchors(
-    data: dict, time_period: int
-) -> dict[str, np.ndarray]:
-    reported_anchors = {}
-    if (
-        "reported_has_subsidized_marketplace_health_coverage_at_interview" in data
-        and time_period
-        in data["reported_has_subsidized_marketplace_health_coverage_at_interview"]
-    ):
-        reported_anchors["takes_up_aca_if_eligible"] = (
-            reported_subsidized_marketplace_by_tax_unit(
-                data["person_tax_unit_id"][time_period],
-                data["tax_unit_id"][time_period],
-                data[
-                    "reported_has_subsidized_marketplace_health_coverage_at_interview"
-                ][time_period],
-            )
-        )
-    if (
-        "has_medicaid_health_coverage_at_interview" in data
-        and time_period in data["has_medicaid_health_coverage_at_interview"]
-    ):
-        reported_anchors["takes_up_medicaid_if_eligible"] = data[
-            "has_medicaid_health_coverage_at_interview"
-        ][time_period].astype(bool)
-    return reported_anchors
-
-
 def _build_legacy_area_filters(
     *,
     cd_subset: List[str] | None,
@@ -320,12 +289,26 @@ def _build_legacy_area_filters(
     return tuple(filters)
 
 
+def _build_legacy_area_request(
+    *,
+    output_path: Path,
+    filters: tuple[AreaFilter, ...],
+) -> AreaBuildRequest:
+    return AreaBuildRequest(
+        area_type="custom",
+        area_id=Path(output_path).stem,
+        display_name=Path(output_path).name,
+        output_relative_path=Path(output_path).name,
+        filters=filters,
+    )
+
+
 @pipeline_node(
     PipelineNode(
         id="build_h5",
         label="Build Local Area H5",
         node_type="library",
-        description="Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+        description="Expand calibrated clone weights into local-area H5 datasets with geography and takeup updates.",
         details="This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
         source_file="policyengine_us_data/calibration/publish_local_area.py",
         status="transitional",
@@ -366,18 +349,12 @@ def build_h5(
     Returns:
         Path to the output H5 file.
     """
-    import h5py
-
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    blocks = np.asarray(geography.block_geoid)
 
     # === Load base simulation ===
     sim = Microsimulation(dataset=str(dataset_path))
     source = SourceDatasetSnapshot.from_simulation(Path(dataset_path), sim)
-    time_period = int(source.time_period)
-    household_ids = source.household_ids
     n_hh = source.n_households
     weight_matrix = CloneWeightMatrix.from_vector(weights, n_records=n_hh)
     n_clones_total = weight_matrix.n_clones
@@ -385,6 +362,7 @@ def build_h5(
         cd_subset=cd_subset,
         county_fips_filter=county_fips_filter,
     )
+    request = _build_legacy_area_request(output_path=output_path, filters=filters)
 
     label = (
         f"CD subset {cd_subset}"
@@ -395,206 +373,53 @@ def build_h5(
     print(f"Building {output_path.name} ({label}, {n_hh} households)")
     print(f"{'=' * 60}")
 
-    # === Select active clones ===
-    selection = AreaSelector().select(
+    result = LocalAreaDatasetBuilder(
+        postprocessors=default_us_postprocessors(),
+    ).build(
+        source=source,
+        simulation=sim,
         weights=weight_matrix,
         geography=geography,
-        filters=filters,
+        request=request,
+        takeup_filter=tuple(takeup_filter) if takeup_filter is not None else None,
     )
-    active_geo = selection.clone_indices
-    active_hh = selection.source_household_indices
-    n_clones = selection.n_selected_clones
-    clone_weights = selection.weights
-    active_blocks = selection.block_geoids
-    active_clone_cds = selection.congressional_district_geoids
-    print(f"Active clones: {n_clones:,}")
-    print(f"Total weight: {clone_weights.sum():,.0f}")
 
-    # === Reindex selected entities ===
-    reindexed = EntityReindexer().reindex(source=source, selection=selection)
-    person_clone_idx = reindexed.person_source_indices
-    entity_clone_idx = dict(reindexed.subentity_source_indices)
-    persons_per_clone = reindexed.persons_per_household_clone
-    entities_per_clone = dict(reindexed.subentities_per_household_clone)
-    n_persons = len(reindexed.person_ids)
-    print(f"Cloned persons: {n_persons:,}")
-    for ek in entity_clone_idx:
-        print(f"Cloned {ek}s: {len(entity_clone_idx[ek]):,}")
+    print(f"Active clones: {result.selection.n_selected_clones:,}")
+    print(f"Total weight: {result.summary['total_weight']:,.0f}")
+    print(f"Cloned persons: {len(result.reindexed.person_ids):,}")
+    for entity_key, indices in result.reindexed.subentity_source_indices.items():
+        print(f"Cloned {entity_key}s: {len(indices):,}")
+    print(f"Variables cloned: {result.variables_saved}")
 
-    new_hh_ids = reindexed.household_ids
-    new_person_ids = reindexed.person_ids
-    new_person_hh_ids = reindexed.person_household_ids
-    new_entity_ids = dict(reindexed.subentity_ids)
-    new_person_entity_ids = dict(reindexed.person_subentity_ids)
-
-    # === Derive geography from blocks (dedup optimization) ===
-    print("Deriving geography from blocks...")
-    unique_blocks, block_inv = np.unique(active_blocks, return_inverse=True)
-    print(f"  {n_clones:,} blocks -> {len(unique_blocks):,} unique")
-    unique_geo = derive_geography_from_blocks(unique_blocks)
-    clone_geo = {k: v[block_inv] for k, v in unique_geo.items()}
-
-    # === Clone variable arrays ===
-    payload = VariableCloner().clone(
-        source=source,
-        selection=selection,
-        reindexed=reindexed,
+    unique_blocks = np.unique(result.selection.block_geoids)
+    print("Derived geography from blocks.")
+    print(
+        f"  {result.selection.n_selected_clones:,} blocks -> "
+        f"{len(unique_blocks):,} unique"
     )
-    data = {variable: dict(periods) for variable, periods in payload.data.items()}
-    print(f"Variables cloned: {payload.values_saved}")
+    takeup = result.postprocessor_result(USTakeupPostProcessor)
+    if takeup is not None and takeup.takeup_variables:
+        print("Applied calibration takeup draws.")
+        print(f"Takeup variables: {', '.join(takeup.takeup_variables)}")
 
-    # === Override entity IDs ===
-    data["household_id"] = {time_period: new_hh_ids}
-    data["person_id"] = {time_period: new_person_ids}
-    data["person_household_id"] = {
-        time_period: new_person_hh_ids,
-    }
-    for ek in new_entity_ids:
-        data[f"{ek}_id"] = {
-            time_period: new_entity_ids[ek],
-        }
-        data[f"person_{ek}_id"] = {
-            time_period: new_person_entity_ids[ek],
-        }
-
-    # === Override weights ===
-    # Only write household_weight; sub-entity weights (tax_unit_weight,
-    # spm_unit_weight, person_weight, etc.) are formula variables in
-    # policyengine-us that derive from household_weight at runtime.
-    data["household_weight"] = {
-        time_period: clone_weights.astype(np.float32),
-    }
-
-    # === Override geography ===
-    data["state_fips"] = {
-        time_period: clone_geo["state_fips"].astype(np.int32),
-    }
-    data["county"] = {
-        time_period: clone_geo["county_index"].astype(np.int32),
-    }
-    data["county_fips"] = {
-        time_period: clone_geo["county_fips"].astype(np.int32),
-    }
-    for gv in [
-        "block_geoid",
-        "tract_geoid",
-        "cbsa_code",
-        "sldu",
-        "sldl",
-        "place_fips",
-        "vtd",
-        "puma",
-        "zcta",
-    ]:
-        if gv in clone_geo:
-            data[gv] = {
-                time_period: clone_geo[gv].astype("S"),
-            }
-
-    # === Set zip_code for LA County clones (ACA rating area fix) ===
-    # Default to synthetic "00000" (not "UNKNOWN") so three_digit_zip_code.py's
-    # `zip_code.astype(int) // 100` doesn't crash on non-LA households. "00000"
-    # → three_digit "000" which doesn't match any real LA rating area, so non-LA
-    # households correctly fall through to slcsp_rating_area_default. Without
-    # this numeric default, aca_ptc computation crashes whenever the dataset
-    # has any in_la households (which is always, via the LA County clones).
-    la_mask = clone_geo["county_fips"].astype(str) == "06037"
-    if la_mask.any():
-        zip_codes = np.full(len(la_mask), "00000")
-        zip_codes[la_mask] = "90001"
-        data["zip_code"] = {time_period: zip_codes.astype("S")}
-
-    # === Congressional district GEOID ===
-    clone_cd_geoids = np.array([int(cd) for cd in active_clone_cds], dtype=np.int32)
-    data["congressional_district_geoid"] = {
-        time_period: clone_cd_geoids,
-    }
-
-    # === Apply calibration takeup draws ===
-    if blocks is not None:
-        print("Applying calibration takeup draws...")
-        entity_hh_indices = {
-            "person": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                persons_per_clone,
-            ).astype(np.int64),
-            "tax_unit": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                entities_per_clone["tax_unit"],
-            ).astype(np.int64),
-            "spm_unit": np.repeat(
-                np.arange(n_clones, dtype=np.int64),
-                entities_per_clone["spm_unit"],
-            ).astype(np.int64),
-        }
-        entity_counts = {
-            "person": n_persons,
-            "tax_unit": len(entity_clone_idx["tax_unit"]),
-            "spm_unit": len(entity_clone_idx["spm_unit"]),
-        }
-        hh_state_fips = clone_geo["state_fips"].astype(np.int32)
-        original_hh_ids = household_ids[active_hh].astype(np.int64)
-        reported_anchors = _build_reported_takeup_anchors(data, time_period)
-        voluntary_filing_inputs = {
-            "tax_unit_child_dependents": sim.calculate(
-                "tax_unit_child_dependents",
-                time_period,
-                map_to="tax_unit",
-            ).values[entity_clone_idx["tax_unit"]],
-            "tax_unit_wage_income": _sum_person_values_to_tax_units(
-                sim.calculate(
-                    "employment_income",
-                    time_period,
-                    map_to="person",
-                ).values[person_clone_idx],
-                new_person_entity_ids["tax_unit"],
-                new_entity_ids["tax_unit"],
-            ),
-            "age_head": sim.calculate(
-                "age_head",
-                time_period,
-                map_to="tax_unit",
-            ).values[entity_clone_idx["tax_unit"]],
-        }
-
-        takeup_results = apply_block_takeup_to_arrays(
-            hh_blocks=active_blocks,
-            hh_state_fips=hh_state_fips,
-            hh_ids=original_hh_ids,
-            hh_clone_indices=active_geo.astype(np.int64),
-            entity_hh_indices=entity_hh_indices,
-            entity_counts=entity_counts,
-            time_period=time_period,
-            takeup_filter=takeup_filter,
-            reported_anchors=reported_anchors,
-            voluntary_filing_inputs=voluntary_filing_inputs,
-        )
-        for var_name, bools in takeup_results.items():
-            data[var_name] = {time_period: bools}
-
-    # === Write H5 ===
-    with h5py.File(str(output_path), "w") as f:
-        for variable, periods in data.items():
-            grp = f.create_group(variable)
-            for period, values in periods.items():
-                grp.create_dataset(str(period), data=values)
+    write_result = H5Writer().write(
+        payload=result.payload,
+        output_path=output_path,
+    )
 
     print(f"\nH5 saved to {output_path}")
-
-    with h5py.File(str(output_path), "r") as f:
-        tp = str(time_period)
-        if "household_id" in f and tp in f["household_id"]:
-            n = len(f["household_id"][tp][:])
-            print(f"Verified: {n:,} households in output")
-        if "person_id" in f and tp in f["person_id"]:
-            n = len(f["person_id"][tp][:])
-            print(f"Verified: {n:,} persons in output")
-        if "household_weight" in f and tp in f["household_weight"]:
-            hw = f["household_weight"][tp][:]
-            print(f"Total population (HH weights): {hw.sum():,.0f}")
-        if "person_weight" in f and tp in f["person_weight"]:
-            pw = f["person_weight"][tp][:]
-            print(f"Total population (person weights): {pw.sum():,.0f}")
+    if write_result.households is not None:
+        print(f"Verified: {write_result.households:,} households in output")
+    if write_result.persons is not None:
+        print(f"Verified: {write_result.persons:,} persons in output")
+    if write_result.household_weight_sum is not None:
+        print(
+            f"Total population (HH weights): {write_result.household_weight_sum:,.0f}"
+        )
+    if write_result.person_weight_sum is not None:
+        print(
+            f"Total population (person weights): {write_result.person_weight_sum:,.0f}"
+        )
 
     return output_path
 

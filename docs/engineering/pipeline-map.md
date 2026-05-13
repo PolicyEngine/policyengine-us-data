@@ -512,7 +512,6 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 | `modal_coord` Modal Coordinator | `external` | `unknown` | `unknown` |  |
 | `partition` Partition Work | `process` | `unknown` | `unknown` |  |
 | `worker_s7` Modal Worker Container | `external` | `unknown` | `unknown` |  |
-| `spm_recalc` SPM Threshold Recalculation | `process` | `unknown` | `unknown` |  |
 | `takeup_apply` Takeup Re-application | `process` | `unknown` | `unknown` |  |
 | `out_states` states/*.h5 | `artifact` | `unknown` | `unknown` |  |
 | `out_districts` districts/*.h5 | `artifact` | `unknown` | `unknown` |  |
@@ -538,8 +537,7 @@ Build 51 state + 435 district + 1 city H5 files on Modal workers
 - `build_districts` -> `build_h5` `data_flow` (calls)
 - `build_cities` -> `build_h5` `data_flow` (calls)
 - `build_h5` -> `geo_derive` `data_flow`
-- `geo_derive` -> `spm_recalc` `data_flow`
-- `spm_recalc` -> `takeup_apply` `data_flow`
+- `geo_derive` -> `takeup_apply` `data_flow`
 - `modal_coord` -> `worker_s7` `runs_on_infra` (orchestrates)
 - `worker_s7` -> `build_h5` `runs_on_infra` (runs)
 - `build_states` -> `out_states` `produces_artifact`
@@ -902,6 +900,14 @@ class ArtifactIdentity
 
 Stable identity for an input artifact used by traceability.
 
+### `policyengine_us_data.build_outputs.builder.LocalAreaBuildResult`
+
+```python
+class LocalAreaBuildResult
+```
+
+In-memory output from building one local H5 area.
+
 ### `policyengine_us_data.build_outputs.selection.CloneSelection`
 
 ```python
@@ -909,6 +915,14 @@ class CloneSelection
 ```
 
 Active clone rows selected for one H5 output.
+
+### `policyengine_us_data.build_outputs.builder.LocalAreaDatasetBuilder`
+
+```python
+class LocalAreaDatasetBuilder
+```
+
+Coordinate clone selection, reindexing, variable cloning, and postprocessing.
 
 ### `policyengine_us_data.build_outputs.source_dataset.EntityGraph`
 
@@ -949,6 +963,22 @@ def partition_weighted_work_items(work_items: WorkItems, num_workers: int, compl
 ```
 
 Partition remaining H5 work across worker chunks.
+
+### `policyengine_us_data.build_outputs.payload.H5Payload`
+
+```python
+class H5Payload
+```
+
+Period-grouped arrays ready to write to a local-area H5 file.
+
+### `policyengine_us_data.build_outputs.payload.PayloadBuildContext`
+
+```python
+class PayloadBuildContext
+```
+
+Context available to country-specific local H5 payload postprocessors.
 
 ### `policyengine_us_data.build_outputs.source_dataset.PolicyEngineDatasetReader`
 
@@ -1005,6 +1035,54 @@ class TraceabilityBundle
 ```
 
 Full provenance record for one local H5 publish scope.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessor`
+
+```python
+class USEntityPostProcessor
+```
+
+Apply US entity IDs and calibrated household weights.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessorResult`
+
+```python
+class USEntityPostProcessorResult
+```
+
+Payload after US entity ID and household-weight fields are applied.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessor`
+
+```python
+class USGeographyPostProcessor
+```
+
+Apply block-derived US geography overrides.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessorResult`
+
+```python
+class USGeographyPostProcessorResult
+```
+
+Payload after US geography fields are applied.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessor`
+
+```python
+class USTakeupPostProcessor
+```
+
+Apply US take-up draws after entity and geography postprocessing.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessorResult`
+
+```python
+class USTakeupPostProcessorResult
+```
+
+Payload after US take-up fields are applied.
 
 ### `policyengine_us_data.build_outputs.validation.ValidationContext`
 
@@ -1085,6 +1163,22 @@ class WorkerSessionFactory
 ```
 
 Build worker-scoped setup from raw inputs or persisted bootstrap facts.
+
+### `policyengine_us_data.build_outputs.writer.H5WriteResult`
+
+```python
+class H5WriteResult
+```
+
+Summary of one H5 write and lightweight verification pass.
+
+### `policyengine_us_data.build_outputs.writer.H5Writer`
+
+```python
+class H5Writer
+```
+
+Write period-grouped local H5 payloads and verify key output counts.
 
 ### `policyengine_us_data.calibration.promote_local_h5s.stage`
 

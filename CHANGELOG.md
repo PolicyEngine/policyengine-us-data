@@ -1,3 +1,10 @@
+## [1.115.2] - 2026-05-13
+
+### Changed
+
+- Extracted local H5 build-output seams and split US payload postprocessors for focused unit testing.
+
+
 ## [1.115.1] - 2026-05-13
 
 ### Changed

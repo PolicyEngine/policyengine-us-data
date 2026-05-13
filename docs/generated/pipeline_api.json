@@ -447,7 +447,7 @@
     "docstring": "Build city H5 files with checkpointing, optionally uploading.",
     "id": "build_cities",
     "kind": "function",
-    "line": 802,
+    "line": 627,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_cities"
@@ -506,7 +506,7 @@
     "docstring": "Build district H5 files with checkpointing, optionally uploading.",
     "id": "build_districts",
     "kind": "function",
-    "line": 715,
+    "line": 540,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_districts"
@@ -533,7 +533,7 @@
     "docstring": "Build an H5 file by cloning records for each nonzero weight.\n\nArgs:\n    weights: Clone-level weight vector, shape (n_clones_total * n_hh,).\n    geography: GeographyAssignment from assign_random_geography.\n    dataset_path: Path to base dataset H5 file.\n    output_path: Where to write the output H5 file.\n    cd_subset: If provided, only include clones for these CDs.\n    county_fips_filter: If provided, zero out weights for clones\n        whose county FIPS is not in this set.\n    takeup_filter: List of takeup vars to apply.\n\nReturns:\n    Path to the output H5 file.",
     "id": "build_h5",
     "kind": "function",
-    "line": 345,
+    "line": 328,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_h5"
@@ -548,7 +548,7 @@
         "cities/*.h5",
         "US.h5"
       ],
-      "description": "Expand calibrated clone weights into local-area H5 datasets with geography, SPM, and takeup updates.",
+      "description": "Expand calibrated clone weights into local-area H5 datasets with geography and takeup updates.",
       "details": "This is the main bundled H5 construction routine and remains a critical transitional waypoint.",
       "id": "build_h5",
       "label": "Build Local Area H5",
@@ -663,7 +663,7 @@
     "docstring": "Build state H5 files with checkpointing, optionally uploading.",
     "id": "build_states",
     "kind": "function",
-    "line": 629,
+    "line": 454,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.publish_local_area.build_states"
@@ -1263,7 +1263,7 @@
     "docstring": "",
     "id": "load_calibration_geography",
     "kind": "function",
-    "line": 140,
+    "line": 137,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
@@ -1459,6 +1459,33 @@
     "signature": "class ArtifactIdentity",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
   },
+  "local_h5_build_result": {
+    "docstring": "In-memory output from building one local H5 area.",
+    "id": "local_h5_build_result",
+    "kind": "class",
+    "line": 83,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.builder.LocalAreaBuildResult"
+      ],
+      "description": "In-memory local H5 payload and diagnostics for one area.",
+      "id": "local_h5_build_result",
+      "label": "LocalAreaBuildResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/builder.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_builder.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.builder.LocalAreaBuildResult",
+    "signature": "class LocalAreaBuildResult",
+    "source_file": "policyengine_us_data/build_outputs/builder.py"
+  },
   "local_h5_clone_selection": {
     "docstring": "Active clone rows selected for one H5 output.",
     "id": "local_h5_clone_selection",
@@ -1485,6 +1512,33 @@
     "object_path": "policyengine_us_data.build_outputs.selection.CloneSelection",
     "signature": "class CloneSelection",
     "source_file": "policyengine_us_data/build_outputs/selection.py"
+  },
+  "local_h5_dataset_builder": {
+    "docstring": "Coordinate clone selection, reindexing, variable cloning, and postprocessing.",
+    "id": "local_h5_dataset_builder",
+    "kind": "class",
+    "line": 151,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.builder.LocalAreaDatasetBuilder"
+      ],
+      "description": "Build the in-memory payload for one local-area or national H5 output.",
+      "id": "local_h5_dataset_builder",
+      "label": "LocalAreaDatasetBuilder",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/builder.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_builder.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.builder.LocalAreaDatasetBuilder",
+    "signature": "class LocalAreaDatasetBuilder",
+    "source_file": "policyengine_us_data/build_outputs/builder.py"
   },
   "local_h5_entity_graph": {
     "docstring": "Structural relationships between source dataset entities.\n\n`EntityGraph` is the canonical in-memory shape for the source entity spine.\nIt stores raw ID arrays plus derived household-membership maps so later H5\nbuilder seams can select households without rebuilding joins.\n\nAttributes:\n    household_ids: Source household IDs, one per household row.\n    person_household_ids: Household ID for each source person row.\n    subentity_ids: Entity IDs by subentity key, such as `tax_unit`.\n    person_subentity_ids: Entity ID for each source person row by subentity.\n    household_to_person_indices: Household row index to person row indices.\n    household_to_subentity_indices: Subentity key to household row index to\n        subentity row indices.",
@@ -1544,7 +1598,7 @@
     "docstring": "",
     "id": "local_h5_input_fingerprint",
     "kind": "function",
-    "line": 81,
+    "line": 78,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -1621,6 +1675,60 @@
     "object_path": "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
     "signature": "def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks",
     "source_file": "policyengine_us_data/build_outputs/partitioning.py"
+  },
+  "local_h5_payload": {
+    "docstring": "Period-grouped arrays ready to write to a local-area H5 file.\n\n`entity_lengths` records the row count expected for each entity in this\npayload. Shape validation intentionally covers the stable structural\nvariables first; formula variables that do not encode their entity in the\nvariable name are left to existing source-variable and runtime checks.",
+    "id": "local_h5_payload",
+    "kind": "class",
+    "line": 55,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.payload.H5Payload"
+      ],
+      "description": "Validated in-memory period-grouped payload for one local H5 output.",
+      "id": "local_h5_payload",
+      "label": "H5Payload",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/payload.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_payload.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.payload.H5Payload",
+    "signature": "class H5Payload",
+    "source_file": "policyengine_us_data/build_outputs/payload.py"
+  },
+  "local_h5_payload_build_context": {
+    "docstring": "Context available to country-specific local H5 payload postprocessors.",
+    "id": "local_h5_payload_build_context",
+    "kind": "class",
+    "line": 134,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.payload.PayloadBuildContext"
+      ],
+      "description": "Context passed to payload postprocessors during one H5 build.",
+      "id": "local_h5_payload_build_context",
+      "label": "PayloadBuildContext",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/payload.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_payload.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.payload.PayloadBuildContext",
+    "signature": "class PayloadBuildContext",
+    "source_file": "policyengine_us_data/build_outputs/payload.py"
   },
   "local_h5_policyengine_dataset_reader": {
     "docstring": "Read PolicyEngine source H5 files into `SourceDatasetSnapshot` objects.",
@@ -1807,6 +1915,168 @@
     "object_path": "policyengine_us_data.build_outputs.fingerprinting.TraceabilityBundle",
     "signature": "class TraceabilityBundle",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
+  },
+  "local_h5_us_entity_postprocessor": {
+    "docstring": "Apply US entity IDs and calibrated household weights.",
+    "id": "local_h5_us_entity_postprocessor",
+    "kind": "class",
+    "line": 148,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessor"
+      ],
+      "description": "Apply US entity ID and household-weight fields to local H5 payloads.",
+      "id": "local_h5_us_entity_postprocessor",
+      "label": "USEntityPostProcessor",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessor",
+    "signature": "class USEntityPostProcessor",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
+  },
+  "local_h5_us_entity_postprocessor_result": {
+    "docstring": "Payload after US entity ID and household-weight fields are applied.",
+    "id": "local_h5_us_entity_postprocessor_result",
+    "kind": "class",
+    "line": 68,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessorResult"
+      ],
+      "description": "US entity ID and household-weight local H5 payload data.",
+      "id": "local_h5_us_entity_postprocessor_result",
+      "label": "USEntityPostProcessorResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USEntityPostProcessorResult",
+    "signature": "class USEntityPostProcessorResult",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
+  },
+  "local_h5_us_geography_postprocessor": {
+    "docstring": "Apply block-derived US geography overrides.",
+    "id": "local_h5_us_geography_postprocessor",
+    "kind": "class",
+    "line": 201,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessor"
+      ],
+      "description": "Apply US geography fields to local H5 payloads.",
+      "id": "local_h5_us_geography_postprocessor",
+      "label": "USGeographyPostProcessor",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessor",
+    "signature": "class USGeographyPostProcessor",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
+  },
+  "local_h5_us_geography_postprocessor_result": {
+    "docstring": "Payload after US geography fields are applied.",
+    "id": "local_h5_us_geography_postprocessor_result",
+    "kind": "class",
+    "line": 94,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessorResult"
+      ],
+      "description": "US geography local H5 payload data and block-derived geography.",
+      "id": "local_h5_us_geography_postprocessor_result",
+      "label": "USGeographyPostProcessorResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USGeographyPostProcessorResult",
+    "signature": "class USGeographyPostProcessorResult",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
+  },
+  "local_h5_us_takeup_postprocessor": {
+    "docstring": "Apply US take-up draws after entity and geography postprocessing.",
+    "id": "local_h5_us_takeup_postprocessor",
+    "kind": "class",
+    "line": 306,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessor"
+      ],
+      "description": "Apply US take-up fields to local H5 payloads.",
+      "id": "local_h5_us_takeup_postprocessor",
+      "label": "USTakeupPostProcessor",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessor",
+    "signature": "class USTakeupPostProcessor",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
+  },
+  "local_h5_us_takeup_postprocessor_result": {
+    "docstring": "Payload after US take-up fields are applied.",
+    "id": "local_h5_us_takeup_postprocessor_result",
+    "kind": "class",
+    "line": 121,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessorResult"
+      ],
+      "description": "US take-up local H5 payload data and generated take-up variables.",
+      "id": "local_h5_us_takeup_postprocessor_result",
+      "label": "USTakeupPostProcessorResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/us_augmentations.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessorResult",
+    "signature": "class USTakeupPostProcessorResult",
+    "source_file": "policyengine_us_data/build_outputs/us_augmentations.py"
   },
   "local_h5_validation_context": {
     "docstring": "Prepared validation data reused across all requests in one worker.",
@@ -2117,6 +2387,60 @@
     "object_path": "policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory",
     "signature": "class WorkerSessionFactory",
     "source_file": "policyengine_us_data/build_outputs/worker_session.py"
+  },
+  "local_h5_write_result": {
+    "docstring": "Summary of one H5 write and lightweight verification pass.",
+    "id": "local_h5_write_result",
+    "kind": "class",
+    "line": 30,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.writer.H5WriteResult"
+      ],
+      "description": "Post-write verification summary for one local H5 file.",
+      "id": "local_h5_write_result",
+      "label": "H5WriteResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/writer.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_writer.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.writer.H5WriteResult",
+    "signature": "class H5WriteResult",
+    "source_file": "policyengine_us_data/build_outputs/writer.py"
+  },
+  "local_h5_writer": {
+    "docstring": "Write period-grouped local H5 payloads and verify key output counts.",
+    "id": "local_h5_writer",
+    "kind": "class",
+    "line": 52,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.writer.H5Writer"
+      ],
+      "description": "Write one period-grouped local H5 payload to disk.",
+      "id": "local_h5_writer",
+      "label": "H5Writer",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/writer.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_writer.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.writer.H5Writer",
+    "signature": "class H5Writer",
+    "source_file": "policyengine_us_data/build_outputs/writer.py"
   },
   "local_stage_upload": {
     "docstring": "",

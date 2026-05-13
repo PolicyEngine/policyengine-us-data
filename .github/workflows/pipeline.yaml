@@ -31,10 +31,6 @@ on:
         description: "Resume a failed run by ID (allows mixed provenance)"
         default: ""
         type: string
-      version_override:
-        description: "Override version (default: read from pyproject.toml)"
-        default: ""
-        type: string
       candidate_version:
         description: "Candidate rc version used for PyPI candidate and HF staging"
         default: ""
@@ -94,7 +90,6 @@ jobs:
       - name: Resolve run context
         id: run-context
         env:
-          VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
           CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
           RELEASE_VERSION: ${{ inputs.release_version || '' }}
         run: python .github/scripts/resolve_run_context.py
@@ -111,7 +106,6 @@ jobs:
           NUM_WORKERS: ${{ inputs.num_workers || '50' }}
           SKIP_NATIONAL: ${{ inputs.skip_national || 'false' }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
-          VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
           CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
           RELEASE_VERSION: ${{ inputs.release_version || '' }}
           SOURCE_SHA: ${{ inputs.source_sha || github.sha }}

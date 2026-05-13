@@ -58,8 +58,6 @@ def main() -> None:
         kwargs["candidate_version"] = context.candidate_version
     if os.environ.get("RELEASE_VERSION"):
         kwargs["release_version"] = context.release_version
-    if os.environ.get("VERSION_OVERRIDE"):
-        kwargs["version"] = os.environ["VERSION_OVERRIDE"]
 
     print("Promoting publication run.")
     print(f"Run ID: {context.run_id}")

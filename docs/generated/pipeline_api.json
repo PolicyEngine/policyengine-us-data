@@ -2554,10 +2554,10 @@
     "source_file": "policyengine_us_data/datasets/puf/puf.py"
   },
   "promote_pipeline_run": {
-    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate rc version used for staged source files.\n    release_version: Stable version used for final release metadata.\n    version: Deprecated override that sets both versions.\n\nReturns:\n    Summary message.",
+    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate rc version used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1835,
+    "line": 1832,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -2585,7 +2585,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.promote_run",
-    "signature": "def promote_run(run_id: str, candidate_version: str = '', release_version: str = '', version: str = None) -> str",
+    "signature": "def promote_run(run_id: str, candidate_version: str = '', release_version: str = '') -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "puf_qrf_pass": {
@@ -2863,7 +2863,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.run_pipeline",
-    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', candidate_version: str = '', release_version: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str",
+    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, candidate_version: str = '', release_version: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "sanity_checks": {

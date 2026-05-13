@@ -8,10 +8,14 @@ import tomllib
 from pathlib import Path
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+VERSION_RE = re.compile(r"^(\d+\.\d+\.\d+)(?:rc\d+)?$")
+
+
 def main() -> None:
-    with (Path(__file__).resolve().parents[2] / "pyproject.toml").open("rb") as file:
+    with (REPO_ROOT / "pyproject.toml").open("rb") as file:
         version = tomllib.load(file)["project"]["version"]
-    match = re.match(r"^(\d+\.\d+\.\d+)(?:rc\d+)?$", version)
+    match = VERSION_RE.match(version)
     if not match:
         print(f"Unsupported version format: {version}", file=sys.stderr)
         sys.exit(1)

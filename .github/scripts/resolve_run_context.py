@@ -48,7 +48,6 @@ def _candidate_version(env: Mapping[str, str]) -> str:
         env.get(CANDIDATE_VERSION_ENV)
         or env.get(DATA_PACKAGE_VERSION_ENV)
         or env.get("CANDIDATE_VERSION", "")
-        or env.get("VERSION_OVERRIDE", "")
     )
     if version:
         return version
@@ -63,7 +62,6 @@ def _release_version(env: Mapping[str, str], candidate_version: str) -> str:
     return (
         env.get(RELEASE_VERSION_ENV)
         or env.get("RELEASE_VERSION", "")
-        or env.get("VERSION_OVERRIDE", "")
         or candidate_version
     )
 

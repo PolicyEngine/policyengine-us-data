@@ -868,7 +868,6 @@ def run_pipeline(
     skip_national: bool = False,
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
-    version_override: str = "",
     candidate_version: str = "",
     release_version: str = "",
     sha_override: str = "",
@@ -928,9 +927,7 @@ def run_pipeline(
 
     # ── Initialize or resume run ──
     sha = sha_override or get_pinned_sha(branch)
-    candidate_version = (
-        candidate_version or version_override or get_version_from_branch(branch)
-    )
+    candidate_version = candidate_version or get_version_from_branch(branch)
     release_version = release_version or candidate_version
     resolved_run_id = resolve_run_id(run_id)
     current_run_context = RunContext.from_mapping(
@@ -1836,7 +1833,6 @@ def promote_run(
     run_id: str,
     candidate_version: str = "",
     release_version: str = "",
-    version: str = None,
 ) -> str:
     """Promote a completed pipeline run to production.
 
@@ -1851,7 +1847,6 @@ def promote_run(
         run_id: The run ID to promote.
         candidate_version: Candidate rc version used for staged source files.
         release_version: Stable version used for final release metadata.
-        version: Deprecated override that sets both versions.
 
     Returns:
         Summary message.
@@ -1865,10 +1860,8 @@ def promote_run(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     meta = read_run_meta(run_id, pipeline_volume)
-    candidate_version = (
-        candidate_version or version or meta.candidate_version or meta.version
-    )
-    release_version = release_version or version or meta.release_version or meta.version
+    candidate_version = candidate_version or meta.candidate_version or meta.version
+    release_version = release_version or meta.release_version or meta.version
     promotion_context = RunContext.from_mapping(
         meta.run_context,
         run_id=run_id,
@@ -2022,7 +2015,6 @@ def main(
     n_clones: int = 430,
     skip_national: bool = False,
     clear_checkpoints: bool = False,
-    version: str = None,
     candidate_version: str = "",
     release_version: str = "",
     sha_override: str = "",
@@ -2046,7 +2038,6 @@ def main(
             skip_national=skip_national,
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
-            version_override=version or "",
             candidate_version=candidate_version,
             release_version=release_version,
             sha_override=sha_override,
@@ -2067,7 +2058,6 @@ def main(
             run_id=run_id,
             candidate_version=candidate_version,
             release_version=release_version,
-            version=version,
         )
         print(result)
 

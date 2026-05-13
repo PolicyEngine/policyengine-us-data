@@ -7,11 +7,6 @@ on:
         description: 'Run ID to promote (e.g. usdata-gha123456-a1-abcdef12)'
         required: true
         type: string
-      version:
-        description: 'Optional version override; defaults to run metadata'
-        required: false
-        default: ''
-        type: string
 
 jobs:
   promote-release:
@@ -25,7 +20,6 @@ jobs:
       MODAL_ENVIRONMENT: main
       US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
       US_DATA_RUN_ID: ${{ github.event.inputs.run_id }}
-      VERSION_OVERRIDE: ${{ github.event.inputs.version }}
 
     steps:
       - name: Generate GitHub App token

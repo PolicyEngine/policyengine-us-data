@@ -69,7 +69,6 @@ def main() -> None:
         "num_workers": int(os.environ["NUM_WORKERS"]),
         "skip_national": _as_bool(os.environ["SKIP_NATIONAL"]),
         "resume_run_id": os.environ.get("RESUME_RUN_ID") or None,
-        "version_override": os.environ.get("VERSION_OVERRIDE", ""),
         "candidate_version": context.candidate_version,
         "release_version": context.release_version,
         "sha_override": os.environ.get("SOURCE_SHA", ""),

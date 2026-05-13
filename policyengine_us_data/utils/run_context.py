@@ -141,7 +141,6 @@ def resolve_candidate_version(
         explicit
         or env.get(CANDIDATE_VERSION_ENV, "")
         or env.get(DATA_PACKAGE_VERSION_ENV, "")
-        or env.get("VERSION_OVERRIDE", "")
     )
 
 

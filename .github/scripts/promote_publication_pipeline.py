@@ -26,11 +26,11 @@ def _append_summary(result: str, context: RunContext) -> None:
         handle.write("| Field | Value |\n")
         handle.write("|-------|-------|\n")
         handle.write(f"| Run ID | `{context.run_id}` |\n")
+        handle.write(f"| Candidate version | `{context.candidate_version}` |\n")
+        handle.write(f"| Release version | `{context.release_version}` |\n")
         handle.write(f"| Modal app | `{context.modal_app_name}` |\n")
         handle.write(f"| Modal environment | `{context.modal_environment}` |\n")
         handle.write(f"| HF staging | `{context.hf_staging_prefix}` |\n")
-        if os.environ.get("VERSION_OVERRIDE"):
-            handle.write(f"| Version override | `{os.environ['VERSION_OVERRIDE']}` |\n")
         handle.write("\n")
         handle.write("```text\n")
         handle.write(result)
@@ -54,11 +54,17 @@ def main() -> None:
         promote_run = modal.Function.from_name(app_name, "promote_run")
 
     kwargs = {"run_id": context.run_id}
+    if os.environ.get("CANDIDATE_VERSION"):
+        kwargs["candidate_version"] = context.candidate_version
+    if os.environ.get("RELEASE_VERSION"):
+        kwargs["release_version"] = context.release_version
     if os.environ.get("VERSION_OVERRIDE"):
         kwargs["version"] = os.environ["VERSION_OVERRIDE"]
 
     print("Promoting publication run.")
     print(f"Run ID: {context.run_id}")
+    print(f"Candidate version: {context.candidate_version}")
+    print(f"Release version: {context.release_version}")
     print(f"Modal app: {app_name}")
     print(f"Modal environment: {environment_name}")
     print(f"HF staging prefix: {context.hf_staging_prefix}")

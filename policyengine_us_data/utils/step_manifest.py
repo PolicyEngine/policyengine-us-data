@@ -386,6 +386,8 @@ class RunManifest:
     status: str
     started_at: str
     known_step_ids: list[str]
+    candidate_version: str | None = None
+    release_version: str | None = None
     run_context: dict[str, Any] = field(default_factory=dict)
     modal_app_name: str | None = None
     modal_environment: str | None = None
@@ -409,6 +411,8 @@ class RunManifest:
             branch=str(data["branch"]),
             sha=str(data["sha"]),
             version=str(data["version"]),
+            candidate_version=data.get("candidate_version") or data.get("version"),
+            release_version=data.get("release_version") or data.get("version"),
             status=str(data["status"]),
             started_at=str(data["started_at"]),
             run_context=dict(

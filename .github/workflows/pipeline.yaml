@@ -35,6 +35,14 @@ on:
         description: "Override version (default: read from pyproject.toml)"
         default: ""
         type: string
+      candidate_version:
+        description: "Candidate rc version used for PyPI candidate and HF staging"
+        default: ""
+        type: string
+      release_version:
+        description: "Final stable version used for manifests, tags, and promotion"
+        default: ""
+        type: string
       run_id:
         description: "Run ID to use across GitHub, Modal, and HF staging"
         default: ""
@@ -85,6 +93,10 @@ jobs:
 
       - name: Resolve run context
         id: run-context
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
+          CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
+          RELEASE_VERSION: ${{ inputs.release_version || '' }}
         run: python .github/scripts/resolve_run_context.py
 
       - name: Deploy and launch pipeline on Modal
@@ -100,6 +112,8 @@ jobs:
           SKIP_NATIONAL: ${{ inputs.skip_national || 'false' }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
           VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
+          CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
+          RELEASE_VERSION: ${{ inputs.release_version || '' }}
           SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
           CHUNKED_MATRIX: ${{ inputs.chunked_matrix || 'false' }}
           CHUNK_SIZE: ${{ inputs.chunk_size || '25000' }}

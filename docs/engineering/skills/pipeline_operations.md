@@ -36,6 +36,8 @@ First identify the run context from the GitHub Actions summary, workflow logs, o
 run-context output:
 
 - `run_id`
+- `candidate_version` for the rc package and HF staging namespace
+- `release_version` for final manifests, tags, and release completion
 - Modal app name
 - Modal environment
 
@@ -92,6 +94,12 @@ Use `status` and `message` for the short answer. Then inspect:
 When reporting back, name the failing stage and substage, summarize the exception
 type and message, and cite whether the traceback came from the status endpoint or
 from Modal dashboard logs.
+
+When diagnosing staging or promotion, keep candidate and final versions
+separate. Staged files live under
+`staging/{candidate_version}/{run_id}/...`; final release records live under
+`releases/{release_version}/...`, and production artifact paths remain at the
+repository root.
 
 ## Safety Rules
 

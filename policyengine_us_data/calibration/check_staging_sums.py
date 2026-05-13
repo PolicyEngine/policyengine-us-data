@@ -13,10 +13,12 @@ import argparse
 
 import pandas as pd
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.calibration.calibration_utils import (
     STATE_CODES,
 )
 from policyengine_us_data.db.etl_irs_soi import get_national_geography_soi_target
+from policyengine_us_data.utils.run_context import staging_prefix
 
 STATE_ABBRS = sorted(STATE_CODES.values())
 
@@ -77,13 +79,20 @@ def main(argv=None):
     parser.add_argument(
         "--run-id",
         default="",
-        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/states/...)",
+        help=(
+            "Run ID to scope HF staging prefix "
+            "(e.g. staging/{version}/{run_id}/states/...)"
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        default=DATA_PACKAGE_VERSION,
+        help="Data package version segment for run-scoped HF staging paths.",
     )
     args = parser.parse_args(argv)
     if args.run_id and args.hf_prefix == DEFAULT_HF_PREFIX:
-        args.hf_prefix = (
-            f"hf://policyengine/policyengine-us-data/staging/{args.run_id}/states"
-        )
+        prefix = staging_prefix(args.run_id, version=args.version)
+        args.hf_prefix = f"hf://policyengine/policyengine-us-data/{prefix}/states"
 
     from policyengine_us import Microsimulation
 

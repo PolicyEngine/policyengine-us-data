@@ -759,7 +759,7 @@ stages:
     node_type: artifact
     description: Policy target database copied into the pipeline volume
   - id: hf_staging_base_s1g
-    label: HuggingFace staging/{run_id}
+    label: HuggingFace staging/{candidate_version}/{run_id}
     node_type: external
     description: Run-scoped staging prefix for base datasets
   - id: stage_base_datasets
@@ -1504,7 +1504,7 @@ stages:
     node_type: artifact
     description: Output set from substage 5a
   - id: hf_staging_s5b
-    label: HuggingFace staging/{run_id}
+    label: HuggingFace staging/{candidate_version}/{run_id}
     node_type: external
     description: Run-scoped staging prefix containing validated artifacts
   - id: out_hf_prod

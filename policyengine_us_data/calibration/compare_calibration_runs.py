@@ -18,6 +18,8 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
+from policyengine_us_data.utils.run_context import staging_prefix
 
 HF_REPO = "policyengine/policyengine-us-data"
 HF_REPO_TYPE = "model"
@@ -63,6 +65,7 @@ class RunComparisonPaths:
     """Default artifact paths for a run-scoped production pipeline attempt."""
 
     run_id: str
+    version: str = DATA_PACKAGE_VERSION
 
     @property
     def regional_diagnostics(self) -> str:
@@ -80,11 +83,13 @@ class RunComparisonPaths:
 
     @property
     def candidate_h5(self) -> str:
-        return f"hf://{HF_REPO}/staging/{self.run_id}/national/US.h5"
+        prefix = staging_prefix(self.run_id, version=self.version)
+        return f"hf://{HF_REPO}/{prefix}/national/US.h5"
 
     @property
     def legacy_h5(self) -> str:
-        return f"hf://{HF_REPO}/staging/{self.run_id}/enhanced_cps_2024.h5"
+        prefix = staging_prefix(self.run_id, version=self.version)
+        return f"hf://{HF_REPO}/{prefix}/enhanced_cps_2024.h5"
 
 
 def resolve_artifact_path(path: str) -> str:
@@ -461,6 +466,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--run-id", required=True, help="Completed pipeline run ID.")
     parser.add_argument(
+        "--version",
+        default=DATA_PACKAGE_VERSION,
+        help="Data package version segment for run-scoped HF staging paths.",
+    )
+    parser.add_argument(
         "--regional-diagnostics",
         help="Path to regional unified_diagnostics.csv. Defaults from --run-id.",
     )
@@ -521,7 +531,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
 
-    defaults = RunComparisonPaths(args.run_id)
+    defaults = RunComparisonPaths(args.run_id, version=args.version)
     regional_path = args.regional_diagnostics or defaults.regional_diagnostics
     national_path = args.national_diagnostics or defaults.national_diagnostics
     candidate_h5 = args.candidate_h5 or defaults.candidate_h5

@@ -2,7 +2,7 @@
 
 The run ID is the cross-system correlation key for one candidate publication
 attempt. GitHub creates it first, Modal records it while running, and Hugging
-Face staging uses it as the staging namespace.
+Face staging uses the data package version plus run ID as the staging namespace.
 """
 
 from __future__ import annotations
@@ -17,6 +17,9 @@ from policyengine_us_data.utils.canonical_json import canonical_json_dumps
 
 
 RUN_ID_ENV = "US_DATA_RUN_ID"
+CANDIDATE_VERSION_ENV = "US_DATA_CANDIDATE_VERSION"
+RELEASE_VERSION_ENV = "US_DATA_RELEASE_VERSION"
+DATA_PACKAGE_VERSION_ENV = "US_DATA_PACKAGE_VERSION"
 MODAL_APP_NAME_ENV = "US_DATA_MODAL_APP_NAME"
 MODAL_ENVIRONMENT_ENV = "US_DATA_MODAL_ENVIRONMENT"
 DEFAULT_MODAL_APP_PREFIX = "policyengine-us-data-pub"
@@ -46,6 +49,15 @@ def sanitize_run_id(value: str) -> str:
     return _truncate_with_digest(slug, DEFAULT_MAX_RESOURCE_NAME_LENGTH)
 
 
+def sanitize_staging_version(value: str) -> str:
+    """Return a Hugging Face path-safe data package version segment."""
+    sanitized = re.sub(r"[^A-Za-z0-9._+-]+", "-", value).strip("-")
+    sanitized = re.sub(r"-+", "-", sanitized)
+    if not sanitized:
+        raise ValueError("Staging version cannot be empty")
+    return sanitized
+
+
 def build_run_id(
     *,
     github_run_id: str,
@@ -73,8 +85,22 @@ def build_modal_resource_name(
     )
 
 
-def staging_prefix(run_id: str = "") -> str:
-    return f"staging/{run_id}" if run_id else "staging"
+def staging_prefix(
+    run_id: str = "",
+    candidate_version: str = "",
+    *,
+    version: str = "",
+) -> str:
+    if not run_id:
+        return "staging"
+    resolved_run_id = sanitize_run_id(run_id)
+    resolved_candidate_version = candidate_version or version
+    if not resolved_candidate_version:
+        return f"staging/{resolved_run_id}"
+    return (
+        f"staging/{sanitize_staging_version(resolved_candidate_version)}"
+        f"/{resolved_run_id}"
+    )
 
 
 def github_run_url(env: Mapping[str, str]) -> str:
@@ -104,6 +130,78 @@ def resolve_run_id(
     return ""
 
 
+def resolve_candidate_version(
+    explicit: str = "",
+    *,
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Resolve the candidate rc version used for HF staging."""
+    env = env or os.environ
+    return (
+        explicit
+        or env.get(CANDIDATE_VERSION_ENV, "")
+        or env.get(DATA_PACKAGE_VERSION_ENV, "")
+        or env.get("VERSION_OVERRIDE", "")
+    )
+
+
+def resolve_release_version(
+    explicit: str = "",
+    *,
+    candidate_version: str = "",
+    env: Mapping[str, str] | None = None,
+) -> str:
+    """Resolve the final stable release version for promotion."""
+    env = env or os.environ
+    return explicit or env.get(RELEASE_VERSION_ENV, "") or candidate_version
+
+
+@dataclass(frozen=True)
+class PublicationVersions:
+    """Version identity for one candidate publication attempt."""
+
+    candidate_version: str
+    release_version: str
+    run_id: str
+    source_sha: str = ""
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        candidate_version: str = "",
+        release_version: str = "",
+        run_id: str = "",
+        source_sha: str = "",
+        env: Mapping[str, str] | None = None,
+    ) -> "PublicationVersions":
+        env = env or os.environ
+        resolved_candidate_version = resolve_candidate_version(
+            candidate_version,
+            env=env,
+        )
+        resolved_release_version = resolve_release_version(
+            release_version,
+            candidate_version=resolved_candidate_version,
+            env=env,
+        )
+        resolved_run_id = resolve_run_id(run_id, env=env)
+        if not resolved_candidate_version:
+            raise ValueError("candidate_version is required")
+        if not resolved_release_version:
+            raise ValueError("release_version is required")
+        if not resolved_run_id:
+            raise ValueError("run_id is required")
+        return cls(
+            candidate_version=sanitize_staging_version(resolved_candidate_version),
+            release_version=sanitize_staging_version(resolved_release_version),
+            run_id=resolved_run_id,
+            source_sha=source_sha
+            or env.get("SOURCE_SHA", "")
+            or env.get("GITHUB_SHA", ""),
+        )
+
+
 @dataclass(frozen=True)
 class RunContext:
     """Cross-system context for one publication run."""
@@ -112,6 +210,9 @@ class RunContext:
     modal_app_name: str
     modal_environment: str
     hf_staging_prefix: str
+    candidate_version: str = ""
+    release_version: str = ""
+    data_package_version: str = ""
     github_run_url: str = ""
     github_repository: str = ""
     github_workflow: str = ""
@@ -131,11 +232,23 @@ class RunContext:
         run_id: str = "",
         modal_app_name: str = "",
         modal_environment: str = "",
+        data_package_version: str = "",
+        candidate_version: str = "",
+        release_version: str = "",
         env: Mapping[str, str] | None = None,
         modal_app_prefix: str = DEFAULT_MODAL_APP_PREFIX,
     ) -> "RunContext":
         env = env or os.environ
         resolved_run_id = resolve_run_id(run_id, env=env)
+        resolved_candidate_version = resolve_candidate_version(
+            candidate_version or data_package_version,
+            env=env,
+        )
+        resolved_release_version = resolve_release_version(
+            release_version,
+            candidate_version=resolved_candidate_version,
+            env=env,
+        )
         resolved_modal_environment = (
             modal_environment
             or env.get(MODAL_ENVIRONMENT_ENV, "")
@@ -159,7 +272,13 @@ class RunContext:
             run_id=resolved_run_id,
             modal_app_name=resolved_modal_app_name,
             modal_environment=resolved_modal_environment,
-            hf_staging_prefix=staging_prefix(resolved_run_id),
+            hf_staging_prefix=staging_prefix(
+                resolved_run_id,
+                candidate_version=resolved_candidate_version,
+            ),
+            candidate_version=resolved_candidate_version,
+            release_version=resolved_release_version,
+            data_package_version=resolved_candidate_version,
             github_run_url=env.get("US_DATA_GITHUB_RUN_URL", "") or github_run_url(env),
             github_repository=env.get("GITHUB_REPOSITORY", ""),
             github_workflow=env.get("GITHUB_WORKFLOW", ""),
@@ -182,11 +301,17 @@ class RunContext:
         run_id: str = "",
         modal_app_name: str = "",
         modal_environment: str = "",
+        data_package_version: str = "",
+        candidate_version: str = "",
+        release_version: str = "",
     ) -> "RunContext":
         base = cls.from_env(
             run_id=run_id,
             modal_app_name=modal_app_name,
             modal_environment=modal_environment,
+            data_package_version=data_package_version,
+            candidate_version=candidate_version,
+            release_version=release_version,
             env=env,
         )
         if not data:
@@ -195,11 +320,29 @@ class RunContext:
         for key, value in data.items():
             if key == "publication_id":
                 key = "run_id"
+            if key == "version":
+                key = "candidate_version"
             if key in merged and value:
                 merged[key] = str(value)
+        if merged.get("data_package_version") and not merged.get("candidate_version"):
+            merged["candidate_version"] = str(merged["data_package_version"])
+        if merged.get("candidate_version"):
+            merged["candidate_version"] = sanitize_staging_version(
+                str(merged["candidate_version"])
+            )
+            merged["data_package_version"] = str(merged["candidate_version"])
+        if not merged.get("release_version"):
+            merged["release_version"] = str(merged.get("candidate_version") or "")
+        if merged.get("release_version"):
+            merged["release_version"] = sanitize_staging_version(
+                str(merged["release_version"])
+            )
         if merged.get("run_id"):
             merged["run_id"] = sanitize_run_id(str(merged["run_id"]))
-            merged["hf_staging_prefix"] = staging_prefix(merged["run_id"])
+            merged["hf_staging_prefix"] = staging_prefix(
+                merged["run_id"],
+                candidate_version=str(merged.get("candidate_version") or ""),
+            )
         return cls(**merged)
 
     def to_dict(self) -> dict[str, str]:
@@ -218,6 +361,9 @@ class RunContext:
             "MODAL_APP_NAME": self.modal_app_name,
             MODAL_ENVIRONMENT_ENV: self.modal_environment,
             "MODAL_ENVIRONMENT": self.modal_environment,
+            CANDIDATE_VERSION_ENV: self.candidate_version,
+            RELEASE_VERSION_ENV: self.release_version,
+            DATA_PACKAGE_VERSION_ENV: self.data_package_version,
             "US_DATA_HF_STAGING_PREFIX": self.hf_staging_prefix,
             "US_DATA_GITHUB_RUN_URL": self.github_run_url,
         }

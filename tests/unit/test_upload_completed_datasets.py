@@ -448,7 +448,7 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
             "hf",
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
                 "run_id": "",
@@ -458,7 +458,8 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
             "gcs",
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
+                "release_version": "1.73.0",
                 "gcs_bucket_name": upload_module.GCS_BUCKET_NAME,
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
@@ -474,7 +475,7 @@ def test_upload_datasets_stages_then_promotes_release(tmp_path, monkeypatch):
         (
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
                 "run_id": "",
@@ -505,7 +506,7 @@ def test_upload_datasets_stage_only_skips_promote(tmp_path, monkeypatch):
 
     assert stage_calls == [
         {
-            "version": "1.73.0",
+            "candidate_version": "1.73.0",
             "hf_repo_name": upload_module.HF_REPO_NAME,
             "hf_repo_type": upload_module.HF_REPO_TYPE,
             "run_id": "sha123",
@@ -560,7 +561,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
 
     mock_api = MagicMock()
     mock_api.list_repo_files.return_value = [
-        f"staging/run-123/{repo_path}" for repo_path in expected_repo_paths
+        f"staging/1.73.0/run-123/{repo_path}" for repo_path in expected_repo_paths
     ]
     monkeypatch.setattr(upload_module, "HfApi", lambda: mock_api)
     monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")
@@ -628,7 +629,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
             "hf",
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
                 "run_id": "run-123",
@@ -638,7 +639,8 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
             "gcs",
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
+                "release_version": "1.73.0",
                 "gcs_bucket_name": upload_module.GCS_BUCKET_NAME,
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
@@ -663,7 +665,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
         (
             expected_repo_paths,
             {
-                "version": "1.73.0",
+                "candidate_version": "1.73.0",
                 "hf_repo_name": upload_module.HF_REPO_NAME,
                 "hf_repo_type": upload_module.HF_REPO_TYPE,
                 "run_id": "run-123",

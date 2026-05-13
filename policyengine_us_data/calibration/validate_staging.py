@@ -24,6 +24,7 @@ import numpy as np
 import pandas as pd
 from sqlalchemy import create_engine
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.calibration.unified_calibration import (
     load_target_config,
@@ -44,6 +45,7 @@ from policyengine_us_data.calibration.sanity_checks import (
 from policyengine_us_data.db.create_database_tables import create_or_replace_views
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
+from policyengine_us_data.utils.run_context import staging_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -516,7 +518,14 @@ def parse_args(argv=None):
     parser.add_argument(
         "--run-id",
         default="",
-        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/...)",
+        help=(
+            "Run ID to scope HF staging prefix (e.g. staging/{version}/{run_id}/...)"
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        default=DATA_PACKAGE_VERSION,
+        help="Data package version segment for run-scoped HF staging paths.",
     )
     parser.add_argument(
         "--via-districts",
@@ -533,7 +542,8 @@ def parse_args(argv=None):
     )
     args = parser.parse_args(argv)
     if args.run_id and args.hf_prefix == DEFAULT_HF_PREFIX:
-        args.hf_prefix = f"hf://policyengine/policyengine-us-data/staging/{args.run_id}"
+        prefix = staging_prefix(args.run_id, version=args.version)
+        args.hf_prefix = f"hf://policyengine/policyengine-us-data/{prefix}"
     return args
 
 

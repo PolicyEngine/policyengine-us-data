@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from pathlib import Path
 from typing import Mapping
 
@@ -12,7 +13,10 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from policyengine_us_data.utils.run_context import (  # noqa: E402
+    CANDIDATE_VERSION_ENV,
     DEFAULT_MODAL_APP_PREFIX,
+    DATA_PACKAGE_VERSION_ENV,
+    RELEASE_VERSION_ENV,
     RUN_ID_ENV,
     RunContext,
     build_modal_resource_name,
@@ -39,12 +43,40 @@ def _github_actions_run_id(env: Mapping[str, str]) -> str:
     )
 
 
+def _candidate_version(env: Mapping[str, str]) -> str:
+    version = (
+        env.get(CANDIDATE_VERSION_ENV)
+        or env.get(DATA_PACKAGE_VERSION_ENV)
+        or env.get("CANDIDATE_VERSION", "")
+        or env.get("VERSION_OVERRIDE", "")
+    )
+    if version:
+        return version
+    pyproject_path = _REPO_ROOT / "pyproject.toml"
+    if not pyproject_path.exists():
+        return ""
+    with pyproject_path.open("rb") as file:
+        return tomllib.load(file)["project"]["version"]
+
+
+def _release_version(env: Mapping[str, str], candidate_version: str) -> str:
+    return (
+        env.get(RELEASE_VERSION_ENV)
+        or env.get("RELEASE_VERSION", "")
+        or env.get("VERSION_OVERRIDE", "")
+        or candidate_version
+    )
+
+
 def main() -> None:
     env = os.environ
     app_prefix = env.get("US_DATA_MODAL_APP_PREFIX", DEFAULT_MODAL_APP_PREFIX)
     run_id = env.get(RUN_ID_ENV, "")
+    candidate_version = _candidate_version(env)
     context = RunContext.from_env(
         run_id=run_id or _github_actions_run_id(env),
+        candidate_version=candidate_version,
+        release_version=_release_version(env, candidate_version),
         modal_app_prefix=app_prefix,
     )
     if not context.run_id:
@@ -90,6 +122,8 @@ def main() -> None:
         "modal_app_name": context.modal_app_name,
         "modal_environment": context.modal_environment,
         "hf_staging_prefix": context.hf_staging_prefix,
+        "candidate_version": context.candidate_version,
+        "release_version": context.release_version,
         "github_run_url": context.github_run_url,
         "pipeline_volume_name": context.pipeline_volume_name,
         "staging_volume_name": context.staging_volume_name,

@@ -54,6 +54,8 @@ def test_run_pipeline_stage_1_stages_datasets_without_promoting() -> None:
     assert keywords["upload"].value is True
     assert isinstance(keywords["stage_only"], ast.Constant)
     assert keywords["stage_only"].value is True
+    assert isinstance(keywords["version"], ast.Name)
+    assert keywords["version"].id == "candidate_version"
 
 
 def test_promote_run_fails_closed_for_required_promotion_steps() -> None:

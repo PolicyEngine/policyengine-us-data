@@ -40,6 +40,8 @@ class RunMetadata:
     version: str
     start_time: str
     status: str
+    candidate_version: Optional[str] = None
+    release_version: Optional[str] = None
     error: Optional[str] = None
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
@@ -50,6 +52,10 @@ class RunMetadata:
     hf_staging_prefix: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.candidate_version is None:
+            self.candidate_version = self.version
+        if self.release_version is None:
+            self.release_version = self.version
         if self.regional_fingerprint is None and self.fingerprint is not None:
             self.regional_fingerprint = self.fingerprint
         if self.fingerprint is None and self.regional_fingerprint is not None:

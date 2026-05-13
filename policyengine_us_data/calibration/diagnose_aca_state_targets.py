@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
 from policyengine_us_data.calibration.calibration_utils import STATE_CODES
 from policyengine_us_data.datasets.cps.enhanced_cps import (
     _get_base_aca_takeup,
@@ -25,6 +26,7 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.aca_ptc_targets import (
     load_aca_ptc_state_targets,
 )
+from policyengine_us_data.utils.run_context import staging_prefix
 
 DEFAULT_HF_PREFIX = "hf://policyengine/policyengine-us-data/staging/states"
 STATE_ABBRS = sorted(STATE_CODES.values())
@@ -398,7 +400,15 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--run-id",
         default="",
-        help="Run ID to scope HF staging prefix (e.g. staging/{run_id}/states/...)",
+        help=(
+            "Run ID to scope HF staging prefix "
+            "(e.g. staging/{version}/{run_id}/states/...)"
+        ),
+    )
+    parser.add_argument(
+        "--version",
+        default=DATA_PACKAGE_VERSION,
+        help="Data package version segment for run-scoped HF staging paths.",
     )
     parser.add_argument(
         "--states",
@@ -414,9 +424,8 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     if args.run_id and args.h5_prefix == DEFAULT_HF_PREFIX:
-        args.h5_prefix = (
-            f"hf://policyengine/policyengine-us-data/staging/{args.run_id}/states"
-        )
+        prefix = staging_prefix(args.run_id, version=args.version)
+        args.h5_prefix = f"hf://policyengine/policyengine-us-data/{prefix}/states"
 
     targets = _load_targets(args.period).set_index("state")
     states = _parse_states(args.states)

@@ -34,6 +34,9 @@ from policyengine_us_data.utils.data_upload import (
     cleanup_staging_hf,
     publish_release_manifest_to_hf,
 )
+from policyengine_us_data.utils.run_context import (
+    staging_prefix as build_staging_prefix,
+)
 from policyengine_us_data.utils.version_manifest import (
     HFVersionInfo,
     build_manifest,
@@ -59,9 +62,13 @@ def collect_files(local_dir: Path, area_types: list) -> list:
     return files
 
 
-def collect_staged_rel_paths(area_types: list, run_id: str = "") -> list:
+def collect_staged_rel_paths(
+    area_types: list,
+    run_id: str = "",
+    version: str = "",
+) -> list:
     api = HfApi()
-    prefix = f"staging/{run_id}" if run_id else "staging"
+    prefix = build_staging_prefix(run_id, version=version)
     repo_files = api.list_repo_files(
         repo_id="policyengine/policyengine-us-data",
         repo_type="model",
@@ -78,8 +85,12 @@ def collect_staged_rel_paths(area_types: list, run_id: str = "") -> list:
     return sorted(rel_paths)
 
 
-def download_staged_files(rel_paths: list, run_id: str = "") -> list:
-    prefix = f"staging/{run_id}" if run_id else "staging"
+def download_staged_files(
+    rel_paths: list,
+    run_id: str = "",
+    version: str = "",
+) -> list:
+    prefix = build_staging_prefix(run_id, version=version)
     files = []
     for rel_path in rel_paths:
         local_path = Path(
@@ -131,7 +142,7 @@ def promote(files: list, rel_paths: list, version: str, run_id: str = ""):
     manifest_files = (
         [(local_path, rel_path) for local_path, rel_path in files]
         if files
-        else download_staged_files(rel_paths, run_id=run_id)
+        else download_staged_files(rel_paths, run_id=run_id, version=version)
     )
     should_finalize, missing_prefixes = preflight_release_manifest_publish(
         manifest_files,
@@ -215,7 +226,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--run-id",
         default="",
-        help="Run ID to scope HF staging paths (e.g. staging/{run_id}/...)",
+        help="Run ID to scope HF staging paths (e.g. staging/{version}/{run_id}/...)",
     )
     return parser.parse_args(argv)
 
@@ -243,7 +254,11 @@ def main(argv=None):
     run_id = args.run_id
 
     if args.promote_only:
-        rel_paths = collect_staged_rel_paths(area_types, run_id=run_id)
+        rel_paths = collect_staged_rel_paths(
+            area_types,
+            run_id=run_id,
+            version=version,
+        )
         if not rel_paths:
             logger.error("No staged H5 files found")
             return

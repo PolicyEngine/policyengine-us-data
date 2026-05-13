@@ -1,3 +1,10 @@
+## [1.113.1] - 2026-05-13
+
+### Fixed
+
+- Remove temporary CPS take-up source anchors from persisted H5 outputs and add an enhanced-CPS-only data build path.
+
+
 ## [1.113.0] - 2026-05-12
 
 ### Added

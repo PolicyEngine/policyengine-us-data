@@ -761,7 +761,7 @@ Worker function that builds a subset of H5 files.
 ### `modal_app.data_build.build_datasets`
 
 ```python
-def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, stage_only: bool = False, run_id: str = '')
+def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, skip_stage_5: bool = False, stage_only: bool = False, run_id: str = '')
 ```
 
 Build all datasets with preemption-resilient checkpointing.

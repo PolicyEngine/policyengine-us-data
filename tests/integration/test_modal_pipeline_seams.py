@@ -25,10 +25,8 @@ def _require_modal_tokens() -> None:
 
 
 def _modal_proxy_auth_headers() -> dict[str, str]:
-    key = os.environ.get("MODAL_PROXY_TOKEN_ID") or os.environ.get("MODAL_TOKEN_ID")
-    secret = os.environ.get("MODAL_PROXY_TOKEN_SECRET") or os.environ.get(
-        "MODAL_TOKEN_SECRET"
-    )
+    key = os.environ.get("MODAL_PROXY_TOKEN_ID")
+    secret = os.environ.get("MODAL_PROXY_TOKEN_SECRET")
     if not (key and secret):
         pytest.skip("Modal proxy auth credentials are required for HTTP seam tests")
     return {

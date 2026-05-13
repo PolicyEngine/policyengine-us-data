@@ -1,3 +1,10 @@
+## [1.115.1] - 2026-05-13
+
+### Changed
+
+- Add configurable publication-time H5 leaf-input and microsimulation aggregate contract checks.
+
+
 ## [1.115.0] - 2026-05-13
 
 ### Added

@@ -1,5 +1,6 @@
 import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 import h5py
@@ -48,10 +49,43 @@ MIN_FILE_SIZES = {
     "cps_2024.h5": 50 * 1024 * 1024,  # 50 MB
 }
 
-# H5 groups that must exist and contain data.
-REQUIRED_GROUPS = [
-    "household_weight",
-]
+
+@dataclass(frozen=True)
+class H5SumCheck:
+    variable: str
+    label: str
+    min_value: float | None = None
+    max_value: float | None = None
+
+
+@dataclass(frozen=True)
+class MicrosimulationAggregateCheck:
+    variable: str
+    label: str
+    statistic: str
+    min_value: float | None = None
+    max_value: float | None = None
+    map_to: str | None = None
+    filter_variable: str | None = None
+    filter_map_to: str | None = None
+    filter_min_value: float | None = None
+
+
+# H5 groups that must exist and contain data in every validated dataset.
+REQUIRED_GROUPS = ("household_weight",)
+
+# Extra file-specific leaf inputs that should survive publication. These are
+# not formula outputs; they are source or imputed inputs used by model formulas.
+REQUIRED_VARIABLES_BY_FILENAME = {
+    "enhanced_cps_2024.h5": (
+        "social_security_retirement",
+        "takes_up_snap_if_eligible",
+        "takes_up_ssi_if_eligible",
+        "takes_up_tanf_if_eligible",
+        "would_claim_wic",
+        "is_wic_at_nutritional_risk",
+    ),
+}
 
 PROHIBITED_DATASET_VARIABLES = {
     "social_security_retirement_reported",
@@ -75,10 +109,74 @@ INCOME_GROUPS = [
     "employment_income",
 ]
 
-# Aggregate thresholds for sanity checks (year 2024).
+# Aggregate thresholds for broad sanity checks (year 2024).
 MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
+
+H5_SUM_CHECKS_BY_FILENAME = {
+    "enhanced_cps_2024.h5": (
+        H5SumCheck(
+            variable="household_weight",
+            label="household_weight raw sum",
+            min_value=MIN_HOUSEHOLD_WEIGHT_SUM,
+            max_value=MAX_HOUSEHOLD_WEIGHT_SUM,
+        ),
+    ),
+    "cps_2024.h5": (
+        H5SumCheck(
+            variable="household_weight",
+            label="household_weight raw sum",
+            min_value=MIN_HOUSEHOLD_WEIGHT_SUM,
+            max_value=MAX_HOUSEHOLD_WEIGHT_SUM,
+        ),
+    ),
+}
+
+MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME = {
+    "enhanced_cps_2024.h5": (
+        MicrosimulationAggregateCheck(
+            variable="employment_income",
+            label="employment_income sum",
+            statistic="sum",
+            min_value=MIN_EMPLOYMENT_INCOME_SUM,
+        ),
+        MicrosimulationAggregateCheck(
+            variable="social_security_retirement",
+            label="social_security_retirement sum",
+            statistic="sum",
+            min_value=8e11,
+            max_value=1.6e12,
+        ),
+        MicrosimulationAggregateCheck(
+            variable="person_in_poverty",
+            label="SPM poverty rate",
+            statistic="mean",
+            min_value=0.08,
+            max_value=0.35,
+            map_to="person",
+        ),
+        MicrosimulationAggregateCheck(
+            variable="person_in_poverty",
+            label="senior SPM poverty rate",
+            statistic="mean",
+            min_value=0.05,
+            max_value=0.35,
+            map_to="person",
+            filter_variable="age",
+            filter_map_to="person",
+            filter_min_value=65,
+        ),
+    ),
+    "cps_2024.h5": (
+        MicrosimulationAggregateCheck(
+            variable="employment_income",
+            label="employment_income sum",
+            statistic="sum",
+            min_value=MIN_EMPLOYMENT_INCOME_SUM,
+        ),
+    ),
+}
 
 CLONE_DIAGNOSTICS_FILENAME = "enhanced_cps_2024.clone_diagnostics.json"
 CLONE_DIAGNOSTICS_METRICS = {
@@ -264,21 +362,6 @@ def validate_dataset(file_path: Path) -> None:
             f"This likely indicates corrupted/incomplete data."
         )
 
-    # 2. H5 structure check - verify critical groups exist with data
-    def _check_group_has_data(f, name):
-        """Return True if the H5 group/dataset has non-empty data."""
-        if name not in f:
-            return False
-        group = f[name]
-        if isinstance(group, h5py.Group):
-            if len(group.keys()) == 0:
-                return False
-            first_key = list(group.keys())[0]
-            return len(group[first_key][:]) > 0
-        elif isinstance(group, h5py.Dataset):
-            return group.size > 0
-        return False
-
     try:
         with h5py.File(file_path, "r") as f:
             prohibited_variables = sorted(
@@ -290,11 +373,26 @@ def validate_dataset(file_path: Path) -> None:
                     + ", ".join(prohibited_variables)
                 )
 
-            for group_name in REQUIRED_GROUPS:
+            required_groups = (
+                *REQUIRED_GROUPS,
+                *REQUIRED_VARIABLES_BY_FILENAME.get(filename, ()),
+            )
+            for group_name in required_groups:
                 if not _check_group_has_data(f, group_name):
                     errors.append(
                         f"Required group '{group_name}' missing or empty in H5 file."
                     )
+
+            for check in H5_SUM_CHECKS_BY_FILENAME.get(filename, ()):
+                if not _check_group_has_data(f, check.variable):
+                    continue
+                _validate_range(
+                    errors,
+                    label=check.label,
+                    value=_h5_sum(f, check.variable),
+                    min_value=check.min_value,
+                    max_value=check.max_value,
+                )
 
             # At least one income group must have data
             has_income = any(_check_group_has_data(f, g) for g in INCOME_GROUPS)
@@ -329,27 +427,12 @@ def validate_dataset(file_path: Path) -> None:
         sim = Microsimulation(
             dataset=load_dataset_for_validation(file_path, Dataset.from_file)
         )
-        year = 2024
-
-        emp_income = sim.calculate("employment_income", year).sum()
-        if emp_income < MIN_EMPLOYMENT_INCOME_SUM:
-            errors.append(
-                f"employment_income sum = ${emp_income:,.0f}, "
-                f"expected > ${MIN_EMPLOYMENT_INCOME_SUM:,.0f}. "
-                f"Data may have dropped employment income."
-            )
-
-        hh_weight = sim.calculate("household_weight", year).values.sum()
-        if hh_weight < MIN_HOUSEHOLD_WEIGHT_SUM:
-            errors.append(
-                f"household_weight sum = {hh_weight:,.0f}, "
-                f"expected > {MIN_HOUSEHOLD_WEIGHT_SUM:,.0f}."
-            )
-        if hh_weight > MAX_HOUSEHOLD_WEIGHT_SUM:
-            errors.append(
-                f"household_weight sum = {hh_weight:,.0f}, "
-                f"expected < {MAX_HOUSEHOLD_WEIGHT_SUM:,.0f}."
-            )
+        aggregate_results = _run_microsimulation_aggregate_checks(
+            sim,
+            filename=filename,
+            period=2024,
+            errors=errors,
+        )
     except Exception as e:
         errors.append(f"Microsimulation validation failed: {e}")
 
@@ -370,8 +453,105 @@ def validate_dataset(file_path: Path) -> None:
             else ""
         )
     )
-    print(f"    employment_income sum: ${emp_income:,.0f}")
-    print(f"    Household weight sum: {hh_weight:,.0f}")
+    for label, value in aggregate_results:
+        print(f"    {label}: {_format_validation_value(value)}")
+
+
+def _check_group_has_data(f, name):
+    """Return True if the H5 group/dataset has non-empty data."""
+    if name not in f:
+        return False
+    group = f[name]
+    if isinstance(group, h5py.Group):
+        if len(group.keys()) == 0:
+            return False
+        first_key = list(group.keys())[0]
+        return len(group[first_key][:]) > 0
+    elif isinstance(group, h5py.Dataset):
+        return group.size > 0
+    return False
+
+
+def _h5_sum(f, name: str) -> float:
+    group = f[name]
+    if isinstance(group, h5py.Group):
+        first_key = list(group.keys())[0]
+        return float(group[first_key][:].sum())
+    return float(group[:].sum())
+
+
+def _format_validation_value(value: float) -> str:
+    if abs(value) >= 1e6:
+        return f"{value:,.0f}"
+    return f"{value:.4f}"
+
+
+def _validate_range(
+    errors: list[str],
+    *,
+    label: str,
+    value: float,
+    min_value: float | None,
+    max_value: float | None,
+) -> None:
+    if min_value is not None and value < min_value:
+        errors.append(
+            f"{label} = {_format_validation_value(value)}, "
+            f"expected >= {_format_validation_value(min_value)}."
+        )
+    if max_value is not None and value > max_value:
+        errors.append(
+            f"{label} = {_format_validation_value(value)}, "
+            f"expected <= {_format_validation_value(max_value)}."
+        )
+
+
+def _calculate_for_check(sim, variable: str, period: int, map_to: str | None):
+    kwargs = {"period": period}
+    if map_to is not None:
+        kwargs["map_to"] = map_to
+    return sim.calculate(variable, **kwargs)
+
+
+def _run_microsimulation_aggregate_checks(
+    sim,
+    *,
+    filename: str,
+    period: int,
+    errors: list[str],
+) -> list[tuple[str, float]]:
+    results = []
+    for check in MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME.get(filename, ()):
+        values = _calculate_for_check(
+            sim,
+            check.variable,
+            period,
+            check.map_to,
+        )
+        if check.filter_variable is not None:
+            filter_values = _calculate_for_check(
+                sim,
+                check.filter_variable,
+                period,
+                check.filter_map_to,
+            )
+            if check.filter_min_value is not None:
+                values = values[filter_values >= check.filter_min_value]
+        if check.statistic == "sum":
+            result = float(values.sum())
+        elif check.statistic == "mean":
+            result = float(values.mean())
+        else:
+            raise ValueError(f"Unsupported aggregate statistic: {check.statistic}")
+        _validate_range(
+            errors,
+            label=check.label,
+            value=result,
+            min_value=check.min_value,
+            max_value=check.max_value,
+        )
+        results.append((check.label, result))
+    return results
 
 
 def validate_clone_diagnostics(file_path: Path) -> None:

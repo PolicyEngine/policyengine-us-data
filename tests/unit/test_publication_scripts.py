@@ -91,6 +91,7 @@ def test_bump_version_script_runs_from_github_directory_without_installed_packag
     (changelog_dir / "123.added").write_text("Added a thing.\n")
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
+    env["US_DATA_RUN_ID"] = "run-123"
 
     result = subprocess.run(
         [sys.executable, str(script_dir / "bump_version.py")],
@@ -105,9 +106,22 @@ def test_bump_version_script_runs_from_github_directory_without_installed_packag
     assert json.loads((script_dir / "publication_scope.json").read_text()) == {
         "base_release_version": "1.73.0",
         "candidate_scope": "1.73.0-minor",
+        "run_id": "run-123",
         "release_bump": "minor",
         "would_release_as_at_build_time": "1.74.0",
     }
+    candidate_dir = script_dir / "publication_candidates" / "run-123"
+    assert json.loads((candidate_dir / "publication_scope.json").read_text()) == {
+        "base_release_version": "1.73.0",
+        "candidate_scope": "1.73.0-minor",
+        "run_id": "run-123",
+        "release_bump": "minor",
+        "would_release_as_at_build_time": "1.74.0",
+    }
+    assert (candidate_dir / "changelog.d" / "123.added").read_text() == (
+        "Added a thing.\n"
+    )
+    assert not (changelog_dir / "123.added").exists()
 
 
 def test_fetch_publication_scope_prints_requested_field(
@@ -189,6 +203,59 @@ def test_fetch_release_version_exits_on_unsupported_version(
     assert "Unsupported version format: 1.74" in capsys.readouterr().err
 
 
+def test_restore_publication_changelog_restores_candidate_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/restore_publication_changelog.py",
+        "restore_publication_changelog_script_test",
+    )
+    root_changelog = tmp_path / "changelog.d"
+    snapshot = (
+        tmp_path / ".github" / "publication_candidates" / "run-123" / "changelog.d"
+    )
+    snapshot.mkdir(parents=True)
+    (snapshot / "123.changed.md").write_text("Changed a thing.\n")
+    monkeypatch.setattr(module, "ROOT_CHANGELOG_DIR", root_changelog)
+    monkeypatch.setattr(
+        module,
+        "PUBLICATION_CANDIDATES_DIR",
+        tmp_path / ".github" / "publication_candidates",
+    )
+
+    module.restore_candidate_changelog("run-123")
+
+    assert (root_changelog / "123.changed.md").read_text() == "Changed a thing.\n"
+
+
+def test_restore_publication_changelog_rejects_unrelated_root_fragments(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/restore_publication_changelog.py",
+        "restore_publication_changelog_conflict_script_test",
+    )
+    root_changelog = tmp_path / "changelog.d"
+    root_changelog.mkdir()
+    (root_changelog / "999.fixed.md").write_text("Unrelated fix.\n")
+    snapshot = (
+        tmp_path / ".github" / "publication_candidates" / "run-123" / "changelog.d"
+    )
+    snapshot.mkdir(parents=True)
+    (snapshot / "123.changed.md").write_text("Changed a thing.\n")
+    monkeypatch.setattr(module, "ROOT_CHANGELOG_DIR", root_changelog)
+    monkeypatch.setattr(
+        module,
+        "PUBLICATION_CANDIDATES_DIR",
+        tmp_path / ".github" / "publication_candidates",
+    )
+
+    with pytest.raises(RuntimeError, match="do not match"):
+        module.restore_candidate_changelog("run-123")
+
+
 def test_finalize_package_version_rewrites_current_rc_to_stable(
     tmp_path,
     monkeypatch,
@@ -259,6 +326,53 @@ def test_resolve_run_context_uses_publication_scope(
         == "1.75.0-minor"
     )
     assert module._release_version({}) == ""
+
+
+def test_resolve_run_context_prefers_run_scoped_publication_scope(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/resolve_run_context.py",
+        "resolve_run_context_scoped_script_test",
+    )
+    _write_pyproject(tmp_path, "1.75.0")
+    scope_dir = tmp_path / ".github"
+    scoped_dir = scope_dir / "publication_candidates" / "run-123"
+    scoped_dir.mkdir(parents=True)
+    scope_dir.mkdir(exist_ok=True)
+    (scope_dir / "publication_scope.json").write_text(
+        json.dumps(
+            {
+                "base_release_version": "1.75.0",
+                "release_bump": "minor",
+                "candidate_scope": "1.75.0-minor",
+                "would_release_as_at_build_time": "1.76.0",
+            }
+        )
+    )
+    (scoped_dir / "publication_scope.json").write_text(
+        json.dumps(
+            {
+                "base_release_version": "1.75.0",
+                "release_bump": "patch",
+                "candidate_scope": "1.75.0-patch",
+                "would_release_as_at_build_time": "1.75.1",
+            }
+        )
+    )
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+    env = {"US_DATA_RUN_ID": "run-123"}
+
+    assert module._release_bump(env) == "patch"
+    assert (
+        module._candidate_version(
+            env,
+            base_release_version="1.75.0",
+            release_bump="patch",
+        )
+        == "1.75.0-patch"
+    )
 
 
 def test_resolve_run_context_builds_candidate_scope_from_env(

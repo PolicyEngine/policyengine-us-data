@@ -1,3 +1,15 @@
+## [1.115.3] - 2026-05-14
+
+### Changed
+
+- Split candidate rc versions from final release versions for staging, promotion, and publication.
+
+### Fixed
+
+- Temporarily skip the Stage 1 Medicaid enrollment validator while its 2024 target and 2025 formula-period alignment is verified.
+- Fixed publication candidate versioning when the GitHub Actions script is invoked directly from `.github/`.
+
+
 ## [1.115.2] - 2026-05-13
 
 ### Changed

@@ -1,0 +1,6 @@
+{
+  "base_release_version": "1.115.2",
+  "candidate_scope": "1.115.2-patch",
+  "release_bump": "patch",
+  "would_release_as_at_build_time": "1.115.3"
+}

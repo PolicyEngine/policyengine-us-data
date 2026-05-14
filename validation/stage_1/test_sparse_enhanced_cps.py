@@ -228,14 +228,16 @@ def test_sparse_aca_calibration(sim):
 
 
 def test_sparse_medicaid_calibration(sim):
-    TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
+    VALIDATION_PERIOD = 2025
+    target_file = f"medicaid_enrollment_{VALIDATION_PERIOD}.csv"
+    TARGETS_PATH = (
+        Path("policyengine_us_data/storage/calibration_targets") / target_file
     )
     targets = pd.read_csv(TARGETS_PATH)
 
     state_code_hh = sim.calculate("state_code", map_to="household").values
     medicaid_enrolled = sim.calculate(
-        "medicaid_enrolled", map_to="household", period=2025
+        "medicaid_enrolled", map_to="household", period=VALIDATION_PERIOD
     )
 
     TOLERANCE = 1.0

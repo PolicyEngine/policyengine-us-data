@@ -383,27 +383,23 @@ def test_immigration_status_diversity():
     print(f"Immigration status diversity test passed: {citizen_pct:.1f}% citizens")
 
 
-@pytest.mark.verify_behavior_skip_temporarily(
-    reason=(
-        "Investigating whether comparing 2025 medicaid_enrolled against "
-        "2024 Medicaid enrollment targets is intentional."
-    )
-)
 def test_medicaid_calibration():
     import pandas as pd
     from pathlib import Path
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
 
-    TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/medicaid_enrollment_2024.csv"
+    VALIDATION_PERIOD = 2025
+    target_file = f"medicaid_enrollment_{VALIDATION_PERIOD}.csv"
+    TARGETS_PATH = (
+        Path("policyengine_us_data/storage/calibration_targets") / target_file
     )
     targets = pd.read_csv(TARGETS_PATH)
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
     state_code_hh = sim.calculate("state_code", map_to="household").values
     medicaid_enrolled = sim.calculate(
-        "medicaid_enrolled", map_to="household", period=2025
+        "medicaid_enrolled", map_to="household", period=VALIDATION_PERIOD
     )
 
     TOLERANCE = 0.45

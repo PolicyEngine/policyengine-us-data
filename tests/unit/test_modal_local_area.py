@@ -51,13 +51,13 @@ def test_promote_scripts_can_defer_staging_cleanup_for_pipeline_promotion():
 
     regional_script = local_area._build_promote_publish_script(
         version="1.73.0",
-        run_id="usdata-gha123-a1-abcdef12",
+        run_id="usdata-gha123-a1",
         rel_paths=["states/AL.h5"],
         cleanup_staging=False,
     )
     national_script = local_area._build_promote_national_publish_script(
         version="1.73.0",
-        run_id="usdata-gha123-a1-abcdef12",
+        run_id="usdata-gha123-a1",
         rel_paths=["national/US.h5"],
         cleanup_staging=False,
     )
@@ -72,7 +72,7 @@ def test_promote_publish_falls_back_to_package_version_for_new_run_ids(
     monkeypatch, tmp_path
 ):
     local_area = load_local_area_module()
-    run_id = "usdata-gha123-a1-abcdef12"
+    run_id = "usdata-gha123-a1"
     run_dir = tmp_path / run_id
     run_dir.mkdir()
     (run_dir / "manifest.json").write_text(
@@ -107,7 +107,7 @@ def test_promote_national_publish_falls_back_to_package_version_for_new_run_ids(
     monkeypatch,
 ):
     local_area = load_local_area_module()
-    run_id = "usdata-gha123-a1-abcdef12"
+    run_id = "usdata-gha123-a1"
     captured = {}
 
     monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)

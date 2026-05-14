@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MODAL_ENVIRONMENT: main
-      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+      US_DATA_MODAL_APP_PREFIX: us-data
       US_DATA_RUN_ID: ${{ inputs.run_id || '' }}
     steps:
       - uses: actions/checkout@v6

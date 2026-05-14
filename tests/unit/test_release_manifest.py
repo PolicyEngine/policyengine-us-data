@@ -211,17 +211,17 @@ def test_build_release_manifest_records_run_context(tmp_path):
         version="1.73.0",
         repo_id="policyengine/policyengine-us-data",
         run_context={
-            "run_id": "usdata-gha123-a1-abcdef12",
-            "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
-            "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1-abcdef12",
+            "run_id": "usdata-gha123-a1",
+            "modal_app_name": "us-data-1-73-0-usdata-gha123-a1",
+            "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1",
         },
         created_at="2026-04-10T12:00:00Z",
     )
 
     assert manifest["build"]["metadata"]["run_context"] == {
-        "run_id": "usdata-gha123-a1-abcdef12",
-        "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
-        "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1-abcdef12",
+        "run_id": "usdata-gha123-a1",
+        "modal_app_name": "us-data-1-73-0-usdata-gha123-a1",
+        "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1",
     }
 
 
@@ -244,9 +244,9 @@ def test_build_release_manifest_validates_against_bundle_contract(tmp_path):
         version="1.73.0",
         repo_id="policyengine/policyengine-us-data",
         run_context={
-            "run_id": "usdata-gha123-a1-abcdef12",
-            "modal_app_name": "policyengine-us-data-pub-usdata-gha123-a1-abcdef12",
-            "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1-abcdef12",
+            "run_id": "usdata-gha123-a1",
+            "modal_app_name": "us-data-1-73-0-usdata-gha123-a1",
+            "hf_staging_prefix": "staging/1.73.0-usdata-gha123-a1",
         },
         model_package_version=EXPECTED_MODEL_PACKAGE_VERSION,
         model_package_git_sha="deadbeef",

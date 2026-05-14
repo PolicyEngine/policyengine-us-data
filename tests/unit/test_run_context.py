@@ -2,8 +2,10 @@ from policyengine_us_data.utils.run_context import (
     PublicationVersions,
     RunContext,
     build_candidate_scope,
+    build_modal_app_name,
     build_modal_resource_name,
     build_run_id,
+    candidate_run_segment,
     release_version_from_bump,
     resolve_run_id,
     sanitize_run_id,
@@ -17,9 +19,8 @@ def test_run_id_from_github_identity() -> None:
         build_run_id(
             github_run_id="123456789",
             github_run_attempt="2",
-            github_sha="abcdef123456",
         )
-        == "usdata-gha123456789-a2-abcdef12"
+        == "usdata-gha123456789-a2"
     )
 
 
@@ -28,6 +29,9 @@ def test_run_id_sanitizes_for_modal_and_hf_paths() -> None:
 
 
 def test_staging_prefix_scopes_by_sanitized_version_and_run_id() -> None:
+    assert candidate_run_segment("Run ID", version="1.73.0rc1+build.5") == (
+        "1.73.0rc1+build.5-run-id"
+    )
     assert staging_prefix("Run ID", version="1.73.0rc1+build.5") == (
         "staging/1.73.0rc1+build.5-run-id"
     )
@@ -38,10 +42,20 @@ def test_staging_prefix_scopes_by_sanitized_version_and_run_id() -> None:
 def test_modal_resource_name_uses_safe_prefix_and_truncates() -> None:
     run_id = "usdata-gha123456789-a1-" + ("a" * 80)
 
-    name = build_modal_resource_name(run_id, prefix="policyengine-us-data-pub")
+    name = build_modal_resource_name(run_id, prefix="us-data")
 
-    assert name.startswith("policyengine-us-data-pub-usdata-gha123456789-a1")
+    assert name.startswith("us-data-usdata-gha123456789-a1")
     assert len(name) <= 64
+
+
+def test_modal_app_name_scopes_by_candidate_version_and_run_id() -> None:
+    assert (
+        build_modal_app_name(
+            "Run ID",
+            candidate_version="1.73.0-minor",
+        )
+        == "us-data-1-73-0-minor-run-id"
+    )
 
 
 def test_candidate_scope_uses_base_release_and_bump() -> None:
@@ -80,7 +94,6 @@ def test_run_context_from_env_records_cross_system_identity() -> None:
     run_id = build_run_id(
         github_run_id="123456789",
         github_run_attempt="1",
-        github_sha="abcdef123456",
     )
     env = {
         "GITHUB_SERVER_URL": "https://github.com",
@@ -102,9 +115,11 @@ def test_run_context_from_env_records_cross_system_identity() -> None:
     context = RunContext.from_env(env=env)
 
     assert context.run_id == run_id
-    assert context.modal_app_name == (
-        "policyengine-us-data-pub-usdata-gha123456789-a1-abcdef12"
+    assert context.modal_app_name == build_modal_app_name(
+        run_id,
+        candidate_version="1.73.0rc1",
     )
+    assert context.modal_app_name == "us-data-1-73-0rc1-usdata-gha123456789-a1"
     assert context.modal_environment == "main"
     assert context.candidate_version == "1.73.0rc1"
     assert context.release_version == "1.73.0"
@@ -128,7 +143,7 @@ def test_run_context_export_env_includes_modal_and_hf_values() -> None:
             "US_DATA_CANDIDATE_VERSION": "1.73.0rc1",
             "US_DATA_RELEASE_VERSION": "1.73.0",
         },
-        modal_app_name="policyengine-us-data-pub-run-123",
+        modal_app_name="us-data-run-123",
         modal_environment="main",
     )
 
@@ -138,7 +153,7 @@ def test_run_context_export_env_includes_modal_and_hf_values() -> None:
     assert exported["US_DATA_CANDIDATE_VERSION"] == "1.73.0rc1"
     assert exported["US_DATA_RELEASE_VERSION"] == "1.73.0"
     assert exported["US_DATA_PACKAGE_VERSION"] == "1.73.0rc1"
-    assert exported["MODAL_APP_NAME"] == "policyengine-us-data-pub-run-123"
+    assert exported["MODAL_APP_NAME"] == "us-data-run-123"
     assert exported["MODAL_ENVIRONMENT"] == "main"
     assert exported["US_DATA_HF_STAGING_PREFIX"] == "staging/1.73.0rc1-run-123"
 
@@ -150,7 +165,7 @@ def test_run_context_builds_candidate_scope_without_release_version() -> None:
             "US_DATA_BASE_RELEASE_VERSION": "1.73.0",
             "US_DATA_RELEASE_BUMP": "minor",
         },
-        modal_app_name="policyengine-us-data-pub-run-123",
+        modal_app_name="us-data-run-123",
         modal_environment="main",
     )
 

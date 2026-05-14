@@ -13,6 +13,7 @@ from modal_app.pipeline import (  # noqa: E402
     NATIONAL_FIT_LAMBDA_L0,
     _build_diagnostics_upload_script,
     _calibration_package_parameters,
+    _new_run_metadata,
     _pipeline_error_summary,
     _run_required_promotion_subprocess,
 )
@@ -21,6 +22,7 @@ from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
     write_run_meta,
 )
+from policyengine_us_data.utils.run_context import RunContext  # noqa: E402
 from policyengine_us_data.utils.step_manifest import ArtifactReference  # noqa: E402
 
 
@@ -100,6 +102,37 @@ def test_pipeline_error_summary_falls_back_to_bounded_traceback(monkeypatch):
     assert summary.startswith("\n[truncated older error text; omitted ")
     assert summary.endswith("newest <redacted:API_TOKEN>")
     assert "old traceback" not in summary
+
+
+def test_new_run_metadata_accepts_release_context_fields_once():
+    context = RunContext.from_mapping(
+        {
+            "run_id": "run-123",
+            "candidate_version": "1.73.0-minor",
+            "release_version": "",
+            "base_release_version": "1.73.0",
+            "release_bump": "minor",
+            "modal_app_name": "us-data-1-73-0-minor-run-123",
+            "modal_environment": "main",
+            "hf_staging_prefix": "staging/1.73.0-minor-run-123",
+        }
+    )
+
+    meta = _new_run_metadata(
+        run_id=context.run_id,
+        branch="main",
+        sha="abc123",
+        candidate_version=context.candidate_version,
+        release_version=context.release_version,
+        run_context=context,
+    )
+
+    assert meta.base_release_version == "1.73.0"
+    assert meta.release_bump == "minor"
+    assert meta.modal_app_name == "us-data-1-73-0-minor-run-123"
+    assert meta.hf_staging_prefix == "staging/1.73.0-minor-run-123"
+    assert meta.run_context["base_release_version"] == "1.73.0"
+    assert meta.run_context["release_bump"] == "minor"
 
 
 class TestRunMetadata:

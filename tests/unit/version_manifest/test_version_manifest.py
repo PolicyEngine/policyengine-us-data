@@ -167,11 +167,11 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            run_id="usdata-gha123-a1-abc12345",
+            run_id="usdata-gha123-a1",
             diagnostics_path=("calibration/runs/1.73.0_abc12345_20260310/diagnostics/"),
         )
         data = manifest.to_dict()
-        assert data["run_id"] == "usdata-gha123-a1-abc12345"
+        assert data["run_id"] == "usdata-gha123-a1"
         assert "diagnostics/" in data["diagnostics_path"]
 
     def test_run_id_roundtrip(self, sample_generations, sample_hf_info):
@@ -183,11 +183,11 @@ class TestVersionManifestSerialization:
                 bucket="policyengine-us-data",
                 generations=sample_generations,
             ),
-            run_id="usdata-gha123-a1-abc12345",
+            run_id="usdata-gha123-a1",
             diagnostics_path="calibration/runs/x/diag/",
         )
         roundtripped = VersionManifest.from_dict(manifest.to_dict())
-        assert roundtripped.run_id == "usdata-gha123-a1-abc12345"
+        assert roundtripped.run_id == "usdata-gha123-a1"
         assert roundtripped.diagnostics_path == ("calibration/runs/x/diag/")
 
 
@@ -323,13 +323,13 @@ class TestBuildManifest:
             "1.72.3",
             ["file.h5"],
             hf_info=sample_hf_info,
-            run_id="usdata-gha123-a1-abcdef12",
+            run_id="usdata-gha123-a1",
         )
 
         assert result.hf is not None
         assert result.hf.commit == "abc123def456"
         assert result.hf.repo == ("policyengine/policyengine-us-data")
-        assert result.run_id == "usdata-gha123-a1-abcdef12"
+        assert result.run_id == "usdata-gha123-a1"
         assert result.policyengine_us == sample_policyengine_us_info
 
     @patch(f"{_MOD}.get_policyengine_us_build_info")

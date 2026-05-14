@@ -70,13 +70,13 @@ def test_lookup_worker_function_uses_run_context_env(monkeypatch) -> None:
             return object()
 
     monkeypatch.setitem(sys.modules, "modal", SimpleNamespace(Function=_FakeFunction))
-    monkeypatch.setenv("US_DATA_MODAL_APP_NAME", "policyengine-us-data-pub-run")
+    monkeypatch.setenv("US_DATA_MODAL_APP_NAME", "us-data-run")
     monkeypatch.setenv("US_DATA_MODAL_ENVIRONMENT", "main")
 
     _lookup_worker_function()
 
     assert captured == {
-        "app_name": "policyengine-us-data-pub-run",
+        "app_name": "us-data-run",
         "function_name": "build_matrix_chunk_worker",
         "kwargs": {"environment_name": "main"},
     }

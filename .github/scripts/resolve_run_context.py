@@ -46,7 +46,6 @@ def _github_actions_run_id(env: Mapping[str, str]) -> str:
     return build_run_id(
         github_run_id=env.get("GITHUB_RUN_ID", ""),
         github_run_attempt=env.get("GITHUB_RUN_ATTEMPT", "1"),
-        github_sha=env.get("GITHUB_SHA", ""),
     )
 
 

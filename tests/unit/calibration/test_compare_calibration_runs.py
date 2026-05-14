@@ -15,25 +15,25 @@ from policyengine_us_data.calibration.compare_calibration_runs import (
 
 
 def test_run_comparison_paths_are_run_scoped():
-    paths = RunComparisonPaths("usdata-gha123-a1-abcdef12", version="1.73.0")
+    paths = RunComparisonPaths("usdata-gha123-a1", version="1.73.0")
 
     assert (
         paths.regional_diagnostics
         == "hf://policyengine/policyengine-us-data/calibration/runs/"
-        "usdata-gha123-a1-abcdef12/diagnostics/unified_diagnostics.csv"
+        "usdata-gha123-a1/diagnostics/unified_diagnostics.csv"
     )
     assert (
         paths.national_diagnostics
         == "hf://policyengine/policyengine-us-data/calibration/runs/"
-        "usdata-gha123-a1-abcdef12/diagnostics/national_unified_diagnostics.csv"
+        "usdata-gha123-a1/diagnostics/national_unified_diagnostics.csv"
     )
     assert (
         paths.candidate_h5 == "hf://policyengine/policyengine-us-data/staging/"
-        "1.73.0-usdata-gha123-a1-abcdef12/national/US.h5"
+        "1.73.0-usdata-gha123-a1/national/US.h5"
     )
     assert (
         paths.legacy_h5 == "hf://policyengine/policyengine-us-data/staging/"
-        "1.73.0-usdata-gha123-a1-abcdef12/enhanced_cps_2024.h5"
+        "1.73.0-usdata-gha123-a1/enhanced_cps_2024.h5"
     )
 
 

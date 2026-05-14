@@ -200,7 +200,7 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
         workers=1,
         n_clones=10,
         run_id="bench-run",
-        modal_app_name="policyengine-us-data-pub-bench-run",
+        modal_app_name="us-data-bench-run",
         modal_environment="main",
         pipeline_volume_name="pipeline-artifacts-bench-run",
         chunked_matrix=True,
@@ -220,11 +220,8 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     assert captured["cmd"][chunk_dir_idx] == str(artifacts_dir / "matrix_build")
     assert captured["env"]["POLICYENGINE_US_DATA_RUN_ID"] == "bench-run"
     assert captured["env"]["US_DATA_RUN_ID"] == "bench-run"
-    assert (
-        captured["env"]["US_DATA_MODAL_APP_NAME"]
-        == "policyengine-us-data-pub-bench-run"
-    )
-    assert captured["env"]["MODAL_APP_NAME"] == "policyengine-us-data-pub-bench-run"
+    assert captured["env"]["US_DATA_MODAL_APP_NAME"] == "us-data-bench-run"
+    assert captured["env"]["MODAL_APP_NAME"] == "us-data-bench-run"
     assert captured["env"]["US_DATA_MODAL_ENVIRONMENT"] == "main"
     assert captured["env"]["MODAL_ENVIRONMENT"] == "main"
     assert (

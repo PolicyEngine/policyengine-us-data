@@ -32,6 +32,24 @@ source-variable cloning, postprocessing, or writing concern. Do not place
 country-specific payload mutation in `build_h5()` when it can be represented as
 a postprocessor.
 
+## Worker Chunk Execution
+
+`LocalH5WorkerService` is the reusable Stage 4 boundary for executing one
+prepared local-H5 worker chunk. It consumes a `WorkerSession`, typed
+`AreaBuildRequest` objects, and a `WorkerExecutionConfig`, then returns a
+structured `WorkerResult`.
+
+`modal_app.worker_script` should remain a thin CLI/JSON adapter around this
+service. It may parse legacy `--work-items` and typed `--requests-json`, prepare
+the worker session, and print the legacy coordinator JSON shape, but it should
+not regain build-loop, write-loop, or validation-loop logic.
+
+For now, `WorkerResult.to_legacy_dict()` preserves the existing coordinator
+contract with `completed`, `failed`, `errors`, `validation_rows`, and
+`validation_summary`. New code should prefer the structured `results` and
+`issues` fields. Removing the legacy shape and moving the coordinator off worker
+subprocess JSON is a later migration step.
+
 ## Payload Postprocessors
 
 Payload postprocessors are ordered, country- or product-specific transformations

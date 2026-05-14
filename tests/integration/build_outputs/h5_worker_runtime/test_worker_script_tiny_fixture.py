@@ -140,6 +140,9 @@ def test_worker_builds_district_h5_from_saved_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == [f"district:{request.area_id}"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == f"district:{request.area_id}"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -158,6 +161,9 @@ def test_worker_builds_state_h5_from_package_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == [f"state:{request.area_id}"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == f"state:{request.area_id}"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -177,6 +183,9 @@ def test_worker_builds_national_h5_from_package_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == ["national:US"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == "national:US"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -213,6 +222,12 @@ include:
     assert parsed["failed"] == []
     assert parsed["errors"] == []
     assert parsed["completed"] == ["district:NC-01", "state:NC", "national:US"]
+    assert parsed["issues"] == []
+    assert [item["key"] for item in parsed["results"]] == [
+        "district:NC-01",
+        "state:NC",
+        "national:US",
+    ]
     assert len(parsed["validation_rows"]) == 3
     assert set(parsed["validation_summary"]) == {
         "district:NC-01",

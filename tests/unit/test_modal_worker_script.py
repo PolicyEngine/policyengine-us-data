@@ -177,31 +177,28 @@ def test_resolve_request_input_skips_legacy_work_item_without_request():
     assert catalog.received_item == (work_item, geography)
 
 
-def test_resolve_output_path_keeps_outputs_under_worker_directory(tmp_path):
-    output_dir = tmp_path / "worker-out"
-    output_dir.mkdir()
+def test_resolve_worker_requests_records_legacy_conversion_issues():
+    catalog = FakeAreaCatalog()
+    geography = object()
+    bad_work_item = {"type": "district", "id": "bad"}
+    good_work_item = {"type": "national", "id": "US"}
+    catalog.raise_for = bad_work_item
 
-    resolved = worker_script._resolve_output_path(
-        output_dir=output_dir,
-        output_relative_path="states/CA.h5",
+    requests, issues = worker_script._resolve_worker_requests(
+        request_input_mode="work_items",
+        request_inputs=(bad_work_item, good_work_item),
+        area_catalog=catalog,
+        geography=geography,
     )
 
-    assert resolved == output_dir / "states" / "CA.h5"
-
-
-def test_resolve_output_path_rejects_escaped_request_path(tmp_path):
-    output_dir = tmp_path / "worker-out"
-    output_dir.mkdir()
-
-    try:
-        worker_script._resolve_output_path(
-            output_dir=output_dir,
-            output_relative_path="../escaped.h5",
-        )
-    except ValueError as exc:
-        assert "must stay within the worker output_dir" in str(exc)
-    else:
-        raise AssertionError("Expected _resolve_output_path to reject traversal")
+    assert len(requests) == 1
+    assert requests[0].area_type == "national"
+    assert requests[0].area_id == "US"
+    assert len(issues) == 1
+    assert issues[0].item == "district:bad"
+    assert issues[0].phase == "request"
+    assert issues[0].message == "bad work item"
+    assert "ValueError: bad work item" in issues[0].traceback
 
 
 def test_log_worker_session_ready_includes_bootstrap_fallback_reason(capsys):

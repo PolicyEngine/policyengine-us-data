@@ -46,8 +46,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v8.1.0
 
-      - name: Install Modal CLI
-        run: pip install modal
+      - name: Install promotion CLI deps
+        run: pip install modal towncrier
 
       - name: Resolve run context
         id: run-context
@@ -58,13 +58,15 @@ jobs:
 
       - name: Finalize package version
         run: |
+          python .github/scripts/restore_publication_changelog.py
           python .github/scripts/finalize_package_version.py
+          towncrier build --yes --version "$US_DATA_RELEASE_VERSION"
           uv lock
 
       - name: Commit final package version
         uses: EndBug/add-and-commit@v10
         with:
-          add: "pyproject.toml uv.lock"
+          add: "pyproject.toml uv.lock CHANGELOG.md changelog.d"
           message: Finalize package version
 
       - name: Build final wheel

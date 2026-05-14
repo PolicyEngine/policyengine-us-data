@@ -57,7 +57,19 @@ def _pyproject_version() -> str:
         return tomllib.load(file)["project"]["version"]
 
 
-def _publication_scope() -> dict[str, str]:
+def _publication_scope(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    env = env or os.environ
+    run_id = env.get(RUN_ID_ENV, "")
+    if run_id:
+        candidate_path = (
+            _REPO_ROOT
+            / ".github"
+            / "publication_candidates"
+            / run_id
+            / "publication_scope.json"
+        )
+        if candidate_path.exists():
+            return json.loads(candidate_path.read_text())
     path = _REPO_ROOT / ".github" / "publication_scope.json"
     if not path.exists():
         return {}
@@ -65,7 +77,7 @@ def _publication_scope() -> dict[str, str]:
 
 
 def _base_release_version(env: Mapping[str, str]) -> str:
-    scope = _publication_scope()
+    scope = _publication_scope(env)
     value = (
         env.get(BASE_RELEASE_VERSION_ENV)
         or env.get("BASE_RELEASE_VERSION", "")
@@ -77,7 +89,7 @@ def _base_release_version(env: Mapping[str, str]) -> str:
 
 
 def _release_bump(env: Mapping[str, str]) -> str:
-    scope = _publication_scope()
+    scope = _publication_scope(env)
     value = (
         env.get(RELEASE_BUMP_ENV)
         or env.get("RELEASE_BUMP", "")
@@ -94,7 +106,7 @@ def _candidate_version(
     base_release_version: str = "",
     release_bump: str = "",
 ) -> str:
-    scope = _publication_scope()
+    scope = _publication_scope(env)
     version = (
         env.get(CANDIDATE_SCOPE_ENV)
         or env.get(CANDIDATE_VERSION_ENV)

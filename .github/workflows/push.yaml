@@ -62,7 +62,7 @@ jobs:
           folder: docs/_build/html
           clean: true
 
-  # ── Publication candidate scope + changelog on ordinary pushes ──
+  # ── Publication candidate scope + changelog snapshot on ordinary pushes ──
   versioning:
     name: Versioning
     runs-on: ubuntu-latest
@@ -87,11 +87,11 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@v8.1.0
-      - run: pip install towncrier
-      - name: Bump version and build changelog
+      - name: Snapshot candidate changelog fragments
+        env:
+          US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
         run: |
           python .github/bump_version.py
-          towncrier build --yes --version "$(python .github/scripts/fetch_publication_scope.py would_release_as_at_build_time)"
       - name: Generate pipeline documentation artifacts
         run: uv run --no-sync --with pyyaml python scripts/extract_pipeline_docs.py
       - name: Update lockfile

@@ -5,7 +5,11 @@ import re
 import sys
 from pathlib import Path
 
-from policyengine_us_data.utils.run_context import (
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from policyengine_us_data.utils.run_context import (  # noqa: E402
     build_candidate_scope,
     release_version_from_bump,
 )
@@ -63,9 +67,8 @@ def write_publication_scope(path: Path, payload: dict[str, str]) -> None:
 
 
 def main():
-    root = Path(__file__).resolve().parent.parent
-    pyproject = root / "pyproject.toml"
-    changelog_dir = root / "changelog.d"
+    pyproject = _REPO_ROOT / "pyproject.toml"
+    changelog_dir = _REPO_ROOT / "changelog.d"
 
     current = get_current_version(pyproject)
     bump = infer_bump(changelog_dir)
@@ -78,7 +81,7 @@ def main():
     print(f"Would release as at build time: {would_release_as}")
 
     write_publication_scope(
-        root / PUBLICATION_SCOPE_PATH,
+        _REPO_ROOT / PUBLICATION_SCOPE_PATH,
         {
             "base_release_version": current,
             "release_bump": bump,

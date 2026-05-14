@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -59,6 +62,52 @@ def test_bump_version_computes_candidate_scope_without_mutating_pyproject(
 
     assert 'version = "1.73.0"' in (tmp_path / "pyproject.toml").read_text()
     assert module.infer_bump(changelog_dir) == "minor"
+
+
+def test_bump_version_script_runs_from_github_directory_without_installed_package(
+    tmp_path,
+):
+    repo = tmp_path / "repo"
+    script_dir = repo / ".github"
+    package_utils_dir = repo / "policyengine_us_data" / "utils"
+    changelog_dir = repo / "changelog.d"
+    script_dir.mkdir(parents=True)
+    package_utils_dir.mkdir(parents=True)
+    changelog_dir.mkdir()
+    shutil.copyfile(
+        REPO_ROOT / ".github" / "bump_version.py", script_dir / "bump_version.py"
+    )
+    shutil.copyfile(
+        REPO_ROOT / "policyengine_us_data" / "utils" / "run_context.py",
+        package_utils_dir / "run_context.py",
+    )
+    shutil.copyfile(
+        REPO_ROOT / "policyengine_us_data" / "utils" / "canonical_json.py",
+        package_utils_dir / "canonical_json.py",
+    )
+    (repo / "policyengine_us_data" / "__init__.py").write_text("")
+    (package_utils_dir / "__init__.py").write_text("")
+    _write_pyproject(repo, "1.73.0")
+    (changelog_dir / "123.added").write_text("Added a thing.\n")
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, str(script_dir / "bump_version.py")],
+        cwd=repo,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads((script_dir / "publication_scope.json").read_text()) == {
+        "base_release_version": "1.73.0",
+        "candidate_scope": "1.73.0-minor",
+        "release_bump": "minor",
+        "would_release_as_at_build_time": "1.74.0",
+    }
 
 
 def test_fetch_publication_scope_prints_requested_field(

@@ -942,9 +942,14 @@ def test_load_national_taxable_agi_domain_filing_status_targets_creates_structur
             },
         ]
     )
+
+    def fake_get_soi(year: int) -> pd.DataFrame:
+        assert year == 2024
+        return soi_rows
+
     monkeypatch.setattr(
-        "policyengine_us_data.db.etl_irs_soi.load_tracked_soi_targets",
-        lambda: soi_rows,
+        "policyengine_us_data.db.etl_irs_soi.get_soi",
+        fake_get_soi,
     )
 
     with Session(engine) as session:
@@ -978,6 +983,7 @@ def test_load_national_taxable_agi_domain_filing_status_targets_creates_structur
         3_000_000.0,
         4_000.0,
     }
+    assert set(rows["period"].astype(int)) == {2024}
     assert 999.0 not in set(rows["value"].astype(float))
 
     with engine.connect() as conn:

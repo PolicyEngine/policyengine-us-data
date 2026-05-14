@@ -31,6 +31,7 @@ from policyengine_us_data.utils.raw_cache import (
     save_bytes,
 )
 from policyengine_us_data.utils.soi import (
+    get_soi,
     get_tracked_soi_row,
     load_tracked_soi_targets,
     select_best_tracked_soi_rows,
@@ -1086,7 +1087,7 @@ def load_national_taxable_agi_domain_filing_status_targets(
     target_year: int,
 ) -> None:
     """Create positive-domain SOI income targets by AGI band and filing status."""
-    soi = select_best_tracked_soi_rows(load_tracked_soi_targets(), target_year)
+    soi = get_soi(target_year)
     rows = soi[
         soi["Variable"].isin(SOI_TAXABLE_AGI_DOMAIN_TARGET_VARIABLES)
         & (soi["Taxable only"])
@@ -1113,7 +1114,7 @@ def load_national_taxable_agi_domain_filing_status_targets(
             session,
             stratum_id=stratum.stratum_id,
             variable="tax_unit_count" if bool(row["Count"]) else target_variable,
-            period=int(row["Year"]),
+            period=int(target_year),
             value=float(row["Value"]),
             source="IRS SOI",
             notes=notes,
@@ -1717,7 +1718,7 @@ def load_soi_data(
         load_national_taxable_agi_domain_filing_status_targets(
             session,
             filer_strata["national"],
-            national_year,
+            target_year or national_year,
         )
         load_national_fine_agi_targets(session, filer_strata["national"], national_year)
         load_national_ltcg_agi_targets(session, filer_strata["national"], national_year)

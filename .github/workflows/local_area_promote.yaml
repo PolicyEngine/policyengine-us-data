@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'Run ID to promote (e.g. usdata-gha123456-a1-abcdef12)'
+        description: 'Run ID to promote (e.g. usdata-gha123456-a1)'
         required: true
         type: string
 
@@ -22,7 +22,7 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
       MODAL_ENVIRONMENT: main
-      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+      US_DATA_MODAL_APP_PREFIX: us-data
       US_DATA_RUN_ID: ${{ github.event.inputs.run_id }}
 
     steps:

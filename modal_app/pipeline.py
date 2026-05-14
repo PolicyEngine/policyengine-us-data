@@ -827,6 +827,28 @@ def _write_validation_diagnostics(
 # ── Orchestrator ─────────────────────────────────────────────────
 
 
+def _new_run_metadata(
+    *,
+    run_id: str,
+    branch: str,
+    sha: str,
+    candidate_version: str,
+    release_version: str,
+    run_context: RunContext,
+) -> RunMetadata:
+    return RunMetadata(
+        run_id=run_id,
+        branch=branch,
+        sha=sha,
+        version=candidate_version,
+        candidate_version=candidate_version,
+        release_version=release_version,
+        start_time=datetime.now(timezone.utc).isoformat(),
+        status="running",
+        **_metadata_run_fields(run_context),
+    )
+
+
 @app.function(
     image=image,
     cpu=2,
@@ -1021,18 +1043,13 @@ def run_pipeline(
             )
         _apply_run_context_env(current_run_context)
         run_id = current_run_context.run_id
-        meta = RunMetadata(
+        meta = _new_run_metadata(
             run_id=run_id,
             branch=branch,
             sha=sha,
-            version=candidate_version,
             candidate_version=candidate_version,
             release_version=release_version,
-            base_release_version=current_run_context.base_release_version,
-            release_bump=current_run_context.release_bump,
-            start_time=datetime.now(timezone.utc).isoformat(),
-            status="running",
-            **_metadata_run_fields(current_run_context),
+            run_context=current_run_context,
         )
 
     # Create run directory

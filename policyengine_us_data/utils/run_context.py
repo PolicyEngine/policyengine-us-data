@@ -25,7 +25,7 @@ RELEASE_BUMP_ENV = "US_DATA_RELEASE_BUMP"
 DATA_PACKAGE_VERSION_ENV = "US_DATA_PACKAGE_VERSION"
 MODAL_APP_NAME_ENV = "US_DATA_MODAL_APP_NAME"
 MODAL_ENVIRONMENT_ENV = "US_DATA_MODAL_ENVIRONMENT"
-DEFAULT_MODAL_APP_PREFIX = "policyengine-us-data-pub"
+DEFAULT_MODAL_APP_PREFIX = "us-data"
 DEFAULT_MODAL_ENVIRONMENT = "main"
 DEFAULT_MAX_RESOURCE_NAME_LENGTH = 64
 VALID_RELEASE_BUMPS = frozenset({"major", "minor", "patch"})
@@ -109,14 +109,12 @@ def build_run_id(
     *,
     github_run_id: str,
     github_run_attempt: str,
-    github_sha: str,
 ) -> str:
     """Build a deterministic run ID from GitHub Actions identity."""
     if not github_run_id:
         raise ValueError("github_run_id is required")
     attempt = github_run_attempt or "1"
-    sha = (github_sha or "unknown")[:8]
-    return sanitize_run_id(f"usdata-gha{github_run_id}-a{attempt}-{sha}")
+    return sanitize_run_id(f"usdata-gha{github_run_id}-a{attempt}")
 
 
 def build_modal_resource_name(
@@ -132,6 +130,37 @@ def build_modal_resource_name(
     )
 
 
+def candidate_run_segment(
+    run_id: str,
+    candidate_version: str = "",
+    *,
+    version: str = "",
+) -> str:
+    """Return the shared candidate/run segment for staging and app names."""
+    resolved_run_id = sanitize_run_id(run_id)
+    resolved_candidate_version = candidate_version or version
+    if not resolved_candidate_version:
+        return resolved_run_id
+    return sanitize_staging_version(
+        f"{sanitize_staging_version(resolved_candidate_version)}-{resolved_run_id}"
+    )
+
+
+def build_modal_app_name(
+    run_id: str,
+    candidate_version: str = "",
+    *,
+    prefix: str = DEFAULT_MODAL_APP_PREFIX,
+    max_length: int = DEFAULT_MAX_RESOURCE_NAME_LENGTH,
+) -> str:
+    """Build a safe Modal app name from candidate scope and run ID."""
+    return build_modal_resource_name(
+        candidate_run_segment(run_id, candidate_version),
+        prefix=prefix,
+        max_length=max_length,
+    )
+
+
 def staging_prefix(
     run_id: str = "",
     candidate_version: str = "",
@@ -140,14 +169,9 @@ def staging_prefix(
 ) -> str:
     if not run_id:
         return "staging"
-    resolved_run_id = sanitize_run_id(run_id)
-    resolved_candidate_version = candidate_version or version
-    if not resolved_candidate_version:
-        return f"staging/{resolved_run_id}"
-    staging_scope = sanitize_staging_version(
-        f"{sanitize_staging_version(resolved_candidate_version)}-{resolved_run_id}"
+    return (
+        f"staging/{candidate_run_segment(run_id, candidate_version, version=version)}"
     )
-    return f"staging/{staging_scope}"
 
 
 def github_run_url(env: Mapping[str, str]) -> str:
@@ -368,8 +392,9 @@ class RunContext:
             or env.get(MODAL_APP_NAME_ENV, "")
             or env.get("MODAL_APP_NAME", "")
             or (
-                build_modal_resource_name(
+                build_modal_app_name(
                     resolved_run_id,
+                    candidate_version=resolved_candidate_version,
                     prefix=modal_app_prefix,
                 )
                 if resolved_run_id

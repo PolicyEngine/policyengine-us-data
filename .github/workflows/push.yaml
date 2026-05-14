@@ -20,7 +20,7 @@ jobs:
       github_run_url: ${{ steps.run-context.outputs.github_run_url }}
     env:
       MODAL_ENVIRONMENT: main
-      US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
+      US_DATA_MODAL_APP_PREFIX: us-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

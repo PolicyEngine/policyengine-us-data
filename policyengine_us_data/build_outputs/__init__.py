@@ -8,5 +8,6 @@ dataset snapshot contracts, worker input normalization, worker-bootstrap
 artifacts, worker-scoped session and validation context setup, microsimulation
 access helpers, clone selection, entity reindexing, source-variable cloning,
 validated H5 payload contracts, ordered output postprocessing, one-area payload
-building, H5 writing, and worker chunk execution.
+building, H5 writing, worker chunk execution, and coordinator-side typed request
+partitioning and worker-response normalization.
 """

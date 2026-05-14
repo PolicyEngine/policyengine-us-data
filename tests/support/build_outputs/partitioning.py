@@ -41,6 +41,8 @@ def load_partitioning_exports():
     return {
         "module": module,
         "flatten_chunks": flatten_chunks,
+        "partition_weighted_area_requests": module.partition_weighted_area_requests,
         "partition_weighted_work_items": module.partition_weighted_work_items,
+        "WeightedAreaRequest": module.WeightedAreaRequest,
         "work_item_key": module.work_item_key,
     }

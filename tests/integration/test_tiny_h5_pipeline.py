@@ -129,6 +129,44 @@ def test_saved_geography_h5_pipeline_builds_regional_and_national_outputs():
         cleanup.remote(run_id)
 
 
+def test_deployed_regional_coordinator_builds_from_seeded_artifacts():
+    _require_modal_tokens()
+
+    run_id = _run_id("h5-coordinator")
+    seed = _function(HARNESS_APP_NAME, "seed_h5_case")
+    inspect = _function(HARNESS_APP_NAME, "inspect_h5_outputs")
+    cleanup = _function(HARNESS_APP_NAME, "cleanup_h5_case")
+    coordinate = _function(LOCAL_AREA_APP_NAME, "coordinate_publish")
+
+    try:
+        seeded = seed.remote(run_id, "saved_geography_success")
+
+        result = coordinate.remote(
+            branch="main",
+            num_workers=1,
+            skip_upload=True,
+            n_clones=seeded["n_clones"],
+            validate=False,
+            run_id=run_id,
+            work_items_override=_work_items("district", "state"),
+        )
+
+        assert result["message"].endswith("Upload skipped.")
+        assert result["reuse_measurement"]["expected_outputs"] == 2
+        assert result["reuse_measurement"]["invalid_outputs"] == 0
+
+        inspection = inspect.remote(
+            run_id,
+            ["districts/NC-01.h5", "states/NC.h5"],
+        )
+        _assert_output_contract(
+            inspection,
+            ("districts/NC-01.h5", "states/NC.h5"),
+        )
+    finally:
+        cleanup.remote(run_id)
+
+
 def test_package_fallback_h5_pipeline_builds_district_output():
     _require_modal_tokens()
 

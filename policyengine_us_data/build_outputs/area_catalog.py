@@ -153,6 +153,51 @@ class USAreaCatalog:
             return ()
         return (request,)
 
+    def build_expected_regional_requests(
+        self,
+        *,
+        target_cd_geoids: Sequence[Any],
+        geography: Any | None = None,
+        include_cities: Sequence[str] = ("NYC",),
+    ) -> AreaRequests:
+        """Enumerate the canonical regional H5 release shape.
+
+        This method owns the release-output universe for regional local H5s:
+        every configured state, every target congressional district supplied by
+        the target adapter, and explicitly supported city outputs. Callers
+        should query targets elsewhere and pass the resulting CD GEOIDs in; the
+        catalog stays responsible for turning that target universe into output
+        requests.
+
+        Args:
+            target_cd_geoids: Congressional district GEOIDs present in the
+                calibration target universe.
+            geography: Optional clone geography used only to derive validation
+                IDs for city outputs such as NYC.
+            include_cities: Supported city IDs to include in the release shape.
+
+        Returns:
+            State, district, and city requests in production output order.
+        """
+
+        cd_geoids = self._unique_cd_geoids(target_cd_geoids)
+        requests: list[AreaBuildRequest] = []
+        requests.extend(
+            self._build_release_state_request(
+                state_code=state_code,
+                state_fips=state_fips,
+            )
+            for state_fips, state_code in sorted(self._state_codes.items())
+        )
+        requests.extend(
+            self._build_district_request(cd_geoid) for cd_geoid in cd_geoids
+        )
+        requests.extend(
+            self._build_release_city_request(city_id, geography=geography)
+            for city_id in include_cities
+        )
+        return tuple(requests)
+
     def build_city_request(
         self,
         city_id: str,
@@ -325,6 +370,28 @@ class USAreaCatalog:
             validation_geographic_ids=(str(state_fips),),
         )
 
+    def _build_release_state_request(
+        self,
+        *,
+        state_code: str,
+        state_fips: int,
+    ) -> AreaBuildRequest:
+        return AreaBuildRequest(
+            area_type="state",
+            area_id=state_code,
+            display_name=state_code,
+            output_relative_path=f"states/{state_code}.h5",
+            filters=(
+                AreaFilter(
+                    geography_field="state_fips",
+                    op="eq",
+                    value=state_fips,
+                ),
+            ),
+            validation_geo_level="state",
+            validation_geographic_ids=(str(state_fips),),
+        )
+
     def _build_district_request(self, cd_geoid: str) -> AreaBuildRequest:
         friendly_name = self.get_district_friendly_name(cd_geoid)
         return AreaBuildRequest(
@@ -341,6 +408,33 @@ class USAreaCatalog:
             ),
             validation_geo_level="district",
             validation_geographic_ids=(str(cd_geoid),),
+        )
+
+    def _build_release_city_request(
+        self,
+        city_id: str,
+        *,
+        geography: Any | None,
+    ) -> AreaBuildRequest:
+        if city_id != "NYC":
+            raise ValueError(f"Unknown city: {city_id}")
+
+        return AreaBuildRequest(
+            area_type="city",
+            area_id="NYC",
+            display_name="NYC",
+            output_relative_path="cities/NYC.h5",
+            filters=(
+                AreaFilter(
+                    geography_field="county_fips",
+                    op="in",
+                    value=self._nyc_county_fips,
+                ),
+            ),
+            validation_geo_level="district",
+            validation_geographic_ids=(
+                self._nyc_cd_geoids(geography) if geography is not None else ()
+            ),
         )
 
     def get_district_friendly_name(self, cd_geoid: str) -> str:

@@ -22,6 +22,10 @@ ENTITY_ID_VARIABLES = {
     "household": "household_id",
 }
 
+# policyengine-us defines a fallback formula for person_id, but persisted
+# datasets need stable person IDs for entity links and downstream joins.
+STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset({"person_id"})
+
 AUXILIARY_ENTITY_PREFIXES = {
     "person_": "person",
     "tax_unit_": "tax_unit",
@@ -47,6 +51,83 @@ def _format_items(items: list[str], max_display: int = 5) -> str:
     displayed = items[:max_display]
     suffix = "" if len(items) <= max_display else ", ..."
     return ", ".join(displayed) + suffix
+
+
+def _year_from_period(value) -> int | None:
+    match = re.match(r"\d{4}", str(value))
+    if match is None:
+        return None
+    return int(match.group(0))
+
+
+def _has_formula_for_period(variable, time_period) -> bool:
+    formulas = getattr(variable, "formulas", None) or {}
+    if not formulas:
+        return False
+
+    period_year = _year_from_period(time_period)
+    if period_year is None:
+        return True
+
+    for formula_start in formulas:
+        formula_year = _year_from_period(formula_start)
+        if formula_year is None or formula_year <= period_year:
+            return True
+    return False
+
+
+def _is_computed_for_period(variable, time_period) -> bool:
+    return (
+        _has_formula_for_period(variable, time_period)
+        or bool(getattr(variable, "adds", None))
+        or bool(getattr(variable, "subtracts", None))
+    )
+
+
+def computed_policyengine_us_variables_for_period(
+    variable_names,
+    time_period,
+    tax_benefit_system,
+) -> set[str]:
+    """Return exported variables computed by policyengine-us in a period."""
+
+    computed = set()
+    for variable_name in variable_names:
+        if variable_name in STRUCTURAL_COMPUTED_EXPORT_VARIABLES:
+            continue
+        variable = tax_benefit_system.variables.get(variable_name)
+        if variable is None:
+            continue
+        if _is_computed_for_period(variable, time_period):
+            computed.add(variable_name)
+    return computed
+
+
+def assert_no_computed_policyengine_us_variables_exported(
+    variable_names,
+    time_period,
+    tax_benefit_system,
+    *,
+    dataset_name: str = "dataset",
+) -> None:
+    """Fail if a dataset exports values policyengine-us should compute."""
+
+    computed_exports = sorted(
+        computed_policyengine_us_variables_for_period(
+            variable_names=variable_names,
+            time_period=time_period,
+            tax_benefit_system=tax_benefit_system,
+        )
+    )
+    if not computed_exports:
+        return
+
+    raise DatasetContractError(
+        f"{dataset_name} exports policyengine-us computed variables for "
+        f"{time_period}: {_format_items(computed_exports, max_display=10)}. "
+        "Drop construction-only intermediates after their final use, or export "
+        "the underlying leaf input instead."
+    )
 
 
 def _dataset_length(obj) -> int | None:
@@ -191,6 +272,15 @@ def validate_dataset_contract(
     )
 
     dataset_lengths = _dataset_lengths(file_path)
+    time_period = _infer_time_period_from_file(file_path)
+    if time_period is not None:
+        assert_no_computed_policyengine_us_variables_exported(
+            variable_names=dataset_lengths.keys(),
+            time_period=time_period,
+            tax_benefit_system=tax_benefit_system,
+            dataset_name=file_path.name,
+        )
+
     missing_entity_ids = [
         id_variable
         for entity_key, id_variable in ENTITY_ID_VARIABLES.items()

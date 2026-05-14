@@ -474,9 +474,9 @@ stages:
     target: mortgage_convert
     edge_type: data_flow
   - source: mortgage_convert
-    target: formula_drop
+    target: computed_export_contract
     edge_type: data_flow
-  - source: formula_drop
+  - source: computed_export_contract
     target: out_ext
     edge_type: produces_artifact
   - source: util_qrf_s2

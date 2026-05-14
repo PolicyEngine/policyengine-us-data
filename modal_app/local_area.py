@@ -13,6 +13,7 @@ Usage:
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import traceback
@@ -600,13 +601,16 @@ def _load_area_catalog_geography(
 def _load_target_cd_geoids(db_path: Path) -> tuple[str, ...]:
     """Load the congressional district target universe for regional H5s."""
 
-    from policyengine_us_data.calibration.calibration_utils import (
-        get_all_cds_from_database,
-    )
-
-    return tuple(
-        str(cd_geoid) for cd_geoid in get_all_cds_from_database(f"sqlite:///{db_path}")
-    )
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT DISTINCT value AS cd_geoid
+            FROM stratum_constraints
+            WHERE constraint_variable = 'congressional_district_geoid'
+            ORDER BY value
+            """
+        ).fetchall()
+    return tuple(str(row[0]) for row in rows)
 
 
 def _build_regional_weighted_requests(

@@ -1,8 +1,25 @@
+import sqlite3
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 from tests.support.build_outputs.area_catalog import make_geography
 from tests.support.modal_local_area import load_local_area_module
+
+
+def _write_target_cd_db(db_path: Path, cd_geoids: tuple[str, ...]) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "CREATE TABLE stratum_constraints "
+            "(constraint_variable TEXT NOT NULL, value TEXT NOT NULL)"
+        )
+        conn.executemany(
+            "INSERT INTO stratum_constraints VALUES (?, ?)",
+            [("congressional_district_geoid", cd_geoid) for cd_geoid in cd_geoids],
+        )
+        conn.execute(
+            "INSERT INTO stratum_constraints VALUES (?, ?)",
+            ("other_constraint", "9999"),
+        )
 
 
 def test_build_promote_national_publish_script_imports_version_manifest_helpers():
@@ -492,26 +509,14 @@ def test_build_regional_weighted_requests_uses_catalog_geography():
     assert [item.weight for item in weighted] == [2, 1, 1, 1, 1, 11]
 
 
-def test_load_target_cd_geoids_uses_database_target_adapter(monkeypatch):
+def test_load_target_cd_geoids_uses_database_target_adapter(tmp_path):
     local_area = load_local_area_module()
-    captured = {}
+    db_path = tmp_path / "policy_data.db"
+    _write_target_cd_db(db_path, ("102", "101"))
 
-    def fake_get_all_cds_from_database(db_uri):
-        captured["db_uri"] = db_uri
-        return [101, "102"]
-
-    fake_utils = ModuleType("policyengine_us_data.calibration.calibration_utils")
-    fake_utils.get_all_cds_from_database = fake_get_all_cds_from_database
-    monkeypatch.setitem(
-        local_area.sys.modules,
-        "policyengine_us_data.calibration.calibration_utils",
-        fake_utils,
-    )
-
-    result = local_area._load_target_cd_geoids(Path("/tmp/policy_data.db"))
+    result = local_area._load_target_cd_geoids(db_path)
 
     assert result == ("101", "102")
-    assert captured["db_uri"] == "sqlite:////tmp/policy_data.db"
 
 
 def test_build_weighted_requests_from_work_items_keeps_override_weights():
@@ -676,6 +681,123 @@ def test_coordinate_publish_happy_path_with_fake_volumes_and_artifacts(
         "weighted_keys": ["state:NC", "district:NC-01"],
         "completed_before": set(),
     }
+
+
+def test_coordinate_publish_default_path_uses_target_db_and_catalog(
+    monkeypatch,
+    tmp_path,
+):
+    local_area = load_local_area_module(stub_policyengine=False)
+    run_id = "run-123"
+    pipeline_root = tmp_path / "pipeline"
+    artifact_dir = pipeline_root / "artifacts" / run_id
+    artifact_dir.mkdir(parents=True)
+    staging_root = tmp_path / "staging"
+    staging_root.mkdir()
+    for filename in (
+        "calibration_weights.npy",
+        "source_imputed_stratified_extended_cps.h5",
+        "unified_run_config.json",
+    ):
+        (artifact_dir / filename).write_text("artifact")
+
+    db_path = artifact_dir / "policy_data.db"
+    _write_target_cd_db(db_path, ("101", "102", "3601"))
+
+    real_path = Path
+
+    def remapped_path(value=".", *args):
+        text = str(value)
+        if text.startswith("/pipeline"):
+            return real_path(str(pipeline_root) + text[len("/pipeline") :])
+        return real_path(value, *args)
+
+    tiny_catalog = local_area.USAreaCatalog(
+        state_codes={1: "AL", 36: "NY"},
+        nyc_county_fips={"36061"},
+        at_large_districts={0, 98},
+    )
+    geography = make_geography(
+        cd_geoids=["101", "102", "3601"],
+        county_fips=["01001", "01003", "36061"],
+    )
+
+    monkeypatch.setattr(local_area, "Path", remapped_path)
+    monkeypatch.setattr(local_area, "VOLUME_MOUNT", str(staging_root))
+    monkeypatch.setattr(
+        local_area.USAreaCatalog, "default", classmethod(lambda cls: tiny_catalog)
+    )
+    monkeypatch.setattr(local_area, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+    monkeypatch.setattr(local_area, "get_version", lambda: "0.0.0")
+    monkeypatch.setattr(local_area, "validate_artifacts", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        local_area, "_load_area_catalog_geography", lambda **kwargs: geography
+    )
+    monkeypatch.setattr(
+        local_area, "_build_publishing_input_bundle", lambda **kwargs: object()
+    )
+    monkeypatch.setattr(
+        local_area, "_resolve_scope_fingerprint", lambda **kwargs: "fingerprint"
+    )
+    monkeypatch.setattr(
+        local_area, "reconcile_run_dir_fingerprint", lambda *args, **kwargs: "fresh"
+    )
+    monkeypatch.setattr(
+        local_area, "_build_worker_bootstrap", lambda **kwargs: object()
+    )
+    monkeypatch.setattr(
+        local_area,
+        "pipeline_volume",
+        SimpleNamespace(reload=lambda: None, commit=lambda: None),
+    )
+    monkeypatch.setattr(
+        local_area,
+        "staging_volume",
+        SimpleNamespace(reload=lambda: None, commit=lambda: None),
+    )
+    captured = {}
+
+    def fake_run_phase(phase_name, *, weighted_requests, completed, **kwargs):
+        captured["phase_name"] = phase_name
+        captured["weighted_keys"] = [item.key for item in weighted_requests]
+        captured["weights"] = [item.weight for item in weighted_requests]
+        captured["request_payloads"] = [
+            item.to_worker_payload() for item in weighted_requests
+        ]
+        return set(captured["weighted_keys"]), [], []
+
+    monkeypatch.setattr(local_area, "run_phase", fake_run_phase)
+
+    result = local_area.coordinate_publish(
+        branch="main",
+        num_workers=1,
+        skip_upload=True,
+        n_clones=1,
+        validate=False,
+        run_id=run_id,
+    )
+
+    assert result["reuse_measurement"] == {
+        "expected_outputs": 6,
+        "valid_reused_outputs": 0,
+        "recomputed_outputs": 6,
+        "invalid_outputs": 0,
+    }
+    assert captured["phase_name"] == "All areas"
+    assert captured["weighted_keys"] == [
+        "state:AL",
+        "state:NY",
+        "district:AL-01",
+        "district:AL-02",
+        "district:NY-01",
+        "city:NYC",
+    ]
+    assert captured["weights"] == [2, 1, 1, 1, 1, 11]
+    assert captured["request_payloads"][0]["filters"] == [
+        {"geography_field": "state_fips", "op": "eq", "value": 1}
+    ]
+    assert captured["request_payloads"][-1]["validation_geographic_ids"] == ["3601"]
 
 
 def test_build_areas_worker_surfaces_successful_worker_stderr(

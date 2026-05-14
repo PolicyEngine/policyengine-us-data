@@ -29,11 +29,11 @@ def test_run_comparison_paths_are_run_scoped():
     )
     assert (
         paths.candidate_h5 == "hf://policyengine/policyengine-us-data/staging/"
-        "1.73.0/usdata-gha123-a1-abcdef12/national/US.h5"
+        "1.73.0-usdata-gha123-a1-abcdef12/national/US.h5"
     )
     assert (
         paths.legacy_h5 == "hf://policyengine/policyengine-us-data/staging/"
-        "1.73.0/usdata-gha123-a1-abcdef12/enhanced_cps_2024.h5"
+        "1.73.0-usdata-gha123-a1-abcdef12/enhanced_cps_2024.h5"
     )
 
 

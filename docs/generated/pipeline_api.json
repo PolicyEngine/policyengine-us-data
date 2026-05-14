@@ -385,7 +385,7 @@
     "docstring": "",
     "id": "atomic_promote",
     "kind": "function",
-    "line": 130,
+    "line": 141,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.promote_local_h5s.promote"
@@ -471,10 +471,10 @@
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
   },
   "build_datasets": {
-    "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    skip_stage_5: Skip source-imputed CPS and small enhanced CPS after\n        enhanced_cps_2024.h5 is built.\n    stage_only: Upload to HF staging only, without promoting a release.",
+    "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    skip_stage_5: Skip source-imputed CPS and small enhanced CPS after\n        enhanced_cps_2024.h5 is built.\n    stage_only: Upload to HF staging only, without promoting a release.\n    version: policyengine-us-data package version used for staging and\n        dataset-build contracts.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 563,
+    "line": 569,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
@@ -499,7 +499,7 @@
       ]
     },
     "object_path": "modal_app.data_build.build_datasets",
-    "signature": "def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, skip_stage_5: bool = False, stage_only: bool = False, run_id: str = '')",
+    "signature": "def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, skip_stage_5: bool = False, stage_only: bool = False, run_id: str = '', version: str = DATA_PACKAGE_VERSION)",
     "source_file": "modal_app/data_build.py"
   },
   "build_districts": {
@@ -968,7 +968,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 432,
+    "line": 437,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -2446,7 +2446,7 @@
     "docstring": "",
     "id": "local_stage_upload",
     "kind": "function",
-    "line": 110,
+    "line": 121,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.promote_local_h5s.stage"
@@ -2554,10 +2554,10 @@
     "source_file": "policyengine_us_data/datasets/puf/puf.py"
   },
   "promote_pipeline_run": {
-    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    version: Override version (default: from run\n        metadata).\n\nReturns:\n    Summary message.",
+    "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1816,
+    "line": 1866,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -2585,7 +2585,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.promote_run",
-    "signature": "def promote_run(run_id: str, version: str = None) -> str",
+    "signature": "def promote_run(run_id: str, candidate_version: str = '', release_version: str = '') -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "puf_qrf_pass": {
@@ -2833,10 +2833,10 @@
     "source_file": "modal_app/local_area.py"
   },
   "run_modal_pipeline": {
-    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
+    "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 858,
+    "line": 860,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -2863,7 +2863,7 @@
       ]
     },
     "object_path": "modal_app.pipeline.run_pipeline",
-    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str",
+    "signature": "def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, candidate_version: str = '', release_version: str = '', base_release_version: str = '', release_bump: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str",
     "source_file": "modal_app/pipeline.py"
   },
   "sanity_checks": {
@@ -3095,7 +3095,7 @@
     "docstring": "",
     "id": "target_validation",
     "kind": "function",
-    "line": 317,
+    "line": 319,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.validate_staging.validate_area"
@@ -3176,7 +3176,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 513,
+    "line": 515,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

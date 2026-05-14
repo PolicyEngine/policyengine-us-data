@@ -463,7 +463,8 @@ def _full_release_manifest_files(
 
 def _promote_full_release_from_staging(
     run_id: str,
-    version: str,
+    candidate_version: str,
+    release_version: str,
     run_context: dict | None = None,
 ) -> str:
     """Promote all staged artifacts as one finalized release."""
@@ -482,7 +483,8 @@ files_with_paths = json.loads({files_json!r})
 run_context = json.loads({run_context_json!r})
 result = promote_full_release_from_staging(
     rel_paths=rel_paths,
-    version="{version}",
+    candidate_version="{candidate_version}",
+    release_version="{release_version}",
     run_id="{run_id}",
     run_context=run_context,
     files_with_paths=files_with_paths,
@@ -866,7 +868,10 @@ def run_pipeline(
     skip_national: bool = False,
     resume_run_id: str = None,
     clear_checkpoints: bool = False,
-    version_override: str = "",
+    candidate_version: str = "",
+    release_version: str = "",
+    base_release_version: str = "",
+    release_bump: str = "",
     sha_override: str = "",
     run_id: str = "",
     run_context: dict | None = None,
@@ -894,6 +899,12 @@ def run_pipeline(
             scoped by commit SHA, so stale ones from other commits
             are cleaned automatically. Use True only to force a
             full rebuild of the current commit.
+        candidate_version: Candidate staging scope used for HF staging.
+        release_version: Final stable release version. Usually empty until
+            promotion.
+        base_release_version: Stable release current when this candidate was
+            built.
+        release_bump: Intended SemVer bump for this candidate.
         sha_override: Exact source SHA deployed by GitHub Actions. When
             provided, this is recorded instead of reading the current
             branch tip.
@@ -924,14 +935,30 @@ def run_pipeline(
 
     # ── Initialize or resume run ──
     sha = sha_override or get_pinned_sha(branch)
-    version = version_override or get_version_from_branch(branch)
     resolved_run_id = resolve_run_id(run_id)
     current_run_context = RunContext.from_mapping(
         run_context,
         run_id=resolved_run_id,
         modal_app_name=modal_app_name,
         modal_environment=modal_environment,
+        candidate_version=candidate_version,
+        release_version=release_version,
+        base_release_version=base_release_version,
+        release_bump=release_bump,
     )
+    if not current_run_context.candidate_version:
+        current_run_context = RunContext.from_mapping(
+            current_run_context.to_dict(),
+            run_id=resolved_run_id,
+            modal_app_name=modal_app_name,
+            modal_environment=modal_environment,
+            candidate_version=get_version_from_branch(branch),
+            release_version=release_version,
+            base_release_version=base_release_version,
+            release_bump=release_bump,
+        )
+    candidate_version = current_run_context.candidate_version
+    release_version = current_run_context.release_version
 
     explicit_resume = bool(resume_run_id)
 
@@ -944,6 +971,10 @@ def run_pipeline(
             modal_app_name=meta.modal_app_name or current_run_context.modal_app_name,
             modal_environment=meta.modal_environment
             or current_run_context.modal_environment,
+            candidate_version=meta.candidate_version or meta.version,
+            release_version=meta.release_version or "",
+            base_release_version=meta.base_release_version or "",
+            release_bump=meta.release_bump or "",
         )
         _apply_run_context_env(current_run_context)
         current_sha = sha
@@ -954,7 +985,8 @@ def run_pipeline(
             force=explicit_resume,
         )
         sha = meta.sha
-        version = meta.version
+        candidate_version = meta.candidate_version or meta.version
+        release_version = meta.release_version or ""
         if not hasattr(meta, "resume_history") or meta.resume_history is None:
             meta.resume_history = []
         meta.resume_history.append(
@@ -976,6 +1008,10 @@ def run_pipeline(
         meta.hf_staging_prefix = (
             meta.hf_staging_prefix or current_run_context.hf_staging_prefix
         )
+        meta.base_release_version = (
+            meta.base_release_version or current_run_context.base_release_version
+        )
+        meta.release_bump = meta.release_bump or current_run_context.release_bump
         run_id = resume_run_id
     else:
         if not current_run_context.run_id:
@@ -989,7 +1025,11 @@ def run_pipeline(
             run_id=run_id,
             branch=branch,
             sha=sha,
-            version=version,
+            version=candidate_version,
+            candidate_version=candidate_version,
+            release_version=release_version,
+            base_release_version=current_run_context.base_release_version,
+            release_bump=current_run_context.release_bump,
             start_time=datetime.now(timezone.utc).isoformat(),
             status="running",
             **_metadata_run_fields(current_run_context),
@@ -1015,7 +1055,13 @@ def run_pipeline(
         print(f"  HF staging: {meta.hf_staging_prefix}")
     print(f"  Branch:  {branch}")
     print(f"  SHA:     {sha[:12]}")
-    print(f"  Version: {version}")
+    print(f"  Candidate scope:   {candidate_version}")
+    if current_run_context.base_release_version:
+        print(f"  Base release:      {current_run_context.base_release_version}")
+    if current_run_context.release_bump:
+        print(f"  Release bump:      {current_run_context.release_bump}")
+    if release_version:
+        print(f"  Release version:   {release_version}")
     print(f"  GPU:     {gpu} (regional)")
     if not skip_national:
         print(f"  GPU:     {national_gpu} (national)")
@@ -1035,6 +1081,8 @@ def run_pipeline(
         build_dataset_parameters = {
             "upload": True,
             "stage_only": True,
+            "candidate_version": candidate_version,
+            "release_version": release_version,
             "sequential": False,
             "clear_checkpoints": clear_checkpoints,
             "skip_tests": False,
@@ -1074,10 +1122,11 @@ def run_pipeline(
                 skip_enhanced_cps=False,
                 stage_only=True,
                 run_id=run_id,
+                version=candidate_version,
             )
 
             # Stage 1 uses the existing dataset upload machinery to validate
-            # and write canonical dataset paths under staging/{run_id}/.
+            # and write canonical dataset paths under staging/{candidate}-{run_id}/.
             # It also copies artifacts to the pipeline volume for downstream
             # calibration, H5 building, and manifest traceability.
             dataset_outputs = collect_directory_artifacts(
@@ -1089,7 +1138,8 @@ def run_pipeline(
                 meta,
                 STAGE_BASE_DATASETS,
                 parameters={
-                    "version": version,
+                    "candidate_version": candidate_version,
+                    "release_version": release_version,
                     "run_id": run_id,
                     "stage_only": True,
                 },
@@ -1815,7 +1865,8 @@ def _print_step_manifests(run_id: str) -> None:
 )
 def promote_run(
     run_id: str,
-    version: str = None,
+    candidate_version: str = "",
+    release_version: str = "",
 ) -> str:
     """Promote a completed pipeline run to production.
 
@@ -1828,8 +1879,8 @@ def promote_run(
 
     Args:
         run_id: The run ID to promote.
-        version: Override version (default: from run
-            metadata).
+        candidate_version: Candidate staging scope used for staged source files.
+        release_version: Stable version used for final release metadata.
 
     Returns:
         Summary message.
@@ -1843,11 +1894,23 @@ def promote_run(
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_path
 
     meta = read_run_meta(run_id, pipeline_volume)
+    candidate_version = candidate_version or meta.candidate_version or meta.version
+    release_version = release_version or meta.release_version or ""
+    if not release_version:
+        raise ValueError(
+            "release_version is required for promotion. Compute it from the "
+            "latest stable package version and the run manifest release_bump "
+            "before calling promote_run."
+        )
     promotion_context = RunContext.from_mapping(
         meta.run_context,
         run_id=run_id,
         modal_app_name=meta.modal_app_name,
         modal_environment=meta.modal_environment,
+        candidate_version=candidate_version,
+        release_version=release_version,
+        base_release_version=meta.base_release_version or "",
+        release_bump=meta.release_bump or "",
     )
     _apply_run_context_env(promotion_context)
     if not meta.run_context:
@@ -1859,6 +1922,12 @@ def promote_run(
     meta.hf_staging_prefix = (
         meta.hf_staging_prefix or promotion_context.hf_staging_prefix
     )
+    meta.candidate_version = candidate_version
+    meta.release_version = release_version
+    meta.base_release_version = (
+        meta.base_release_version or promotion_context.base_release_version
+    )
+    meta.release_bump = meta.release_bump or promotion_context.release_bump
 
     if meta.status not in ("completed", "promoted"):
         raise RuntimeError(
@@ -1870,7 +1939,6 @@ def promote_run(
     if meta.status == "promoted":
         print(f"WARNING: Run {run_id} was already promoted. Re-promoting...")
 
-    version = version or meta.version
     promote_inputs = {
         "validated_step_outputs": [
             artifact.to_dict()
@@ -1895,7 +1963,11 @@ def promote_run(
     promote_manifest = _start_step_manifest(
         meta,
         VALIDATE_AND_PROMOTE_RELEASE,
-        parameters={"version": version, "run_id": run_id},
+        parameters={
+            "candidate_version": candidate_version,
+            "release_version": release_version,
+            "run_id": run_id,
+        },
         input_identities=promote_inputs,
         vol=pipeline_volume,
     )
@@ -1904,7 +1976,8 @@ def promote_run(
     print("PROMOTING PIPELINE RUN")
     print("=" * 60)
     print(f"  Run ID:  {run_id}")
-    print(f"  Version: {version}")
+    print(f"  Candidate scope:   {candidate_version}")
+    print(f"  Release version:   {release_version}")
     print(f"  Branch:  {meta.branch}")
     print(f"  SHA:     {meta.sha[:12]}")
     print("=" * 60)
@@ -1917,7 +1990,8 @@ def promote_run(
         print(f"\nPromoting {len(rel_paths)} staged release artifact(s)...")
         promotion_stdout = _promote_full_release_from_staging(
             run_id,
-            version,
+            candidate_version,
+            release_version,
             promotion_context.to_dict(),
         )
         print(f"  {promotion_stdout}")
@@ -1963,10 +2037,13 @@ def promote_run(
     print("\n" + "=" * 60)
     print("PROMOTION COMPLETE")
     print("=" * 60)
-    print(f"  Version {version} is now live.")
+    print(f"  Version {release_version} is now live.")
     print("=" * 60)
 
-    return f"Promoted run {run_id} as version {version}"
+    return (
+        f"Promoted run {run_id} from candidate {candidate_version} "
+        f"as version {release_version}"
+    )
 
 
 # ── Local entrypoint ─────────────────────────────────────────────
@@ -1986,7 +2063,10 @@ def main(
     n_clones: int = 430,
     skip_national: bool = False,
     clear_checkpoints: bool = False,
-    version: str = None,
+    candidate_version: str = "",
+    release_version: str = "",
+    base_release_version: str = "",
+    release_bump: str = "",
     sha_override: str = "",
 ):
     """Pipeline entrypoint.
@@ -2008,7 +2088,10 @@ def main(
             skip_national=skip_national,
             resume_run_id=resume_run_id,
             clear_checkpoints=clear_checkpoints,
-            version_override=version or "",
+            candidate_version=candidate_version,
+            release_version=release_version,
+            base_release_version=base_release_version,
+            release_bump=release_bump,
             sha_override=sha_override,
             run_id=run_id or "",
         )
@@ -2025,7 +2108,8 @@ def main(
             raise ValueError("--run-id is required for promote")
         result = promote_run.remote(
             run_id=run_id,
-            version=version,
+            candidate_version=candidate_version,
+            release_version=release_version,
         )
         print(result)
 

@@ -15,7 +15,7 @@ from policyengine_us_data.datasets.cps.long_term.run_household_projection_parall
     parse_years,
 )
 from policyengine_us_data.utils.data_upload import upload_to_staging_hf
-from policyengine_us_data.utils.run_context import resolve_run_id
+from policyengine_us_data.utils.run_context import resolve_run_id, staging_prefix
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -355,8 +355,9 @@ def main() -> int:
             run_id=run_id,
             source_sha=source_sha,
         )
+        prefix = staging_prefix(run_id, version=source_sha or "unknown-source")
         print(
-            f"Uploaded {uploaded_count} files to staging/{run_id}/"
+            f"Uploaded {uploaded_count} files to {prefix}/"
             f"{args.artifact_prefix.strip('/')} in {args.hf_repo}."
         )
     else:

@@ -7,17 +7,16 @@ on:
         description: 'Run ID to promote (e.g. usdata-gha123456-a1-abcdef12)'
         required: true
         type: string
-      version:
-        description: 'Optional version override; defaults to run metadata'
-        required: false
-        default: ''
-        type: string
+
+concurrency:
+  group: promote-us-data-release
+  cancel-in-progress: false
 
 jobs:
   promote-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     env:
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -25,16 +24,27 @@ jobs:
       MODAL_ENVIRONMENT: main
       US_DATA_MODAL_APP_PREFIX: policyengine-us-data-pub
       US_DATA_RUN_ID: ${{ github.event.inputs.run_id }}
-      VERSION_OVERRIDE: ${{ github.event.inputs.version }}
 
     steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout repo
         uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.14'
+
+      - uses: astral-sh/setup-uv@v8.1.0
 
       - name: Install Modal CLI
         run: pip install modal
@@ -45,3 +55,29 @@ jobs:
 
       - name: Promote staged release to production
         run: python .github/scripts/promote_publication_pipeline.py
+
+      - name: Finalize package version
+        run: |
+          python .github/scripts/finalize_package_version.py
+          uv lock
+
+      - name: Commit final package version
+        uses: EndBug/add-and-commit@v10
+        with:
+          add: "pyproject.toml uv.lock"
+          message: Finalize package version
+
+      - name: Build final wheel
+        run: |
+          uv sync --dev
+          uv run python -m build --wheel
+
+      - name: Publish final package to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI }}
+          skip-existing: true
+
+      - name: Verify final PyPI version
+        run: python .github/scripts/verify_pypi_version.py

@@ -20,7 +20,10 @@ from policyengine_us_data.utils.data_upload import (
     upload_from_hf_staging_to_gcs,
     upload_to_staging_hf,
 )
-from policyengine_us_data.utils.run_context import resolve_run_id
+from policyengine_us_data.utils.run_context import (
+    resolve_run_id,
+    staging_prefix as build_staging_prefix,
+)
 from policyengine_us_data.utils.dataset_validation import (
     DatasetContractError,
     load_dataset_for_validation,
@@ -270,10 +273,14 @@ def _collect_staged_dataset_repo_paths(
     require_enhanced_cps: bool = True,
     require_small_enhanced_cps: bool = True,
     run_id: str = "",
+    candidate_version: str | None = None,
 ) -> list[str]:
     api = HfApi()
     run_id = _resolve_run_id(run_id)
-    prefix = f"staging/{run_id}" if run_id else "staging"
+    prefix = build_staging_prefix(
+        run_id,
+        candidate_version=candidate_version or DATA_PACKAGE_VERSION,
+    )
     repo_files = set(
         api.list_repo_files(
             repo_id=HF_REPO_NAME,
@@ -306,9 +313,13 @@ def _collect_staged_dataset_repo_paths(
 def _download_staged_dataset_artifacts(
     rel_paths: list[str],
     run_id: str = "",
+    candidate_version: str | None = None,
 ) -> list[tuple[Path, str]]:
     run_id = _resolve_run_id(run_id)
-    staging_prefix = f"staging/{run_id}" if run_id else "staging"
+    staging_prefix = build_staging_prefix(
+        run_id,
+        candidate_version=candidate_version or DATA_PACKAGE_VERSION,
+    )
     downloaded_files = []
     for rel_path in rel_paths:
         local_path = Path(
@@ -632,10 +643,11 @@ def stage_datasets(
     require_enhanced_cps: bool = True,
     require_small_enhanced_cps: bool = True,
     version: str | None = None,
+    candidate_version: str | None = None,
     run_id: str = "",
 ) -> list[tuple[Path, str]]:
     run_id = _resolve_run_id(run_id)
-    version = version or DATA_PACKAGE_VERSION
+    candidate_version = candidate_version or version or DATA_PACKAGE_VERSION
     files_with_repo_paths = _collect_existing_dataset_artifacts(
         require_enhanced_cps=require_enhanced_cps,
         require_small_enhanced_cps=require_small_enhanced_cps,
@@ -645,7 +657,7 @@ def stage_datasets(
     print(f"\nStaging {len(files_with_repo_paths)} files on Hugging Face...")
     upload_to_staging_hf(
         files_with_repo_paths,
-        version=version,
+        candidate_version=candidate_version,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
         run_id=run_id,
@@ -657,12 +669,15 @@ def promote_datasets(
     require_enhanced_cps: bool = True,
     require_small_enhanced_cps: bool = True,
     version: str | None = None,
+    candidate_version: str | None = None,
+    release_version: str | None = None,
     run_id: str = "",
     files_with_repo_paths: list[tuple[Path, str]] | None = None,
     cleanup_staging: bool = True,
 ) -> list[str]:
     run_id = _resolve_run_id(run_id)
-    version = version or DATA_PACKAGE_VERSION
+    candidate_version = candidate_version or version or DATA_PACKAGE_VERSION
+    release_version = release_version or version or candidate_version
     rel_paths = (
         [repo_path for _, repo_path in files_with_repo_paths]
         if files_with_repo_paths
@@ -670,18 +685,23 @@ def promote_datasets(
             require_enhanced_cps=require_enhanced_cps,
             require_small_enhanced_cps=require_small_enhanced_cps,
             run_id=run_id,
+            candidate_version=candidate_version,
         )
     )
     manifest_files = (
         files_with_repo_paths
         if files_with_repo_paths
-        else _download_staged_dataset_artifacts(rel_paths, run_id=run_id)
+        else _download_staged_dataset_artifacts(
+            rel_paths,
+            run_id=run_id,
+            candidate_version=candidate_version,
+        )
     )
     if files_with_repo_paths is None:
         _validate_dataset_artifacts(manifest_files)
     should_finalize, missing_prefixes = preflight_release_manifest_publish(
         manifest_files,
-        version=version,
+        version=release_version,
         new_repo_paths=rel_paths,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
@@ -691,14 +711,15 @@ def promote_datasets(
     print(f"\nPromoting {len(rel_paths)} staged files to production...")
     promote_staging_to_production_hf(
         rel_paths,
-        version=version,
+        candidate_version=candidate_version,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
         run_id=run_id,
     )
     upload_from_hf_staging_to_gcs(
         rel_paths,
-        version=version,
+        candidate_version=candidate_version,
+        release_version=release_version,
         gcs_bucket_name=GCS_BUCKET_NAME,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
@@ -706,7 +727,7 @@ def promote_datasets(
     )
     manifest = publish_release_manifest_to_hf(
         manifest_files,
-        version=version,
+        version=release_version,
         hf_repo_name=HF_REPO_NAME,
         hf_repo_type=HF_REPO_TYPE,
         create_tag=should_finalize,
@@ -723,11 +744,11 @@ def promote_datasets(
     if should_finalize:
         upload_manifest(
             build_manifest(
-                version=version,
+                version=release_version,
                 blob_names=sorted(
                     artifact["path"] for artifact in manifest["artifacts"].values()
                 ),
-                hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=version),
+                hf_info=HFVersionInfo(repo=HF_REPO_NAME, commit=release_version),
                 run_id=run_id or None,
             )
         )
@@ -736,7 +757,7 @@ def promote_datasets(
     if cleanup_staging:
         cleanup_staging_hf(
             rel_paths,
-            version=version,
+            candidate_version=candidate_version,
             hf_repo_name=HF_REPO_NAME,
             hf_repo_type=HF_REPO_TYPE,
             run_id=run_id,
@@ -754,19 +775,23 @@ def upload_datasets(
     promote_only: bool = False,
     run_id: str = "",
     version: str | None = None,
+    candidate_version: str | None = None,
+    release_version: str | None = None,
     cleanup_staging: bool = True,
 ):
     run_id = _resolve_run_id(run_id)
     if stage_only and promote_only:
         raise ValueError("Choose either stage_only or promote_only, not both.")
 
-    version = version or DATA_PACKAGE_VERSION
+    candidate_version = candidate_version or version or DATA_PACKAGE_VERSION
+    release_version = release_version or version or candidate_version
 
     if promote_only:
         return promote_datasets(
             require_enhanced_cps=require_enhanced_cps,
             require_small_enhanced_cps=require_small_enhanced_cps,
-            version=version,
+            candidate_version=candidate_version,
+            release_version=release_version,
             run_id=run_id,
             cleanup_staging=cleanup_staging,
         )
@@ -774,7 +799,7 @@ def upload_datasets(
     files_with_repo_paths = stage_datasets(
         require_enhanced_cps=require_enhanced_cps,
         require_small_enhanced_cps=require_small_enhanced_cps,
-        version=version,
+        candidate_version=candidate_version,
         run_id=run_id,
     )
     if stage_only:
@@ -783,7 +808,8 @@ def upload_datasets(
     return promote_datasets(
         require_enhanced_cps=require_enhanced_cps,
         require_small_enhanced_cps=require_small_enhanced_cps,
-        version=version,
+        candidate_version=candidate_version,
+        release_version=release_version,
         run_id=run_id,
         files_with_repo_paths=files_with_repo_paths,
         cleanup_staging=cleanup_staging,

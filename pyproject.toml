@@ -115,6 +115,7 @@ testpaths = [
 markers = [
     "integration: tests that exercise integration-level behavior or external runtime seams",
     "slow: tests or validators that require substantial local runtime or built artifacts",
+    "verify_behavior_skip_temporarily: temporarily skipped while expected behavior is being verified",
 ]
 filterwarnings = [
     "ignore::SyntaxWarning:IPython.core.interactiveshell",

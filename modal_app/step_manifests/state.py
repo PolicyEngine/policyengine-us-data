@@ -40,6 +40,10 @@ class RunMetadata:
     version: str
     start_time: str
     status: str
+    candidate_version: Optional[str] = None
+    release_version: Optional[str] = None
+    base_release_version: Optional[str] = None
+    release_bump: Optional[str] = None
     error: Optional[str] = None
     resume_history: list = field(default_factory=list)
     fingerprint: Optional[str] = None
@@ -50,6 +54,10 @@ class RunMetadata:
     hf_staging_prefix: Optional[str] = None
 
     def __post_init__(self) -> None:
+        if self.candidate_version is None:
+            self.candidate_version = self.version
+        if self.release_version is None:
+            self.release_version = ""
         if self.regional_fingerprint is None and self.fingerprint is not None:
             self.regional_fingerprint = self.fingerprint
         if self.fingerprint is None and self.regional_fingerprint is not None:
@@ -92,6 +100,8 @@ def metadata_run_fields(context: RunContext) -> dict:
         "modal_app_name": context.modal_app_name,
         "modal_environment": context.modal_environment,
         "hf_staging_prefix": context.hf_staging_prefix,
+        "base_release_version": context.base_release_version,
+        "release_bump": context.release_bump,
     }
 
 

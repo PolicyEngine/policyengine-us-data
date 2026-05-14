@@ -339,7 +339,7 @@ Stage base source-imputed datasets and policy database artifacts for the run
 | --- | --- | --- | --- | --- |
 | `in_source_imputed_s1g` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
 | `in_policy_db_s1g` policy_data.db | `artifact` | `unknown` | `unknown` |  |
-| `hf_staging_base_s1g` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `hf_staging_base_s1g` HuggingFace staging/{candidate_version}/{run_id} | `external` | `unknown` | `unknown` |  |
 | `stage_base_datasets` stage base datasets | `process` | `current` | `moving` |  |
 | `out_staged_base_s1g` staged base datasets | `artifact` | `unknown` | `unknown` |  |
 
@@ -673,7 +673,7 @@ Promote validated staged artifacts to HuggingFace production paths
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
 | `in_validated_candidates_s5b` validated release candidates | `artifact` | `unknown` | `unknown` |  |
-| `hf_staging_s5b` HuggingFace staging/{run_id} | `external` | `unknown` | `unknown` |  |
+| `hf_staging_s5b` HuggingFace staging/{candidate_version}/{run_id} | `external` | `unknown` | `unknown` |  |
 | `out_hf_prod` HuggingFace Production | `external` | `unknown` | `unknown` |  |
 | `util_upload_s5b` data_upload.py | `utility` | `unknown` | `unknown` |  |
 | `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
@@ -759,7 +759,7 @@ Worker function that builds a subset of H5 files.
 ### `modal_app.data_build.build_datasets`
 
 ```python
-def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, skip_stage_5: bool = False, stage_only: bool = False, run_id: str = '')
+def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool = False, clear_checkpoints: bool = False, skip_tests: bool = False, skip_enhanced_cps: bool = False, skip_stage_5: bool = False, stage_only: bool = False, run_id: str = '', version: str = DATA_PACKAGE_VERSION)
 ```
 
 Build all datasets with preemption-resilient checkpointing.
@@ -1215,7 +1215,7 @@ Run a single build phase, spawning workers and collecting results.
 ### `modal_app.pipeline.run_pipeline`
 
 ```python
-def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, version_override: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str
+def run_pipeline(branch: str = 'main', gpu: str = 'T4', epochs: int = 1000, national_gpu: str = 'T4', national_epochs: int = 1000, num_workers: int = 50, n_clones: int = 430, skip_national: bool = False, resume_run_id: str = None, clear_checkpoints: bool = False, candidate_version: str = '', release_version: str = '', base_release_version: str = '', release_bump: str = '', sha_override: str = '', run_id: str = '', run_context: dict | None = None, modal_app_name: str = '', modal_environment: str = '', chunked_matrix: bool = False, chunk_size: int = 25000, parallel_matrix: bool = False, num_matrix_workers: int = 50) -> str
 ```
 
 Run the full pipeline end-to-end.

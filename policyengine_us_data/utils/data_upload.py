@@ -45,8 +45,13 @@ from policyengine_us_data.utils.release_promotion import (
     promote_full_release,
 )
 from policyengine_us_data.utils.run_context import (
+    CANDIDATE_VERSION_ENV,
+    DATA_PACKAGE_VERSION_ENV,
+    RELEASE_VERSION_ENV,
     RunContext,
+    resolve_candidate_version,
     resolve_run_id,
+    staging_prefix as build_staging_prefix,
 )
 from policyengine_us_data.utils.trace_tro import (
     TRACE_TRO_FILENAME,
@@ -80,6 +85,27 @@ VALIDATION_REPORT_FILENAMES = (
 
 def _resolve_staging_run_id(run_id: str = "") -> str:
     return run_id or resolve_run_id()
+
+
+def _resolve_staging_candidate_version(
+    candidate_version: str = "",
+    *,
+    version: str | None = None,
+) -> str:
+    return resolve_candidate_version(
+        candidate_version or (version or ""),
+        env=os.environ,
+    )
+
+
+def _resolve_release_version(
+    release_version: str | None = None,
+    *,
+    candidate_version: str = "",
+) -> str:
+    return (
+        release_version or os.environ.get(RELEASE_VERSION_ENV, "") or candidate_version
+    )
 
 
 def _run_context_for_release() -> dict | None:
@@ -991,11 +1017,13 @@ def hf_create_commit_with_retry(
 
 def upload_to_staging_hf(
     files_with_paths: List[Tuple[Path, str]],
-    version: str,
+    candidate_version: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     batch_size: int = 50,
     run_id: str = "",
+    *,
+    version: str | None = None,
 ) -> int:
     """
     Upload files to staging/ paths in HuggingFace.
@@ -1003,13 +1031,14 @@ def upload_to_staging_hf(
     Args:
         files_with_paths: List of (local_path, relative_path) tuples
             relative_path is like "states/AL.h5"
-        version: Version string for commit message
+        candidate_version: Candidate staging scope used for staging paths.
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
         batch_size: Number of files per commit batch
-        run_id: Optional per-run scope. When set, files land under
-            ``staging/{run_id}/{rel_path}`` so concurrent runs do not
-            collide; otherwise they land under ``staging/{rel_path}``.
+        run_id: Optional per-run scope. When set with a candidate version,
+            files land under ``staging/{candidate_version}-{run_id}/{rel_path}``
+            so concurrent runs do not collide; otherwise they land under
+            ``staging/{rel_path}``.
 
     Returns:
         Number of files uploaded
@@ -1017,10 +1046,17 @@ def upload_to_staging_hf(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
     context_payload = None
     if run_id:
-        context_payload = RunContext.from_env(run_id=run_id).to_dict()
+        context_payload = RunContext.from_env(
+            run_id=run_id,
+            candidate_version=candidate_version,
+        ).to_dict()
         context_payload["hf_staging_prefix"] = staging_prefix
 
     total_uploaded = 0
@@ -1061,7 +1097,8 @@ def upload_to_staging_hf(
             token=token,
             commit_message=(
                 f"Upload batch {i // batch_size + 1} to staging "
-                f"for version {version}" + (f" ({run_id})" if run_id else "")
+                f"for candidate {candidate_version}"
+                + (f" ({run_id})" if run_id else "")
             ),
         )
         uploaded_files = len(operations) - (
@@ -1077,9 +1114,22 @@ def upload_to_staging_hf(
     return total_uploaded
 
 
-def _staging_prefix(run_id: str = "") -> str:
+def _staging_prefix(
+    run_id: str = "",
+    candidate_version: str = "",
+    *,
+    version: str = "",
+) -> str:
     run_id = _resolve_staging_run_id(run_id)
-    return f"staging/{run_id}" if run_id else "staging"
+    return build_staging_prefix(
+        run_id,
+        candidate_version=(
+            candidate_version
+            or version
+            or os.environ.get(CANDIDATE_VERSION_ENV, "")
+            or os.environ.get(DATA_PACKAGE_VERSION_ENV, "")
+        ),
+    )
 
 
 def _dedupe_preserving_order(paths: Sequence[str]) -> list[str]:
@@ -1096,6 +1146,8 @@ def _dedupe_preserving_order(paths: Sequence[str]) -> list[str]:
 def list_missing_staged_artifacts(
     rel_paths: Sequence[str],
     *,
+    candidate_version: str = "",
+    version: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
@@ -1104,7 +1156,11 @@ def list_missing_staged_artifacts(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
     repo_files = set(
         api.list_repo_files(
             repo_id=hf_repo_name,
@@ -1122,6 +1178,8 @@ def list_missing_staged_artifacts(
 def download_staged_artifacts_for_manifest(
     rel_paths: Sequence[str],
     *,
+    candidate_version: str = "",
+    version: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
@@ -1129,7 +1187,11 @@ def download_staged_artifacts_for_manifest(
     """Download staged HF artifacts for release-manifest checksums."""
     token = os.environ.get("HUGGING_FACE_TOKEN")
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
     files_with_paths = []
     for rel_path in _dedupe_preserving_order(rel_paths):
         local_path = hf_hub_download(
@@ -1144,21 +1206,24 @@ def download_staged_artifacts_for_manifest(
 
 def promote_staging_to_production_hf(
     files: List[str],
-    version: str,
+    candidate_version: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
     allow_noop: bool = False,
+    *,
+    version: str | None = None,
 ) -> int:
     """
     Atomically promote files from staging/ to production paths.
 
-    This creates a single commit that copies each file from staging/{path}
-    to {path}, effectively replacing the production files atomically.
+    This creates a single commit that copies each file from the candidate
+    staging namespace to {path}, effectively replacing the production files
+    atomically.
 
     Args:
         files: List of relative paths (e.g., "states/AL.h5")
-        version: Version string for commit message
+        candidate_version: Candidate staging scope for staged source files.
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
@@ -1175,7 +1240,11 @@ def promote_staging_to_production_hf(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
 
     operations = []
     for rel_path in files:
@@ -1205,7 +1274,7 @@ def promote_staging_to_production_hf(
         token=token,
         commit_message=(
             f"Promote {len(files)} files from staging to production "
-            f"for version {version}" + (f" ({run_id})" if run_id else "")
+            f"for candidate {candidate_version}" + (f" ({run_id})" if run_id else "")
         ),
     )
 
@@ -1230,17 +1299,19 @@ def promote_staging_to_production_hf(
 
 def cleanup_staging_hf(
     files: List[str],
-    version: str,
+    candidate_version: str = "",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
+    *,
+    version: str | None = None,
 ) -> int:
     """
     Clean up staging folder after successful promotion.
 
     Args:
         files: List of relative paths (e.g., "states/AL.h5")
-        version: Version string for commit message
+        candidate_version: Candidate staging scope for staged source files.
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
@@ -1254,7 +1325,11 @@ def cleanup_staging_hf(
     token = os.environ.get("HUGGING_FACE_TOKEN")
     api = HfApi()
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
 
     existing_repo_files = None
     try:
@@ -1298,7 +1373,7 @@ def cleanup_staging_hf(
         repo_type=hf_repo_type,
         token=token,
         commit_message=(
-            f"Clean up staging after version {version} promotion"
+            f"Clean up staging after candidate {candidate_version} promotion"
             + (f" ({run_id})" if run_id else "")
         ),
     )
@@ -1315,17 +1390,20 @@ def cleanup_staging_hf(
 
 def upload_from_hf_staging_to_gcs(
     rel_paths: List[str],
-    version: str,
+    candidate_version: str = "",
     gcs_bucket_name: str = "policyengine-us-data",
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     run_id: str = "",
+    *,
+    release_version: str | None = None,
+    version: str | None = None,
 ) -> int:
     """Download files from HF staging/ and upload to GCS production paths.
 
     Args:
         rel_paths: Relative paths like "states/AL.h5", "districts/NC-01.h5"
-        version: Version string for GCS metadata
+        candidate_version: Candidate staging scope for staged source files.
         gcs_bucket_name: GCS bucket name
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
@@ -1336,7 +1414,15 @@ def upload_from_hf_staging_to_gcs(
     """
     token = os.environ.get("HUGGING_FACE_TOKEN")
     run_id = _resolve_staging_run_id(run_id)
-    staging_prefix = _staging_prefix(run_id)
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    release_version = _resolve_release_version(
+        release_version,
+        candidate_version=candidate_version,
+    )
+    staging_prefix = _staging_prefix(run_id, candidate_version=candidate_version)
 
     credentials, project_id = google.auth.default()
     storage_client = storage.Client(credentials=credentials, project=project_id)
@@ -1354,7 +1440,7 @@ def upload_from_hf_staging_to_gcs(
 
         blob = bucket.blob(rel_path)
         blob.upload_from_filename(local_path)
-        blob.metadata = {"version": version}
+        blob.metadata = {"version": release_version}
         blob.patch()
         uploaded += 1
         logging.info(f"Uploaded {rel_path} to GCS (sourced from HF staging)")
@@ -1572,7 +1658,8 @@ def _full_release_promotion_dependencies() -> FullReleasePromotionDependencies:
 def promote_full_release_from_staging(
     *,
     rel_paths: Sequence[str],
-    version: str,
+    candidate_version: str = "",
+    release_version: str = "",
     run_id: str = "",
     run_context: Optional[Dict] = None,
     files_with_paths: Optional[Sequence[Tuple[Path | str, str]]] = None,
@@ -1581,20 +1668,32 @@ def promote_full_release_from_staging(
     hf_repo_name: str = "policyengine/policyengine-us-data",
     hf_repo_type: str = "model",
     cleanup_staging: bool = True,
+    version: str | None = None,
 ) -> dict:
     """Promote one complete run-scoped staged release."""
     run_id = _resolve_staging_run_id(run_id)
     if not run_id:
         raise ValueError("run_id is required for full release promotion.")
-    if not version:
-        raise ValueError("version is required for full release promotion.")
+    candidate_version = _resolve_staging_candidate_version(
+        candidate_version,
+        version=version,
+    )
+    release_version = _resolve_release_version(
+        release_version,
+        candidate_version=candidate_version,
+    )
+    if not candidate_version:
+        raise ValueError("candidate_version is required for full release promotion.")
+    if not release_version:
+        raise ValueError("release_version is required for full release promotion.")
 
     _apply_run_context_for_release(run_id, run_context)
 
     return promote_full_release(
         FullReleasePromotionConfig(
             rel_paths=rel_paths,
-            version=version,
+            candidate_version=candidate_version,
+            release_version=release_version,
             run_id=run_id,
             files_with_paths=files_with_paths,
             extra_cleanup_paths=extra_cleanup_paths,

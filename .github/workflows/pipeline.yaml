@@ -31,8 +31,16 @@ on:
         description: "Resume a failed run by ID (allows mixed provenance)"
         default: ""
         type: string
-      version_override:
-        description: "Override version (default: read from pyproject.toml)"
+      candidate_version:
+        description: "Candidate staging scope used for HF staging"
+        default: ""
+        type: string
+      base_release_version:
+        description: "Stable release version current when the candidate was built"
+        default: ""
+        type: string
+      release_bump:
+        description: "Intended SemVer bump for this candidate: major, minor, or patch"
         default: ""
         type: string
       run_id:
@@ -85,6 +93,10 @@ jobs:
 
       - name: Resolve run context
         id: run-context
+        env:
+          CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
+          BASE_RELEASE_VERSION: ${{ inputs.base_release_version || '' }}
+          RELEASE_BUMP: ${{ inputs.release_bump || '' }}
         run: python .github/scripts/resolve_run_context.py
 
       - name: Deploy and launch pipeline on Modal
@@ -99,7 +111,9 @@ jobs:
           NUM_WORKERS: ${{ inputs.num_workers || '50' }}
           SKIP_NATIONAL: ${{ inputs.skip_national || 'false' }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id || '' }}
-          VERSION_OVERRIDE: ${{ inputs.version_override || '' }}
+          CANDIDATE_VERSION: ${{ inputs.candidate_version || '' }}
+          BASE_RELEASE_VERSION: ${{ inputs.base_release_version || '' }}
+          RELEASE_BUMP: ${{ inputs.release_bump || '' }}
           SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
           CHUNKED_MATRIX: ${{ inputs.chunked_matrix || 'false' }}
           CHUNK_SIZE: ${{ inputs.chunk_size || '25000' }}

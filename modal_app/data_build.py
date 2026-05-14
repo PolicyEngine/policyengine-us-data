@@ -31,6 +31,8 @@ from policyengine_us_data.stage_contracts import (  # noqa: E402
     write_contract,
 )
 from policyengine_us_data.utils.run_context import (  # noqa: E402
+    CANDIDATE_VERSION_ENV,
+    DATA_PACKAGE_VERSION_ENV,
     resolve_run_id,
 )
 
@@ -321,6 +323,7 @@ def validate_and_maybe_upload_datasets(
     require_small_enhanced_cps: bool = True,
     stage_only: bool = False,
     run_id: str = "",
+    version: str = DATA_PACKAGE_VERSION,
 ) -> None:
     validation_args = ["--validate-only"]
     if skip_enhanced_cps:
@@ -345,6 +348,8 @@ def validate_and_maybe_upload_datasets(
             upload_args.append("--stage-only")
         if run_id:
             upload_args.append(f"--run-id={run_id}")
+        if version:
+            upload_args.append(f"--version={version}")
         run_script(
             "policyengine_us_data/storage/upload_completed_datasets.py",
             args=upload_args,
@@ -511,13 +516,14 @@ def write_dataset_build_contract(
     stage_only: bool,
     skip_enhanced_cps: bool,
     skip_stage_5: bool = False,
+    package_version: str = DATA_PACKAGE_VERSION,
 ) -> StageContract:
     """Write the Stage 1 semantic handoff contract next to copied artifacts."""
     contract = build_dataset_build_output_contract(
         artifacts_dir=artifacts_dir,
         run_id=run_id,
         code_sha=code_sha,
-        package_version=DATA_PACKAGE_VERSION,
+        package_version=package_version,
         checkpoint_stats=checkpoint_stats,
         started_at=started_at,
         completed_at=completed_at,
@@ -570,6 +576,7 @@ def build_datasets(
     skip_stage_5: bool = False,
     stage_only: bool = False,
     run_id: str = "",
+    version: str = DATA_PACKAGE_VERSION,
 ):
     """Build all datasets with preemption-resilient checkpointing.
 
@@ -584,6 +591,8 @@ def build_datasets(
         skip_stage_5: Skip source-imputed CPS and small enhanced CPS after
             enhanced_cps_2024.h5 is built.
         stage_only: Upload to HF staging only, without promoting a release.
+        version: policyengine-us-data package version used for staging and
+            dataset-build contracts.
     """
     setup_gcp_credentials()
     checkpoint_stats = CheckpointStats()
@@ -594,6 +603,9 @@ def build_datasets(
             "GitHub-created run ID via --run-id or US_DATA_RUN_ID."
         )
     os.environ["US_DATA_RUN_ID"] = run_id
+    version = version or DATA_PACKAGE_VERSION
+    os.environ[CANDIDATE_VERSION_ENV] = version
+    os.environ[DATA_PACKAGE_VERSION_ENV] = version
 
     # Reload volume to see latest checkpoints
     checkpoint_volume.reload()
@@ -878,6 +890,7 @@ def build_datasets(
         stage_only=stage_only,
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
+        package_version=version,
     )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
@@ -896,6 +909,7 @@ def build_datasets(
         env=env,
         stage_only=stage_only,
         run_id=run_id,
+        version=version,
     )
 
     # Clean up checkpoints after successful completion
@@ -915,6 +929,7 @@ def main(
     skip_stage_5: bool = False,
     stage_only: bool = False,
     run_id: str = "",
+    version: str = DATA_PACKAGE_VERSION,
 ):
     run_id = run_id or resolve_run_id()
     if not run_id:
@@ -931,5 +946,6 @@ def main(
         skip_stage_5=skip_stage_5,
         stage_only=stage_only,
         run_id=run_id,
+        version=version,
     )
     print(result)

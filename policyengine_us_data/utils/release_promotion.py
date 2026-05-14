@@ -23,7 +23,8 @@ class FullReleasePromotionConfig:
     """Inputs for promoting one run-scoped staged release."""
 
     rel_paths: Sequence[str]
-    version: str
+    candidate_version: str
+    release_version: str
     run_id: str
     files_with_paths: Sequence[tuple[Path | str, str]] | None = None
     extra_cleanup_paths: Sequence[str] = ()
@@ -68,7 +69,7 @@ def promote_full_release(
 
     finalized_manifest = deps.get_matching_finalized_release_manifest(
         files_with_paths=list(manifest_files),
-        version=config.version,
+        version=config.release_version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
         model_package_name="policyengine-us",
@@ -86,7 +87,7 @@ def promote_full_release(
 
     promoted_hf = deps.promote_staging_to_production_hf(
         rel_paths,
-        version=config.version,
+        candidate_version=config.candidate_version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
         run_id=config.run_id,
@@ -94,7 +95,8 @@ def promote_full_release(
     )
     uploaded_gcs = deps.upload_from_hf_staging_to_gcs(
         rel_paths,
-        version=config.version,
+        candidate_version=config.candidate_version,
+        release_version=config.release_version,
         gcs_bucket_name=config.gcs_bucket_name,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
@@ -102,7 +104,7 @@ def promote_full_release(
     )
     release_manifest = deps.publish_release_manifest_to_hf(
         list(manifest_files),
-        version=config.version,
+        version=config.release_version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
         create_tag=False,
@@ -127,7 +129,8 @@ def promote_full_release(
 
     return {
         "run_id": config.run_id,
-        "version": config.version,
+        "candidate_version": config.candidate_version,
+        "release_version": config.release_version,
         "artifact_count": len(rel_paths),
         "hf_promoted": promoted_hf,
         "gcs_uploaded": uploaded_gcs,
@@ -143,8 +146,10 @@ def _validated_release_paths(
 ) -> list[str]:
     if not config.run_id:
         raise ValueError("run_id is required for full release promotion.")
-    if not config.version:
-        raise ValueError("version is required for full release promotion.")
+    if not config.candidate_version:
+        raise ValueError("candidate_version is required for full release promotion.")
+    if not config.release_version:
+        raise ValueError("release_version is required for full release promotion.")
 
     rel_paths = deps.dedupe_preserving_order(config.rel_paths)
     if not rel_paths:
@@ -161,6 +166,7 @@ def _manifest_files_for_release(
         return list(
             deps.download_staged_artifacts_for_manifest(
                 rel_paths,
+                candidate_version=config.candidate_version,
                 hf_repo_name=config.hf_repo_name,
                 hf_repo_type=config.hf_repo_type,
                 run_id=config.run_id,
@@ -217,7 +223,8 @@ def _finish_already_finalized_release(
     )
     return {
         "run_id": config.run_id,
-        "version": config.version,
+        "candidate_version": config.candidate_version,
+        "release_version": config.release_version,
         "artifact_count": len(rel_paths),
         "hf_promoted": 0,
         "gcs_uploaded": 0,
@@ -235,6 +242,7 @@ def _assert_staging_complete(
 ) -> None:
     missing = deps.list_missing_staged_artifacts(
         rel_paths,
+        candidate_version=config.candidate_version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
         run_id=config.run_id,
@@ -253,7 +261,7 @@ def _assert_release_can_finalize(
 ) -> None:
     should_finalize, missing_prefixes = deps.preflight_release_manifest_publish(
         manifest_files,
-        version=config.version,
+        version=config.release_version,
         new_repo_paths=rel_paths,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
@@ -271,7 +279,7 @@ def _upload_version_manifest(
     deps: FullReleasePromotionDependencies,
 ) -> None:
     deps.upload_final_version_manifest(
-        version=config.version,
+        version=config.release_version,
         released_paths=_released_paths(release_manifest),
         run_id=config.run_id,
         hf_repo_name=config.hf_repo_name,
@@ -289,7 +297,7 @@ def _upload_release_completion_marker(
     deps: FullReleasePromotionDependencies,
 ) -> ReleaseManifest:
     return deps.upload_release_completion_marker(
-        version=config.version,
+        version=config.release_version,
         run_id=config.run_id,
         released_paths=rel_paths,
         expected_paths=rel_paths,
@@ -307,17 +315,17 @@ def _assert_finalized_release_has_completion_marker(
     config: FullReleasePromotionConfig,
     deps: FullReleasePromotionDependencies,
 ) -> str:
-    marker_path = release_completion_marker_path(config.version)
+    marker_path = release_completion_marker_path(config.release_version)
     if deps.release_completion_marker_exists(
-        version=config.version,
+        version=config.release_version,
         hf_repo_name=config.hf_repo_name,
         hf_repo_type=config.hf_repo_type,
     ):
         return marker_path
 
     raise RuntimeError(
-        f"Release {config.version} is already finalized, but {marker_path} "
-        f"is not present at tag {config.version}. Refusing to mutate release "
+        f"Release {config.release_version} is already finalized, but {marker_path} "
+        f"is not present at tag {config.release_version}. Refusing to mutate release "
         "state after finalization; repair or migrate this release manually."
     )
 
@@ -344,7 +352,7 @@ def _cleanup_staging_after_release(
     try:
         return deps.cleanup_staging_hf(
             cleanup_paths,
-            version=config.version,
+            candidate_version=config.candidate_version,
             hf_repo_name=config.hf_repo_name,
             hf_repo_type=config.hf_repo_type,
             run_id=config.run_id,
@@ -352,7 +360,7 @@ def _cleanup_staging_after_release(
     except Exception:
         logging.warning(
             warning,
-            config.version,
+            config.release_version,
             exc_info=True,
         )
         return 0

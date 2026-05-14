@@ -78,6 +78,7 @@ def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch)
         upload=True,
         skip_enhanced_cps=False,
         env={"TEST_ENV": "1"},
+        version="1.73.0",
     )
 
     assert calls == [
@@ -88,7 +89,7 @@ def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch)
         ),
         (
             "policyengine_us_data/storage/upload_completed_datasets.py",
-            [],
+            ["--version=1.73.0"],
             {"TEST_ENV": "1"},
         ),
     ]
@@ -135,6 +136,7 @@ def test_validate_and_maybe_upload_datasets_stages_with_run_id(monkeypatch):
         env={"TEST_ENV": "1"},
         stage_only=True,
         run_id="abc123",
+        version="1.73.0",
     )
 
     assert calls == [
@@ -145,7 +147,7 @@ def test_validate_and_maybe_upload_datasets_stages_with_run_id(monkeypatch):
         ),
         (
             "policyengine_us_data/storage/upload_completed_datasets.py",
-            ["--stage-only", "--run-id=abc123"],
+            ["--stage-only", "--run-id=abc123", "--version=1.73.0"],
             {"TEST_ENV": "1"},
         ),
     ]
@@ -170,6 +172,7 @@ def test_validate_and_maybe_upload_datasets_can_skip_small_enhanced_cps(
         env={"TEST_ENV": "1"},
         stage_only=True,
         run_id="ecps-only",
+        version="1.73.0",
     )
 
     assert calls == [
@@ -184,6 +187,7 @@ def test_validate_and_maybe_upload_datasets_can_skip_small_enhanced_cps(
                 "--no-require-small-enhanced-cps",
                 "--stage-only",
                 "--run-id=ecps-only",
+                "--version=1.73.0",
             ],
             {"TEST_ENV": "1"},
         ),

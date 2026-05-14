@@ -36,8 +36,10 @@ First identify the run context from the GitHub Actions summary, workflow logs, o
 run-context output:
 
 - `run_id`
-- `candidate_version` for the rc package and HF staging namespace
-- `release_version` for final manifests, tags, and release completion
+- `candidate_version` for the HF staging namespace
+- `base_release_version` and `release_bump` for promotion-time versioning
+- `release_version` for final manifests, tags, and release completion, once
+  promotion computes it
 - Modal app name
 - Modal environment
 
@@ -97,7 +99,7 @@ from Modal dashboard logs.
 
 When diagnosing staging or promotion, keep candidate and final versions
 separate. Staged files live under
-`staging/{candidate_version}/{run_id}/...`; final release records live under
+`staging/{candidate_version}-{run_id}/...`; final release records live under
 `releases/{release_version}/...`, and production artifact paths remain at the
 repository root.
 

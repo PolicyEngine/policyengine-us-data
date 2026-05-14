@@ -1,4 +1,4 @@
-"""Rewrite pyproject.toml from an rc candidate to its stable release version."""
+"""Rewrite pyproject.toml to the stable version selected at promotion time."""
 
 from __future__ import annotations
 
@@ -22,16 +22,9 @@ def _release_version(candidate_version: str) -> str:
 
 def _resolve_release_version(current_version: str) -> str:
     release_version = os.environ.get("US_DATA_RELEASE_VERSION", "")
-    derived_release_version = _release_version(current_version)
     if not release_version:
-        return derived_release_version
-    explicit_release_version = _release_version(release_version)
-    if explicit_release_version != derived_release_version:
-        raise ValueError(
-            "US_DATA_RELEASE_VERSION must match the current package candidate: "
-            f"{explicit_release_version} != {derived_release_version}"
-        )
-    return explicit_release_version
+        return _release_version(current_version)
+    return _release_version(release_version)
 
 
 def main() -> None:

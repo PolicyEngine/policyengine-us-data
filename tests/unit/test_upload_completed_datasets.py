@@ -561,7 +561,7 @@ def test_upload_datasets_promote_only_uses_staged_artifacts(tmp_path, monkeypatc
 
     mock_api = MagicMock()
     mock_api.list_repo_files.return_value = [
-        f"staging/1.73.0/run-123/{repo_path}" for repo_path in expected_repo_paths
+        f"staging/1.73.0-run-123/{repo_path}" for repo_path in expected_repo_paths
     ]
     monkeypatch.setattr(upload_module, "HfApi", lambda: mock_api)
     monkeypatch.setattr(upload_module, "DATA_PACKAGE_VERSION", "1.73.0")

@@ -38,8 +38,15 @@ def _append_summary(function_call_id: str, context: RunContext) -> None:
             f"`{os.environ['NATIONAL_EPOCHS']}` |\n"
         )
         handle.write(f"| Run ID | `{context.run_id}` |\n")
-        handle.write(f"| Candidate version | `{context.candidate_version}` |\n")
-        handle.write(f"| Release version | `{context.release_version}` |\n")
+        handle.write(f"| Candidate scope | `{context.candidate_version}` |\n")
+        if context.base_release_version:
+            handle.write(
+                f"| Base release version | `{context.base_release_version}` |\n"
+            )
+        if context.release_bump:
+            handle.write(f"| Release bump | `{context.release_bump}` |\n")
+        if context.release_version:
+            handle.write(f"| Release version | `{context.release_version}` |\n")
         handle.write(f"| Modal app | `{context.modal_app_name}` |\n")
         handle.write(f"| Modal environment | `{context.modal_environment}` |\n")
         handle.write(f"| HF staging | `{context.hf_staging_prefix}` |\n")
@@ -71,6 +78,8 @@ def main() -> None:
         "resume_run_id": os.environ.get("RESUME_RUN_ID") or None,
         "candidate_version": context.candidate_version,
         "release_version": context.release_version,
+        "base_release_version": context.base_release_version,
+        "release_bump": context.release_bump,
         "sha_override": os.environ.get("SOURCE_SHA", ""),
         "run_id": context.run_id,
         "run_context": context.to_dict(),
@@ -92,8 +101,11 @@ def main() -> None:
     function_call = run_pipeline.spawn(**kwargs)
     print("Pipeline spawned.")
     print(f"Run ID: {context.run_id}")
-    print(f"Candidate version: {context.candidate_version}")
-    print(f"Release version: {context.release_version}")
+    print(f"Candidate scope: {context.candidate_version}")
+    print(f"Base release version: {context.base_release_version}")
+    print(f"Release bump: {context.release_bump}")
+    if context.release_version:
+        print(f"Release version: {context.release_version}")
     print(f"Modal app: {app_name}")
     print(f"Modal environment: {environment_name}")
     print(f"HF staging prefix: {context.hf_staging_prefix}")

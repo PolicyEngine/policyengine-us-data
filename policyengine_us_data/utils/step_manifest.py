@@ -388,6 +388,8 @@ class RunManifest:
     known_step_ids: list[str]
     candidate_version: str | None = None
     release_version: str | None = None
+    base_release_version: str | None = None
+    release_bump: str | None = None
     run_context: dict[str, Any] = field(default_factory=dict)
     modal_app_name: str | None = None
     modal_environment: str | None = None
@@ -412,7 +414,9 @@ class RunManifest:
             sha=str(data["sha"]),
             version=str(data["version"]),
             candidate_version=data.get("candidate_version") or data.get("version"),
-            release_version=data.get("release_version") or data.get("version"),
+            release_version=data.get("release_version") or "",
+            base_release_version=data.get("base_release_version"),
+            release_bump=data.get("release_bump"),
             status=str(data["status"]),
             started_at=str(data["started_at"]),
             run_context=dict(

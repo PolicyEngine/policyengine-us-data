@@ -155,7 +155,7 @@ def test_upload_to_staging_hf_accepts_run_id_kwarg(monkeypatch, tmp_path):
 
     assert n == 1
     assert len(captured_ops) == 2
-    assert captured_ops[0].path_in_repo == ("staging/1.73.0/abc123/_run_context.json")
+    assert captured_ops[0].path_in_repo == ("staging/1.73.0-abc123/_run_context.json")
 
 
 def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path):
@@ -165,9 +165,9 @@ def test_upload_to_staging_hf_run_id_scopes_staging_prefix(monkeypatch, tmp_path
     data_upload.upload_to_staging_hf(files, version="1.73.0", run_id="abc123")
 
     assert [op.path_in_repo for op in captured_ops] == [
-        "staging/1.73.0/abc123/_run_context.json",
-        "staging/1.73.0/abc123/states/AL.h5",
-        "staging/1.73.0/abc123/states/CA.h5",
+        "staging/1.73.0-abc123/_run_context.json",
+        "staging/1.73.0-abc123/states/AL.h5",
+        "staging/1.73.0-abc123/states/CA.h5",
     ]
 
 
@@ -190,8 +190,8 @@ def test_upload_to_staging_hf_uses_run_id_env(monkeypatch, tmp_path):
     data_upload.upload_to_staging_hf(files, version="1.73.0")
 
     assert [op.path_in_repo for op in captured_ops] == [
-        "staging/1.73.0/run-123/_run_context.json",
-        "staging/1.73.0/run-123/states/AL.h5",
+        "staging/1.73.0-run-123/_run_context.json",
+        "staging/1.73.0-run-123/states/AL.h5",
     ]
 
 
@@ -219,7 +219,7 @@ def test_promote_staging_to_production_hf_uses_run_scoped_source_only(monkeypatc
 
     assert promoted == 1
     assert (
-        commit_operations[0].src_path_in_repo == "staging/1.73.0/run-123/states/AL.h5"
+        commit_operations[0].src_path_in_repo == "staging/1.73.0-run-123/states/AL.h5"
     )
     assert commit_operations[0].path_in_repo == "states/AL.h5"
 
@@ -250,7 +250,7 @@ def test_cleanup_staging_hf_deletes_run_scoped_staging_paths(monkeypatch):
 
     assert deleted == 1
     assert [op.path_in_repo for op in commit_operations] == [
-        "staging/1.73.0/run-123/states/AL.h5"
+        "staging/1.73.0-run-123/states/AL.h5"
     ]
 
 
@@ -315,7 +315,7 @@ def test_upload_from_hf_staging_to_gcs_uses_run_scoped_hf_source_only(
     assert download_calls == [
         {
             "repo_id": "policyengine/policyengine-us-data",
-            "filename": "staging/1.73.0rc1/run-123/states/AL.h5",
+            "filename": "staging/1.73.0rc1-run-123/states/AL.h5",
             "repo_type": "model",
             "token": None,
         }
@@ -361,7 +361,7 @@ def test_promote_full_release_fails_before_writes_when_staging_missing(
     monkeypatch.setattr(
         data_upload,
         "list_missing_staged_artifacts",
-        lambda *args, **kwargs: ["staging/1.73.0/run-123/states/AL.h5"],
+        lambda *args, **kwargs: ["staging/1.73.0-run-123/states/AL.h5"],
     )
     monkeypatch.setattr(
         data_upload,

@@ -1031,12 +1031,12 @@ def upload_to_staging_hf(
     Args:
         files_with_paths: List of (local_path, relative_path) tuples
             relative_path is like "states/AL.h5"
-        candidate_version: Candidate rc version used for staging paths.
+        candidate_version: Candidate staging scope used for staging paths.
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type
         batch_size: Number of files per commit batch
         run_id: Optional per-run scope. When set with a candidate version,
-            files land under ``staging/{candidate_version}/{run_id}/{rel_path}``
+            files land under ``staging/{candidate_version}-{run_id}/{rel_path}``
             so concurrent runs do not collide; otherwise they land under
             ``staging/{rel_path}``.
 
@@ -1223,7 +1223,7 @@ def promote_staging_to_production_hf(
 
     Args:
         files: List of relative paths (e.g., "states/AL.h5")
-        candidate_version: Candidate rc version for staged source files.
+        candidate_version: Candidate staging scope for staged source files.
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
@@ -1311,7 +1311,7 @@ def cleanup_staging_hf(
 
     Args:
         files: List of relative paths (e.g., "states/AL.h5")
-        candidate_version: Candidate rc version for staged source files.
+        candidate_version: Candidate staging scope for staged source files.
         hf_repo_name: HuggingFace repository
         hf_repo_type: Repository type
         run_id: Optional per-run scope for staged source files
@@ -1403,7 +1403,7 @@ def upload_from_hf_staging_to_gcs(
 
     Args:
         rel_paths: Relative paths like "states/AL.h5", "districts/NC-01.h5"
-        candidate_version: Candidate rc version for staged source files.
+        candidate_version: Candidate staging scope for staged source files.
         gcs_bucket_name: GCS bucket name
         hf_repo_name: HuggingFace repository name
         hf_repo_type: Repository type

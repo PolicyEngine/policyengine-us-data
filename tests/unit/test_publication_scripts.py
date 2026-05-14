@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -36,56 +36,77 @@ def _write_pyproject(root: Path, version: str, name: str = "policyengine-us-data
     )
 
 
-def test_bump_version_uses_next_rc_for_final_release(monkeypatch):
+def test_bump_version_computes_candidate_scope_without_mutating_pyproject(
+    tmp_path,
+):
     module = _load_script(".github/bump_version.py", "bump_version_script_test")
-    payload = {
-        "releases": {
-            "1.74.0rc1": [],
-            "1.74.0rc2": [],
-            "1.73.0rc9": [],
-            "1.74.0": [],
-        }
-    }
+    _write_pyproject(tmp_path, "1.73.0")
+    changelog_dir = tmp_path / "changelog.d"
+    changelog_dir.mkdir()
+    (changelog_dir / "123.added").write_text("Added a thing.\n")
+    monkeypatch_root = tmp_path
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, traceback):
-            return False
-
-    monkeypatch.setattr(
-        module, "json", types.SimpleNamespace(load=lambda response: payload)
+    assert module.bump_version("1.73.0", "minor") == "1.74.0"
+    module.write_publication_scope(
+        monkeypatch_root / ".github_publication_scope.json",
+        {
+            "base_release_version": "1.73.0",
+            "release_bump": "minor",
+            "candidate_scope": "1.73.0-minor",
+            "would_release_as_at_build_time": "1.74.0",
+        },
     )
-    monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse())
 
-    assert module.bump_version("1.73.0rc4", "patch") == "1.73.1"
-    assert module.next_rc_version("policyengine_us_data", "1.74.0") == "1.74.0rc3"
-
-
-def test_bump_version_starts_rc_sequence_when_pypi_package_is_missing(monkeypatch):
-    module = _load_script(".github/bump_version.py", "bump_version_404_script_test")
-
-    def raise_404(url, timeout):
-        raise HTTPError(url, 404, "not found", hdrs=None, fp=None)
-
-    monkeypatch.setattr(module, "urlopen", raise_404)
-
-    assert module.next_rc_version("policyengine-us-data", "1.74.0") == "1.74.0rc1"
+    assert 'version = "1.73.0"' in (tmp_path / "pyproject.toml").read_text()
+    assert module.infer_bump(changelog_dir) == "minor"
 
 
-def test_bump_version_exits_when_pypi_history_cannot_be_read(monkeypatch, capsys):
-    module = _load_script(".github/bump_version.py", "bump_version_error_script_test")
+def test_fetch_publication_scope_prints_requested_field(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    module = _load_script(
+        ".github/scripts/fetch_publication_scope.py",
+        "fetch_publication_scope_script_test",
+    )
+    path = tmp_path / "publication_scope.json"
+    path.write_text(
+        json.dumps(
+            {
+                "base_release_version": "1.73.0",
+                "release_bump": "minor",
+                "candidate_scope": "1.73.0-minor",
+                "would_release_as_at_build_time": "1.74.0",
+            }
+        )
+    )
+    monkeypatch.setattr(module, "PUBLICATION_SCOPE_PATH", path)
+    monkeypatch.setattr(sys, "argv", ["fetch_publication_scope.py", "candidate_scope"])
 
-    def raise_url_error(url, timeout):
-        raise URLError("offline")
+    module.main()
 
-    monkeypatch.setattr(module, "urlopen", raise_url_error)
+    assert capsys.readouterr().out.strip() == "1.73.0-minor"
+
+
+def test_fetch_publication_scope_exits_on_missing_field(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    module = _load_script(
+        ".github/scripts/fetch_publication_scope.py",
+        "fetch_publication_scope_error_script_test",
+    )
+    path = tmp_path / "publication_scope.json"
+    path.write_text(json.dumps({"candidate_scope": "1.73.0-minor"}))
+    monkeypatch.setattr(module, "PUBLICATION_SCOPE_PATH", path)
+    monkeypatch.setattr(sys, "argv", ["fetch_publication_scope.py", "release_bump"])
 
     with pytest.raises(SystemExit):
-        module.next_rc_version("policyengine-us-data", "1.74.0")
+        module.main()
 
-    assert "Could not fetch PyPI release history" in capsys.readouterr().err
+    assert "Publication scope file is missing required field" in capsys.readouterr().err
 
 
 def test_fetch_release_version_prints_stable_version(tmp_path, monkeypatch, capsys):
@@ -119,7 +140,11 @@ def test_fetch_release_version_exits_on_unsupported_version(
     assert "Unsupported version format: 1.74" in capsys.readouterr().err
 
 
-def test_finalize_package_version_rewrites_rc_to_stable(tmp_path, monkeypatch, capsys):
+def test_finalize_package_version_rewrites_current_rc_to_stable(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
     module = _load_script(
         ".github/scripts/finalize_package_version.py",
         "finalize_package_version_script_test",
@@ -134,25 +159,24 @@ def test_finalize_package_version_rewrites_rc_to_stable(tmp_path, monkeypatch, c
     assert "Finalized package version: 1.74.0rc3 -> 1.74.0" in capsys.readouterr().out
 
 
-def test_finalize_package_version_rejects_mismatched_release_env(
+def test_finalize_package_version_accepts_promotion_time_release_version(
     tmp_path,
     monkeypatch,
 ):
     module = _load_script(
         ".github/scripts/finalize_package_version.py",
-        "finalize_package_version_mismatch_script_test",
+        "finalize_package_version_env_script_test",
     )
-    _write_pyproject(tmp_path, "1.74.0rc3")
+    _write_pyproject(tmp_path, "1.73.0")
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
-    monkeypatch.setenv("US_DATA_RELEASE_VERSION", "1.73.0")
+    monkeypatch.setenv("US_DATA_RELEASE_VERSION", "1.74.0")
 
-    with pytest.raises(ValueError, match="must match the current package candidate"):
-        module.main()
+    module.main()
 
-    assert 'version = "1.74.0rc3"' in (tmp_path / "pyproject.toml").read_text()
+    assert 'version = "1.74.0"' in (tmp_path / "pyproject.toml").read_text()
 
 
-def test_resolve_run_context_ignores_removed_version_override(
+def test_resolve_run_context_uses_publication_scope(
     tmp_path,
     monkeypatch,
 ):
@@ -160,34 +184,96 @@ def test_resolve_run_context_ignores_removed_version_override(
         ".github/scripts/resolve_run_context.py",
         "resolve_run_context_script_test",
     )
-    _write_pyproject(tmp_path, "1.75.0rc1")
+    _write_pyproject(tmp_path, "1.75.0")
+    scope_dir = tmp_path / ".github"
+    scope_dir.mkdir()
+    (scope_dir / "publication_scope.json").write_text(
+        json.dumps(
+            {
+                "base_release_version": "1.75.0",
+                "release_bump": "minor",
+                "candidate_scope": "1.75.0-minor",
+                "would_release_as_at_build_time": "1.76.0",
+            }
+        )
+    )
     monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
 
-    assert module._candidate_version({"VERSION_OVERRIDE": "9.9.9"}) == "1.75.0rc1"
+    assert module._base_release_version({}) == "1.75.0"
+    assert module._release_bump({}) == "minor"
     assert (
-        module._release_version(
-            {"VERSION_OVERRIDE": "9.9.9"},
-            candidate_version="1.75.0rc1",
+        module._candidate_version(
+            {},
+            base_release_version="1.75.0",
+            release_bump="minor",
         )
-        == "1.75.0rc1"
+        == "1.75.0-minor"
+    )
+    assert module._release_version({}) == ""
+
+
+def test_resolve_run_context_builds_candidate_scope_from_env(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/resolve_run_context.py",
+        "resolve_run_context_env_script_test",
+    )
+    _write_pyproject(tmp_path, "1.75.0")
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+
+    env = {
+        "BASE_RELEASE_VERSION": "1.75.0",
+        "RELEASE_BUMP": "patch",
+    }
+
+    assert module._base_release_version(env) == "1.75.0"
+    assert module._release_bump(env) == "patch"
+    assert (
+        module._candidate_version(
+            env,
+            base_release_version="1.75.0",
+            release_bump="patch",
+        )
+        == "1.75.0-patch"
     )
 
 
-def test_promote_publication_script_does_not_pass_removed_version_override(
+def test_promote_publication_script_derives_release_from_status(
+    tmp_path,
     monkeypatch,
 ):
-    captured = {}
+    captured = {"calls": []}
 
     class FakeRemoteFunction:
-        def remote(self, **kwargs):
-            captured["kwargs"] = kwargs
+        def __init__(self, name):
+            self.name = name
+
+        def remote(self, *args, **kwargs):
+            captured["calls"].append((self.name, args, kwargs))
+            if self.name == "get_pipeline_status":
+                return {
+                    "run_manifest": {
+                        "run_id": "run-123",
+                        "candidate_version": "1.73.0-minor",
+                        "base_release_version": "1.73.0",
+                        "release_bump": "minor",
+                        "run_context": {
+                            "run_id": "run-123",
+                            "candidate_version": "1.73.0-minor",
+                            "base_release_version": "1.73.0",
+                            "release_bump": "minor",
+                        },
+                    }
+                }
             return "promoted"
 
     class FakeFunction:
         @staticmethod
-        def from_name(*args, **kwargs):
-            captured["from_name"] = (args, kwargs)
-            return FakeRemoteFunction()
+        def from_name(app_name, function_name, **kwargs):
+            captured["from_name"] = (app_name, function_name, kwargs)
+            return FakeRemoteFunction(function_name)
 
     monkeypatch.setitem(
         sys.modules,
@@ -198,19 +284,66 @@ def test_promote_publication_script_does_not_pass_removed_version_override(
         ".github/scripts/promote_publication_pipeline.py",
         "promote_publication_pipeline_script_test",
     )
+    _write_pyproject(tmp_path, "1.73.0")
+    github_env = tmp_path / "github_env"
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_ENV", str(github_env))
     monkeypatch.setenv("US_DATA_RUN_ID", "run-123")
-    monkeypatch.setenv("US_DATA_CANDIDATE_VERSION", "1.74.0rc3")
-    monkeypatch.setenv("US_DATA_RELEASE_VERSION", "1.74.0")
-    monkeypatch.setenv("CANDIDATE_VERSION", "1.74.0rc3")
-    monkeypatch.setenv("RELEASE_VERSION", "1.74.0")
-    monkeypatch.setenv("VERSION_OVERRIDE", "9.9.9")
     monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
+    monkeypatch.setenv("VERSION_OVERRIDE", "9.9.9")
 
     module.main()
 
-    assert captured["kwargs"] == {
-        "run_id": "run-123",
-        "candidate_version": "1.74.0rc3",
-        "release_version": "1.74.0",
-    }
-    assert "version" not in captured["kwargs"]
+    assert captured["calls"] == [
+        ("get_pipeline_status", ("run-123",), {}),
+        (
+            "promote_run",
+            (),
+            {
+                "run_id": "run-123",
+                "candidate_version": "1.73.0-minor",
+                "release_version": "1.74.0",
+            },
+        ),
+    ]
+    assert "US_DATA_RELEASE_VERSION=1.74.0" in github_env.read_text()
+    assert "VERSION_OVERRIDE" not in json.dumps(captured["calls"])
+
+
+def test_promote_publication_script_requires_release_bump(
+    tmp_path,
+    monkeypatch,
+):
+    class FakeRemoteFunction:
+        def __init__(self, name):
+            self.name = name
+
+        def remote(self, *args, **kwargs):
+            return {
+                "run_manifest": {
+                    "run_id": "run-123",
+                    "candidate_version": "1.73.0-minor",
+                }
+            }
+
+    class FakeFunction:
+        @staticmethod
+        def from_name(app_name, function_name, **kwargs):
+            return FakeRemoteFunction(function_name)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "modal",
+        types.SimpleNamespace(Function=FakeFunction),
+    )
+    module = _load_script(
+        ".github/scripts/promote_publication_pipeline.py",
+        "promote_publication_pipeline_missing_bump_script_test",
+    )
+    _write_pyproject(tmp_path, "1.73.0")
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+    monkeypatch.setenv("US_DATA_RUN_ID", "run-123")
+    monkeypatch.setenv("MODAL_ENVIRONMENT", "main")
+
+    with pytest.raises(RuntimeError, match="missing release_bump"):
+        module.main()

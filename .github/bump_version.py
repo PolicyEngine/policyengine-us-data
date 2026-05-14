@@ -1,15 +1,19 @@
-"""Infer semver bump from towncrier fragment types and update version."""
+"""Infer release candidate scope from towncrier fragment types."""
 
 import json
 import re
 import sys
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+
+from policyengine_us_data.utils.run_context import (
+    build_candidate_scope,
+    release_version_from_bump,
+)
 
 
 VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"', re.MULTILINE)
 SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?$")
+PUBLICATION_SCOPE_PATH = Path(".github/publication_scope.json")
 
 
 def get_current_version(pyproject_path: Path) -> str:
@@ -20,15 +24,6 @@ def get_current_version(pyproject_path: Path) -> str:
             "Could not find version in pyproject.toml",
             file=sys.stderr,
         )
-        sys.exit(1)
-    return match.group(1)
-
-
-def get_package_name(pyproject_path: Path) -> str:
-    text = pyproject_path.read_text()
-    match = re.search(r'^name\s*=\s*"([^"]+)"', text, re.MULTILINE)
-    if not match:
-        print("Could not find project name in pyproject.toml", file=sys.stderr)
         sys.exit(1)
     return match.group(1)
 
@@ -59,47 +54,12 @@ def bump_version(version: str, bump: str) -> str:
     if not match:
         print(f"Unsupported version format: {version}", file=sys.stderr)
         sys.exit(1)
-    major, minor, patch = (int(x) for x in match.groups()[:3])
-    if bump == "major":
-        return f"{major + 1}.0.0"
-    elif bump == "minor":
-        return f"{major}.{minor + 1}.0"
-    else:
-        return f"{major}.{minor}.{patch + 1}"
+    return release_version_from_bump(version, bump)
 
 
-def next_rc_version(package_name: str, final_version: str) -> str:
-    normalized = re.sub(r"[-_.]+", "-", package_name).lower()
-    url = f"https://pypi.org/pypi/{normalized}/json"
-    highest = 0
-    try:
-        with urlopen(url, timeout=20) as response:
-            payload = json.load(response)
-    except HTTPError as exc:
-        if exc.code != 404:
-            raise
-        payload = {"releases": {}}
-    except URLError as exc:
-        print(f"Could not fetch PyPI release history: {exc}", file=sys.stderr)
-        sys.exit(1)
-    prefix = re.escape(final_version)
-    rc_re = re.compile(rf"^{prefix}rc(\d+)$")
-    for version in payload.get("releases", {}):
-        match = rc_re.match(version)
-        if match:
-            highest = max(highest, int(match.group(1)))
-    return f"{final_version}rc{highest + 1}"
-
-
-def update_file(path: Path, old_version: str, new_version: str):
-    text = path.read_text()
-    updated = text.replace(
-        f'version = "{old_version}"',
-        f'version = "{new_version}"',
-    )
-    if updated != text:
-        path.write_text(updated)
-        print(f"  Updated {path}")
+def write_publication_scope(path: Path, payload: dict[str, str]) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    print(f"  Updated {path}")
 
 
 def main():
@@ -107,16 +67,25 @@ def main():
     pyproject = root / "pyproject.toml"
     changelog_dir = root / "changelog.d"
 
-    package_name = get_package_name(pyproject)
     current = get_current_version(pyproject)
     bump = infer_bump(changelog_dir)
-    final_version = bump_version(current, bump)
-    candidate_version = next_rc_version(package_name, final_version)
+    would_release_as = bump_version(current, bump)
+    candidate_scope = build_candidate_scope(current, bump)
 
-    print(f"Version: {current} -> {candidate_version} ({bump})")
-    print(f"Final release version: {final_version}")
+    print(f"Base release version: {current}")
+    print(f"Candidate scope: {candidate_scope}")
+    print(f"Release bump: {bump}")
+    print(f"Would release as at build time: {would_release_as}")
 
-    update_file(pyproject, current, candidate_version)
+    write_publication_scope(
+        root / PUBLICATION_SCOPE_PATH,
+        {
+            "base_release_version": current,
+            "release_bump": bump,
+            "candidate_scope": candidate_scope,
+            "would_release_as_at_build_time": would_release_as,
+        },
+    )
 
 
 if __name__ == "__main__":

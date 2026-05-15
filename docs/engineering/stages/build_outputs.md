@@ -35,11 +35,12 @@ a postprocessor.
 ## Worker Chunk Execution
 
 The Modal coordinator builds canonical typed area requests before spawning
-workers. Regional publish queries the calibration target database for the
-district target universe, then asks `USAreaCatalog` to define the regional
-release shape: every configured state, every target congressional district, and
-the explicitly supported city outputs such as NYC. The coordinator wraps those
-requests in `WeightedAreaRequest`, partitions them with
+workers. Regional publish reads the target congressional district universe from
+the staged target database through `TargetUniverseReader`, then asks
+`USAreaCatalog` to define the regional release shape: every configured state,
+every target congressional district, and the explicitly supported city outputs
+such as NYC. The coordinator wraps those requests in `WeightedAreaRequest`,
+partitions them with
 `partition_weighted_area_requests()`, and sends workers typed
 `--requests-json` payloads. Completion is measured against the explicit request
 keys, not just a raw file count, so stale or unrelated H5 files cannot satisfy a

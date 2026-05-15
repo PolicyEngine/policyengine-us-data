@@ -1,25 +1,8 @@
-import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
 from tests.support.build_outputs.area_catalog import make_geography
 from tests.support.modal_local_area import load_local_area_module
-
-
-def _write_target_cd_db(db_path: Path, cd_geoids: tuple[str, ...]) -> None:
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(
-            "CREATE TABLE stratum_constraints "
-            "(constraint_variable TEXT NOT NULL, value TEXT NOT NULL)"
-        )
-        conn.executemany(
-            "INSERT INTO stratum_constraints VALUES (?, ?)",
-            [("congressional_district_geoid", cd_geoid) for cd_geoid in cd_geoids],
-        )
-        conn.execute(
-            "INSERT INTO stratum_constraints VALUES (?, ?)",
-            ("other_constraint", "9999"),
-        )
 
 
 def test_build_promote_national_publish_script_imports_version_manifest_helpers():
@@ -509,16 +492,6 @@ def test_build_regional_weighted_requests_uses_catalog_geography():
     assert [item.weight for item in weighted] == [2, 1, 1, 1, 1, 11]
 
 
-def test_load_target_cd_geoids_uses_database_target_adapter(tmp_path):
-    local_area = load_local_area_module()
-    db_path = tmp_path / "policy_data.db"
-    _write_target_cd_db(db_path, ("102", "101"))
-
-    result = local_area._load_target_cd_geoids(db_path)
-
-    assert result == ("101", "102")
-
-
 def test_build_weighted_requests_from_work_items_keeps_override_weights():
     local_area = load_local_area_module(stub_policyengine=False)
     catalog = local_area.USAreaCatalog(
@@ -645,8 +618,12 @@ def test_coordinate_publish_happy_path_with_fake_volumes_and_artifacts(
     )
     monkeypatch.setattr(
         local_area,
-        "_load_target_cd_geoids",
-        lambda db_path: ("3701",),
+        "TargetUniverseReader",
+        SimpleNamespace(
+            from_sqlite=lambda db_path: SimpleNamespace(
+                regional=lambda: SimpleNamespace(cd_geoids=("3701",))
+            )
+        ),
     )
     captured = {}
 
@@ -701,8 +678,7 @@ def test_coordinate_publish_default_path_uses_target_db_and_catalog(
     ):
         (artifact_dir / filename).write_text("artifact")
 
-    db_path = artifact_dir / "policy_data.db"
-    _write_target_cd_db(db_path, ("101", "102", "3601"))
+    (artifact_dir / "policy_data.db").write_text("artifact")
 
     real_path = Path
 
@@ -755,6 +731,15 @@ def test_coordinate_publish_default_path_uses_target_db_and_catalog(
         local_area,
         "staging_volume",
         SimpleNamespace(reload=lambda: None, commit=lambda: None),
+    )
+    monkeypatch.setattr(
+        local_area,
+        "TargetUniverseReader",
+        SimpleNamespace(
+            from_sqlite=lambda db_path: SimpleNamespace(
+                regional=lambda: SimpleNamespace(cd_geoids=("101", "102", "3601"))
+            )
+        ),
     )
     captured = {}
 

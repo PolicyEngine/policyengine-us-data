@@ -13,7 +13,6 @@ Usage:
 
 import json
 import os
-import sqlite3
 import subprocess
 import sys
 import traceback
@@ -46,6 +45,9 @@ from policyengine_us_data.build_outputs.partitioning import (  # noqa: E402
     WeightedAreaRequest,
     partition_weighted_area_requests,
     partition_weighted_work_items,
+)
+from policyengine_us_data.build_outputs.target_universe import (  # noqa: E402
+    TargetUniverseReader,
 )
 from policyengine_us_data.build_outputs.worker_responses import (  # noqa: E402
     normalize_worker_response,
@@ -596,21 +598,6 @@ def _load_area_catalog_geography(
         blocks_path=_existing_path(legacy_blocks_path),
         calibration_package_path=_existing_path(calibration_package_path),
     )
-
-
-def _load_target_cd_geoids(db_path: Path) -> tuple[str, ...]:
-    """Load the congressional district target universe for regional H5s."""
-
-    with sqlite3.connect(db_path) as conn:
-        rows = conn.execute(
-            """
-            SELECT DISTINCT value AS cd_geoid
-            FROM stratum_constraints
-            WHERE constraint_variable = 'congressional_district_geoid'
-            ORDER BY value
-            """
-        ).fetchall()
-    return tuple(str(row[0]) for row in rows)
 
 
 def _build_regional_weighted_requests(
@@ -1413,10 +1400,10 @@ def coordinate_publish(
     pipeline_volume.commit()
     staging_volume.commit()
     if work_items_override is None:
-        target_cd_geoids = _load_target_cd_geoids(db_path)
+        target_universe = TargetUniverseReader.from_sqlite(db_path).regional()
         weighted_requests = _build_regional_weighted_requests(
             geography=regional_geography,
-            target_cd_geoids=target_cd_geoids,
+            target_cd_geoids=target_universe.cd_geoids,
         )
     else:
         weighted_requests = _build_weighted_requests_from_work_items(

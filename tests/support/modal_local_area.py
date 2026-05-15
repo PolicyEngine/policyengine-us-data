@@ -95,6 +95,9 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_worker_responses = ModuleType(
             "policyengine_us_data.build_outputs.worker_responses"
         )
+        fake_target_universe = ModuleType(
+            "policyengine_us_data.build_outputs.target_universe"
+        )
         fake_policyengine.__path__ = []
         fake_calibration.__path__ = []
         fake_build_outputs.__path__ = []
@@ -233,6 +236,16 @@ def load_local_area_module(*, stub_policyengine: bool = True):
             _fake_normalize_worker_response
         )
 
+        class _FakeTargetUniverseReader:
+            @classmethod
+            def from_sqlite(cls, db_path):
+                return cls()
+
+            def regional(self):
+                return SimpleNamespace(cd_geoids=("3701",))
+
+        fake_target_universe.TargetUniverseReader = _FakeTargetUniverseReader
+
         class _FakeWorkerBootstrapBuilder:
             def build(self, *args, **kwargs):
                 return SimpleNamespace(
@@ -368,6 +381,9 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                 ),
                 "policyengine_us_data.build_outputs.worker_responses": (
                     fake_worker_responses
+                ),
+                "policyengine_us_data.build_outputs.target_universe": (
+                    fake_target_universe
                 ),
             }
         )

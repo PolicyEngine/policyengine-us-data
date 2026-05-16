@@ -16,6 +16,7 @@ from modal_app.pipeline import (  # noqa: E402
     _new_run_metadata,
     _pipeline_error_summary,
     _run_required_promotion_subprocess,
+    _try_reload_pipeline_volume_after_h5_builds,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
 from modal_app.step_manifests.store import (  # noqa: E402
@@ -69,6 +70,29 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
 
 def test_national_fit_lambda_matches_national_preset():
     assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(1e-4)
+
+
+def test_try_reload_pipeline_volume_after_h5_builds_tolerates_modal_open_file():
+    class VolumeWithOpenFileConflict:
+        def reload(self):
+            raise RuntimeError(
+                "there are open files preventing the operation: "
+                "path artifacts/run/policy_data.db is open"
+            )
+
+    assert (
+        _try_reload_pipeline_volume_after_h5_builds(VolumeWithOpenFileConflict())
+        is False
+    )
+
+
+def test_try_reload_pipeline_volume_after_h5_builds_reraises_other_errors():
+    class BrokenVolume:
+        def reload(self):
+            raise RuntimeError("volume service unavailable")
+
+    with pytest.raises(RuntimeError, match="volume service unavailable"):
+        _try_reload_pipeline_volume_after_h5_builds(BrokenVolume())
 
 
 def test_pipeline_error_summary_uses_traceback_ref_when_available():

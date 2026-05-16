@@ -109,6 +109,22 @@ def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> Non
     assert "Upload validation diagnostics even when H5 outputs are reused." in source
 
 
+def test_run_pipeline_tolerates_post_h5_pipeline_volume_open_files() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    reload_helper = _function_def(tree, "_try_reload_pipeline_volume_after_h5_builds")
+    run_pipeline_source = ast.get_source_segment(source_text, run_pipeline)
+    helper_source = ast.get_source_segment(source_text, reload_helper)
+
+    assert "_try_reload_pipeline_volume_after_h5_builds(pipeline_volume)" in (
+        run_pipeline_source
+    )
+    assert "pipeline_volume.reload()" not in run_pipeline_source
+    assert "open files preventing the operation" in helper_source
+    assert "return False" in helper_source
+
+
 def test_full_release_path_combines_base_regional_and_national_outputs():
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     helper = _function_def(tree, "_full_release_staging_rel_paths")

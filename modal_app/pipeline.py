@@ -140,6 +140,23 @@ def _python_cmd(*args: str) -> list[str]:
     return [sys.executable, *args]
 
 
+def _try_reload_pipeline_volume_after_h5_builds(vol) -> bool:
+    """Reload the pipeline volume unless Modal still sees child-open artifacts."""
+
+    try:
+        vol.reload()
+        return True
+    except RuntimeError as exc:
+        message = str(exc)
+        if "open files preventing the operation" not in message:
+            raise
+        print(
+            "WARNING: Skipping pipeline volume reload after H5 builds because "
+            f"Modal still reports an open artifact file: {message}"
+        )
+        return False
+
+
 def _calibration_package_parameters(
     *,
     workers: int,
@@ -1672,7 +1689,7 @@ def run_pipeline(
                 )
                 print(f"  National H5: {national_msg}")
 
-            pipeline_volume.reload()
+            _try_reload_pipeline_volume_after_h5_builds(pipeline_volume)
             staging_volume.reload()
 
             if isinstance(regional_h5_result, dict) and regional_h5_result.get(

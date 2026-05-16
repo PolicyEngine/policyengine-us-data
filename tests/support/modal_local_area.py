@@ -103,6 +103,24 @@ def load_local_area_module(*, stub_policyengine: bool = True):
 
         fake_pipeline_metadata.pipeline_node = _fake_pipeline_node
         fake_pipeline_schema.PipelineNode = _FakePipelineNode
+
+        def _fake_resolve_candidate_version(
+            explicit="",
+            *,
+            env=None,
+            **kwargs,
+        ):
+            env = env or {}
+            return (
+                explicit
+                or env.get("US_DATA_CANDIDATE_SCOPE", "")
+                or env.get("US_DATA_CANDIDATE_VERSION", "")
+                or env.get("CANDIDATE_SCOPE", "")
+                or env.get("CANDIDATE_VERSION", "")
+                or env.get("US_DATA_PACKAGE_VERSION", "")
+            )
+
+        fake_run_context.resolve_candidate_version = _fake_resolve_candidate_version
         fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
 

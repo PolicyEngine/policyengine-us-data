@@ -127,6 +127,41 @@ def test_promote_national_publish_falls_back_to_package_version_for_new_run_ids(
     assert f'version = "{run_id}"' not in script
 
 
+def test_staging_candidate_version_prefers_pipeline_candidate(monkeypatch):
+    local_area = load_local_area_module()
+
+    monkeypatch.setenv("US_DATA_CANDIDATE_VERSION", "1.115.2-patch")
+
+    assert local_area.get_staging_candidate_version("1.115.2") == "1.115.2-patch"
+
+
+def test_upload_to_staging_uses_candidate_scope(monkeypatch):
+    local_area = load_local_area_module()
+    captured = {}
+
+    monkeypatch.setattr(local_area, "setup_repo", lambda branch: None)
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(local_area.subprocess, "run", fake_run)
+
+    result = local_area.upload_to_staging(
+        branch="main",
+        version="1.115.2",
+        manifest={"files": {"states/NC.h5": {"sha256": "abc"}}},
+        run_id="usdata-gha123-a1",
+        candidate_version="1.115.2-patch",
+    )
+
+    script = captured["cmd"][-1]
+    assert 'version = "1.115.2"' in script
+    assert 'staging_candidate_version = "1.115.2-patch"' in script
+    assert "candidate_version=staging_candidate_version" in script
+    assert result.startswith("Staged candidate 1.115.2-patch")
+
+
 def test_build_publishing_input_bundle_preserves_traceability_inputs():
     local_area = load_local_area_module(stub_policyengine=False)
 

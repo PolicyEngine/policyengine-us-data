@@ -108,6 +108,11 @@ on:
         required: false
         default: ""
         type: string
+      allow_stale_policyengine_us:
+        description: "Allow production build when policyengine-us lags the latest PyPI release"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: long-run-projection-${{ github.run_id }}-${{ github.run_attempt }}
@@ -138,6 +143,11 @@ jobs:
           checked_out_sha="$(git rev-parse HEAD)"
           echo "CHECKED_OUT_SHA=${checked_out_sha}" >> "$GITHUB_ENV"
           GITHUB_SHA="${checked_out_sha}" python .github/scripts/resolve_run_context.py
+
+      - name: Require current PolicyEngine US dependency
+        env:
+          POLICYENGINE_US_ALLOW_STALE: ${{ inputs.allow_stale_policyengine_us }}
+        run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
 
       - name: Install dependencies
         run: uv sync --dev

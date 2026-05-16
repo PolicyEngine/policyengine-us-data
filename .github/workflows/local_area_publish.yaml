@@ -22,6 +22,11 @@ on:
         required: false
         default: false
         type: boolean
+      allow_stale_policyengine_us:
+        description: 'Allow production build when policyengine-us lags the latest PyPI release'
+        required: false
+        default: false
+        type: boolean
 
 # Trigger strategy:
 # 1. Automatic: Code changes to calibration/ pushed to main
@@ -49,6 +54,11 @@ jobs:
 
       - name: Install Modal CLI
         run: pip install modal
+
+      - name: Require current PolicyEngine US dependency
+        env:
+          POLICYENGINE_US_ALLOW_STALE: ${{ inputs.allow_stale_policyengine_us }}
+        run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
 
       - name: Run local area build and stage on Modal
         run: |

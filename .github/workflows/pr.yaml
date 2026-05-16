@@ -35,6 +35,18 @@ jobs:
             exit 1
           }
 
+  policyengine-us-freshness:
+    name: PolicyEngine US freshness
+    runs-on: ubuntu-latest
+    needs: check-fork
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Warn if policyengine-us is stale
+        run: python .github/scripts/check_policyengine_us_dependency.py --mode warn
+
   lint:
     runs-on: ubuntu-latest
     needs: check-fork

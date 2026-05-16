@@ -166,6 +166,10 @@ class TestVariableListConsistency:
         ):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
+    def test_spm_resource_aggregates_are_not_qrf_imputed(self):
+        assert "spm_unit_total_income_reported" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert "spm_unit_net_income_reported" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
         data = {"weeks_worked": {2024: np.array([52])}}
 

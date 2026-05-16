@@ -194,7 +194,7 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
 
     conditional_targets = [
         {
-            "constraint_variable": "spm_unit_energy_subsidy_data",
+            "constraint_variable": "spm_unit_energy_subsidy",
             "target_variable": "household_count",
             "household_count": 5_876_646,
             "source": "https://example.com/liheap-2024.pdf",
@@ -226,7 +226,7 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
             )
             for constraint in liheap_stratum.constraints_rel
         }
-        assert ("spm_unit_energy_subsidy_data", ">", "0") in constraints
+        assert ("spm_unit_energy_subsidy", ">", "0") in constraints
 
         liheap_target = session.exec(
             select(Target).where(

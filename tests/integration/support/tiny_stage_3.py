@@ -46,9 +46,7 @@ STAGE_3_GROUP_VARIABLES = tuple(
             *GROUP_LEVEL_VARIABLES,
             "tax_unit_count_dependents",
             "tax_unit_is_joint",
-            "spm_unit_total_income_reported",
-            "spm_unit_net_income_reported",
-            "spm_unit_capped_housing_subsidy_data",
+            "spm_unit_capped_housing_subsidy",
             "household_is_puf_clone",
         )
     )
@@ -71,8 +69,6 @@ STAGE_4_INPUT_VARIABLES = (
     "state_fips",
     "tax_unit_count_dependents",
     "tax_unit_is_joint",
-    "spm_unit_total_income_reported",
-    "spm_unit_net_income_reported",
     "is_puf_clone",
 )
 
@@ -238,24 +234,11 @@ def _extended_group_arrays(
     household_count = len(arrays["household_id"])
     puf_household_count = household_count - cps_household_count
     tax_unit_count_dependents = _count_dependents_by_tax_unit(arrays)
-    total_income = _sum_person_values_by_group(
-        group_ids=arrays["spm_unit_id"],
-        person_group_ids=arrays["person_spm_unit_id"],
-        person_values=(
-            arrays["employment_income"].astype(np.float32)
-            + arrays["self_employment_income"].astype(np.float32)
-            + arrays["social_security"].astype(np.float32)
-        ),
-    )
 
     return {
         "tax_unit_count_dependents": tax_unit_count_dependents,
         "tax_unit_is_joint": arrays["filing_status"] == b"JOINT",
-        "spm_unit_total_income_reported": total_income.astype(np.float32),
-        "spm_unit_net_income_reported": np.round(total_income * 0.85, 2).astype(
-            np.float32
-        ),
-        "spm_unit_capped_housing_subsidy_data": np.where(
+        "spm_unit_capped_housing_subsidy": np.where(
             arrays["tenure_type"] == b"RENTED",
             1_200,
             0,
@@ -277,18 +260,6 @@ def _count_dependents_by_tax_unit(arrays: dict[str, np.ndarray]) -> np.ndarray:
             for tax_unit_id in arrays["tax_unit_id"]
         ],
         dtype=np.int16,
-    )
-
-
-def _sum_person_values_by_group(
-    *,
-    group_ids: np.ndarray,
-    person_group_ids: np.ndarray,
-    person_values: np.ndarray,
-) -> np.ndarray:
-    return np.array(
-        [person_values[person_group_ids == group_id].sum() for group_id in group_ids],
-        dtype=np.float32,
     )
 
 

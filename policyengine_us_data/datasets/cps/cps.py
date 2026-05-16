@@ -443,9 +443,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["rent"][mask] = imputed_values["rent"]
     # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
-    cps["housing_assistance"] = np.zeros_like(
-        cps["spm_unit_capped_housing_subsidy_data"]
-    )
+    cps["housing_assistance"] = np.zeros_like(cps["spm_unit_capped_housing_subsidy"])
     cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
@@ -1414,12 +1412,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 )
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     SPM_RENAMES = dict(
-        spm_unit_total_income_reported="SPM_TOTVAL",
         snap_reported="SPM_SNAPSUB",
-        spm_unit_capped_housing_subsidy_data="SPM_CAPHOUSESUB",
-        spm_unit_energy_subsidy_data="SPM_ENGVAL",
+        spm_unit_capped_housing_subsidy="SPM_CAPHOUSESUB",
+        spm_unit_energy_subsidy="SPM_ENGVAL",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
-        spm_unit_net_income_reported="SPM_RESOURCES",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
     )
 

@@ -171,10 +171,8 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "strike_benefits",
     "receives_wic",
     # SPM variables
-    "spm_unit_total_income_reported",
-    "spm_unit_capped_housing_subsidy_data",
-    "spm_unit_energy_subsidy_data",
-    "spm_unit_net_income_reported",
+    "spm_unit_capped_housing_subsidy",
+    "spm_unit_energy_subsidy",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses
     "employer_sponsored_insurance_premiums",

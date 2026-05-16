@@ -99,6 +99,8 @@ PROHIBITED_DATASET_VARIABLES = {
     "free_school_meals_reported",
     "reduced_price_school_meals_reported",
     "spm_unit_wic_reported",
+    "spm_unit_total_income_reported",
+    "spm_unit_net_income_reported",
     "spm_unit_broadband_subsidy",
     "spm_unit_broadband_subsidy_reported",
     "spm_unit_payroll_tax_reported",
@@ -185,8 +187,7 @@ CLONE_DIAGNOSTICS_FILENAME = "enhanced_cps_2024.clone_diagnostics.json"
 CLONE_DIAGNOSTICS_METRICS = {
     "clone_household_weight_share_pct",
     "clone_person_weight_share_pct",
-    "clone_poor_modeled_only_person_weight_share_pct",
-    "poor_modeled_only_within_clone_person_weight_share_pct",
+    "clone_poor_person_weight_share_pct",
     "clone_childcare_exceeds_pre_subsidy_share_pct",
     "clone_childcare_above_5000_share_pct",
     "clone_taxes_exceed_market_income_share_pct",

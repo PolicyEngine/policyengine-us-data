@@ -815,7 +815,7 @@ Structured view of clone-level household weights.
 ### `modal_app.local_area.coordinate_publish`
 
 ```python
-def coordinate_publish(branch: str = 'main', num_workers: int = 50, skip_upload: bool = False, n_clones: int = 430, validate: bool = True, run_id: str = '', expected_fingerprint: str = '', work_items_override: List[Dict] | None = None) -> Dict
+def coordinate_publish(branch: str = 'main', num_workers: int = 50, skip_upload: bool = False, n_clones: int = 430, validate: bool = True, run_id: str = '', candidate_version: str = '', expected_fingerprint: str = '', work_items_override: List[Dict] | None = None) -> Dict
 ```
 
 Coordinate the full publishing workflow.

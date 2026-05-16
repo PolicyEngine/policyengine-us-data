@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 719,
+    "line": 733,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 380,
+    "line": 394,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
     "id": "build_worker_bootstrap",
     "kind": "function",
-    "line": 473,
+    "line": 487,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
@@ -873,7 +873,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 1061,
+    "line": 1089,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -901,14 +901,14 @@
       ]
     },
     "object_path": "modal_app.local_area.coordinate_publish",
-    "signature": "def coordinate_publish(branch: str = 'main', num_workers: int = 50, skip_upload: bool = False, n_clones: int = 430, validate: bool = True, run_id: str = '', expected_fingerprint: str = '', work_items_override: List[Dict] | None = None) -> Dict",
+    "signature": "def coordinate_publish(branch: str = 'main', num_workers: int = 50, skip_upload: bool = False, n_clones: int = 430, validate: bool = True, run_id: str = '', candidate_version: str = '', expected_fingerprint: str = '', work_items_override: List[Dict] | None = None) -> Dict",
     "source_file": "modal_app/local_area.py"
   },
   "coordinate_work_partition": {
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 536,
+    "line": 550,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -2557,7 +2557,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1883,
+    "line": 1902,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -2680,7 +2680,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 427,
+    "line": 441,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -2806,7 +2806,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 585,
+    "line": 599,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -2836,7 +2836,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 882,
+    "line": 899,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3038,7 +3038,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 903,
+    "line": 917,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -3061,7 +3061,7 @@
       ]
     },
     "object_path": "modal_app.local_area.upload_to_staging",
-    "signature": "def upload_to_staging(branch: str, version: str, manifest: Dict, run_id: str = '') -> str",
+    "signature": "def upload_to_staging(branch: str, version: str, manifest: Dict, run_id: str = '', candidate_version: str = '') -> str",
     "source_file": "modal_app/local_area.py"
   },
   "state_precomp": {
@@ -3149,7 +3149,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 827,
+    "line": 841,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"
@@ -3176,7 +3176,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 515,
+    "line": 532,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

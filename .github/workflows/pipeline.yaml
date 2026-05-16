@@ -67,6 +67,10 @@ on:
         description: "Number of Modal workers for parallel matrix build"
         default: "50"
         type: string
+      allow_stale_policyengine_us:
+        description: "Allow production build when policyengine-us lags the latest PyPI release"
+        default: false
+        type: boolean
 
 concurrency:
   group: pipeline-${{ github.run_id }}-${{ github.run_attempt }}
@@ -98,6 +102,11 @@ jobs:
           BASE_RELEASE_VERSION: ${{ inputs.base_release_version || '' }}
           RELEASE_BUMP: ${{ inputs.release_bump || '' }}
         run: python .github/scripts/resolve_run_context.py
+
+      - name: Require current PolicyEngine US dependency
+        env:
+          POLICYENGINE_US_ALLOW_STALE: ${{ inputs.allow_stale_policyengine_us }}
+        run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
 
       - name: Deploy and launch pipeline on Modal
         env:

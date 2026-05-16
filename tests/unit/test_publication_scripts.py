@@ -39,6 +39,40 @@ def _write_pyproject(root: Path, version: str, name: str = "policyengine-us-data
     )
 
 
+def _write_pyproject_with_policyengine_us(root: Path, dependency: str):
+    (root / "pyproject.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "policyengine-us-data"',
+                'version = "1.115.2"',
+                "dependencies = [",
+                f'    "{dependency}",',
+                "]",
+                "",
+            ]
+        )
+    )
+
+
+def _write_uv_lock_for_policyengine_us(
+    root: Path,
+    version: str,
+    source: str = '{ registry = "https://pypi.org/simple" }',
+):
+    (root / "uv.lock").write_text(
+        "\n".join(
+            [
+                "[[package]]",
+                'name = "policyengine-us"',
+                f'version = "{version}"',
+                f"source = {source}",
+                "",
+            ]
+        )
+    )
+
+
 def test_bump_version_computes_candidate_scope_without_mutating_pyproject(
     tmp_path,
 ):
@@ -201,6 +235,117 @@ def test_fetch_release_version_exits_on_unsupported_version(
         module.main()
 
     assert "Unsupported version format: 1.74" in capsys.readouterr().err
+
+
+def test_policyengine_us_dependency_check_passes_when_locked_to_latest(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_current_test",
+    )
+    _write_pyproject_with_policyengine_us(tmp_path, "policyengine-us==1.691.11")
+    _write_uv_lock_for_policyengine_us(tmp_path, "1.691.11")
+
+    assert module.check_dependency(tmp_path, latest_version="1.691.11") == []
+
+
+def test_policyengine_us_dependency_check_flags_stale_lock(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_stale_test",
+    )
+    _write_pyproject_with_policyengine_us(tmp_path, "policyengine-us==1.691.10")
+    _write_uv_lock_for_policyengine_us(tmp_path, "1.691.10")
+
+    violations = module.check_dependency(tmp_path, latest_version="1.691.11")
+
+    assert any("1.691.10" in violation for violation in violations)
+    assert any("1.691.11" in violation for violation in violations)
+
+
+def test_policyengine_us_dependency_check_flags_git_refs(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_git_test",
+    )
+    _write_pyproject_with_policyengine_us(
+        tmp_path,
+        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us@abc",
+    )
+    _write_uv_lock_for_policyengine_us(
+        tmp_path,
+        "1.691.11",
+        source='{ git = "https://github.com/PolicyEngine/policyengine-us?rev=abc#abc" }',
+    )
+
+    violations = module.check_dependency(tmp_path, latest_version="1.691.11")
+
+    assert any("Git ref" in violation for violation in violations)
+
+
+def test_policyengine_us_dependency_check_flags_non_exact_pyproject_pin(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_pyproject_test",
+    )
+    _write_pyproject_with_policyengine_us(tmp_path, "policyengine-us>=1.691.11")
+    _write_uv_lock_for_policyengine_us(tmp_path, "1.691.11")
+
+    violations = module.check_dependency(tmp_path, latest_version="1.691.11")
+
+    assert any(
+        "must pin policyengine-us==1.691.11" in violation for violation in violations
+    )
+
+
+def test_policyengine_us_dependency_check_allow_stale_exits_successfully(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_allow_stale_test",
+    )
+    _write_pyproject_with_policyengine_us(tmp_path, "policyengine-us==1.691.10")
+    _write_uv_lock_for_policyengine_us(tmp_path, "1.691.10")
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_latest_pypi_version", lambda: "1.691.11")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_policyengine_us_dependency.py", "--mode", "fail"],
+    )
+    monkeypatch.setenv("POLICYENGINE_US_ALLOW_STALE", "true")
+
+    assert module.main() == 0
+
+
+def test_policyengine_us_dependency_check_allow_stale_keeps_local_errors_fatal(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_allow_stale_local_error_test",
+    )
+    _write_pyproject_with_policyengine_us(
+        tmp_path,
+        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us@abc",
+    )
+    _write_uv_lock_for_policyengine_us(
+        tmp_path,
+        "1.691.10",
+        source='{ git = "https://github.com/PolicyEngine/policyengine-us?rev=abc#abc" }',
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_latest_pypi_version", lambda: "1.691.11")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_policyengine_us_dependency.py", "--mode", "fail"],
+    )
+    monkeypatch.setenv("POLICYENGINE_US_ALLOW_STALE", "true")
+
+    assert module.main() == 1
 
 
 def test_restore_publication_changelog_restores_candidate_snapshot(

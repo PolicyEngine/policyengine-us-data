@@ -1,6 +1,7 @@
 import inspect
 
 import pandas as pd
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from policyengine_us_data.db import etl_national_targets
@@ -11,8 +12,11 @@ from policyengine_us_data.db.create_database_tables import (
     create_database,
 )
 from policyengine_us_data.db.etl_national_targets import (
+    MEDICARE_PART_B_AGE_TARGET_YEAR,
     extract_national_targets,
+    load_medicare_part_b_age_targets,
     load_national_targets,
+    load_state_acs_rent_targets,
 )
 
 
@@ -233,6 +237,112 @@ def test_load_national_targets_supports_liheap_household_counts(tmp_path, monkey
         ).first()
         assert liheap_target is not None
         assert liheap_target.value == 5_876_646
+
+
+def test_load_state_acs_rent_targets_creates_state_rows(tmp_path, monkeypatch):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        _make_stratum(session, notes="United States")
+        _make_stratum(
+            session,
+            notes="California",
+            constraints=[
+                StratumConstraint(
+                    constraint_variable="state_fips",
+                    operation="==",
+                    value="6",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    targets = pd.DataFrame(
+        [
+            {
+                "state_code": "CA",
+                "state_fips": "06",
+                "annual_contract_rent": 143_291_068_800,
+                "real_estate_taxes": 52_872_735_400,
+            }
+        ]
+    )
+    load_state_acs_rent_targets(targets, year=2024)
+
+    with Session(engine) as session:
+        target = session.exec(
+            select(Target).where(
+                Target.variable == "rent",
+                Target.period == 2024,
+            )
+        ).first()
+        assert target is not None
+        assert target.value == 143_291_068_800
+        assert target.source == "PolicyEngine"
+        assert "Census ACS 2024 1-year table B25060" in target.notes
+
+
+def test_load_medicare_part_b_age_targets_creates_age_domain_rows(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        _make_stratum(session, notes="United States")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    targets = pd.DataFrame(
+        [
+            {
+                "age_10_year_lower_bound": 70,
+                "medicare_part_b_premiums": 54_002_252_445.0,
+            },
+            {
+                "age_10_year_lower_bound": 80,
+                "medicare_part_b_premiums": 24_692_726_700.0,
+            },
+        ]
+    )
+    load_medicare_part_b_age_targets(targets)
+
+    with Session(engine) as session:
+        rows = session.exec(
+            select(Target).where(Target.variable == "medicare_part_b_premium")
+        ).all()
+        assert len(rows) == 2
+        assert {row.period for row in rows} == {MEDICARE_PART_B_AGE_TARGET_YEAR}
+
+    with engine.connect() as conn:
+        overview = conn.execute(
+            text(
+                """
+                SELECT variable, domain_variable, value
+                FROM target_overview
+                WHERE variable = 'medicare_part_b_premium'
+                ORDER BY value
+                """
+            )
+        ).fetchall()
+
+    assert {row.domain_variable for row in overview} == {"age"}
+    assert {float(row.value) for row in overview} == {
+        54_002_252_445.0,
+        24_692_726_700.0,
+    }
 
 
 def test_extract_national_targets_drops_survey_spm_targets():

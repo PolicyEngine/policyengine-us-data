@@ -3,7 +3,7 @@ import warnings
 from sqlmodel import Session, create_engine, select
 import pandas as pd
 
-from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.db.create_database_tables import (
     Stratum,
     StratumConstraint,
@@ -23,11 +23,196 @@ from policyengine_us_data.utils.cms_medicare import (
 from policyengine_us_data.utils.db import (
     DEFAULT_YEAR,
     etl_argparser,
+    get_geographic_strata,
 )
 
 WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
     "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
 )
+MEDICARE_PART_B_AGE_TARGET_YEAR = 2024
+
+
+def _best_available_yeared_csv(stem: str, requested_year: int):
+    paths_by_year = {}
+    for path in CALIBRATION_FOLDER.glob(f"{stem}_*.csv"):
+        try:
+            year = int(path.stem.removeprefix(f"{stem}_"))
+        except ValueError:
+            continue
+        paths_by_year[year] = path
+
+    if not paths_by_year:
+        return None, None
+
+    years = sorted(paths_by_year)
+    prior_years = [year for year in years if year <= int(requested_year)]
+    year = max(prior_years) if prior_years else years[0]
+    return paths_by_year[year], year
+
+
+def _upsert_baseline_target(
+    session: Session,
+    *,
+    stratum_id: int,
+    variable: str,
+    period: int,
+    value: float,
+    source: str,
+    notes: str,
+) -> None:
+    existing_target = session.exec(
+        select(Target).where(
+            Target.stratum_id == stratum_id,
+            Target.variable == variable,
+            Target.period == period,
+            Target.reform_id == 0,
+        )
+    ).first()
+    if existing_target:
+        existing_target.value = value
+        existing_target.source = source
+        existing_target.notes = notes
+        existing_target.active = True
+        return
+
+    session.add(
+        Target(
+            stratum_id=stratum_id,
+            variable=variable,
+            period=period,
+            value=value,
+            active=True,
+            source=source,
+            notes=notes,
+        )
+    )
+
+
+def extract_state_acs_housing_cost_targets(year: int = DEFAULT_YEAR):
+    """Load the best available state ACS housing-cost target file."""
+    path, data_year = _best_available_yeared_csv("acs_housing_costs", year)
+    if path is None:
+        return pd.DataFrame(), None
+
+    targets = pd.read_csv(path, dtype={"state_fips": str})
+    return targets, data_year
+
+
+def load_state_acs_rent_targets(targets: pd.DataFrame, year: int) -> None:
+    """Load state aggregate contract rent targets from ACS housing-cost data."""
+    if targets.empty:
+        return
+
+    database_url = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    engine = create_engine(database_url)
+
+    with Session(engine) as session:
+        geo_strata = get_geographic_strata(session)
+        for row in targets.itertuples(index=False):
+            state_fips = int(str(row.state_fips))
+            stratum_id = geo_strata["state"].get(state_fips)
+            if stratum_id is None:
+                continue
+
+            _upsert_baseline_target(
+                session,
+                stratum_id=stratum_id,
+                variable="rent",
+                period=int(year),
+                value=float(row.annual_contract_rent),
+                source="PolicyEngine",
+                notes=(
+                    "Census ACS state aggregate contract rent, annualized from "
+                    "monthly ACS aggregate contract rent | Source: Census ACS "
+                    f"{year} 1-year table B25060"
+                ),
+            )
+
+        session.commit()
+
+
+def extract_medicare_part_b_age_targets() -> pd.DataFrame:
+    """Load Medicare Part B premium age-bucket targets."""
+    path = CALIBRATION_FOLDER / "healthcare_spending.csv"
+    if not path.exists():
+        return pd.DataFrame()
+
+    targets = pd.read_csv(path)
+    return targets.loc[:, ~targets.columns.duplicated()].copy()
+
+
+def load_medicare_part_b_age_targets(targets: pd.DataFrame) -> None:
+    """Load national Medicare Part B premium targets by 10-year age bucket."""
+    if targets.empty:
+        return
+
+    database_url = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
+    engine = create_engine(database_url)
+
+    targets = targets.copy()
+    targets["age_10_year_lower_bound"] = targets["age_10_year_lower_bound"].astype(int)
+    top_age_lower_bound = int(targets["age_10_year_lower_bound"].max())
+
+    with Session(engine) as session:
+        us_stratum = session.exec(
+            select(Stratum).where(Stratum.parent_stratum_id.is_(None))
+        ).first()
+        if not us_stratum:
+            raise ValueError(
+                "National stratum not found. Run create_initial_strata.py first."
+            )
+
+        for _, row in targets.iterrows():
+            age_lower_bound = int(row["age_10_year_lower_bound"])
+            is_top_bucket = age_lower_bound == top_age_lower_bound
+            if is_top_bucket:
+                note = f"National people age {age_lower_bound}+"
+            else:
+                note = f"National people age {age_lower_bound}-{age_lower_bound + 9}"
+
+            stratum = session.exec(
+                select(Stratum).where(
+                    Stratum.parent_stratum_id == us_stratum.stratum_id,
+                    Stratum.notes == note,
+                )
+            ).first()
+            if not stratum:
+                stratum = Stratum(
+                    parent_stratum_id=us_stratum.stratum_id,
+                    notes=note,
+                )
+                stratum.constraints_rel.append(
+                    StratumConstraint(
+                        constraint_variable="age",
+                        operation=">=",
+                        value=str(age_lower_bound),
+                    )
+                )
+                if not is_top_bucket:
+                    stratum.constraints_rel.append(
+                        StratumConstraint(
+                            constraint_variable="age",
+                            operation="<",
+                            value=str(age_lower_bound + 10),
+                        )
+                    )
+                session.add(stratum)
+                session.flush()
+
+            _upsert_baseline_target(
+                session,
+                stratum_id=stratum.stratum_id,
+                variable="medicare_part_b_premium",
+                period=MEDICARE_PART_B_AGE_TARGET_YEAR,
+                value=float(row["medicare_part_b_premiums"]),
+                source="PolicyEngine",
+                notes=(
+                    "Legacy healthcare_spending.csv Medicare Part B premium "
+                    "age-bucket target"
+                ),
+            )
+
+        session.commit()
 
 
 def extract_national_targets(year: int = DEFAULT_YEAR):
@@ -867,6 +1052,16 @@ def main():
         tax_expenditure_df,
         conditional_targets,
     )
+    state_acs_targets, state_acs_year = extract_state_acs_housing_cost_targets(
+        year=time_period
+    )
+    if state_acs_year is not None:
+        print("Loading state ACS rent targets...")
+        load_state_acs_rent_targets(state_acs_targets, state_acs_year)
+
+    medicare_part_b_age_targets = extract_medicare_part_b_age_targets()
+    print("Loading Medicare Part B age-bucket targets...")
+    load_medicare_part_b_age_targets(medicare_part_b_age_targets)
 
     print("\nETL pipeline complete!")
 

@@ -26,8 +26,10 @@ from policyengine_us_data.db.etl_irs_soi import (
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
     load_national_ltcg_agi_targets,
+    load_national_taxable_agi_domain_filing_status_targets,
     load_national_taxable_agi_filing_status_targets,
     load_national_workbook_soi_targets,
+    load_state_eitc_claim_count_targets,
 )
 
 
@@ -860,3 +862,230 @@ def test_load_national_taxable_agi_filing_status_targets_creates_structured_rows
     assert ("income_tax_before_credits", ">", "0") in count_constraints
     assert ("adjusted_gross_income", ">=", "20000.0") in count_constraints
     assert ("adjusted_gross_income", "<", "25000.0") in count_constraints
+
+
+def test_load_national_taxable_agi_domain_filing_status_targets_creates_structured_rows(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    soi_rows = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "G",
+                "XLSX row": 19,
+                "Variable": "employment_income",
+                "Filing status": "All",
+                "AGI lower bound": 50_000.0,
+                "AGI upper bound": 75_000.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 1_000_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "F",
+                "XLSX row": 19,
+                "Variable": "employment_income",
+                "Filing status": "All",
+                "AGI lower bound": 50_000.0,
+                "AGI upper bound": 75_000.0,
+                "Count": True,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 2_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "O",
+                "XLSX row": 18,
+                "Variable": "total_pension_income",
+                "Filing status": "Head of Household",
+                "AGI lower bound": 30_000.0,
+                "AGI upper bound": 40_000.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 3_000_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "N",
+                "XLSX row": 18,
+                "Variable": "total_pension_income",
+                "Filing status": "Head of Household",
+                "AGI lower bound": 30_000.0,
+                "AGI upper bound": 40_000.0,
+                "Count": True,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 4_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "G",
+                "XLSX row": 12,
+                "Variable": "employment_income",
+                "Filing status": "All",
+                "AGI lower bound": 1.0,
+                "AGI upper bound": 10_000.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 999.0,
+            },
+        ]
+    )
+
+    def fake_get_soi(year: int) -> pd.DataFrame:
+        assert year == 2024
+        return soi_rows
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_soi",
+        fake_get_soi,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_taxable_agi_domain_filing_status_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            target_year=2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["irs_employment_income", "pension_income", "tax_unit_count"],
+            "domain_variables": [
+                "adjusted_gross_income,income_tax_before_credits,irs_employment_income",
+                "adjusted_gross_income,filing_status,income_tax_before_credits,pension_income",
+            ],
+        }
+    )
+
+    assert set(rows["variable"]) == {
+        "irs_employment_income",
+        "pension_income",
+        "tax_unit_count",
+    }
+    assert set(rows["value"].astype(float)) == {
+        1_000_000.0,
+        2_000.0,
+        3_000_000.0,
+        4_000.0,
+    }
+    assert set(rows["period"].astype(int)) == {2024}
+    assert 999.0 not in set(rows["value"].astype(float))
+
+    with engine.connect() as conn:
+        constraints = conn.execute(
+            text(
+                """
+                SELECT tv.variable, sc.constraint_variable, sc.operation, sc.value
+                FROM target_overview tv
+                JOIN stratum_constraints sc ON tv.stratum_id = sc.stratum_id
+                WHERE tv.variable IN ('irs_employment_income', 'pension_income')
+                ORDER BY tv.variable, sc.constraint_variable
+                """
+            )
+        ).fetchall()
+
+    constraint_set = {
+        (target_variable, variable, operation, constraint_value)
+        for target_variable, variable, operation, constraint_value in constraints
+    }
+    assert (
+        "irs_employment_income",
+        "irs_employment_income",
+        ">",
+        "0",
+    ) in constraint_set
+    assert (
+        "pension_income",
+        "filing_status",
+        "==",
+        "HEAD_OF_HOUSEHOLD",
+    ) in constraint_set
+    assert (
+        "pension_income",
+        "pension_income",
+        ">",
+        "0",
+    ) in constraint_set
+
+
+def test_load_state_eitc_claim_count_targets_creates_state_rows(monkeypatch, tmp_path):
+    db_uri, engine = _create_test_engine(tmp_path)
+    calibration_dir = tmp_path / "calibration_targets"
+    calibration_dir.mkdir()
+    (calibration_dir / "eitc_claim_controls.csv").write_text(
+        "year,GEO_ID,Returns,Amount\n"
+        "2024,0100000US,1000,2000\n"
+        "2024,0400000US06,123,456\n"
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.CALIBRATION_FOLDER",
+        calibration_dir,
+    )
+
+    with Session(engine) as session:
+        state_geo = Stratum(notes="California")
+        state_geo.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            )
+        ]
+        session.add(state_geo)
+        session.commit()
+        session.refresh(state_geo)
+
+        state_filer = Stratum(
+            parent_stratum_id=state_geo.stratum_id,
+            notes="State FIPS 6 - Tax Filers",
+        )
+        state_filer.constraints_rel = [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable="state_fips",
+                operation="==",
+                value="6",
+            ),
+        ]
+        session.add(state_filer)
+        session.commit()
+        session.refresh(state_filer)
+
+        load_state_eitc_claim_count_targets(
+            session,
+            {"state": {6: state_filer.stratum_id}},
+            target_year=2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_count"],
+            "domain_variables": ["eitc"],
+        }
+    )
+
+    assert len(rows) == 1
+    assert rows.iloc[0]["geo_level"] == "state"
+    assert rows.iloc[0]["geographic_id"] == "6"
+    assert float(rows.iloc[0]["value"]) == 123.0

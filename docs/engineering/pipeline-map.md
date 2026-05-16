@@ -184,7 +184,7 @@ Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-
 | `qrf_pass2` Splice CPS-Only Predictions | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions` |
 | `mortgage_hints` Mortgage Balance Hint Imputation | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.impute_tax_unit_mortgage_balance_hints` |
 | `mortgage_convert` Structural Mortgage Conversion | `library` | `current` | `moving` | `policyengine_us_data.utils.mortgage_interest.convert_mortgage_interest_to_structural_inputs` |
-| `formula_drop` Drop Formula Variables | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables` |
+| `computed_export_contract` Validate Leaf-Input Export | `process` | `transitional` | `moving` | `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported` |
 
 #### Edges
 
@@ -204,8 +204,8 @@ Merge CPS + PUF via cloning, rematch clone features, QRF-impute incomes and CPS-
 - `qrf_pass2` -> `mortgage_hints` `data_flow`
 - `in_scf_s2` -> `mortgage_hints` `data_flow` (SCF donor sample)
 - `mortgage_hints` -> `mortgage_convert` `data_flow`
-- `mortgage_convert` -> `formula_drop` `data_flow`
-- `formula_drop` -> `out_ext` `produces_artifact`
+- `mortgage_convert` -> `computed_export_contract` `data_flow`
+- `computed_export_contract` -> `out_ext` `produces_artifact`
 - `util_qrf_s2` -> `puf_qrf_pass` `uses_utility`
 - `util_qrf_s2` -> `cps_only` `uses_utility`
 - `util_qrf_s2` -> `mortgage_hints` `uses_utility`

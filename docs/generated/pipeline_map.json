@@ -2260,11 +2260,11 @@
         {
           "edge_type": "data_flow",
           "source": "mortgage_convert",
-          "target": "formula_drop"
+          "target": "computed_export_contract"
         },
         {
           "edge_type": "produces_artifact",
-          "source": "formula_drop",
+          "source": "computed_export_contract",
           "target": "out_ext"
         },
         {
@@ -2543,17 +2543,17 @@
         },
         {
           "api_refs": [
-            "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
+            "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported"
           ],
           "artifacts_in": [
             "extended_cps_stage2"
           ],
           "artifacts_out": [
-            "formula_pruned_extended_cps"
+            "validated_extended_cps"
           ],
-          "description": "Removes variables computed by policyengine-us formulas, while preserving selected imputed inputs under canonical leaf variable names.",
-          "id": "formula_drop",
-          "label": "Drop Formula Variables",
+          "description": "Fails the build if the final export still contains variables computed by policyengine-us formulas, adds, or subtracts.",
+          "id": "computed_export_contract",
+          "label": "Validate Leaf-Input Export",
           "node_type": "process",
           "pathways": [
             "data_build"

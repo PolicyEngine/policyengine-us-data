@@ -810,7 +810,7 @@
     "docstring": "Replace clone-half person-level feature variables with donor matches.",
     "id": "clone_features",
     "kind": "function",
-    "line": 400,
+    "line": 403,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions"
@@ -868,6 +868,37 @@
     "object_path": "policyengine_us_data.build_outputs.weights.CloneWeightMatrix",
     "signature": "class CloneWeightMatrix",
     "source_file": "policyengine_us_data/build_outputs/weights.py"
+  },
+  "computed_export_contract": {
+    "docstring": "Assert that final exported variables are leaf inputs.",
+    "id": "computed_export_contract",
+    "kind": "function",
+    "line": 1266,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported"
+      ],
+      "artifacts_in": [
+        "extended_cps_stage2"
+      ],
+      "artifacts_out": [
+        "validated_extended_cps"
+      ],
+      "description": "Fails the build if the final export still contains variables computed by policyengine-us formulas, adds, or subtracts.",
+      "id": "computed_export_contract",
+      "label": "Validate Leaf-Input Export",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    "object_path": "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported",
+    "signature": "def _assert_no_computed_variables_exported(cls, data, time_period)",
+    "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
   },
   "coordinate_publish": {
     "docstring": "Coordinate the full publishing workflow.",
@@ -936,7 +967,7 @@
     "docstring": "Second-stage QRF: train on CPS, predict for PUF clones.\n\nFor the PUF clone half of the extended CPS we need plausible values\nof CPS-only variables (retirement distributions, transfers, hours,\nSPM components, etc.) that are consistent with the clone's\nPUF-imputed income -- not just naively copied from the CPS donor.\n\nWe train a QRF on CPS person-level data where:\n  * predictors = demographics + key income variables\n  * outputs    = CPS-only variables listed in\n                 ``CPS_ONLY_IMPUTED_VARIABLES``\n\nFor PUF clone prediction we use the PUF-imputed income values\nfrom the second half of ``data`` (the clone half, which already\nhas PUF-imputed income from stage 1).\n\nUses ``fit_predict()`` with ``max_train_samples`` instead of\nmanual sampling + separate fit/predict.\n\nArgs:\n    data: Extended dataset dict after ``puf_clone_dataset()`` --\n        already doubled, with PUF-imputed income in the second half.\n    time_period: Tax year.\n    dataset_path: Path to the CPS h5 file for Microsimulation.\n\nReturns:\n    DataFrame with one column per CPS-only variable, containing\n    predicted values for the PUF clone half (person-level).",
     "id": "cps_only",
     "kind": "function",
-    "line": 439,
+    "line": 442,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables"
@@ -1084,37 +1115,6 @@
     "object_path": "policyengine_us_data.calibration.unified_calibration.fit_l0_weights",
     "signature": "def fit_l0_weights(X_sparse, targets: np.ndarray, lambda_l0: float, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', verbose_freq: Optional[int] = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, target_names: list = None, initial_weights: np.ndarray = None, targets_df: 'pd.DataFrame' = None, achievable: np.ndarray = None, target_groups: Optional[np.ndarray] = None, resume_from: str = None, checkpoint_path: str = None) -> np.ndarray",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
-  },
-  "formula_drop": {
-    "docstring": "Remove variables that are computed by policyengine-us.\n\nVariables with formulas, ``adds``, or ``subtracts`` are\nrecomputed by the simulation engine, so storing them wastes\nspace and can mislead validation.\n\nAggregate variables whose ``adds`` include a behavioral-\nresponse input (e.g. ``employment_income_before_lsr``) are\nrenamed to that input before dropping so the raw data is\npreserved under the correct input-variable name.",
-    "id": "formula_drop",
-    "kind": "function",
-    "line": 1197,
-    "metadata": {
-      "api_refs": [
-        "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables"
-      ],
-      "artifacts_in": [
-        "extended_cps_stage2"
-      ],
-      "artifacts_out": [
-        "formula_pruned_extended_cps"
-      ],
-      "description": "Removes variables computed by policyengine-us formulas, while preserving selected imputed inputs under canonical leaf variable names.",
-      "id": "formula_drop",
-      "label": "Drop Formula Variables",
-      "node_type": "process",
-      "pathways": [
-        "data_build"
-      ],
-      "pydoc": true,
-      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
-      "stability": "moving",
-      "status": "transitional"
-    },
-    "object_path": "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._drop_formula_variables",
-    "signature": "def _drop_formula_variables(cls, data)",
-    "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
   },
   "geo_assign": {
     "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n    fixed_state_fips: Optional state FIPS per base record. Positive\n        values constrain every clone of that record to blocks in the\n        requested state; zero or missing values remain unrestricted.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
@@ -2619,7 +2619,7 @@
     "docstring": "Replace PUF clone half of CPS-only variables with QRF predictions.\n\nAfter ``puf_clone_dataset()`` the CPS-only variables in the second\nhalf are naive copies of the CPS donor values. This function\nreplaces them with the second-stage QRF predictions that are\nconsistent with the clone's PUF-imputed income.\n\nArgs:\n    data: Extended dataset dict (already doubled).\n    predictions: DataFrame from ``_impute_cps_only_variables()``.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 file for entity mapping.\n\nReturns:\n    Modified data dict with CPS-only variables spliced in.",
     "id": "qrf_pass2",
     "kind": "function",
-    "line": 717,
+    "line": 748,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"

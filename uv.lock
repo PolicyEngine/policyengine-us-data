@@ -2123,7 +2123,7 @@ wheels = [
 [[package]]
 name = "policyengine-us"
 version = "1.691.11"
-source = { git = "https://github.com/PolicyEngine/policyengine-us?rev=7196e042f4640c084061921372cffd935cf4e7e9#7196e042f4640c084061921372cffd935cf4e7e9" }
+source = { git = "https://github.com/PolicyEngine/policyengine-us?rev=4588f756668f12cac43e847a73e6a1f38b0b296d#4588f756668f12cac43e847a73e6a1f38b0b296d" }
 dependencies = [
     { name = "microdf-python" },
     { name = "pandas" },
@@ -2200,7 +2200,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.26.1,<3.27" },
-    { name = "policyengine-us", git = "https://github.com/PolicyEngine/policyengine-us?rev=7196e042f4640c084061921372cffd935cf4e7e9" },
+    { name = "policyengine-us", git = "https://github.com/PolicyEngine/policyengine-us?rev=4588f756668f12cac43e847a73e6a1f38b0b296d" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },

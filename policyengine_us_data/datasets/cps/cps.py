@@ -1274,9 +1274,19 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["tax_exempt_ira_distributions"] = cps["roth_ira_distributions"]
     # Other income (OI_VAL) is a catch-all for all other income sources.
     # The code for alimony income is 20.
-    cps["alimony_income"] = (person.OI_OFF == 20) * person.OI_VAL
+    alimony_income = person.OI_OFF == 20
+    cps["alimony_income"] = alimony_income * person.OI_VAL
     # The code for strike benefits is 12.
-    cps["strike_benefits"] = (person.OI_OFF == 12) * person.OI_VAL
+    strike_benefits = person.OI_OFF == 12
+    cps["strike_benefits"] = strike_benefits * person.OI_VAL
+    cps["miscellaneous_income"] = np.where(
+        alimony_income | strike_benefits,
+        0,
+        person.OI_VAL,
+    )
+    cps["educational_assistance"] = person.ED_VAL
+    cps["financial_assistance"] = person.FIN_VAL
+    cps["survivor_benefits"] = person.SRVS_VAL
     cps["child_support_received"] = person.CSP_VAL
     # CPS SSI receipt anchors SSI take-up and disability alignment inside
     # add_takeup; it is dropped before the dataset is saved.

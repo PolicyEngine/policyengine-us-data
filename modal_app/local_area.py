@@ -44,7 +44,10 @@ from policyengine_us_data.build_outputs.worker_inputs import (  # noqa: E402
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
-from policyengine_us_data.utils.run_context import resolve_run_id  # noqa: E402
+from policyengine_us_data.utils.run_context import (  # noqa: E402
+    resolve_candidate_version,
+    resolve_run_id,
+)
 
 app = modal.App(
     os.environ.get("US_DATA_LOCAL_AREA_APP_NAME") or "policyengine-us-data-local-area"
@@ -359,6 +362,17 @@ def get_version() -> str:
     with open("pyproject.toml", "rb") as f:
         pyproject = tomllib.load(f)
     return pyproject["project"]["version"]
+
+
+def get_staging_candidate_version(
+    fallback_version: str,
+    explicit_candidate_version: str = "",
+) -> str:
+    """Resolve the HF staging candidate scope for local-area artifacts."""
+    return (
+        resolve_candidate_version(explicit_candidate_version, env=os.environ)
+        or fallback_version
+    )
 
 
 @pipeline_node(
@@ -901,7 +915,11 @@ print(json.dumps(manifest))
     )
 )
 def upload_to_staging(
-    branch: str, version: str, manifest: Dict, run_id: str = ""
+    branch: str,
+    version: str,
+    manifest: Dict,
+    run_id: str = "",
+    candidate_version: str = "",
 ) -> str:
     """
     Upload files to HuggingFace staging only.
@@ -912,6 +930,10 @@ def upload_to_staging(
     setup_repo(branch)
 
     manifest_json = json.dumps(manifest)
+    staging_candidate_version = get_staging_candidate_version(
+        version,
+        explicit_candidate_version=candidate_version,
+    )
 
     result = subprocess.run(
         _python_cmd(
@@ -924,6 +946,7 @@ from policyengine_us_data.utils.data_upload import upload_to_staging_hf
 
 manifest = json.loads('''{manifest_json}''')
 version = "{version}"
+staging_candidate_version = "{staging_candidate_version}"
 run_id = "{run_id}"
 staging_dir = Path("{VOLUME_MOUNT}")
 run_dir = staging_dir / run_id
@@ -947,10 +970,14 @@ for rel_path in manifest["files"].keys():
 
 # Upload to HuggingFace staging/
 print(f"Uploading {{len(files_with_paths)}} files to HuggingFace staging/...")
-hf_count = upload_to_staging_hf(files_with_paths, version, run_id=run_id)
+hf_count = upload_to_staging_hf(
+    files_with_paths,
+    candidate_version=staging_candidate_version,
+    run_id=run_id,
+)
 print(f"Uploaded {{hf_count}} files to HuggingFace staging/")
 
-print(f"Staged version {{version}} for promotion")
+print(f"Staged candidate {{staging_candidate_version}} for promotion")
 """,
         ),
         text=True,
@@ -961,7 +988,8 @@ print(f"Staged version {{version}} for promotion")
         raise RuntimeError(f"Upload failed: {result.stderr}")
 
     return (
-        f"Staged version {version} with {len(manifest['files'])} files. "
+        f"Staged candidate {staging_candidate_version} with "
+        f"{len(manifest['files'])} files. "
         f"Run promote workflow to publish to HuggingFace production and GCS."
     )
 
@@ -1065,6 +1093,7 @@ def coordinate_publish(
     n_clones: int = 430,
     validate: bool = True,
     run_id: str = "",
+    candidate_version: str = "",
     expected_fingerprint: str = "",
     work_items_override: List[Dict] | None = None,
 ) -> Dict:
@@ -1073,6 +1102,10 @@ def coordinate_publish(
     setup_repo(branch)
 
     version = get_version()
+    staging_candidate_version = get_staging_candidate_version(
+        version,
+        explicit_candidate_version=candidate_version,
+    )
 
     run_id = run_id or resolve_run_id()
     if not run_id:
@@ -1085,6 +1118,7 @@ def coordinate_publish(
     print(f"Run ID: {run_id}")
     print("=" * 60)
     print(f"Publishing version {version} from branch {branch}")
+    print(f"Staging candidate {staging_candidate_version}")
     print(f"Using {num_workers} parallel workers")
 
     staging_dir = Path(VOLUME_MOUNT)
@@ -1320,7 +1354,11 @@ def coordinate_publish(
 
     print("\nStarting upload to staging...")
     result = upload_to_staging.remote(
-        branch=branch, version=version, manifest=manifest, run_id=run_id
+        branch=branch,
+        version=version,
+        manifest=manifest,
+        run_id=run_id,
+        candidate_version=staging_candidate_version,
     )
     print(result)
 
@@ -1382,12 +1420,17 @@ def coordinate_national_publish(
     validate: bool = True,
     run_id: str = "",
     skip_upload: bool = False,
+    candidate_version: str = "",
 ) -> Dict:
     """Build and upload a national US.h5 from national weights."""
     setup_gcp_credentials()
     setup_repo(branch)
 
     version = get_version()
+    staging_candidate_version = get_staging_candidate_version(
+        version,
+        explicit_candidate_version=candidate_version,
+    )
 
     run_id = run_id or resolve_run_id()
     if not run_id:
@@ -1400,6 +1443,7 @@ def coordinate_national_publish(
     print(f"Run ID: {run_id}")
     print("=" * 60)
     print(f"Building national H5 for version {version} from branch {branch}")
+    print(f"Staging candidate {staging_candidate_version}")
 
     staging_dir = Path(VOLUME_MOUNT)
 
@@ -1557,7 +1601,7 @@ from policyengine_us_data.utils.data_upload import (
 )
 upload_to_staging_hf(
     [("{national_h5}", "national/US.h5")],
-    "{version}",
+    candidate_version="{staging_candidate_version}",
     run_id="{run_id}",
 )
 print("Done")

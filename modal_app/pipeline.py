@@ -1628,6 +1628,7 @@ def run_pipeline(
                 n_clones=n_clones,
                 validate=True,
                 run_id=run_id,
+                candidate_version=candidate_version,
                 expected_fingerprint=(
                     meta.regional_fingerprint or meta.fingerprint or ""
                 ),
@@ -1653,6 +1654,7 @@ def run_pipeline(
                     n_clones=n_clones,
                     validate=True,
                     run_id=run_id,
+                    candidate_version=candidate_version,
                 )
                 print(
                     f"    → coordinate_national_publish fc: {national_h5_handle.object_id}"

@@ -33,6 +33,9 @@ def _minimal_person_income_frame() -> pd.DataFrame:
         "DST_VAL2_YNG",
         "OI_OFF",
         "OI_VAL",
+        "ED_VAL",
+        "FIN_VAL",
+        "SRVS_VAL",
         "CSP_VAL",
         "PAW_VAL",
         "SSI_VAL",
@@ -68,3 +71,25 @@ def test_add_personal_income_variables_maps_farm_self_employment_to_operations()
 
     np.testing.assert_array_equal(cps["farm_operations_income"], [1_000.0, -500.0])
     assert "farm_income" not in cps
+
+
+def test_add_personal_income_variables_maps_spm_income_leaves():
+    person = pd.concat(
+        [_minimal_person_income_frame(), _minimal_person_income_frame().iloc[[0]]],
+        ignore_index=True,
+    )
+    person["OI_OFF"] = [0, 20, 12]
+    person["OI_VAL"] = [50.0, 70.0, 90.0]
+    person["ED_VAL"] = [10.0, 11.0, 12.0]
+    person["FIN_VAL"] = [20.0, 21.0, 22.0]
+    person["SRVS_VAL"] = [30.0, 31.0, 32.0]
+    cps = {}
+
+    add_personal_income_variables(cps, person, 2024)
+
+    np.testing.assert_array_equal(cps["miscellaneous_income"], [50.0, 0.0, 0.0])
+    np.testing.assert_array_equal(cps["alimony_income"], [0.0, 70.0, 0.0])
+    np.testing.assert_array_equal(cps["strike_benefits"], [0.0, 0.0, 90.0])
+    np.testing.assert_array_equal(cps["educational_assistance"], [10.0, 11.0, 12.0])
+    np.testing.assert_array_equal(cps["financial_assistance"], [20.0, 21.0, 22.0])
+    np.testing.assert_array_equal(cps["survivor_benefits"], [30.0, 31.0, 32.0])

@@ -479,7 +479,7 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
     dataset = FakeDataset()
     cps = {
         "age": np.array([40], dtype=np.int32),
-        "spm_unit_capped_housing_subsidy_data": np.array([0.0]),
+        "spm_unit_capped_housing_subsidy": np.array([0.0]),
         # add_id_variables populates this upstream of add_rent in the real
         # pipeline; see the policyengine-core#482 workaround override below.
         "is_household_head": np.array([True]),

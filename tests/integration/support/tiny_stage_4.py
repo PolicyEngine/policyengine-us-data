@@ -147,7 +147,7 @@ def _load_period_arrays(path: Path) -> dict[str, np.ndarray]:
 
 def _calibrated_household_weights(arrays: dict[str, np.ndarray]) -> np.ndarray:
     weights = arrays["household_weight"].astype(np.float32)
-    income = arrays["spm_unit_total_income_reported"].astype(np.float32)
+    income = _spm_unit_income_proxy(arrays)
     income_rank = np.argsort(np.argsort(income)).astype(np.float32)
     center = income_rank.mean()
     scale = 1.0 + (income_rank - center) * 0.04
@@ -209,7 +209,7 @@ def _select_representative_household_ids(
     arrays: dict[str, np.ndarray],
 ) -> np.ndarray:
     household_ids = arrays["household_id"].astype(np.int64)
-    income = arrays["spm_unit_total_income_reported"].astype(np.float32)
+    income = _spm_unit_income_proxy(arrays)
     ordered = household_ids[np.argsort(income)]
     candidates = [ordered[0], ordered[len(ordered) // 2], ordered[-1]]
 
@@ -221,6 +221,21 @@ def _select_representative_household_ids(
 
     selected = np.array(list(dict.fromkeys(int(value) for value in candidates)))
     return selected.astype(np.int64)
+
+
+def _spm_unit_income_proxy(arrays: dict[str, np.ndarray]) -> np.ndarray:
+    person_income = (
+        arrays["employment_income"].astype(np.float32)
+        + arrays["self_employment_income"].astype(np.float32)
+        + arrays["social_security"].astype(np.float32)
+    )
+    return np.array(
+        [
+            person_income[arrays["person_spm_unit_id"] == spm_unit_id].sum()
+            for spm_unit_id in arrays["spm_unit_id"]
+        ],
+        dtype=np.float32,
+    )
 
 
 def _subset_by_household_ids(

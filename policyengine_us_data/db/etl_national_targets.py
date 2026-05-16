@@ -476,7 +476,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "constraint_variable": "spm_unit_energy_subsidy_data",
+            "constraint_variable": "spm_unit_energy_subsidy",
             "target_variable": "household_count",
             "household_count": 5_939_605,
             "source": "https://liheappm.acf.gov/sites/default/files/private/congress/profiles/2023/FY2023AllStates%28National%29Profile-508Compliant.pdf",
@@ -484,7 +484,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2023,
         },
         {
-            "constraint_variable": "spm_unit_energy_subsidy_data",
+            "constraint_variable": "spm_unit_energy_subsidy",
             "target_variable": "household_count",
             "household_count": 5_876_646,
             "source": "https://liheappm.acf.gov/sites/default/files/private/congress/profiles/2024/FY2024_AllStates%28National%29_Profile.pdf",
@@ -903,7 +903,7 @@ def load_national_targets(
                 stratum_notes = "National ACA Premium Tax Credit Recipients"
                 constraint_operation = ">"
                 constraint_value = "0"
-            elif constraint_var == "spm_unit_energy_subsidy_data":
+            elif constraint_var == "spm_unit_energy_subsidy":
                 stratum_notes = "National LIHEAP Recipient Households"
                 constraint_operation = ">"
                 constraint_value = "0"

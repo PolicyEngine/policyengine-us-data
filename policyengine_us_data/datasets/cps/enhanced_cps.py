@@ -83,7 +83,6 @@ def compute_clone_diagnostics_summary(
     person_is_puf_clone,
     person_weight,
     person_in_poverty,
-    person_reported_in_poverty,
     spm_unit_is_puf_clone,
     spm_unit_weight,
     spm_unit_capped_work_childcare_expenses,
@@ -96,7 +95,6 @@ def compute_clone_diagnostics_summary(
     person_is_puf_clone = np.asarray(person_is_puf_clone, dtype=bool)
     person_weight = np.asarray(person_weight, dtype=np.float64)
     person_in_poverty = np.asarray(person_in_poverty, dtype=bool)
-    person_reported_in_poverty = np.asarray(person_reported_in_poverty, dtype=bool)
     spm_unit_is_puf_clone = np.asarray(spm_unit_is_puf_clone, dtype=bool)
     spm_unit_weight = np.asarray(spm_unit_weight, dtype=np.float64)
     capped_childcare = np.asarray(
@@ -108,7 +106,6 @@ def compute_clone_diagnostics_summary(
     spm_unit_taxes = np.asarray(spm_unit_taxes, dtype=np.float64)
     spm_unit_market_income = np.asarray(spm_unit_market_income, dtype=np.float64)
 
-    poor_modeled_only = person_in_poverty & ~person_reported_in_poverty
     clone_spm_weight = spm_unit_weight[spm_unit_is_puf_clone].sum()
 
     return {
@@ -118,17 +115,9 @@ def compute_clone_diagnostics_summary(
         "clone_person_weight_share_pct": _weighted_share(
             person_is_puf_clone, person_weight
         ),
-        "clone_poor_modeled_only_person_weight_share_pct": _weighted_share(
-            person_is_puf_clone & poor_modeled_only,
+        "clone_poor_person_weight_share_pct": _weighted_share(
+            person_is_puf_clone & person_in_poverty,
             person_weight,
-        ),
-        "poor_modeled_only_within_clone_person_weight_share_pct": (
-            0.0
-            if person_weight[person_is_puf_clone].sum() <= 0
-            else _weighted_share(
-                poor_modeled_only[person_is_puf_clone],
-                person_weight[person_is_puf_clone],
-            )
         ),
         "clone_childcare_exceeds_pre_subsidy_share_pct": (
             0.0
@@ -269,12 +258,6 @@ def build_clone_diagnostics_for_simulation(
     weight inputs back from disk.
     """
 
-    person_reported_in_poverty = _to_numpy(
-        sim.calculate("spm_unit_net_income_reported", period=period, map_to="person")
-    ) < _to_numpy(
-        sim.calculate("spm_unit_spm_threshold", period=period, map_to="person")
-    )
-
     return compute_clone_diagnostics_summary(
         household_is_puf_clone=_load_saved_period_array(
             dataset_path, "household_is_puf_clone", period
@@ -287,7 +270,6 @@ def build_clone_diagnostics_for_simulation(
             sim.calculate("household_weight", period=period, map_to="person")
         ),
         person_in_poverty=_to_numpy(sim.calculate("person_in_poverty", period=period)),
-        person_reported_in_poverty=person_reported_in_poverty,
         spm_unit_is_puf_clone=_load_saved_period_array(
             dataset_path, "spm_unit_is_puf_clone", period
         ),

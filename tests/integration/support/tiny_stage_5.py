@@ -273,7 +273,7 @@ def _source_imputed_household_arrays(
 def _source_imputed_household_asset_inputs(
     arrays: dict[str, np.ndarray],
 ) -> dict[str, np.ndarray]:
-    income = arrays["spm_unit_total_income_reported"].astype(np.float32)
+    income = _spm_unit_income_proxy(arrays)
     return {
         "bank_account_assets": np.round(np.maximum(income * 0.06, 250), 2).astype(
             np.float32
@@ -286,6 +286,21 @@ def _source_imputed_household_asset_inputs(
             np.float32
         ),
     }
+
+
+def _spm_unit_income_proxy(arrays: dict[str, np.ndarray]) -> np.ndarray:
+    person_income = (
+        arrays["employment_income"].astype(np.float32)
+        + arrays["self_employment_income"].astype(np.float32)
+        + arrays["social_security"].astype(np.float32)
+    )
+    return np.array(
+        [
+            person_income[arrays["person_spm_unit_id"] == spm_unit_id].sum()
+            for spm_unit_id in arrays["spm_unit_id"]
+        ],
+        dtype=np.float32,
+    )
 
 
 def _household_values_to_person(

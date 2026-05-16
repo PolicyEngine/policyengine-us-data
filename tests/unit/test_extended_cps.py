@@ -34,14 +34,12 @@ from policyengine_us_data.datasets.cps.extended_cps import (
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
 )
-from policyengine_us_data.datasets.puf.variable_roles import (
-    PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
-)
 from policyengine_us_data.datasets.org import ORG_IMPUTED_VARIABLES
 from policyengine_us_data.utils.aotc import (
     get_american_opportunity_credit_amount_scale,
     qualifying_expenses_from_american_opportunity_credit,
 )
+from policyengine_us_data.utils.dataset_validation import DatasetContractError
 
 
 class TestVariableListConsistency:
@@ -156,25 +154,75 @@ class TestVariableListConsistency:
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
-        assert "spm_unit_spm_threshold" not in ExtendedCPS._keep_formula_vars()
-        assert "spm_unit_geographic_adjustment" not in ExtendedCPS._keep_formula_vars()
-        assert "person_in_poverty" not in ExtendedCPS._keep_formula_vars()
+        data = {
+            "spm_unit_spm_threshold": {2024: np.array([20_000.0])},
+            "spm_unit_geographic_adjustment": {2024: np.array([1.0])},
+            "person_in_poverty": {2024: np.array([False])},
+        }
+
+        with pytest.raises(
+            DatasetContractError,
+            match="spm_unit_geographic_adjustment",
+        ):
+            ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
-        assert "weeks_worked" in ExtendedCPS._keep_formula_vars()
+        data = {"weeks_worked": {2024: np.array([52])}}
 
-    def test_reported_calculated_tax_outputs_dropped_before_export(self):
+        ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+        with pytest.raises(DatasetContractError, match="weeks_worked"):
+            ExtendedCPS._assert_no_computed_variables_exported(data, 2025)
+
+    def test_final_export_contract_allows_leaf_ss_retirement_input(self):
+        data = {"social_security_retirement": {2024: np.array([12_000.0])}}
+
+        ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_final_export_contract_rejects_computed_ss_total(self):
+        data = {"social_security": {2024: np.array([12_000.0])}}
+
+        with pytest.raises(DatasetContractError, match="social_security"):
+            ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_drop_puf_computed_intermediates_after_clone(self):
         data = {
-            var: {2024: np.array([1.0])}
-            for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
+            "cdcc_relevant_expenses": {2024: np.array([1_000.0])},
+            "pre_tax_contributions": {2024: np.array([500.0])},
+            "self_employed_health_insurance_ald": {2024: np.array([2_000.0])},
+            "self_employed_pension_contribution_ald": {2024: np.array([3_000.0])},
+            "employment_income": {2024: np.array([50_000.0])},
         }
-        data["person_id"] = {2024: np.array([1])}
 
-        result = ExtendedCPS._drop_formula_variables(data)
+        result = ExtendedCPS._drop_puf_computed_intermediates(data)
 
-        assert "person_id" in result
-        for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
-            assert var not in result
+        assert "employment_income" in result
+        assert "cdcc_relevant_expenses" not in result
+        assert "pre_tax_contributions" not in result
+        assert "self_employed_health_insurance_ald" not in result
+        assert "self_employed_pension_contribution_ald" not in result
+
+    def test_finalize_stage2_computed_variables_renames_and_drops(self):
+        data = {
+            "employment_income": {2024: np.array([50_000.0])},
+            "weekly_hours_worked": {2024: np.array([40.0])},
+            "social_security": {2024: np.array([12_000.0])},
+            "social_security_retirement": {2024: np.array([12_000.0])},
+            "social_security_disability": {2024: np.array([0.0])},
+            "social_security_dependents": {2024: np.array([0.0])},
+            "social_security_survivors": {2024: np.array([0.0])},
+            "tax_unit_is_joint": {2024: np.array([True])},
+            "employment_income_last_year": {2024: np.array([45_000.0])},
+        }
+
+        result = ExtendedCPS._finalize_stage2_computed_variables(data)
+
+        assert "employment_income" not in result
+        assert "employment_income_before_lsr" in result
+        assert "weekly_hours_worked" not in result
+        assert "weekly_hours_worked_before_lsr" in result
+        assert "social_security" not in result
+        assert "tax_unit_is_joint" not in result
+        assert "employment_income_last_year" not in result
 
 
 class TestStructuralMortgageValidation:

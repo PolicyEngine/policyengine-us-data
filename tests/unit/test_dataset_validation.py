@@ -61,6 +61,15 @@ def _fake_tax_benefit_system():
     )
 
 
+def _fake_variable(entity_key, *, formulas=None, adds=None, subtracts=None):
+    return SimpleNamespace(
+        entity=SimpleNamespace(key=entity_key),
+        formulas=formulas or {},
+        adds=adds,
+        subtracts=subtracts,
+    )
+
+
 @pytest.fixture(autouse=True)
 def reset_fake_microsim():
     _FakeMicrosimulation.last_dataset = None
@@ -192,6 +201,71 @@ def test_validate_dataset_contract_infers_time_period_for_flat_h5(
     )
 
     assert _TimePeriodCheckingMicrosimulation.last_dataset.time_period == 2024
+
+
+def test_validate_dataset_contract_rejects_computed_policyengine_variables(
+    tmp_path, monkeypatch
+):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    _write_test_h5(
+        file_path,
+        {
+            "person_id": np.array([101, 102], dtype=np.int32),
+            "household_id": np.array([501], dtype=np.int32),
+            "computed_income": np.array([10_000.0, 20_000.0], dtype=np.float32),
+            "household_weight": np.array([1.5], dtype=np.float32),
+        },
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
+    )
+    tbs = _fake_tax_benefit_system()
+    tbs.variables["person_id"] = _fake_variable(
+        "person",
+        formulas={"0001-01-01": object()},
+    )
+    tbs.variables["computed_income"] = _fake_variable(
+        "person",
+        adds=["computed_income_before_response"],
+    )
+
+    with pytest.raises(DatasetContractError, match="computed_income"):
+        validate_dataset_contract(
+            file_path,
+            tax_benefit_system=tbs,
+            microsimulation_cls=_FakeMicrosimulation,
+            dataset_loader=lambda path: path,
+        )
+
+
+def test_validate_dataset_contract_allows_future_period_formulas(tmp_path, monkeypatch):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    _write_test_h5(
+        file_path,
+        {
+            "person_id": np.array([101, 102], dtype=np.int32),
+            "household_id": np.array([501], dtype=np.int32),
+            "future_formula_input": np.array([52, 40], dtype=np.int32),
+            "household_weight": np.array([1.5], dtype=np.float32),
+        },
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
+    )
+    tbs = _fake_tax_benefit_system()
+    tbs.variables["future_formula_input"] = _fake_variable(
+        "person",
+        formulas={"2025-01-01": object()},
+    )
+
+    validate_dataset_contract(
+        file_path,
+        tax_benefit_system=tbs,
+        microsimulation_cls=_FakeMicrosimulation,
+        dataset_loader=lambda path: path,
+    )
 
 
 def test_validate_dataset_contract_rejects_ambiguous_auxiliary_variables(

@@ -30,6 +30,9 @@ from policyengine_us_data.utils.mortgage_interest import (
     impute_tax_unit_mortgage_balance_hints,
 )
 from policyengine_us_data.utils.policyengine import has_policyengine_us_variables
+from policyengine_us_data.utils.dataset_validation import (
+    assert_no_computed_policyengine_us_variables_exported,
+)
 from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
@@ -643,6 +646,34 @@ _SS_SUBCOMPONENT_VARS = {
     "social_security_survivors",
 }
 
+_PUF_COMPUTED_INTERMEDIATES_AFTER_CLONE = {
+    "cdcc_relevant_expenses",
+    "pre_tax_contributions",
+    "self_employed_health_insurance_ald",
+    "self_employed_pension_contribution_ald",
+}
+
+_STAGE2_COMPUTED_PREDICTORS = {
+    "is_male",
+    "is_tax_unit_dependent",
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "tax_unit_count_dependents",
+    "tax_unit_is_joint",
+}
+
+_STAGE2_COMPUTED_OUTPUTS_TO_DROP = {
+    "employment_income_last_year",
+}
+
+_COMPUTED_AGGREGATE_INPUT_RENAMES = {
+    "employment_income": "employment_income_before_lsr",
+    "long_term_capital_gains": "long_term_capital_gains_before_response",
+    "self_employment_income": "self_employment_income_before_lsr",
+    "sstb_self_employment_income": "sstb_self_employment_income_before_lsr",
+    "weekly_hours_worked": "weekly_hours_worked_before_lsr",
+}
+
 
 def _apply_post_processing(predictions, X_test, time_period, data):
     """Apply retirement constraints and SS reconciliation."""
@@ -822,6 +853,7 @@ class ExtendedCPS(Dataset):
             puf_dataset=self.puf,
             dataset_path=str(self.cps.file_path),
         )
+        new_data = self._drop_puf_computed_intermediates(new_data)
 
         # Stage 2a: donor-impute CPS feature variables for PUF clones.
         logger.info("Stage-2a: rematching CPS features for PUF clones")
@@ -852,6 +884,7 @@ class ExtendedCPS(Dataset):
             time_period=self.time_period,
             dataset_path=str(self.cps.file_path),
         )
+        new_data = self._finalize_stage2_computed_variables(new_data)
 
         new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)
         new_data = self._impute_llc_eligibility_inputs(new_data, self.time_period)
@@ -874,7 +907,10 @@ class ExtendedCPS(Dataset):
                 self.time_period,
                 had_positive_mortgage_input,
             )
-        new_data = self._drop_formula_variables(new_data)
+        new_data = self._assert_no_computed_variables_exported(
+            new_data,
+            self.time_period,
+        )
         self.save_dataset(new_data)
 
     @classmethod
@@ -1121,6 +1157,60 @@ class ExtendedCPS(Dataset):
                 data[input_var] = data.pop(formula_var)
         return data
 
+    @classmethod
+    def _drop_puf_computed_intermediates(cls, data):
+        """Drop PUF outputs that are construction-only in Extended CPS."""
+
+        dropped = sorted(set(data) & _PUF_COMPUTED_INTERMEDIATES_AFTER_CLONE)
+        if dropped:
+            logger.info(
+                "Dropping %d PUF computed intermediates after clone stage: %s",
+                len(dropped),
+                dropped,
+            )
+            for variable in dropped:
+                del data[variable]
+        return data
+
+    @classmethod
+    def _finalize_stage2_computed_variables(cls, data):
+        """Remove or rename computed variables after their final stage-2 use."""
+
+        for source, target in _COMPUTED_AGGREGATE_INPUT_RENAMES.items():
+            if source not in data:
+                continue
+            if target not in data:
+                logger.info(
+                    "Renaming %s -> %s after stage-2 predictor use",
+                    source,
+                    target,
+                )
+                data[target] = data.pop(source)
+            else:
+                logger.info(
+                    "Dropping %s after stage-2 predictor use; %s already exists",
+                    source,
+                    target,
+                )
+                del data[source]
+
+        if "social_security" in data and _SS_SUBCOMPONENT_VARS <= set(data):
+            logger.info("Dropping social_security after reconciling leaf subcomponents")
+            del data["social_security"]
+
+        dropped = sorted(
+            set(data) & (_STAGE2_COMPUTED_PREDICTORS | _STAGE2_COMPUTED_OUTPUTS_TO_DROP)
+        )
+        if dropped:
+            logger.info(
+                "Dropping %d stage-2 computed variables after final use: %s",
+                len(dropped),
+                dropped,
+            )
+            for variable in dropped:
+                del data[variable]
+        return data
+
     @staticmethod
     def _has_positive_mortgage_input(data, time_period):
         values = data.get("deductible_mortgage_interest", {}).get(time_period)
@@ -1146,30 +1236,9 @@ class ExtendedCPS(Dataset):
             "Structural mortgage conversion lost positive mortgage inputs."
         )
 
-    # Variables with formulas/adds that must still be stored.
-    # Includes IDs needed before formulas run and tax-unit-level
-    # QRF-imputed vars that can't be renamed to person-level leaves
-    # due to entity shape mismatch.
-    _KEEP_FORMULA_VARS = {
-        "person_id",
-        "weeks_worked",
-        "self_employed_pension_contribution_ald",
-        "self_employed_health_insurance_ald",
-    }
-
-    @classmethod
-    def _keep_formula_vars(cls):
-        keep = set(cls._KEEP_FORMULA_VARS)
-        if not _supports_structural_mortgage_inputs():
-            keep.add("interest_deduction")
-        return keep
-
     # QRF imputes formula-level variables (e.g. taxable_pension_income)
-    # but we must store them under leaf input names so
-    # _drop_formula_variables doesn't discard them. The engine then
+    # but we must store them under leaf input names. The engine then
     # recomputes the formula var from its adds.
-    # NOTE: only same-entity renames here; cross-entity vars
-    # (tax_unit -> person) go in _KEEP_FORMULA_VARS instead.
     _IMPUTED_TO_INPUT = {
         "taxable_pension_income": "taxable_private_pension_income",
         "tax_exempt_pension_income": "tax_exempt_private_pension_income",
@@ -1178,75 +1247,33 @@ class ExtendedCPS(Dataset):
     @classmethod
     @pipeline_node(
         PipelineNode(
-            id="formula_drop",
-            label="Drop Formula Variables",
+            id="computed_export_contract",
+            label="Validate Leaf-Input Export",
             node_type="process",
             description=(
-                "Removes variables computed by policyengine-us formulas, "
-                "while preserving selected imputed inputs under canonical "
-                "leaf variable names."
+                "Fails the build if the final export still contains "
+                "variables computed by policyengine-us formulas, adds, or "
+                "subtracts."
             ),
             status="transitional",
             stability="moving",
             pathways=["data_build"],
             artifacts_in=["extended_cps_stage2"],
-            artifacts_out=["formula_pruned_extended_cps"],
+            artifacts_out=["validated_extended_cps"],
             pydoc=True,
         )
     )
-    def _drop_formula_variables(cls, data):
-        """Remove variables that are computed by policyengine-us.
+    def _assert_no_computed_variables_exported(cls, data, time_period):
+        """Assert that final exported variables are leaf inputs."""
 
-        Variables with formulas, ``adds``, or ``subtracts`` are
-        recomputed by the simulation engine, so storing them wastes
-        space and can mislead validation.
-
-        Aggregate variables whose ``adds`` include a behavioral-
-        response input (e.g. ``employment_income_before_lsr``) are
-        renamed to that input before dropping so the raw data is
-        preserved under the correct input-variable name.
-        """
         from policyengine_us import CountryTaxBenefitSystem
-        from policyengine_us_data.datasets.puf.variable_roles import (
-            PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
+
+        assert_no_computed_policyengine_us_variables_exported(
+            variable_names=data.keys(),
+            time_period=time_period,
+            tax_benefit_system=CountryTaxBenefitSystem(),
+            dataset_name=cls.name,
         )
-
-        tbs = CountryTaxBenefitSystem()
-
-        _RESPONSE_SUFFIXES = ("_before_lsr", "_before_response")
-        for name, var in tbs.variables.items():
-            if name not in data:
-                continue
-            for add_var in getattr(var, "adds", None) or []:
-                if any(add_var.endswith(s) for s in _RESPONSE_SUFFIXES):
-                    if add_var not in data:
-                        logger.info(
-                            "Renaming %s -> %s before drop",
-                            name,
-                            add_var,
-                        )
-                        data[add_var] = data.pop(name)
-                    break
-
-        calculated_vars = {
-            name
-            for name, var in tbs.variables.items()
-            if (hasattr(var, "formulas") and len(var.formulas) > 0)
-            or getattr(var, "adds", None)
-            or getattr(var, "subtracts", None)
-        }
-        drop_vars = (
-            calculated_vars | PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES
-        ) - cls._keep_formula_vars()
-        dropped = sorted(set(data.keys()) & drop_vars)
-        if dropped:
-            logger.info(
-                "Dropping %d calculated/source-output variables: %s",
-                len(dropped),
-                dropped,
-            )
-            for var in dropped:
-                del data[var]
         return data
 
 

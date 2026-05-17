@@ -72,6 +72,12 @@ SIMPLE_TAKEUP_VARS = [
         "rate_key": "tanf",
         "target": "tanf",
     },
+    {
+        "variable": "takes_up_housing_assistance_if_eligible",
+        "entity": "spm_unit",
+        "rate_key": "housing_assistance",
+        "target": None,
+    },
 ]
 
 TAKEUP_AFFECTED_TARGETS: Dict[str, dict] = {

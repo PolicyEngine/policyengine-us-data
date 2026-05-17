@@ -4,6 +4,7 @@ import pytest
 from policyengine_us_data.datasets.cps.takeup import (
     align_reported_ssi_disability,
     prioritize_reported_recipients,
+    very_low_income_renter_mask,
 )
 
 
@@ -28,6 +29,59 @@ def test_prioritize_reported_recipients_caps_non_reporters_at_zero():
     np.testing.assert_array_equal(
         result,
         np.array([True, False, True, True]),
+    )
+
+
+def test_prioritize_reported_recipients_limits_draws_to_eligible_pool():
+    reported = np.array([False, True, False, False])
+    draws = np.array([0.1, 0.9, 0.1, 0.1])
+    eligible = np.array([False, False, True, False])
+
+    result = prioritize_reported_recipients(
+        reported,
+        1.0,
+        draws,
+        eligible_mask=eligible,
+    )
+
+    np.testing.assert_array_equal(
+        result,
+        np.array([False, True, True, False]),
+    )
+
+
+def test_very_low_income_renter_mask_accepts_enum_like_values():
+    class EnumLike:
+        def __init__(self, name):
+            self.name = name
+
+        def __str__(self):
+            return f"EnumLike.{self.name}"
+
+    result = very_low_income_renter_mask(
+        np.array(
+            [
+                EnumLike("VERY_LOW"),
+                EnumLike("ESPECIALLY_LOW"),
+                EnumLike("LOW"),
+                "VERY_LOW",
+            ],
+            dtype=object,
+        ),
+        np.array(
+            [
+                EnumLike("RENTER"),
+                EnumLike("OWNER_WITH_MORTGAGE"),
+                EnumLike("RENTER"),
+                "RENTER",
+            ],
+            dtype=object,
+        ),
+    )
+
+    np.testing.assert_array_equal(
+        result,
+        np.array([True, False, False, True]),
     )
 
 

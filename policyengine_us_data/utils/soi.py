@@ -6,7 +6,7 @@ from policyengine_us_data.storage import CALIBRATION_FOLDER
 SOI_UPRATING_MAP = {
     "adjusted_gross_income": "adjusted_gross_income",
     "count": "population",
-    "employment_income": "employment_income",
+    "employment_income": "employment_income_before_lsr",
     "business_net_profits": "total_self_employment_income",
     "capital_gains_gross": "long_term_capital_gains",
     "ordinary_dividends": "non_qualified_dividend_income",
@@ -35,6 +35,12 @@ SOI_UPRATING_MAP = {
     "unemployment_compensation": "unemployment_compensation",
 }
 
+DEFAULT_SOI_UPRATING_VARIABLES = (
+    "employment_income_before_lsr",
+    "irs_employment_income",
+    "employment_income",
+)
+
 NATIONAL_SOI_AGGREGATE_FILTER = {
     "Filing status": "All",
     "AGI lower bound": -np.inf,
@@ -42,6 +48,19 @@ NATIONAL_SOI_AGGREGATE_FILTER = {
     "Taxable only": False,
     "Full population": True,
 }
+
+
+def get_soi_uprating_variable(variable: str, uprating: pd.DataFrame) -> str:
+    pe_name = SOI_UPRATING_MAP.get(variable)
+    if pe_name in uprating.index:
+        return pe_name
+    for default_variable in DEFAULT_SOI_UPRATING_VARIABLES:
+        if default_variable in uprating.index:
+            return default_variable
+    raise KeyError(
+        f"No PolicyEngine uprating row for SOI variable {variable!r}, "
+        f"and none of {DEFAULT_SOI_UPRATING_VARIABLES} are available."
+    )
 
 
 def pe_to_soi(pe_dataset, year):
@@ -258,17 +277,11 @@ def get_soi(year: int) -> pd.DataFrame:
         target_year_for_uprating = min(
             max(int(year), earliest_uprating_year), latest_uprating_year
         )
-        pe_name = SOI_UPRATING_MAP.get(variable)
-        if pe_name in uprating.index:
-            uprating_factors[variable] = (
-                uprating.loc[pe_name, target_year_for_uprating]
-                / uprating.loc[pe_name, source_year_for_uprating]
-            )
-        else:
-            uprating_factors[variable] = (
-                uprating.loc["employment_income", target_year_for_uprating]
-                / (uprating.loc["employment_income", source_year_for_uprating])
-            )
+        pe_name = get_soi_uprating_variable(variable, uprating)
+        uprating_factors[variable] = (
+            uprating.loc[pe_name, target_year_for_uprating]
+            / uprating.loc[pe_name, source_year_for_uprating]
+        )
 
     for variable, uprating_factor in uprating_factors.items():
         soi.loc[soi.Variable == variable, "Value"] *= uprating_factor

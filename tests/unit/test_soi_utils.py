@@ -199,6 +199,63 @@ def test_get_soi_uses_best_available_year_per_variable(monkeypatch):
     assert np.isclose(taxable_interest_value, 266.6666666667)
 
 
+def test_get_soi_uses_current_employment_income_uprating_without_legacy_row(
+    monkeypatch,
+):
+    soi_module = load_soi_module()
+    fake_soi = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "Variable": "employment_income",
+                "Value": 100.0,
+            },
+            {
+                "Year": 2023,
+                "Variable": "income_tax_after_credits",
+                "Value": 200.0,
+            },
+        ]
+    )
+    for column, default in {
+        "SOI table": "Table 1.4",
+        "XLSX column": "A",
+        "XLSX row": 9,
+        "Filing status": "All",
+        "AGI lower bound": float("-inf"),
+        "AGI upper bound": float("inf"),
+        "Count": False,
+        "Taxable only": False,
+        "Full population": True,
+    }.items():
+        fake_soi[column] = default
+
+    uprating = pd.DataFrame(
+        {
+            2023: [2.0],
+            2024: [3.0],
+        },
+        index=["employment_income_before_lsr"],
+    )
+
+    monkeypatch.setattr(soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy())
+    monkeypatch.setattr(
+        soi_module,
+        "create_policyengine_uprating_factors_table",
+        lambda: uprating,
+    )
+
+    soi = soi_module.get_soi(2024)
+
+    employment_income = soi.loc[soi["Variable"] == "employment_income", "Value"].iat[0]
+    income_tax_after_credits = soi.loc[
+        soi["Variable"] == "income_tax_after_credits", "Value"
+    ].iat[0]
+
+    assert np.isclose(employment_income, 150.0)
+    assert np.isclose(income_tax_after_credits, 300.0)
+
+
 def test_get_tracked_soi_row_selects_requested_best_year(monkeypatch):
     soi_module = load_soi_module()
     fake_soi = pd.DataFrame(

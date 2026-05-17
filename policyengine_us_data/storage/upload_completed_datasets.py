@@ -85,6 +85,7 @@ REQUIRED_VARIABLES_BY_FILENAME = {
         "takes_up_snap_if_eligible",
         "takes_up_ssi_if_eligible",
         "takes_up_tanf_if_eligible",
+        "takes_up_housing_assistance_if_eligible",
         "would_claim_wic",
         "is_wic_at_nutritional_risk",
     ),

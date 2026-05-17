@@ -3946,7 +3946,7 @@
           "node_type": "external"
         },
         {
-          "description": "9 takeup variables - block-level seeded draws",
+          "description": "10 takeup variables - block-level seeded draws",
           "id": "takeup_apply",
           "label": "Takeup Re-application",
           "node_type": "process"

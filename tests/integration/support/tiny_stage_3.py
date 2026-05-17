@@ -46,7 +46,7 @@ STAGE_3_GROUP_VARIABLES = tuple(
             *GROUP_LEVEL_VARIABLES,
             "tax_unit_count_dependents",
             "tax_unit_is_joint",
-            "spm_unit_capped_housing_subsidy",
+            "receives_housing_assistance",
             "household_is_puf_clone",
         )
     )
@@ -238,11 +238,7 @@ def _extended_group_arrays(
     return {
         "tax_unit_count_dependents": tax_unit_count_dependents,
         "tax_unit_is_joint": arrays["filing_status"] == b"JOINT",
-        "spm_unit_capped_housing_subsidy": np.where(
-            arrays["tenure_type"] == b"RENTED",
-            1_200,
-            0,
-        ).astype(np.float32),
+        "receives_housing_assistance": arrays["tenure_type"] == b"RENTED",
         "household_is_puf_clone": np.concatenate(
             [
                 np.zeros(cps_household_count, dtype=np.bool_),

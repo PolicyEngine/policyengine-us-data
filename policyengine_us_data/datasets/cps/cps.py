@@ -27,6 +27,7 @@ from policyengine_us_data.parameters import load_take_up_rate
 from policyengine_us_data.datasets.cps.takeup import (
     align_reported_ssi_disability,
     prioritize_reported_recipients,
+    very_low_income_renter_mask,
 )
 from policyengine_us_data.datasets.org import (
     ORG_BOOL_VARIABLES,
@@ -441,9 +442,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # full precision (and do not deterministically floor toward zero).
     cps["rent"] = np.zeros(len(cps["age"]), dtype=float)
     cps["rent"][mask] = imputed_values["rent"]
-    # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
-    cps["housing_assistance"] = np.zeros_like(cps["spm_unit_capped_housing_subsidy"])
     cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
@@ -491,6 +490,7 @@ def add_takeup(self):
     head_start_rate = load_take_up_rate("head_start", self.time_period)
     early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
     ssi_rate = load_take_up_rate("ssi", self.time_period)
+    housing_assistance_rate = load_take_up_rate("housing_assistance", self.time_period)
     voluntary_filing_rates = load_take_up_rate("voluntary_filing", self.time_period)
 
     # EITC: varies by number of children
@@ -568,6 +568,27 @@ def add_takeup(self):
     tanf_rate = load_take_up_rate("tanf", self.time_period)
     rng = seeded_rng("takes_up_tanf_if_eligible")
     data["takes_up_tanf_if_eligible"] = rng.random(n_spm_units) < tanf_rate
+
+    # Housing assistance: prioritize SPM-reported recipients, then fill the
+    # remaining draw pool up to the national receipt rate.
+    rng = seeded_rng("takes_up_housing_assistance_if_eligible")
+    reported_housing_assistance = np.asarray(
+        data.get(
+            "receives_housing_assistance",
+            np.zeros(n_spm_units, dtype=bool),
+        ),
+        dtype=bool,
+    )
+    very_low_income_renter = very_low_income_renter_mask(
+        baseline.calculate("hud_income_level").values,
+        baseline.calculate("spm_unit_tenure_type").values,
+    )
+    data["takes_up_housing_assistance_if_eligible"] = prioritize_reported_recipients(
+        reported_housing_assistance,
+        housing_assistance_rate,
+        rng.random(n_spm_units),
+        eligible_mask=very_low_income_renter,
+    )
 
     # WIC: resolve draws to bools using category-specific rates
     wic_categories = baseline.calculate("wic_category_str").values
@@ -1423,7 +1444,6 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     SPM_RENAMES = dict(
         snap_reported="SPM_SNAPSUB",
-        spm_unit_capped_housing_subsidy="SPM_CAPHOUSESUB",
         spm_unit_energy_subsidy="SPM_ENGVAL",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
@@ -1432,6 +1452,9 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     for openfisca_variable, asec_variable in SPM_RENAMES.items():
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
+
+    if "SPM_CAPHOUSESUB" in spm_unit.columns:
+        cps["receives_housing_assistance"] = spm_unit.SPM_CAPHOUSESUB > 0
 
     if "SPM_TENMORTSTATUS" in spm_unit.columns:
         tenure_map = {

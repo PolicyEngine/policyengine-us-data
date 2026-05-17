@@ -169,6 +169,9 @@ class TestVariableListConsistency:
     def test_spm_resource_aggregates_are_not_qrf_imputed(self):
         assert "spm_unit_total_income_reported" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "spm_unit_net_income_reported" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert "spm_unit_capped_housing_subsidy" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert "housing_assistance" not in set(CPS_ONLY_IMPUTED_VARIABLES)
+        assert "receives_housing_assistance" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
     def test_weeks_worked_is_preserved_for_future_year_formulas(self):
         data = {"weeks_worked": {2024: np.array([52])}}
@@ -181,6 +184,12 @@ class TestVariableListConsistency:
         data = {"social_security_retirement": {2024: np.array([12_000.0])}}
 
         ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_final_export_contract_rejects_housing_assistance_formula_output(self):
+        data = {"housing_assistance": {2024: np.array([3_000.0])}}
+
+        with pytest.raises(DatasetContractError, match="housing_assistance"):
+            ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
     def test_final_export_contract_rejects_computed_ss_total(self):
         data = {"social_security": {2024: np.array([12_000.0])}}

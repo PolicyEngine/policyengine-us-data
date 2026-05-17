@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 
 import pandas as pd
+from policyengine_us_data.utils.target_variables import target_variable_is_valid
 
 
 DEFAULT_DB_PATH = (
@@ -34,7 +35,7 @@ def validate_database(db_path: str | Path = DEFAULT_DB_PATH) -> None:
         targets_df = pd.read_sql("SELECT * FROM targets", conn)
 
         for var_name in set(targets_df["variable"]):
-            if var_name not in system.variables:
+            if not target_variable_is_valid(var_name, system.variables):
                 raise ValueError(f"{var_name} not a policyengine-us variable")
 
         for var_name in set(stratum_constraints_df["constraint_variable"]):

@@ -36,6 +36,9 @@ from policyengine_us_data.calibration.calibration_utils import (
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
+from policyengine_us_data.utils.target_variables import (
+    target_variable_components,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -854,6 +857,50 @@ def _evaluate_constraints_standalone(
     return np.array([hh_mask.get(hid, False) for hid in household_ids])
 
 
+def _target_expression_entity_from_map(
+    target_variable: str,
+    variable_entity_map: dict,
+) -> str:
+    entities = set()
+    missing = []
+    for component in target_variable_components(target_variable):
+        if component not in variable_entity_map:
+            missing.append(component)
+        else:
+            entities.add(variable_entity_map[component])
+    if missing:
+        raise ValueError(
+            f"Target expression {target_variable!r} includes variables "
+            f"with unknown entities: {missing}"
+        )
+    if len(entities) != 1:
+        raise ValueError(
+            "Additive target expressions must use variables with one "
+            f"entity; got {target_variable!r} with entities {entities}"
+        )
+    return entities.pop()
+
+
+def _sum_target_expression_values(
+    values_by_variable: dict,
+    target_variable: str,
+) -> np.ndarray | None:
+    result = None
+    for component in target_variable_components(target_variable):
+        values = values_by_variable.get(component)
+        if values is None:
+            return None
+        result = values if result is None else result + values
+    return result
+
+
+def _target_variables_for_calculation(target_variables) -> set[str]:
+    variables = set()
+    for variable in target_variables:
+        variables.update(target_variable_components(str(variable)))
+    return variables
+
+
 def _calculate_target_values_standalone(
     target_variable: str,
     non_geo_constraints: list,
@@ -875,7 +922,14 @@ def _calculate_target_values_standalone(
     (picklable, unlike ``tax_benefit_system``).
     """
     is_count = target_variable.endswith("_count")
-    target_entity = variable_entity_map.get(target_variable, "household")
+    is_expression = len(target_variable_components(target_variable)) > 1
+    if is_expression:
+        target_entity = _target_expression_entity_from_map(
+            target_variable,
+            variable_entity_map,
+        )
+    else:
+        target_entity = variable_entity_map.get(target_variable, "household")
 
     if reform_id > 0:
         mask = _evaluate_constraints_standalone(
@@ -898,7 +952,11 @@ def _calculate_target_values_standalone(
             household_ids,
             n_households,
         )
-        vals = hh_vars.get(target_variable)
+        vals = (
+            _sum_target_expression_values(hh_vars, target_variable)
+            if is_expression
+            else hh_vars.get(target_variable)
+        )
         if vals is None:
             return np.zeros(n_households, dtype=np.float32)
         return (vals * mask).astype(np.float32)
@@ -922,7 +980,11 @@ def _calculate_target_values_standalone(
         return hh_mask.astype(np.float32)
 
     if not is_count:
-        entity_values = target_entity_vars.get(target_variable)
+        entity_values = (
+            _sum_target_expression_values(target_entity_vars, target_variable)
+            if is_expression
+            else target_entity_vars.get(target_variable)
+        )
         entity_hh_idx = entity_hh_idx_map.get(target_entity)
         person_to_entity_idx = person_to_entity_idx_map.get(target_entity)
         if (
@@ -2601,7 +2663,10 @@ class UnifiedMatrixBuilder:
                 )
             )
 
-        unique_variables = set(targets_df["variable"].values)
+        target_variables = [
+            str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
+        ]
+        unique_variables = _target_variables_for_calculation(target_variables)
         reform_variables = {
             str(row["variable"])
             for _, row in targets_df.iterrows()
@@ -2610,6 +2675,16 @@ class UnifiedMatrixBuilder:
         variable_entity_map: Dict[str, str] = {}
         for var in unique_variables:
             if var in sim.tax_benefit_system.variables:
+                variable_entity_map[var] = sim.tax_benefit_system.variables[
+                    var
+                ].entity.key
+        for var in target_variables:
+            if len(target_variable_components(var)) > 1:
+                variable_entity_map[var] = _target_expression_entity_from_map(
+                    var,
+                    variable_entity_map,
+                )
+            elif var in sim.tax_benefit_system.variables:
                 variable_entity_map[var] = sim.tax_benefit_system.variables[
                     var
                 ].entity.key
@@ -3315,7 +3390,10 @@ class UnifiedMatrixBuilder:
                 )
             )
 
-        unique_variables = set(targets_df["variable"].values)
+        target_variables = [
+            str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
+        ]
+        unique_variables = _target_variables_for_calculation(target_variables)
         reform_variables = {
             str(row["variable"])
             for _, row in targets_df.iterrows()
@@ -3327,9 +3405,6 @@ class UnifiedMatrixBuilder:
                 unique_constraint_vars.add(constraint["variable"])
 
         base_entity_maps = build_household_entity_maps(sim)
-        target_variables = [
-            str(targets_df.iloc[i]["variable"]) for i in range(n_targets)
-        ]
 
         if chunk_dir is None:
             chunk_root = Path(tempfile.mkdtemp(prefix="matrix_chunks_"))

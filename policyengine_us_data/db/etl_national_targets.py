@@ -9,6 +9,7 @@ from policyengine_us_data.db.create_database_tables import (
     StratumConstraint,
     Target,
 )
+from policyengine_us_data.db.create_field_valid_values import FieldValidValues
 from policyengine_us_data.storage.calibration_targets.soi_metadata import (
     RETIREMENT_CONTRIBUTION_TARGETS,
 )
@@ -25,6 +26,114 @@ from policyengine_us_data.utils.db import (
     etl_argparser,
     get_geographic_strata,
 )
+from policyengine_us_data.utils.target_variables import (
+    target_variable_components,
+)
+
+BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
+BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
+BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
+BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
+
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "total_self_employment_income+farm_operations_income+partnership_s_corp_income"
+)
+NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
+TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
+    "taxable_interest_income+dividend_income"
+)
+
+CBO_INCOME_BY_SOURCE_TARGETS = [
+    {
+        "variable": "irs_employment_income",
+        "parameter": "employment_income",
+        "notes": (
+            "CBO detailed AGI-by-source employment income; restricted to "
+            "tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": "self_employment_income",
+        "parameter": "self_employment_income",
+        "notes": (
+            "CBO detailed AGI-by-source self-employment income; restricted "
+            "to tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": "taxable_pension_income",
+        "parameter": "taxable_pension_income",
+        "notes": (
+            "CBO detailed AGI-by-source taxable pension income; restricted "
+            "to tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": "taxable_social_security",
+        "parameter": "taxable_social_security",
+        "notes": (
+            "CBO detailed AGI-by-source taxable Social Security; restricted "
+            "to tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": "qualified_dividend_income",
+        "parameter": "qualified_dividend_income",
+        "notes": (
+            "CBO detailed AGI-by-source qualified dividends; restricted to "
+            "tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": "loss_limited_net_capital_gains",
+        "parameter": "net_capital_gain",
+        "notes": (
+            "CBO detailed AGI-by-source net capital gains; restricted to "
+            "tax filers because this is an AGI tax-return concept"
+        ),
+    },
+    {
+        "variable": TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE,
+        "parameter": "taxable_interest_and_ordinary_dividends",
+        "notes": (
+            "CBO detailed AGI-by-source taxable interest plus ordinary "
+            "dividends; restricted to tax filers because this is an AGI "
+            "tax-return concept"
+        ),
+    },
+]
+
+
+def _register_target_variable(session: Session, variable: str) -> None:
+    from policyengine_us.system import system
+
+    missing = [
+        component
+        for component in target_variable_components(variable)
+        if component not in system.variables
+    ]
+    if missing:
+        raise ValueError(
+            f"Target variable expression {variable!r} includes unknown "
+            f"policyengine-us variables: {missing}"
+        )
+
+    existing = session.exec(
+        select(FieldValidValues).where(
+            FieldValidValues.field_name == "variable",
+            FieldValidValues.valid_value == variable,
+        )
+    ).first()
+    if existing is None:
+        session.add(
+            FieldValidValues(
+                field_name="variable",
+                valid_value=variable,
+                description="Additive calibration target expression",
+            )
+        )
+        session.flush()
+
 
 WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
     "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
@@ -305,7 +414,76 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
     ]
     tax_expenditure_targets = [{**target} for target in raw_tax_expenditure_targets]
 
+    income_by_source = tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
+    for target in CBO_INCOME_BY_SOURCE_TARGETS:
+        try:
+            value = income_by_source._children[target["parameter"]]
+            tax_filer_targets.append(
+                {
+                    "variable": target["variable"],
+                    "value": float(value),
+                    "source": "CBO Revenue Projections",
+                    "notes": target["notes"],
+                    "year": time_period,
+                }
+            )
+        except (KeyError, AttributeError) as e:
+            print(
+                "Warning: Could not extract CBO income-by-source "
+                f"{target['parameter']} target: {e}"
+            )
+
     direct_sum_targets = [
+        {
+            "variable": "employment_income_before_lsr",
+            "value": BEA_NIPA_WAGES_AND_SALARIES_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Gross wages and salaries for all workers, including "
+                "nonfilers; FRED/BEA series A034RC1A027NBEA"
+            ),
+            "year": 2024,
+        },
+        {
+            "variable": NIPA_PROPRIETORS_INCOME_VARIABLE,
+            "value": BEA_NIPA_PROPRIETORS_INCOME_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Proprietors' income with IVA and CCAdj for all persons, "
+                "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
+                "Mapped to the closest additive PolicyEngine aggregate: "
+                "total self-employment, farm operations, and "
+                "partnership/S-corp income."
+            ),
+            "year": 2024,
+        },
+        {
+            "variable": NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
+            "value": BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Personal interest income for all persons, including "
+                "nonfilers; FRED/BEA series A064RC1A027NBEA. NIPA also "
+                "includes imputed interest, so this is a macro benchmark "
+                "rather than a pure tax concept."
+            ),
+            "year": 2024,
+        },
+        {
+            "variable": "dividend_income",
+            "value": BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Personal dividend income for all persons, including "
+                "nonfilers; FRED/BEA series B703RC1A027NBEA. NIPA "
+                "includes dividends received through pension funds and "
+                "private trusts, so this is a macro benchmark rather than "
+                "a pure tax concept."
+            ),
+            "year": 2024,
+        },
         {
             "variable": "medicaid",
             "value": 871.7e9,
@@ -701,6 +879,7 @@ def load_national_targets(
         # Process direct sum targets
         for _, target_data in direct_targets_df.iterrows():
             target_year = target_data["year"]
+            _register_target_variable(session, target_data["variable"])
             # Check if target already exists
             existing_target = session.exec(
                 select(Target).where(
@@ -767,6 +946,7 @@ def load_national_targets(
             # Add tax-related targets to filer stratum
             for _, target_data in tax_filer_df.iterrows():
                 target_year = target_data["year"]
+                _register_target_variable(session, target_data["variable"])
                 # Check if target already exists
                 existing_target = session.exec(
                     select(Target).where(

@@ -25,6 +25,9 @@ from policyengine_us_data.db.etl_irs_soi import (
 )
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi, get_tracked_soi_row
+from policyengine_us_data.utils.target_variables import (
+    target_variable_components,
+)
 
 
 MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
@@ -35,6 +38,32 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 # db/etl_national_targets.py which loads them into policy_data.db.
 # A future PR should wire build_loss_matrix() to read from the
 # database so this dict can be deleted.  See PR #488.
+
+BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
+BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
+BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
+BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
+
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "total_self_employment_income+farm_operations_income+partnership_s_corp_income"
+)
+NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
+TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
+    "taxable_interest_income+dividend_income"
+)
+
+CBO_INCOME_BY_SOURCE_TARGETS = [
+    ("irs_employment_income", "employment_income"),
+    ("self_employment_income", "self_employment_income"),
+    ("taxable_pension_income", "taxable_pension_income"),
+    ("taxable_social_security", "taxable_social_security"),
+    ("qualified_dividend_income", "qualified_dividend_income"),
+    ("loss_limited_net_capital_gains", "net_capital_gain"),
+    (
+        TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE,
+        "taxable_interest_and_ordinary_dividends",
+    ),
+]
 
 HARD_CODED_TOTALS = {
     MEDICARE_PART_B_PREMIUM_VARIABLE: (
@@ -233,6 +262,41 @@ def fmt(x):
     if x < 1e9:
         return f"{x / 1e6:.0f}m"
     return f"{x / 1e9:.1f}bn"
+
+
+def _target_expression_entity(sim, variable):
+    entities = {
+        sim.tax_benefit_system.variables[component].entity.key
+        for component in target_variable_components(variable)
+    }
+    if len(entities) != 1:
+        raise ValueError(
+            "Additive target expressions must use variables with one "
+            f"entity; got {variable!r} with entities {entities}"
+        )
+    return entities.pop()
+
+
+def _calculate_expression(sim, variable, map_to, period):
+    result = None
+    for component in target_variable_components(variable):
+        values = sim.calculate(component, map_to=map_to, period=period).values
+        result = values if result is None else result + values
+    return result
+
+
+def _calculate_filer_target_values(sim, variable, time_period):
+    entity = _target_expression_entity(sim, variable)
+    values = _calculate_expression(sim, variable, entity, time_period)
+
+    is_filer = (
+        sim.calculate("tax_unit_is_filer", map_to=entity, period=time_period).values > 0
+    )
+    return sim.map_result(values * is_filer, entity, "household")
+
+
+def _calculate_household_target_values(sim, variable, time_period):
+    return _calculate_expression(sim, variable, "household", time_period)
 
 
 def _parse_constraint_value(value):
@@ -1171,40 +1235,51 @@ def build_loss_matrix(dataset: type, time_period):
             ).calibration.gov.cbo._children[param_name]
         )
 
-    # CBO income-by-source aggregate targets.
-    # Without these, the per-AGI-bracket SOI targets fail to constrain the
-    # *aggregate* (the optimizer can satisfy bracket-level totals while
-    # concentrating weight on a few records and blowing up the national sum).
-    # See issues #555 and #866 — single records with $60M+ raw LTCG were
-    # ending up with calibration weights of 50k-70k, inflating the national
-    # net_capital_gains aggregate to 12x the CBO target.
-    #
-    # Each entry maps a PolicyEngine variable (or sum of variables) to the
-    # corresponding CBO `income_by_source` parameter.
-    CBO_INCOME_BY_SOURCE_TARGETS = [
-        # (label_suffix, [pe_variables_to_sum], cbo_param_name)
-        ("net_capital_gains", ["net_capital_gains"], "net_capital_gain"),
-        (
-            "qualified_dividend_income",
-            ["qualified_dividend_income"],
-            "qualified_dividend_income",
-        ),
-        (
-            "taxable_interest_and_ordinary_dividends",
-            ["taxable_interest_income", "non_qualified_dividend_income"],
-            "taxable_interest_and_ordinary_dividends",
-        ),
-    ]
-
+    # CBO's detailed AGI-by-source targets are tax-return concepts,
+    # so keep them restricted to filing tax units.
     income_by_source = sim.tax_benefit_system.parameters(
         time_period
     ).calibration.gov.cbo.income_by_source
+    for variable, parameter in CBO_INCOME_BY_SOURCE_TARGETS:
+        label = f"nation/cbo/income_by_source/{variable}/filers"
+        loss_matrix[label] = _calculate_filer_target_values(
+            sim,
+            variable,
+            time_period,
+        )
+        targets_array.append(income_by_source._children[parameter])
 
-    for label_suffix, pe_variables, cbo_param_name in CBO_INCOME_BY_SOURCE_TARGETS:
-        label = f"nation/cbo/income_by_source/{label_suffix}"
-        values = sum(sim.calculate(v, map_to="household").values for v in pe_variables)
-        loss_matrix[label] = values
-        targets_array.append(income_by_source._children[cbo_param_name])
+    bea_nipa_targets = [
+        (
+            "nation/bea/nipa_wages_and_salaries",
+            "employment_income_before_lsr",
+            BEA_NIPA_WAGES_AND_SALARIES_2024,
+        ),
+        (
+            "nation/bea/nipa_proprietors_income",
+            NIPA_PROPRIETORS_INCOME_VARIABLE,
+            BEA_NIPA_PROPRIETORS_INCOME_2024,
+        ),
+        (
+            "nation/bea/nipa_personal_interest_income",
+            NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
+            BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
+        ),
+        (
+            "nation/bea/nipa_personal_dividend_income",
+            "dividend_income",
+            BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
+        ),
+    ]
+    for label, variable, target in bea_nipa_targets:
+        loss_matrix[label] = _calculate_household_target_values(
+            sim,
+            variable,
+            time_period,
+        )
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+        targets_array.append(target)
 
     # IRS SOI aggregate capital-gains targets. This adds a long-term gains
     # control on top of the CBO net capital gains aggregate, which is important

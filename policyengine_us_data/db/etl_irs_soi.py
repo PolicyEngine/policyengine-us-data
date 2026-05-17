@@ -70,6 +70,7 @@ GEOGRAPHY_FILE_TARGET_SPECS = [
         name="qualified_business_income_deduction",
         breakdown=None,
     ),
+    dict(code="00200", name="irs_employment_income", breakdown=None),
     dict(code="00900", name="total_self_employment_income", breakdown=None),
     dict(
         code="01000",

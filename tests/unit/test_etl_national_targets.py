@@ -601,3 +601,222 @@ def test_load_national_targets_supports_wic_targets(tmp_path, monkeypatch):
         ).first()
         assert wic_count_target is not None
         assert wic_count_target.value == 6_704_000
+
+
+def test_loads_gross_wage_and_filer_tax_wage_targets(tmp_path, monkeypatch):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        _make_stratum(session, notes="United States")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(
+            [
+                {
+                    "variable": "employment_income_before_lsr",
+                    "value": 12_387_929_000_000,
+                    "source": "BEA NIPA Table 2.1",
+                    "notes": "Gross all-worker wages",
+                    "year": 2024,
+                },
+                {
+                    "variable": (
+                        etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE
+                    ),
+                    "value": 1_926_644_000_000,
+                    "source": "BEA NIPA Table 2.1",
+                    "notes": "Personal interest income",
+                    "year": 2024,
+                },
+                {
+                    "variable": etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE,
+                    "value": 2_023_080_000_000,
+                    "source": "BEA NIPA Table 2.1",
+                    "notes": "Proprietors' income",
+                    "year": 2024,
+                },
+            ]
+        ),
+        tax_filer_df=pd.DataFrame(
+            [
+                {
+                    "variable": "irs_employment_income",
+                    "value": 10_832_700_000_000,
+                    "source": "CBO Revenue Projections",
+                    "notes": "AGI-by-source wages",
+                    "year": 2024,
+                }
+            ]
+        ),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=[],
+    )
+
+    with Session(engine) as session:
+        gross_wage_target = session.exec(
+            select(Target).where(Target.variable == "employment_income_before_lsr")
+        ).one()
+        tax_wage_target = session.exec(
+            select(Target).where(Target.variable == "irs_employment_income")
+        ).one()
+        interest_target = session.exec(
+            select(Target).where(
+                Target.variable
+                == etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE
+            )
+        ).one()
+        proprietors_target = session.exec(
+            select(Target).where(
+                Target.variable == etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE
+            )
+        ).one()
+        filer_constraints = session.exec(
+            select(StratumConstraint).where(
+                StratumConstraint.stratum_id == tax_wage_target.stratum_id
+            )
+        ).all()
+
+    assert gross_wage_target.value == 12_387_929_000_000
+    assert tax_wage_target.value == 10_832_700_000_000
+    assert interest_target.value == 1_926_644_000_000
+    assert proprietors_target.value == 2_023_080_000_000
+    assert gross_wage_target.stratum_id != tax_wage_target.stratum_id
+    assert [
+        (
+            constraint.constraint_variable,
+            constraint.operation,
+            constraint.value,
+        )
+        for constraint in filer_constraints
+    ] == [("tax_unit_is_filer", "==", "1")]
+
+
+def test_extracts_income_targets_from_primary_concepts(monkeypatch):
+    class FakeIncomeBySource:
+        _children = {
+            "employment_income": 10_832_700_000_000,
+            "self_employment_income": 1_916_000_000_000,
+            "taxable_pension_income": 1_522_500_000_000,
+            "taxable_social_security": 577_200_000_000,
+            "qualified_dividend_income": 354_300_000_000,
+            "net_capital_gain": 1_290_900_000_000,
+            "taxable_interest_and_ordinary_dividends": 309_700_000_000,
+        }
+
+    class FakeCBO:
+        income_by_source = FakeIncomeBySource()
+        _children = {
+            "income_tax": 0,
+            "snap": 0,
+            "social_security": 0,
+            "ssi": 0,
+            "unemployment_compensation": 0,
+        }
+
+    class FakeSOI:
+        _children = {"long_term_capital_gains": 0}
+
+    class FakeGov:
+        cbo = FakeCBO()
+        irs = type("FakeIRS", (), {"soi": FakeSOI()})()
+
+    class FakeCalibration:
+        gov = FakeGov()
+
+    class FakeParameters:
+        def __call__(self, year):
+            return self
+
+        calibration = FakeCalibration()
+
+    class FakeTaxBenefitSystem:
+        parameters = FakeParameters()
+
+    monkeypatch.setattr(
+        "policyengine_us.CountryTaxBenefitSystem",
+        FakeTaxBenefitSystem,
+    )
+
+    raw_targets = etl_national_targets.extract_national_targets(year=2024)
+
+    gross_wage_targets = [
+        target
+        for target in raw_targets["direct_sum_targets"]
+        if target["variable"] == "employment_income_before_lsr"
+    ]
+    proprietors_targets = [
+        target
+        for target in raw_targets["direct_sum_targets"]
+        if target["variable"] == etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE
+    ]
+    tax_wage_targets = [
+        target
+        for target in raw_targets["tax_filer_targets"]
+        if target["variable"] == "irs_employment_income"
+    ]
+    cbo_self_employment_targets = [
+        target
+        for target in raw_targets["tax_filer_targets"]
+        if target["variable"] == "self_employment_income"
+    ]
+
+    assert gross_wage_targets == [
+        {
+            "variable": "employment_income_before_lsr",
+            "value": etl_national_targets.BEA_NIPA_WAGES_AND_SALARIES_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Gross wages and salaries for all workers, including "
+                "nonfilers; FRED/BEA series A034RC1A027NBEA"
+            ),
+            "year": 2024,
+        }
+    ]
+    assert tax_wage_targets == [
+        {
+            "variable": "irs_employment_income",
+            "value": 10_832_700_000_000,
+            "source": "CBO Revenue Projections",
+            "notes": (
+                "CBO detailed AGI-by-source employment income; restricted "
+                "to tax filers because this is an AGI tax-return concept"
+            ),
+            "year": 2024,
+        }
+    ]
+    assert proprietors_targets == [
+        {
+            "variable": etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE,
+            "value": etl_national_targets.BEA_NIPA_PROPRIETORS_INCOME_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Proprietors' income with IVA and CCAdj for all persons, "
+                "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
+                "Mapped to the closest additive PolicyEngine aggregate: "
+                "total self-employment, farm operations, and "
+                "partnership/S-corp income."
+            ),
+            "year": 2024,
+        }
+    ]
+    assert cbo_self_employment_targets == [
+        {
+            "variable": "self_employment_income",
+            "value": 1_916_000_000_000,
+            "source": "CBO Revenue Projections",
+            "notes": (
+                "CBO detailed AGI-by-source self-employment income; "
+                "restricted to tax filers because this is an AGI tax-return "
+                "concept"
+            ),
+            "year": 2024,
+        }
+    ]

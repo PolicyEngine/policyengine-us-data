@@ -16,6 +16,9 @@ from typing import Optional
 
 import h5py
 import numpy as np
+from policyengine_us.variables.gov.hud.is_eligible_for_housing_assistance import (
+    housing_assistance_eligibility_from_income_limits,
+)
 
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
@@ -430,14 +433,46 @@ def materialize_clone_household_chunk(
                 map_to="tax_unit",
             ).values[entity_clone_idx["tax_unit"]],
         }
-        eligibility_masks = {
-            "takes_up_housing_assistance_if_eligible": sim.calculate(
-                "is_eligible_for_housing_assistance",
-                time_period,
-                map_to="spm_unit",
+        if (
+            "receives_housing_assistance" in data
+            and time_period in data["receives_housing_assistance"]
+        ):
+            receives_housing_assistance = data["receives_housing_assistance"][
+                time_period
+            ].astype(bool)
+        else:
+            receives_housing_assistance = (
+                sim.calculate(
+                    "receives_housing_assistance",
+                    time_period,
+                    map_to="spm_unit",
+                )
+                .values[entity_clone_idx["spm_unit"]]
+                .astype(bool)
             )
-            .values[entity_clone_idx["spm_unit"]]
-            .astype(bool)
+        eligibility_masks = {
+            "takes_up_housing_assistance_if_eligible": (
+                housing_assistance_eligibility_from_income_limits(
+                    county_fips=clone_geo["county_fips"][entity_hh_indices["spm_unit"]],
+                    annual_income=sim.calculate(
+                        "hud_annual_income",
+                        time_period,
+                        map_to="spm_unit",
+                    ).values[entity_clone_idx["spm_unit"]],
+                    spm_unit_size=sim.calculate(
+                        "spm_unit_size",
+                        time_period,
+                        map_to="spm_unit",
+                    ).values[entity_clone_idx["spm_unit"]],
+                    spm_unit_tenure_type=sim.calculate(
+                        "spm_unit_tenure_type",
+                        time_period,
+                        map_to="spm_unit",
+                    ).values[entity_clone_idx["spm_unit"]],
+                    receives_housing_assistance=receives_housing_assistance,
+                    year=time_period,
+                ).astype(bool)
+            )
         }
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,

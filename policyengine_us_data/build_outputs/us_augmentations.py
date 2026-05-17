@@ -6,6 +6,9 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 import numpy as np
+from policyengine_us.variables.gov.hud.is_eligible_for_housing_assistance import (
+    housing_assistance_eligibility_from_income_limits,
+)
 
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
@@ -425,6 +428,7 @@ class USTakeupPostProcessor:
         }
         reported_anchors = _build_reported_takeup_anchors(data, time_period)
         eligibility_masks = self._build_eligibility_masks(
+            data=data,
             context=context,
             subentity_source_indices=subentity_source_indices,
         )
@@ -503,17 +507,67 @@ class USTakeupPostProcessor:
     def _build_eligibility_masks(
         self,
         *,
+        data: PayloadData,
         context: PayloadBuildContext,
         subentity_source_indices: Mapping[str, np.ndarray],
     ) -> dict[str, np.ndarray]:
         time_period = context.time_period
-        return {
-            "takes_up_housing_assistance_if_eligible": calculate_variable_values(
+        spm_unit_source_indices = subentity_source_indices["spm_unit"]
+        spm_unit_household_indices = (
+            context.reindexed.subentity_household_clone_indices["spm_unit"].astype(
+                np.int64
+            )
+        )
+        household_county_fips = _required_period_array(
+            data,
+            "county_fips",
+            time_period,
+            "US take-up housing assistance eligibility requires county_fips "
+            "from USGeographyPostProcessor",
+        )
+        if (
+            "receives_housing_assistance" in data
+            and time_period in data["receives_housing_assistance"]
+        ):
+            receives_housing_assistance = data["receives_housing_assistance"][
+                time_period
+            ].astype(bool)
+        else:
+            receives_housing_assistance = calculate_variable_values(
                 context.simulation,
-                "is_eligible_for_housing_assistance",
+                "receives_housing_assistance",
                 period=time_period,
                 map_to="spm_unit",
-            )[subentity_source_indices["spm_unit"]].astype(bool)
+            )[spm_unit_source_indices].astype(bool)
+
+        return {
+            "takes_up_housing_assistance_if_eligible": (
+                housing_assistance_eligibility_from_income_limits(
+                    county_fips=np.asarray(household_county_fips)[
+                        spm_unit_household_indices
+                    ],
+                    annual_income=calculate_variable_values(
+                        context.simulation,
+                        "hud_annual_income",
+                        period=time_period,
+                        map_to="spm_unit",
+                    )[spm_unit_source_indices],
+                    spm_unit_size=calculate_variable_values(
+                        context.simulation,
+                        "spm_unit_size",
+                        period=time_period,
+                        map_to="spm_unit",
+                    )[spm_unit_source_indices],
+                    spm_unit_tenure_type=calculate_variable_values(
+                        context.simulation,
+                        "spm_unit_tenure_type",
+                        period=time_period,
+                        map_to="spm_unit",
+                    )[spm_unit_source_indices],
+                    receives_housing_assistance=receives_housing_assistance,
+                    year=time_period,
+                ).astype(bool)
+            )
         }
 
 

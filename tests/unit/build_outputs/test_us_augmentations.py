@@ -36,7 +36,10 @@ class _Simulation:
             ("tax_unit_child_dependents", "tax_unit"): np.array([1, 2]),
             ("employment_income", "person"): np.array([10, 20, 30]),
             ("age_head", "tax_unit"): np.array([40, 50]),
-            ("is_eligible_for_housing_assistance", "spm_unit"): np.array([False, True]),
+            ("hud_annual_income", "spm_unit"): np.array([200_000, 50_000]),
+            ("spm_unit_size", "spm_unit"): np.array([4, 4]),
+            ("spm_unit_tenure_type", "spm_unit"): np.array(["RENTER", "RENTER"]),
+            ("receives_housing_assistance", "spm_unit"): np.array([False, False]),
         }[(variable, map_to)]
         return _Calculation(values)
 

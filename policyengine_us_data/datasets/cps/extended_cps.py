@@ -11,6 +11,7 @@ from policyengine_us_data.datasets.cps.cps import (
     CPS_2024,
     CPS_2024_Full,
     ESI_POLICYHOLDER_VARIABLE,
+    _open_dataset_read_only,
 )
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
@@ -675,6 +676,46 @@ _COMPUTED_AGGREGATE_INPUT_RENAMES = {
     "weekly_hours_worked": "weekly_hours_worked_before_lsr",
 }
 
+_HOUSING_ASSISTANCE_FORMULA_OUTPUTS = {
+    "housing_assistance",
+    "spm_unit_capped_housing_subsidy",
+}
+_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.01
+
+
+class _InMemoryTimePeriodDataset(Dataset):
+    name = "extended_cps_validation"
+    label = "Extended CPS validation"
+    data_format = Dataset.TIME_PERIOD_ARRAYS
+    file_path = STORAGE_FOLDER / "extended_cps_validation.h5"
+
+    def __init__(self, data: dict, time_period: int):
+        self._data = data
+        self.time_period = time_period
+        super().__init__()
+
+    def load(self):
+        return self._data
+
+    def load_dataset(self):
+        return self._data
+
+
+def _load_raw_spm_capped_housing_subsidy(cps_dataset, time_period: int):
+    """Load Census SPM capped housing subsidy for validation only."""
+
+    raw_cps = getattr(cps_dataset, "raw_cps", None)
+    if raw_cps is None:
+        return None
+
+    with _open_dataset_read_only(raw_cps) as raw_data:
+        spm_unit = raw_data["spm_unit"]
+        if "SPM_CAPHOUSESUB" not in spm_unit.columns:
+            return None
+        values = np.asarray(spm_unit["SPM_CAPHOUSESUB"], dtype=float)
+
+    return {time_period: values}
+
 
 def _apply_post_processing(predictions, X_test, time_period, data):
     """Apply retirement constraints and SS reconciliation."""
@@ -834,6 +875,22 @@ class ExtendedCPS(Dataset):
         data_dict = {}
         for var in data:
             data_dict[var] = {self.time_period: data[var][...]}
+        raw_spm_capped_housing_subsidy = _load_raw_spm_capped_housing_subsidy(
+            self.cps,
+            self.time_period,
+        )
+        if raw_spm_capped_housing_subsidy is not None:
+            source_values = raw_spm_capped_housing_subsidy[self.time_period]
+            spm_unit_ids = data_dict.get("spm_unit_id", {}).get(self.time_period)
+            if spm_unit_ids is not None and len(source_values) == len(spm_unit_ids):
+                data_dict["spm_unit_capped_housing_subsidy"] = (
+                    raw_spm_capped_housing_subsidy
+                )
+            else:
+                logger.warning(
+                    "Skipping raw SPM capped housing subsidy validation benchmark "
+                    "due to SPM unit length mismatch"
+                )
 
         state_fips = data_dict["state_fips"][self.time_period]
         county_fips = data_dict.get("county_fips", {}).get(self.time_period)
@@ -890,6 +947,11 @@ class ExtendedCPS(Dataset):
         new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)
         new_data = self._impute_llc_eligibility_inputs(new_data, self.time_period)
         new_data = self._rename_imputed_to_inputs(new_data)
+        new_data = self._validate_housing_assistance_microsimulation(
+            new_data,
+            self.time_period,
+        )
+        new_data = self._drop_housing_assistance_formula_outputs(new_data)
         if _supports_structural_mortgage_inputs():
             had_positive_mortgage_input = self._has_positive_mortgage_input(
                 new_data,
@@ -1236,6 +1298,126 @@ class ExtendedCPS(Dataset):
         raise RuntimeError(
             "Structural mortgage conversion lost positive mortgage inputs."
         )
+
+    @classmethod
+    @pipeline_node(
+        PipelineNode(
+            id="housing_assistance_microsim_validation",
+            label="Validate Housing Assistance Microsimulation",
+            node_type="process",
+            description=(
+                "Runs a temporary microsimulation before final export to ensure "
+                "housing-assistance leaf inputs reconstruct nonzero modeled "
+                "housing assistance and capped SPM housing subsidy."
+            ),
+            status="transitional",
+            stability="moving",
+            pathways=["data_build"],
+            artifacts_in=["extended_cps_stage2"],
+            artifacts_out=["housing_validated_extended_cps"],
+            pydoc=True,
+        )
+    )
+    def _validate_housing_assistance_microsimulation(
+        cls,
+        data,
+        time_period,
+        microsimulation_cls=None,
+    ):
+        """Check formula-reconstructed housing assistance before export.
+
+        The final H5 must not export formula outputs such as ``housing_assistance``.
+        This guard verifies that the remaining leaf inputs still make those
+        formulas produce nonzero values before the export contract strips or
+        rejects computed variables.
+        """
+
+        receives = data.get("receives_housing_assistance", {}).get(time_period)
+        takes_up = data.get("takes_up_housing_assistance_if_eligible", {}).get(
+            time_period
+        )
+        if receives is None and takes_up is None:
+            return data
+
+        receives = (
+            np.asarray(receives, dtype=bool)
+            if receives is not None
+            else np.zeros_like(np.asarray(takes_up, dtype=bool))
+        )
+        takes_up = (
+            np.asarray(takes_up, dtype=bool)
+            if takes_up is not None
+            else np.zeros_like(receives, dtype=bool)
+        )
+        if not (receives | takes_up).any():
+            return data
+
+        validation_data = {
+            variable: values
+            for variable, values in data.items()
+            if variable not in _HOUSING_ASSISTANCE_FORMULA_OUTPUTS
+        }
+        if microsimulation_cls is None:
+            from policyengine_us import Microsimulation
+
+            microsimulation_cls = Microsimulation
+
+        simulation = microsimulation_cls(
+            dataset=_InMemoryTimePeriodDataset(validation_data, time_period)
+        )
+        housing_assistance = simulation.calculate("housing_assistance", time_period)
+        capped_housing_subsidy = simulation.calculate(
+            "spm_unit_capped_housing_subsidy",
+            time_period,
+        )
+        housing_total = float(housing_assistance.sum())
+        capped_total = float(capped_housing_subsidy.sum())
+        if housing_total <= 0 or capped_total <= 0:
+            raise RuntimeError(
+                "Housing assistance inputs do not reconstruct modeled benefits: "
+                f"housing_assistance={housing_total:,.0f}, "
+                f"spm_unit_capped_housing_subsidy={capped_total:,.0f}. "
+                "Check receives_housing_assistance, "
+                "takes_up_housing_assistance_if_eligible, county_fips, rent, "
+                "and HUD payment-standard inputs before dropping formula outputs."
+            )
+
+        benchmark = data.get("spm_unit_capped_housing_subsidy", {}).get(time_period)
+        if benchmark is None:
+            return data
+
+        from microdf import MicroSeries
+
+        spm_unit_weight = simulation.calculate(
+            "spm_unit_weight",
+            time_period,
+            use_weights=False,
+        )
+        weights = np.asarray(getattr(spm_unit_weight, "values", spm_unit_weight))
+        benchmark_total = float(
+            MicroSeries(np.asarray(benchmark, dtype=float), weights=weights).sum()
+        )
+        if benchmark_total <= 0:
+            return data
+
+        minimum_total = benchmark_total * _MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK
+        if capped_total < minimum_total:
+            raise RuntimeError(
+                "Modeled capped housing subsidy is implausibly small relative "
+                "to the raw ASEC SPM housing subsidy benchmark: "
+                f"modeled={capped_total:,.0f}, benchmark={benchmark_total:,.0f}. "
+                "This likely means a required formula input is missing before "
+                "housing assistance formula outputs are dropped from the final export."
+            )
+        return data
+
+    @classmethod
+    def _drop_housing_assistance_formula_outputs(cls, data):
+        """Remove housing assistance formula outputs after validation."""
+
+        for variable in sorted(set(data) & _HOUSING_ASSISTANCE_FORMULA_OUTPUTS):
+            del data[variable]
+        return data
 
     # QRF imputes formula-level variables (e.g. taxable_pension_income)
     # but we must store them under leaf input names. The engine then

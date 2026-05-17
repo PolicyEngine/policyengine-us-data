@@ -42,6 +42,22 @@ from policyengine_us_data.utils.aotc import (
 from policyengine_us_data.utils.dataset_validation import DatasetContractError
 
 
+class _FakeHousingMicrosimulation:
+    outputs = {
+        "housing_assistance": np.array([5_000.0, 0.0]),
+        "spm_unit_capped_housing_subsidy": np.array([4_000.0, 0.0]),
+        "spm_unit_weight": np.array([2.0, 3.0]),
+    }
+    seen_data = None
+
+    def __init__(self, dataset):
+        self.dataset = dataset
+        type(self).seen_data = dataset.load_dataset()
+
+    def calculate(self, variable, period, **kwargs):
+        return type(self).outputs[variable]
+
+
 class TestVariableListConsistency:
     """Variable lists should not overlap — no variable should be
     imputed by two different mechanisms."""
@@ -236,6 +252,83 @@ class TestVariableListConsistency:
         assert "social_security" not in result
         assert "tax_unit_is_joint" not in result
         assert "employment_income_last_year" not in result
+
+    def test_housing_assistance_validation_removes_formula_outputs_for_microsim(self):
+        data = {
+            "receives_housing_assistance": {2024: np.array([True, False])},
+            "takes_up_housing_assistance_if_eligible": {2024: np.array([True, False])},
+            "housing_assistance": {2024: np.array([99_000.0, 99_000.0])},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([3_000.0, 0.0])},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "housing_assistance": np.array([5_000.0, 0.0]),
+            "spm_unit_capped_housing_subsidy": np.array([4_000.0, 0.0]),
+            "spm_unit_weight": np.array([2.0, 3.0]),
+        }
+
+        result = ExtendedCPS._validate_housing_assistance_microsimulation(
+            data,
+            2024,
+            microsimulation_cls=_FakeHousingMicrosimulation,
+        )
+
+        assert result is data
+        assert "housing_assistance" not in _FakeHousingMicrosimulation.seen_data
+        assert (
+            "spm_unit_capped_housing_subsidy"
+            not in _FakeHousingMicrosimulation.seen_data
+        )
+
+    def test_housing_assistance_validation_rejects_zero_modeled_benefits(self):
+        data = {
+            "receives_housing_assistance": {2024: np.array([True])},
+            "takes_up_housing_assistance_if_eligible": {2024: np.array([True])},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "housing_assistance": np.array([0.0]),
+            "spm_unit_capped_housing_subsidy": np.array([0.0]),
+            "spm_unit_weight": np.array([1.0]),
+        }
+
+        with pytest.raises(RuntimeError, match="do not reconstruct modeled benefits"):
+            ExtendedCPS._validate_housing_assistance_microsimulation(
+                data,
+                2024,
+                microsimulation_cls=_FakeHousingMicrosimulation,
+            )
+
+    def test_housing_assistance_validation_rejects_tiny_reported_match(self):
+        data = {
+            "receives_housing_assistance": {2024: np.array([True])},
+            "takes_up_housing_assistance_if_eligible": {2024: np.array([True])},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([10_000.0])},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "housing_assistance": np.array([100.0]),
+            "spm_unit_capped_housing_subsidy": np.array([50.0]),
+            "spm_unit_weight": np.array([1.0]),
+        }
+
+        with pytest.raises(RuntimeError, match="implausibly small"):
+            ExtendedCPS._validate_housing_assistance_microsimulation(
+                data,
+                2024,
+                microsimulation_cls=_FakeHousingMicrosimulation,
+            )
+
+    def test_drop_housing_assistance_formula_outputs_after_validation(self):
+        data = {
+            "housing_assistance": {2024: np.array([1_000.0])},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([800.0])},
+            "receives_housing_assistance": {2024: np.array([True])},
+        }
+
+        result = ExtendedCPS._drop_housing_assistance_formula_outputs(data)
+
+        assert result is data
+        assert "housing_assistance" not in result
+        assert "spm_unit_capped_housing_subsidy" not in result
+        assert "receives_housing_assistance" in result
 
 
 class TestStructuralMortgageValidation:

@@ -339,7 +339,7 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
     cps = {
         "age": np.array([40, 12, 70], dtype=np.int32),
         "is_household_head": np.array([True, False, True], dtype=bool),
-        "spm_unit_capped_housing_subsidy": np.zeros(3, dtype=np.float32),
+        "spm_unit_id": np.array([1, 2, 3], dtype=np.int32),
     }
     person = pd.DataFrame({"P_SEQ": [1, 2, 1]})
     household = pd.DataFrame({"H_TENURE": [2, 1]})
@@ -383,7 +383,9 @@ def test_add_spm_variables_keeps_spm_output_aggregates_out_of_dataset():
     assert "spm_unit_total_income_reported" not in cps
     assert "spm_unit_net_income_reported" not in cps
     assert cps["snap_reported"].tolist() == [1_200]
-    assert cps["spm_unit_capped_housing_subsidy"].tolist() == [3_000]
+    assert "spm_unit_capped_housing_subsidy" not in cps
+    assert "housing_assistance" not in cps
+    assert cps["receives_housing_assistance"].tolist() == [True]
     assert cps["spm_unit_energy_subsidy"].tolist() == [500]
     assert cps["spm_unit_tenure_type"].tolist() == [b"RENTER"]
     for variable in (

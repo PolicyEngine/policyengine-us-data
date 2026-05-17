@@ -174,7 +174,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "strike_benefits",
     "receives_wic",
     # SPM variables
-    "spm_unit_capped_housing_subsidy",
+    "receives_housing_assistance",
     "spm_unit_energy_subsidy",
     "spm_unit_pre_subsidy_childcare_expenses",
     # Medical expenses

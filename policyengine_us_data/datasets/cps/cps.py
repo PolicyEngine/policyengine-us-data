@@ -441,9 +441,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # full precision (and do not deterministically floor toward zero).
     cps["rent"] = np.zeros(len(cps["age"]), dtype=float)
     cps["rent"][mask] = imputed_values["rent"]
-    # Assume zero housing assistance since
     cps["pre_subsidy_rent"] = cps["rent"]
-    cps["housing_assistance"] = np.zeros_like(cps["spm_unit_capped_housing_subsidy"])
     cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
 
@@ -1423,7 +1421,6 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
 def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     SPM_RENAMES = dict(
         snap_reported="SPM_SNAPSUB",
-        spm_unit_capped_housing_subsidy="SPM_CAPHOUSESUB",
         spm_unit_energy_subsidy="SPM_ENGVAL",
         spm_unit_capped_work_childcare_expenses="SPM_CAPWKCCXPNS",
         spm_unit_pre_subsidy_childcare_expenses="SPM_CHILDCAREXPNS",
@@ -1432,6 +1429,9 @@ def add_spm_variables(self, cps: h5py.File, spm_unit: DataFrame) -> None:
     for openfisca_variable, asec_variable in SPM_RENAMES.items():
         if asec_variable in spm_unit.columns:
             cps[openfisca_variable] = spm_unit[asec_variable]
+
+    if "SPM_CAPHOUSESUB" in spm_unit.columns:
+        cps["receives_housing_assistance"] = spm_unit.SPM_CAPHOUSESUB > 0
 
     if "SPM_TENMORTSTATUS" in spm_unit.columns:
         tenure_map = {

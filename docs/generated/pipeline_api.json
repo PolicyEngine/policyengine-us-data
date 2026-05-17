@@ -572,7 +572,7 @@
     "docstring": "Build sparse calibration matrix.\n\nTwo-phase build: (1) simulate each clone and save\nCOO entries to disk, (2) assemble CSR from caches.\n\nArgs:\n    geography: GeographyAssignment with state_fips,\n        cd_geoid, block_geoid arrays and n_records,\n        n_clones attributes.\n    sim: Microsimulation for parameters and entity\n        relationships.\n    target_filter: Dict for target_overview filtering.\n    hierarchical_domains: Domain names for\n        hierarchical uprating + CD reconciliation.\n    cache_dir: Directory for per-clone COO caches.\n        If None, COO data held in memory.\n    sim_modifier: Optional callback(sim, clone_idx)\n        called per clone after state_fips is set but\n        before cache clearing. Use for takeup\n        re-randomization.\n    rerandomize_takeup: If True, use geo-salted\n        entity-level takeup draws instead of base h5\n        takeup values for takeup-affected targets.\n    county_level: If True (default), iterate counties\n        within each state during precomputation. If\n        False, compute once per state and alias to all\n        counties (faster for county-invariant vars).\n\nReturns:\n    (targets_df, X_sparse, target_names)",
     "id": "build_matrix",
     "kind": "function",
-    "line": 2481,
+    "line": 2543,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
@@ -604,7 +604,7 @@
     "docstring": "Build a sparse matrix by materializing mixed-geography chunks.\n\nThin facade: target querying, uprating, constraint extraction,\nand manifest handling live here; chunking, per-chunk execution,\nand streaming final assembly live in\n:class:`ChunkedMatrixAssembler`.",
     "id": "build_matrix_chunked",
     "kind": "function",
-    "line": 3218,
+    "line": 3293,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
@@ -779,7 +779,7 @@
     "docstring": "Standalone clone-value assembly (no ``self``).\n\nIdentical logic to\n``UnifiedMatrixBuilder._assemble_clone_values`` but usable\nfrom a worker process.",
     "id": "clone_assembly",
     "kind": "function",
-    "line": 611,
+    "line": 614,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone"
@@ -3099,7 +3099,7 @@
     "docstring": "Compute household/person/entity values for one state.\n\nTop-level function (not a method) so it is picklable for\n``ProcessPoolExecutor``.\n\nArgs:\n    dataset_path: Path to the base CPS h5 file.\n    time_period: Tax year for simulation.\n    state: State FIPS code.\n    n_hh: Number of household records.\n    target_vars: Target variable names (list for determinism).\n    constraint_vars: Constraint variable names (list).\n    rerandomize_takeup: Force takeup=True if True.\n    affected_targets: Takeup-affected target info dict.\n\nReturns:\n    (state_fips, {\"hh\": {...}, \"person\": {...}, \"entity\": {...}})",
     "id": "state_precomp",
     "kind": "function",
-    "line": 230,
+    "line": 233,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder._compute_single_state"
@@ -3153,7 +3153,7 @@
     "docstring": "Build sparse calibration matrix for cloned CPS records.\n\nProcesses clone-by-clone: each clone's records get their\nassigned geography, are simulated, and the results fill\nthe corresponding columns.\n\nArgs:\n    db_uri: SQLAlchemy database URI.\n    time_period: Tax year for calibration (e.g. 2024).\n    dataset_path: Path to the base extended CPS h5 file.",
     "id": "unified_matrix_builder",
     "kind": "class",
-    "line": 1382,
+    "line": 1444,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder"

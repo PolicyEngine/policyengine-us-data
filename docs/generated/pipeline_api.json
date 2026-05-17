@@ -61,7 +61,7 @@
     "docstring": "\"Add auto loan balance, interest and net_worth variable.",
     "id": "add_auto_loan",
     "kind": "function",
-    "line": 2798,
+    "line": 2821,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
@@ -88,7 +88,7 @@
     "docstring": "Populate household-level geography variables used by PolicyEngine US.\n\nArgs:\n    cps: Output CPS H5 group receiving derived household variables.\n    household: Raw CPS household table.",
     "id": "add_household_variables",
     "kind": "function",
-    "line": 1460,
+    "line": 1483,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_household_variables"
@@ -115,7 +115,7 @@
     "docstring": "Add basic ID and weight variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The person table of the ASEC.\n    tax_unit (DataFrame): The tax unit table created from the person table\n        of the ASEC.\n    family (DataFrame): The family table of the ASEC.\n    spm_unit (DataFrame): The SPM unit table created from the person table\n        of the ASEC.\n    household (DataFrame): The household table of the ASEC.",
     "id": "add_id_variables",
     "kind": "function",
-    "line": 931,
+    "line": 952,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_id_variables"
@@ -142,7 +142,7 @@
     "docstring": "Impute ORG-derived wage and union inputs onto CPS persons.",
     "id": "add_org_inputs",
     "kind": "function",
-    "line": 2682,
+    "line": 2705,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
@@ -169,7 +169,7 @@
     "docstring": "Add income variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.\n    year (int): The CPS year",
     "id": "add_personal_income_variables",
     "kind": "function",
-    "line": 1137,
+    "line": 1158,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_income_variables"
@@ -196,7 +196,7 @@
     "docstring": "Add personal demographic variables.\n\nArgs:\n    cps (h5py.File): The CPS dataset file.\n    person (DataFrame): The CPS person table.",
     "id": "add_personal_variables",
     "kind": "function",
-    "line": 993,
+    "line": 1014,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_personal_variables"
@@ -223,7 +223,7 @@
     "docstring": "",
     "id": "add_previous_year_income",
     "kind": "function",
-    "line": 1502,
+    "line": 1525,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_previous_year_income"
@@ -250,7 +250,7 @@
     "docstring": "",
     "id": "add_rent",
     "kind": "function",
-    "line": 352,
+    "line": 353,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_rent"
@@ -277,7 +277,7 @@
     "docstring": "",
     "id": "add_spm_variables",
     "kind": "function",
-    "line": 1423,
+    "line": 1444,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_spm_variables"
@@ -304,7 +304,7 @@
     "docstring": "Assign SSN card type using PRCITSHP, employment status, and ASEC-UA conditions.\nCodes:\n- 0: \"NONE\" - Likely undocumented immigrants\n- 1: \"CITIZEN\" - US citizens (born or naturalized)\n- 2: \"NON_CITIZEN_VALID_EAD\" - Non-citizens with work/study authorization\n- 3: \"OTHER_NON_CITIZEN\" - Non-citizens with indicators of legal status",
     "id": "add_ssn_card_type",
     "kind": "function",
-    "line": 1608,
+    "line": 1631,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_ssn_card_type"
@@ -331,7 +331,7 @@
     "docstring": "",
     "id": "add_takeup",
     "kind": "function",
-    "line": 474,
+    "line": 473,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_takeup"
@@ -358,7 +358,7 @@
     "docstring": "",
     "id": "add_tips",
     "kind": "function",
-    "line": 2507,
+    "line": 2530,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_tips"
@@ -1059,7 +1059,7 @@
     "docstring": "Subsample the loaded CPS dataset and preserve downsampled arrays.\n\nArgs:\n    frac: Fraction of records to retain.",
     "id": "downsample",
     "kind": "function",
-    "line": 319,
+    "line": 320,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.CPS.downsample"

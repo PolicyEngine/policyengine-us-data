@@ -261,6 +261,28 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation"
+      ],
+      "artifacts_in": [
+        "extended_cps_stage2"
+      ],
+      "artifacts_out": [
+        "housing_validated_extended_cps"
+      ],
+      "description": "Runs a temporary microsimulation before final export to ensure housing-assistance leaf inputs reconstruct nonzero modeled housing assistance and capped SPM housing subsidy.",
+      "id": "housing_assistance_microsim_validation",
+      "label": "Validate Housing Assistance Microsimulation",
+      "node_type": "process",
+      "pathways": [
+        "data_build"
+      ],
+      "pydoc": true,
+      "source_file": "policyengine_us_data/datasets/cps/extended_cps.py",
+      "stability": "moving",
+      "status": "transitional"
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
         "policyengine_us_data.calibration.publish_local_area.load_calibration_geography"
       ],
@@ -1311,9 +1333,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 63,
+    "api_node_count": 64,
     "canonical_stage_count": 5,
-    "decorated_object_count": 112,
+    "decorated_object_count": 113,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

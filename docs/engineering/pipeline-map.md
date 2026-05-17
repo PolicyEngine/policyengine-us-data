@@ -844,6 +844,14 @@ def create_stratified_cps_dataset(target_households = 30000, oversample_poor = F
 
 Create a stratified sample of CPS data preserving high-income households
 
+### `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation`
+
+```python
+def _validate_housing_assistance_microsimulation(cls, data, time_period, microsimulation_cls = None)
+```
+
+Check formula-reconstructed housing assistance before export.
+
 ### `policyengine_us_data.calibration.publish_local_area.load_calibration_geography`
 
 ```python

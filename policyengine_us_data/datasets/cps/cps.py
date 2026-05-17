@@ -27,7 +27,6 @@ from policyengine_us_data.parameters import load_take_up_rate
 from policyengine_us_data.datasets.cps.takeup import (
     align_reported_ssi_disability,
     prioritize_reported_recipients,
-    very_low_income_renter_mask,
 )
 from policyengine_us_data.datasets.org import (
     ORG_BOOL_VARIABLES,
@@ -579,15 +578,14 @@ def add_takeup(self):
         ),
         dtype=bool,
     )
-    very_low_income_renter = very_low_income_renter_mask(
-        baseline.calculate("hud_income_level").values,
-        baseline.calculate("spm_unit_tenure_type").values,
-    )
+    housing_assistance_eligible = baseline.calculate(
+        "is_eligible_for_housing_assistance"
+    ).values
     data["takes_up_housing_assistance_if_eligible"] = prioritize_reported_recipients(
         reported_housing_assistance,
         housing_assistance_rate,
         rng.random(n_spm_units),
-        eligible_mask=very_low_income_renter,
+        eligible_mask=housing_assistance_eligible,
     )
 
     # WIC: resolve draws to bools using category-specific rates

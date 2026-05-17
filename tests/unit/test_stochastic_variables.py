@@ -186,6 +186,20 @@ class TestReportedTakeupAnchors:
         )
         np.testing.assert_array_equal(result, [True, False, True, False])
 
+    def test_eligible_mask_limits_non_reported_takeup(self):
+        draws = np.array([0.1, 0.1, 0.1])
+        reported = np.array([True, False, False])
+        eligible = np.array([False, False, True])
+
+        result = assign_takeup_with_reported_anchors(
+            draws,
+            1.0,
+            reported_mask=reported,
+            eligible_mask=eligible,
+        )
+
+        np.testing.assert_array_equal(result, [True, False, True])
+
     def test_any_person_flag_by_entity_aggregates_correctly(self):
         person_tax_unit_ids = np.array([10, 10, 20, 30])
         tax_unit_ids = np.array([10, 20, 30])

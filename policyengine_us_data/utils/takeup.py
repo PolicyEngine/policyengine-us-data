@@ -190,6 +190,7 @@ def assign_takeup_with_reported_anchors(
     rates,
     reported_mask: Optional[np.ndarray] = None,
     group_keys: Optional[np.ndarray] = None,
+    eligible_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Apply the SSI/SNAP-style reported-first takeup pattern.
 
@@ -206,22 +207,30 @@ def assign_takeup_with_reported_anchors(
         if len(rates_arr) != len(draws):
             raise ValueError("rates and draws must align")
 
+    if eligible_mask is None:
+        eligible_mask = np.ones(len(draws), dtype=bool)
+    else:
+        eligible_mask = np.asarray(eligible_mask, dtype=bool)
+        if len(eligible_mask) != len(draws):
+            raise ValueError("eligible_mask and draws must align")
+
     baseline = draws < rates_arr
     if reported_mask is None:
-        return baseline
+        return eligible_mask & baseline
 
     reported_mask = np.asarray(reported_mask, dtype=bool)
     if len(reported_mask) != len(draws):
         raise ValueError("reported_mask and draws must align")
 
+    eligible_mask = eligible_mask | reported_mask
     result = reported_mask.copy()
 
     if group_keys is None:
         unique_rates = np.unique(rates_arr)
         if len(unique_rates) != 1:
             raise ValueError("group_keys required when rates vary by entity")
-        target_count = int(unique_rates[0] * len(draws))
-        non_reporters = ~reported_mask
+        target_count = int(unique_rates[0] * int(eligible_mask.sum()))
+        non_reporters = eligible_mask & ~reported_mask
         remaining_needed = max(0, target_count - int(reported_mask.sum()))
         adjusted_rate = (
             remaining_needed / int(non_reporters.sum()) if non_reporters.any() else 0
@@ -238,10 +247,11 @@ def assign_takeup_with_reported_anchors(
         group_rates = np.unique(rates_arr[group_mask])
         if len(group_rates) != 1:
             raise ValueError("Each takeup group must have a single rate")
-        target_count = int(group_rates[0] * int(group_mask.sum()))
+        group_eligible = group_mask & eligible_mask
+        target_count = int(group_rates[0] * int(group_eligible.sum()))
         group_reported = reported_mask[group_mask]
         remaining_needed = max(0, target_count - int(group_reported.sum()))
-        group_non_reporters = group_mask & ~reported_mask
+        group_non_reporters = group_eligible & ~reported_mask
         adjusted_rate = (
             remaining_needed / int(group_non_reporters.sum())
             if group_non_reporters.any()
@@ -423,6 +433,7 @@ def compute_block_takeup_for_entities(
     entity_hh_ids: np.ndarray = None,
     entity_clone_ids: np.ndarray = None,
     reported_mask: Optional[np.ndarray] = None,
+    eligible_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     """Compute boolean takeup via block-level seeded draws."""
     draws = compute_block_takeup_draws_for_entities(
@@ -448,6 +459,7 @@ def compute_block_takeup_for_entities(
         rates,
         reported_mask=reported_mask,
         group_keys=group_keys,
+        eligible_mask=eligible_mask,
     )
 
 
@@ -660,6 +672,7 @@ def apply_block_takeup_to_arrays(
     takeup_filter: List[str] = None,
     precomputed_rates: Optional[Dict[str, Any]] = None,
     reported_anchors: Optional[Dict[str, np.ndarray]] = None,
+    eligibility_masks: Optional[Dict[str, np.ndarray]] = None,
     voluntary_filing_inputs: Optional[Dict[str, np.ndarray]] = None,
 ) -> Dict[str, np.ndarray]:
     """Compute takeup draws from raw arrays.
@@ -686,6 +699,10 @@ def apply_block_takeup_to_arrays(
         precomputed_rates: Optional {rate_key: rate_or_dict} cache.
             When provided, skips ``load_take_up_rate`` calls and
             uses cached values instead.
+        reported_anchors: Optional {takeup variable: bool array}; reported
+            recipients are always assigned take-up.
+        eligibility_masks: Optional {takeup variable: bool array}; non-reported
+            take-up is drawn only from the matching eligible entity rows.
 
     Returns:
         {variable_name: bool_array} for each takeup variable.
@@ -693,6 +710,7 @@ def apply_block_takeup_to_arrays(
     filter_set = set(takeup_filter) if takeup_filter is not None else None
     result = {}
     reported_anchors = reported_anchors or {}
+    eligibility_masks = eligibility_masks or {}
 
     for spec in SIMPLE_TAKEUP_VARS:
         var_name = spec["variable"]
@@ -716,6 +734,9 @@ def apply_block_takeup_to_arrays(
         reported_mask = reported_anchors.get(var_name)
         if reported_mask is not None and len(reported_mask) != n_ent:
             raise ValueError(f"reported anchor for {var_name} has wrong length")
+        eligible_mask = eligibility_masks.get(var_name)
+        if eligible_mask is not None and len(eligible_mask) != n_ent:
+            raise ValueError(f"eligibility mask for {var_name} has wrong length")
         if var_name == "would_file_taxes_voluntarily":
             if voluntary_filing_inputs is None:
                 raise ValueError(
@@ -739,6 +760,7 @@ def apply_block_takeup_to_arrays(
                 ent_hh_ids,
                 ent_clone_indices,
                 reported_mask=reported_mask,
+                eligible_mask=eligible_mask,
             )
         result[var_name] = bools
 

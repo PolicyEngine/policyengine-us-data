@@ -424,6 +424,10 @@ class USTakeupPostProcessor:
             "spm_unit": len(subentity_source_indices["spm_unit"]),
         }
         reported_anchors = _build_reported_takeup_anchors(data, time_period)
+        eligibility_masks = self._build_eligibility_masks(
+            context=context,
+            subentity_source_indices=subentity_source_indices,
+        )
         voluntary_filing_inputs = self._build_voluntary_filing_inputs(
             context=context,
             tax_unit_source_indices=subentity_source_indices["tax_unit"],
@@ -446,6 +450,7 @@ class USTakeupPostProcessor:
                 else None
             ),
             reported_anchors=reported_anchors,
+            eligibility_masks=eligibility_masks,
             voluntary_filing_inputs=voluntary_filing_inputs,
         )
 
@@ -493,6 +498,22 @@ class USTakeupPostProcessor:
                 period=time_period,
                 map_to="tax_unit",
             )[tax_unit_source_indices],
+        }
+
+    def _build_eligibility_masks(
+        self,
+        *,
+        context: PayloadBuildContext,
+        subentity_source_indices: Mapping[str, np.ndarray],
+    ) -> dict[str, np.ndarray]:
+        time_period = context.time_period
+        return {
+            "takes_up_housing_assistance_if_eligible": calculate_variable_values(
+                context.simulation,
+                "is_eligible_for_housing_assistance",
+                period=time_period,
+                map_to="spm_unit",
+            )[subentity_source_indices["spm_unit"]].astype(bool)
         }
 
 

@@ -36,6 +36,7 @@ class _Simulation:
             ("tax_unit_child_dependents", "tax_unit"): np.array([1, 2]),
             ("employment_income", "person"): np.array([10, 20, 30]),
             ("age_head", "tax_unit"): np.array([40, 50]),
+            ("is_eligible_for_housing_assistance", "spm_unit"): np.array([False, True]),
         }[(variable, map_to)]
         return _Calculation(values)
 
@@ -307,6 +308,10 @@ def test_us_takeup_postprocessor_passes_takeup_contract_inputs():
     )
     assert seen["entity_counts"] == {"person": 3, "tax_unit": 2, "spm_unit": 2}
     assert seen["takeup_filter"] == ["takes_up_snap_if_eligible"]
+    np.testing.assert_array_equal(
+        seen["eligibility_masks"]["takes_up_housing_assistance_if_eligible"],
+        np.array([True, False]),
+    )
     np.testing.assert_array_equal(
         seen["voluntary_filing_inputs"]["tax_unit_child_dependents"],
         np.array([2, 1]),

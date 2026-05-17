@@ -139,6 +139,13 @@ def _build_reported_takeup_anchors(data: dict, time_period: int) -> dict:
         reported_anchors["takes_up_medicaid_if_eligible"] = data[
             "has_medicaid_health_coverage_at_interview"
         ][time_period].astype(bool)
+    if (
+        "receives_housing_assistance" in data
+        and time_period in data["receives_housing_assistance"]
+    ):
+        reported_anchors["takes_up_housing_assistance_if_eligible"] = data[
+            "receives_housing_assistance"
+        ][time_period].astype(bool)
     return reported_anchors
 
 
@@ -423,6 +430,15 @@ def materialize_clone_household_chunk(
                 map_to="tax_unit",
             ).values[entity_clone_idx["tax_unit"]],
         }
+        eligibility_masks = {
+            "takes_up_housing_assistance_if_eligible": sim.calculate(
+                "is_eligible_for_housing_assistance",
+                time_period,
+                map_to="spm_unit",
+            )
+            .values[entity_clone_idx["spm_unit"]]
+            .astype(bool)
+        }
         takeup_results = apply_block_takeup_to_arrays(
             hh_blocks=active_blocks,
             hh_state_fips=clone_geo["state_fips"].astype(np.int32),
@@ -433,6 +449,7 @@ def materialize_clone_household_chunk(
             time_period=time_period,
             takeup_filter=takeup_filter,
             reported_anchors=reported_anchors,
+            eligibility_masks=eligibility_masks,
             voluntary_filing_inputs=voluntary_filing_inputs,
         )
         for variable, values in takeup_results.items():

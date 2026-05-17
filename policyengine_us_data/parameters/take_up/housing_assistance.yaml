@@ -1,0 +1,12 @@
+description: Share of very low-income renter households receiving housing assistance.
+metadata:
+  label: Housing assistance receipt rate
+  unit: /1
+  period: year
+  reference:
+    - title: HUD Worst Case Housing Needs 2025 Report to Congress
+      href: https://www.huduser.gov/portal/publications/Worst-Case-Housing-Needs-2025-Report-to-Congress.html
+    - title: Harvard Joint Center for Housing Studies summary of HUD Worst Case Housing Needs 2025
+      href: https://www.jchs.harvard.edu/blog/worst-case-housing-needs-renters-ticked-down-remain-high
+values:
+  2023-01-01: 0.28

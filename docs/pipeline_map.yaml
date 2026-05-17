@@ -1170,7 +1170,7 @@ stages:
   - id: takeup_apply
     label: Takeup Re-application
     node_type: process
-    description: 9 takeup variables - block-level seeded draws
+    description: 10 takeup variables - block-level seeded draws
   - id: out_states
     label: states/*.h5
     node_type: artifact

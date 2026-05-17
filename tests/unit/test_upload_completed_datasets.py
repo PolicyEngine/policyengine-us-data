@@ -97,6 +97,7 @@ def _fake_tax_benefit_system():
         "takes_up_snap_if_eligible": "spm_unit",
         "takes_up_ssi_if_eligible": "person",
         "takes_up_tanf_if_eligible": "spm_unit",
+        "takes_up_housing_assistance_if_eligible": "spm_unit",
         "would_claim_wic": "person",
         "is_wic_at_nutritional_risk": "person",
     }

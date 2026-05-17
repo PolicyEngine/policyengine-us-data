@@ -638,7 +638,7 @@ class TestSimpleTakeupConfig:
             )
 
     def test_expected_count(self):
-        assert len(SIMPLE_TAKEUP_VARS) == 9
+        assert len(SIMPLE_TAKEUP_VARS) == 10
 
 
 class TestTakeupAffectedTargets:

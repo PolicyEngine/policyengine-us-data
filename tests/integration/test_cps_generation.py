@@ -49,6 +49,8 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
                 "state_code_str": ["CA"],
                 "wic_category_str": ["NONE", "NONE"],
                 "receives_wic": [False, False],
+                "hud_income_level": ["VERY_LOW"],
+                "spm_unit_tenure_type": ["RENTER"],
                 "tax_unit_child_dependents": [0],
                 "age_head": [40],
             }
@@ -67,6 +69,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
                 "person_household_id": np.array([1_000, 1_000], dtype=np.int32),
                 "snap_reported": np.array([1_200.0], dtype=np.float32),
                 "ssi_reported": np.array([600.0, 0.0], dtype=np.float32),
+                "receives_housing_assistance": np.array([True]),
                 "reported_has_subsidized_marketplace_health_coverage_at_interview": np.array(
                     [False, False]
                 ),
@@ -103,6 +106,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
         "head_start": 0.0,
         "early_head_start": 0.0,
         "ssi": 1.0,
+        "housing_assistance": 0.0,
         "voluntary_filing": voluntary_filing_rates,
         "tanf": 0.0,
         "wic_takeup": {"NONE": 0.0},
@@ -129,6 +133,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
         assert "ssi_reported" not in h5_file
         assert "takes_up_snap_if_eligible" in h5_file
         assert "takes_up_ssi_if_eligible" in h5_file
+        assert h5_file["takes_up_housing_assistance_if_eligible"][:].tolist() == [True]
 
 
 def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):

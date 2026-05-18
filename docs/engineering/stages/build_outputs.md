@@ -39,6 +39,13 @@ prepared local-H5 worker chunk. It consumes a `WorkerSession`, typed
 `AreaBuildRequest` objects, and a `WorkerExecutionConfig`, then returns a
 structured `WorkerResult`.
 
+`WorkerSession` owns worker-scoped setup that is safe to reuse across the
+queued requests, such as weights, geography, validation context, and bootstrap
+metadata. Source dataset snapshots are loaded per request through
+`WorkerSession.load_source()` because the PolicyEngine microsimulation behind a
+snapshot is mutable; reusing it across multiple H5 outputs can leak calculated
+holder state into later outputs.
+
 `modal_app.worker_script` should remain a thin CLI/JSON adapter around this
 service. It may parse legacy `--work-items` and typed `--requests-json`, prepare
 the worker session, and print the legacy coordinator JSON shape, but it should
@@ -47,8 +54,10 @@ not regain build-loop, write-loop, or validation-loop logic.
 For now, `WorkerResult.to_legacy_dict()` preserves the existing coordinator
 contract with `completed`, `failed`, `errors`, `validation_rows`, and
 `validation_summary`. New code should prefer the structured `results` and
-`issues` fields. Removing the legacy shape and moving the coordinator off worker
-subprocess JSON is a later migration step.
+`issues` fields. Validation exceptions remain visible in legacy `errors` so the
+current coordinator does not drop them before it migrates to structured results.
+Removing the legacy shape and moving the coordinator off worker subprocess JSON
+is a later migration step.
 
 ## Payload Postprocessors
 

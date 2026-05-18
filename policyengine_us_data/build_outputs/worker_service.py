@@ -9,9 +9,7 @@ from typing import Any, Literal, Mapping, Sequence
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 
-from .builder import LocalAreaDatasetBuilder
 from .requests import AreaBuildRequest
-from .us_augmentations import default_us_postprocessors
 from .validation import AreaValidationService
 from .worker_session import WorkerSession
 from .writer import H5Writer
@@ -196,7 +194,7 @@ class WorkerResult:
                 validation_summary[result.key] = dict(result.validation_summary)
             issue_dicts = [issue.to_dict() for issue in result.issues]
             structured_issues.extend(issue_dicts)
-            if result.status == "failed":
+            if result.status == "failed" or result.validation_status == "error":
                 legacy_errors.extend(issue_dicts)
 
         return {
@@ -228,11 +226,7 @@ class WorkerResult:
 class LocalH5WorkerService:
     """Execute typed local H5 requests for one prepared worker session."""
 
-    builder: Any = field(
-        default_factory=lambda: LocalAreaDatasetBuilder(
-            postprocessors=default_us_postprocessors()
-        )
-    )
+    builder: Any = field(default_factory=lambda: _default_builder())
     writer: Any = field(default_factory=H5Writer)
     validation_service: AreaValidationService = field(
         default_factory=AreaValidationService
@@ -277,9 +271,10 @@ class LocalH5WorkerService:
         try:
             if request.area_type == "national":
                 _validate_national_weight_scope(session)
+            source = session.load_source()
             build_result = self.builder.build(
-                source=session.source,
-                simulation=_source_simulation(session),
+                source=source,
+                simulation=_source_simulation(source),
                 weights=session.weights,
                 geography=session.geography,
                 request=request,
@@ -359,6 +354,13 @@ def _request_key(request: AreaBuildRequest) -> str:
     return f"{request.area_type}:{request.area_id}"
 
 
+def _default_builder() -> Any:
+    from .builder import LocalAreaDatasetBuilder
+    from .us_augmentations import default_us_postprocessors
+
+    return LocalAreaDatasetBuilder(postprocessors=default_us_postprocessors())
+
+
 def _resolve_output_path(*, output_dir: Path, output_relative_path: str) -> Path:
     candidate_path = (Path(output_dir) / output_relative_path).resolve(strict=False)
     output_dir_path = Path(output_dir).resolve(strict=False)
@@ -371,11 +373,11 @@ def _resolve_output_path(*, output_dir: Path, output_relative_path: str) -> Path
     return candidate_path
 
 
-def _source_simulation(session: WorkerSession) -> Any:
-    provider = getattr(session.source, "variable_provider", None)
+def _source_simulation(source: Any) -> Any:
+    provider = getattr(source, "variable_provider", None)
     simulation = getattr(provider, "simulation", None)
     if simulation is None:
-        raise ValueError("Worker session source does not expose a simulation")
+        raise ValueError("Worker source does not expose a simulation")
     return simulation
 
 

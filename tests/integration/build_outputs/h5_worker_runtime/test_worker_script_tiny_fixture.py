@@ -97,6 +97,14 @@ def _run_worker(
     return json.loads(result.stdout)
 
 
+def _assert_outputs_reload_with_policyengine(output_dir: Path, requests) -> None:
+    from policyengine_us import Microsimulation
+
+    for request in requests:
+        h5_path = output_dir / request.output_relative_path
+        Microsimulation(dataset=str(h5_path))
+
+
 def test_tiny_fixture_source_snapshot_matches_worker_artifacts(tmp_path):
     artifacts = seed_local_h5_artifacts(tmp_path / "source-snapshot")
 
@@ -218,6 +226,7 @@ include:
     )
     parsed = json.loads(result.stdout)
 
+    _assert_outputs_reload_with_policyengine(output_dir, requests)
     assert result.stderr.count("Worker session ready:") == 1
     assert parsed["failed"] == []
     assert parsed["errors"] == []

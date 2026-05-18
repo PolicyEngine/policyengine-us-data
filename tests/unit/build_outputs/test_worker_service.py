@@ -46,6 +46,7 @@ def _session(
     validation_context=None,
     weight_clones: int = 2,
     geography_clones: int = 2,
+    source_loader=None,
 ) -> WorkerSession:
     source = SimpleNamespace(
         variable_provider=SimpleNamespace(simulation=SimpleNamespace()),
@@ -61,6 +62,7 @@ def _session(
         ),
         geography=SimpleNamespace(n_records=1, n_clones=geography_clones),
         validation_context=validation_context,
+        source_loader=source_loader,
     )
 
 
@@ -204,6 +206,43 @@ def test_worker_service_does_not_apply_takeup_filter_to_national_request(tmp_pat
     assert builder.calls[0]["takeup_filter"] is None
 
 
+def test_worker_service_loads_fresh_source_for_each_request(tmp_path):
+    builder = FakeBuilder()
+    requests = (
+        _request("district", "NC-01", "districts/NC-01.h5"),
+        _request("state", "NC", "states/NC.h5"),
+    )
+    simulations = (
+        SimpleNamespace(name="first-simulation"),
+        SimpleNamespace(name="second-simulation"),
+    )
+    sources = [
+        SimpleNamespace(variable_provider=SimpleNamespace(simulation=simulation))
+        for simulation in simulations
+    ]
+    source_loads = []
+
+    def load_source():
+        source = sources[len(source_loads)]
+        source_loads.append(source)
+        return source
+
+    result = LocalH5WorkerService(
+        builder=builder,
+        writer=FakeWriter(),
+        validation_service=FakeValidationService(),
+    ).execute(
+        session=_session(source_loader=load_source),
+        requests=requests,
+        config=WorkerExecutionConfig(output_dir=tmp_path, validate=False),
+    )
+
+    assert result.to_legacy_dict()["completed"] == ["district:NC-01", "state:NC"]
+    assert source_loads == sources
+    assert [call["source"] for call in builder.calls] == sources
+    assert [call["simulation"] for call in builder.calls] == list(simulations)
+
+
 def test_worker_service_reports_build_failures(tmp_path):
     request = _request()
 
@@ -245,7 +284,8 @@ def test_worker_service_records_validation_errors_without_failing_by_default(
 
     assert payload["completed"] == ["district:NC-01"]
     assert payload["failed"] == []
-    assert payload["errors"] == []
+    assert payload["errors"][0]["phase"] == "validation"
+    assert payload["errors"][0]["error"] == "validation failed"
     assert payload["issues"][0]["phase"] == "validation"
     assert payload["results"][0]["validation_status"] == "error"
 

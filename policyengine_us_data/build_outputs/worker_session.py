@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 import numpy as np
 
@@ -64,6 +64,14 @@ class WorkerSession:
     bootstrap_bundle: WorkerBootstrapBundle | None = None
     bootstrap_status: BootstrapStatus = "unavailable"
     caches: dict[str, Any] = field(default_factory=dict)
+    source_loader: Callable[[], SourceDatasetSnapshot] | None = None
+
+    def load_source(self) -> SourceDatasetSnapshot:
+        """Load a request-scoped source snapshot for one H5 build."""
+
+        if self.source_loader is None:
+            return self.source
+        return self.source_loader()
 
 
 @pipeline_node(
@@ -142,7 +150,7 @@ class WorkerSessionFactory:
             )
             if bootstrap_error is not None:
                 bundle = None
-        source, bootstrap_status, source_error = self._load_source(
+        source, bootstrap_status, source_error, source_loader = self._load_source(
             inputs=inputs,
             bundle=bundle,
         )
@@ -183,6 +191,7 @@ class WorkerSessionFactory:
             bootstrap_bundle=bundle if bootstrap_status == "used" else None,
             bootstrap_status=bootstrap_status,
             caches=caches,
+            source_loader=source_loader,
         )
 
     def _load_bootstrap(
@@ -269,7 +278,15 @@ class WorkerSessionFactory:
         *,
         inputs: PublishingInputBundle,
         bundle: WorkerBootstrapBundle | None,
-    ) -> tuple[SourceDatasetSnapshot, BootstrapStatus, Exception | None]:
+    ) -> tuple[
+        SourceDatasetSnapshot,
+        BootstrapStatus,
+        Exception | None,
+        Callable[[], SourceDatasetSnapshot],
+    ]:
+        def raw_source_loader() -> SourceDatasetSnapshot:
+            return self._dataset_reader.load(inputs.source_dataset_path)
+
         if bundle is not None:
             try:
                 entity_graph = load_entity_graph(bundle.entity_graph_path)
@@ -277,20 +294,25 @@ class WorkerSessionFactory:
                     self._dataset_reader,
                     "load_with_entity_graph",
                 )
-                return (
-                    load_with_entity_graph(
+
+                def bootstrap_source_loader() -> SourceDatasetSnapshot:
+                    return load_with_entity_graph(
                         inputs.source_dataset_path,
                         entity_graph,
-                    ),
+                    )
+
+                return (
+                    bootstrap_source_loader(),
                     "used",
                     None,
+                    bootstrap_source_loader,
                 )
             except Exception as exc:
-                source = self._dataset_reader.load(inputs.source_dataset_path)
-                return source, "fallback", exc
+                source = raw_source_loader()
+                return source, "fallback", exc, raw_source_loader
 
-        source = self._dataset_reader.load(inputs.source_dataset_path)
-        return source, "unavailable", None
+        source = raw_source_loader()
+        return source, "unavailable", None, raw_source_loader
 
     def _load_weights(
         self,

@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -413,7 +414,7 @@ def test_build_worker_calibration_inputs_omits_missing_optional_files(tmp_path):
     assert "calibration_package" not in inputs.to_wire_dict()
 
 
-def test_load_area_catalog_geography_uses_mmap_for_weight_shape(
+def test_load_area_catalog_geography_index_uses_mmap_for_weight_shape(
     monkeypatch,
     tmp_path,
 ):
@@ -436,9 +437,9 @@ def test_load_area_catalog_geography_uses_mmap_for_weight_shape(
         return FakeWeights()
 
     class FakeLoader:
-        def load(self, **kwargs):
+        def load_index(self, **kwargs):
             captured["loader"] = kwargs
-            return "loaded-geography"
+            return "loaded-geography-index"
 
     monkeypatch.setattr(local_area.np, "load", fake_load)
     monkeypatch.setattr(
@@ -447,13 +448,13 @@ def test_load_area_catalog_geography_uses_mmap_for_weight_shape(
         lambda: FakeLoader(),
     )
 
-    result = local_area._load_area_catalog_geography(
+    result = local_area._load_area_catalog_geography_index(
         weights_path=weights_path,
         n_clones=3,
         geography_path=geography_path,
     )
 
-    assert result == "loaded-geography"
+    assert result == "loaded-geography-index"
     assert captured["load"] == {
         "path": weights_path,
         "mmap_mode": "r",
@@ -569,7 +570,7 @@ def test_coordinate_publish_happy_path_with_fake_volumes_and_artifacts(
     monkeypatch.setattr(local_area, "get_version", lambda: "0.0.0")
     monkeypatch.setattr(local_area, "validate_artifacts", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        local_area, "_load_area_catalog_geography", lambda **kwargs: object()
+        local_area, "_load_area_catalog_geography_index", lambda **kwargs: object()
     )
     monkeypatch.setattr(
         local_area, "_build_publishing_input_bundle", lambda **kwargs: object()
@@ -678,7 +679,33 @@ def test_coordinate_publish_default_path_uses_target_db_and_catalog(
     ):
         (artifact_dir / filename).write_text("artifact")
 
-    (artifact_dir / "policy_data.db").write_text("artifact")
+    db_path = artifact_dir / "policy_data.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE stratum_constraints (
+                stratum_id INTEGER,
+                constraint_variable TEXT,
+                value TEXT
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO stratum_constraints (
+                stratum_id,
+                constraint_variable,
+                value
+            )
+            VALUES (?, ?, ?)
+            """,
+            [
+                (1, "congressional_district_geoid", "101"),
+                (2, "congressional_district_geoid", "102"),
+                (3, "congressional_district_geoid", "3601"),
+                (4, "state_fips", "1"),
+            ],
+        )
 
     real_path = Path
 
@@ -708,7 +735,7 @@ def test_coordinate_publish_default_path_uses_target_db_and_catalog(
     monkeypatch.setattr(local_area, "get_version", lambda: "0.0.0")
     monkeypatch.setattr(local_area, "validate_artifacts", lambda *args, **kwargs: None)
     monkeypatch.setattr(
-        local_area, "_load_area_catalog_geography", lambda **kwargs: geography
+        local_area, "_load_area_catalog_geography_index", lambda **kwargs: geography
     )
     monkeypatch.setattr(
         local_area, "_build_publishing_input_bundle", lambda **kwargs: object()
@@ -731,15 +758,6 @@ def test_coordinate_publish_default_path_uses_target_db_and_catalog(
         local_area,
         "staging_volume",
         SimpleNamespace(reload=lambda: None, commit=lambda: None),
-    )
-    monkeypatch.setattr(
-        local_area,
-        "TargetUniverseReader",
-        SimpleNamespace(
-            from_sqlite=lambda db_path: SimpleNamespace(
-                regional=lambda: SimpleNamespace(cd_geoids=("101", "102", "3601"))
-            )
-        ),
     )
     captured = {}
 
@@ -894,7 +912,7 @@ def test_build_areas_worker_prefers_typed_request_payloads(
     assert "--work-items" not in captured_cmd["cmd"]
 
 
-def test_run_phase_collects_worker_validation_errors(monkeypatch, tmp_path):
+def test_run_phase_collects_worker_validation_issues(monkeypatch, tmp_path):
     local_area = load_local_area_module()
     request = SimpleNamespace(
         area_type="district",
@@ -972,7 +990,7 @@ def test_run_phase_collects_worker_validation_errors(monkeypatch, tmp_path):
             "phase": "validation",
             "error": "validation failed",
             "worker": 0,
-            "severity": "worker_failure",
+            "severity": "validation",
         }
     ]
 
@@ -1051,6 +1069,8 @@ def test_run_phase_partitions_typed_requests_and_aggregates_issues(
             "item": "district:NC-01",
             "phase": "validation",
             "error": "validation warning",
+            "worker": 0,
+            "severity": "validation",
         }
     ]
     assert validation_rows == [{"variable": "household_count"}]

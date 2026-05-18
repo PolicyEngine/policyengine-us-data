@@ -36,11 +36,12 @@ a postprocessor.
 
 The Modal coordinator builds canonical typed area requests before spawning
 workers. Regional publish reads the target congressional district universe from
-the staged target database through `TargetUniverseReader`, then asks
-`USAreaCatalog` to define the regional release shape: every configured state,
-every target congressional district, and the explicitly supported city outputs
-such as NYC. The coordinator wraps those requests in `WeightedAreaRequest`,
-partitions them with
+the staged target database through `TargetUniverseReader`, reads only
+coordinator-needed CD and county geography fields through
+`CalibrationGeographyLoader.load_index()`, then asks `USAreaCatalog` to define
+the regional release shape: every configured state, every target congressional
+district, and the explicitly supported city outputs such as NYC. The
+coordinator wraps those requests in `WeightedAreaRequest`, partitions them with
 `partition_weighted_area_requests()`, and sends workers typed
 `--requests-json` payloads. Completion is measured against the explicit request
 keys, not just a raw file count, so stale or unrelated H5 files cannot satisfy a

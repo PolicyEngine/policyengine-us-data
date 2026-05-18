@@ -576,7 +576,7 @@ def _infer_weight_record_count(*, weights_path: Path, n_clones: int) -> int:
     return weights.size // normalized_clones
 
 
-def _load_area_catalog_geography(
+def _load_area_catalog_geography_index(
     *,
     weights_path: Path,
     n_clones: int,
@@ -584,13 +584,13 @@ def _load_area_catalog_geography(
     calibration_package_path: Path | None = None,
     legacy_blocks_path: Path | None = None,
 ):
-    """Load geography once for coordinator-side typed request construction."""
+    """Load lightweight geography fields for coordinator request planning."""
 
     n_records = _infer_weight_record_count(
         weights_path=weights_path,
         n_clones=n_clones,
     )
-    return CalibrationGeographyLoader().load(
+    return CalibrationGeographyLoader().load_index(
         weights_path=weights_path,
         n_records=n_records,
         n_clones=n_clones,
@@ -1341,7 +1341,7 @@ def coordinate_publish(
         calibration_package_path=calibration_package_path,
     )
     validate_artifacts(config_json_path, artifacts)
-    regional_geography = _load_area_catalog_geography(
+    regional_geography_index = _load_area_catalog_geography_index(
         weights_path=weights_path,
         n_clones=n_clones,
         geography_path=geography_path,
@@ -1402,13 +1402,13 @@ def coordinate_publish(
     if work_items_override is None:
         target_universe = TargetUniverseReader.from_sqlite(db_path).regional()
         weighted_requests = _build_regional_weighted_requests(
-            geography=regional_geography,
+            geography=regional_geography_index,
             target_cd_geoids=target_universe.cd_geoids,
         )
     else:
         weighted_requests = _build_weighted_requests_from_work_items(
             work_items=work_items_override,
-            geography=regional_geography,
+            geography=regional_geography_index,
         )
     if not weighted_requests:
         raise RuntimeError("No regional H5 requests found for coordinator geography")

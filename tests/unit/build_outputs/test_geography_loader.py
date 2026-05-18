@@ -2,7 +2,9 @@ import pytest
 
 from tests.unit.fixtures.geography import write_weights
 from tests.unit.fixtures.geography_loader import (
+    CalibrationGeographyIndex,
     CalibrationGeographyLoader,
+    geography_loader_module,
     patch_reconstruct_geography_from_blocks,
     write_legacy_blocks_artifact,
     write_loader_calibration_package,
@@ -31,6 +33,51 @@ def test_load_prefers_saved_geography_artifact(tmp_path):
         "101",
         "102",
     )
+
+
+def test_load_index_reads_saved_geography_without_full_assignment(
+    tmp_path,
+    monkeypatch,
+):
+    weights_path = tmp_path / "calibration_weights.npy"
+    geography_path = tmp_path / "geography_assignment.npz"
+    write_weights(weights_path)
+    write_saved_geography_artifact(geography_path)
+
+    def fail_full_load(path):
+        raise AssertionError("load_index should not construct full geography")
+
+    monkeypatch.setattr(geography_loader_module, "load_geography", fail_full_load)
+
+    index = CalibrationGeographyLoader().load_index(
+        weights_path=weights_path,
+        n_records=2,
+        n_clones=2,
+        geography_path=geography_path,
+    )
+
+    assert isinstance(index, CalibrationGeographyIndex)
+    assert index.n_records == 2
+    assert index.n_clones == 2
+    assert tuple(index.cd_geoid) == ("101", "102", "101", "102")
+    assert tuple(index.county_fips) == ("01001", "01001", "01001", "01001")
+
+
+def test_load_index_from_calibration_package_derives_county_fips(tmp_path):
+    weights_path = tmp_path / "calibration_weights.npy"
+    package_path = tmp_path / "calibration_package.pkl"
+    write_weights(weights_path)
+    write_loader_calibration_package(package_path)
+
+    index = CalibrationGeographyLoader().load_index(
+        weights_path=weights_path,
+        n_records=2,
+        n_clones=2,
+        calibration_package_path=package_path,
+    )
+
+    assert tuple(index.cd_geoid) == ("101", "102", "101", "102")
+    assert tuple(index.county_fips) == ("01001", "01001", "01001", "01001")
 
 
 def test_load_saved_geography_rejects_size_mismatch(tmp_path):

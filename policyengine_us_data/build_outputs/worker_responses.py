@@ -49,6 +49,23 @@ def _coordinator_error(
     return payload
 
 
+def _issue_severity(
+    issue: Mapping[str, Any],
+    *,
+    default_severity: str,
+) -> str:
+    severity = issue.get("severity")
+    if isinstance(severity, str) and severity:
+        return severity
+    if issue.get("phase") == "validation":
+        return "validation"
+    return default_severity
+
+
+def _is_fatal_severity(severity: str) -> bool:
+    return severity in {"protocol", "worker_failure"}
+
+
 def _string_tuple_field(
     result: Mapping[str, Any],
     *,
@@ -192,24 +209,38 @@ def normalize_worker_response(
         *worker_issue_protocol_errors,
         *validation_row_protocol_errors,
     ]
-    fatal_errors.extend(
-        _coordinator_error(
+    nonfatal_issues: list[dict[str, Any]] = []
+    nonfatal_issue_keys: set[tuple[Any, Any, Any]] = set()
+    for error in worker_errors:
+        severity = _issue_severity(error, default_severity="worker_failure")
+        normalized_error = _coordinator_error(
             error,
             worker_index=worker_index,
-            severity="worker_failure",
+            severity=severity,
         )
-        for error in worker_errors
-    )
+        if _is_fatal_severity(severity):
+            fatal_errors.append(normalized_error)
+        else:
+            nonfatal_issues.append(normalized_error)
+            nonfatal_issue_keys.add(_issue_identity(normalized_error))
 
-    fatal_issue_keys = {_issue_identity(error) for error in worker_errors}
-    nonfatal_issues = tuple(
-        issue
-        for issue in worker_issues
-        if _issue_identity(issue) not in fatal_issue_keys
-    )
+    for issue in worker_issues:
+        severity = _issue_severity(issue, default_severity="worker_issue")
+        normalized_issue = _coordinator_error(
+            issue,
+            worker_index=worker_index,
+            severity=severity,
+        )
+        if _is_fatal_severity(severity):
+            fatal_errors.append(normalized_issue)
+        elif _issue_identity(normalized_issue) not in nonfatal_issue_keys:
+            nonfatal_issues.append(normalized_issue)
+            nonfatal_issue_keys.add(_issue_identity(normalized_issue))
 
     error_items = {
-        str(error.get("item")) for error in worker_errors if error.get("item")
+        str(error.get("item"))
+        for error in fatal_errors
+        if error.get("item")
     }
     fatal_errors.extend(
         _coordinator_error(
@@ -229,6 +260,6 @@ def normalize_worker_response(
         completed=completed,
         failed=failed,
         fatal_errors=tuple(fatal_errors),
-        issues=nonfatal_issues,
+        issues=tuple(nonfatal_issues),
         validation_rows=validation_rows,
     )

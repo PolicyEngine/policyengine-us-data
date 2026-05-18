@@ -22,6 +22,7 @@ __test__ = False
 
 _EXPORTS = load_geography_loader_exports()
 geography_loader_module = _EXPORTS["module"]
+CalibrationGeographyIndex = _EXPORTS["CalibrationGeographyIndex"]
 CalibrationGeographyLoader = _EXPORTS["CalibrationGeographyLoader"]
 
 

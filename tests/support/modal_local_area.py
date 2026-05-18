@@ -176,6 +176,9 @@ def load_local_area_module(*, stub_policyengine: bool = True):
             def load(self, **kwargs):
                 return SimpleNamespace()
 
+            def load_index(self, **kwargs):
+                return SimpleNamespace()
+
         class _FakeWeightedAreaRequest:
             def __init__(self, request, weight=1):
                 self.request = request
@@ -201,6 +204,23 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_partitioning.partition_weighted_area_requests = _fake_partition_typed
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
 
+        def _fake_issue_severity(issue, *, default_severity):
+            severity = issue.get("severity")
+            if isinstance(severity, str) and severity:
+                return severity
+            if issue.get("phase") == "validation":
+                return "validation"
+            return default_severity
+
+        def _fake_issue_identity(issue):
+            return issue.get("item"), issue.get("phase"), issue.get("error")
+
+        def _fake_normalized_issue(issue, *, worker_index, severity):
+            payload = dict(issue)
+            payload.setdefault("worker", worker_index)
+            payload["severity"] = severity
+            return payload
+
         def _fake_normalize_worker_response(*, worker_index, result):
             if result is None:
                 return SimpleNamespace(
@@ -216,19 +236,44 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                     issues=(),
                     validation_rows=(),
                 )
-            errors = tuple(
-                {
-                    **error,
-                    "worker": worker_index,
-                    "severity": "worker_failure",
-                }
-                for error in result.get("errors", ())
-            )
+            fatal_errors = []
+            issues = []
+            issue_keys = set()
+            for error in result.get("errors", ()):
+                severity = _fake_issue_severity(
+                    error,
+                    default_severity="worker_failure",
+                )
+                normalized = _fake_normalized_issue(
+                    error,
+                    worker_index=worker_index,
+                    severity=severity,
+                )
+                if severity in {"protocol", "worker_failure"}:
+                    fatal_errors.append(normalized)
+                else:
+                    issues.append(normalized)
+                    issue_keys.add(_fake_issue_identity(normalized))
+            for issue in result.get("issues", ()):
+                severity = _fake_issue_severity(
+                    issue,
+                    default_severity="worker_issue",
+                )
+                normalized = _fake_normalized_issue(
+                    issue,
+                    worker_index=worker_index,
+                    severity=severity,
+                )
+                if severity in {"protocol", "worker_failure"}:
+                    fatal_errors.append(normalized)
+                elif _fake_issue_identity(normalized) not in issue_keys:
+                    issues.append(normalized)
+                    issue_keys.add(_fake_issue_identity(normalized))
             return SimpleNamespace(
                 completed=tuple(result.get("completed", ())),
                 failed=tuple(result.get("failed", ())),
-                fatal_errors=errors,
-                issues=tuple(result.get("issues", ())),
+                fatal_errors=tuple(fatal_errors),
+                issues=tuple(issues),
                 validation_rows=tuple(result.get("validation_rows", ())),
             )
 

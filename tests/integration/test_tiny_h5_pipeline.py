@@ -129,7 +129,7 @@ def test_saved_geography_h5_pipeline_builds_regional_and_national_outputs():
         cleanup.remote(run_id)
 
 
-def test_deployed_regional_coordinator_builds_from_seeded_artifacts():
+def test_deployed_regional_coordinator_builds_override_requests_from_seeded_artifacts():
     _require_modal_tokens()
 
     run_id = _run_id("h5-coordinator")

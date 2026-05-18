@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
-from importlib import metadata as importlib_metadata
 import json
 from pathlib import Path
-import subprocess
 from typing import Any
+
+from policyengine_us_data.utils.policyengine import (
+    PolicyEngineUSBuildInfo,
+    get_policyengine_us_build_info,
+)
 
 try:
     from .calibration_profiles import (
@@ -27,6 +30,38 @@ MANIFEST_FILENAME = "calibration_manifest.json"
 SUPPORT_AUGMENTATION_REPORT_FILENAME = "support_augmentation_report.json"
 
 
+def _coerce_policyengine_us_metadata(
+    policyengine_us: PolicyEngineUSBuildInfo | dict[str, Any] | None,
+) -> dict[str, Any]:
+    if policyengine_us is None:
+        return get_policyengine_us_build_info().to_metadata_dict()
+    if isinstance(policyengine_us, PolicyEngineUSBuildInfo):
+        return policyengine_us.to_metadata_dict()
+    coerced = json.loads(json.dumps(policyengine_us))
+    git_head = coerced.get("git_head")
+    if git_head is not None:
+        coerced.setdefault("git_commit", git_head)
+        coerced.setdefault("commit_id", git_head)
+        coerced.setdefault(
+            "direct_url",
+            {"vcs_info": {"commit_id": git_head, "vcs": "git"}},
+        )
+    return coerced
+
+
+def _metadata_policyengine_us(
+    metadata_path: str | Path,
+) -> dict[str, Any] | None:
+    path = Path(metadata_path)
+    if not path.exists():
+        return None
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    policyengine_us = metadata.get("policyengine_us")
+    if policyengine_us is None:
+        return None
+    return json.loads(json.dumps(policyengine_us))
+
+
 def metadata_path_for(h5_path: str | Path) -> Path:
     return Path(f"{Path(h5_path)}.metadata.json")
 
@@ -39,55 +74,8 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _find_git_repo_root(path: Path) -> Path | None:
-    current = path if path.is_dir() else path.parent
-    for candidate in (current, *current.parents):
-        if (candidate / ".git").exists():
-            return candidate
-    return None
-
-
 def capture_policyengine_us_provenance() -> dict[str, Any]:
-    import policyengine_us
-
-    package_file = Path(policyengine_us.__file__).resolve()
-    version = getattr(policyengine_us, "__version__", None)
-    if version is None:
-        try:
-            version = importlib_metadata.version("policyengine-us")
-        except importlib_metadata.PackageNotFoundError:
-            version = None
-    provenance: dict[str, Any] = {
-        "package_file": str(package_file),
-        "package_file_sha256": _sha256_file(package_file),
-        "package_mtime_ns": package_file.stat().st_mtime_ns,
-        "package_size": package_file.stat().st_size,
-        "version": version,
-    }
-    repo_root = _find_git_repo_root(package_file)
-    if repo_root is None:
-        return provenance
-
-    provenance["repo_root"] = str(repo_root)
-    head = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if head.returncode == 0:
-        provenance["git_head"] = head.stdout.strip()
-    status = subprocess.run(
-        ["git", "status", "--porcelain=v1"],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if status.returncode == 0:
-        provenance["git_dirty"] = bool(status.stdout.strip())
-    return provenance
+    return get_policyengine_us_build_info().to_metadata_dict()
 
 
 def _resolve_base_dataset_path(base_dataset_path: str) -> Path | None:
@@ -237,7 +225,7 @@ def write_year_metadata(
     target_source: dict[str, Any] | None = None,
     tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
-    policyengine_us: dict[str, Any] | None = None,
+    policyengine_us: PolicyEngineUSBuildInfo | dict[str, Any] | None = None,
     base_dataset_snapshot: dict[str, Any] | None = None,
 ) -> Path:
     metadata = {
@@ -246,6 +234,7 @@ def write_year_metadata(
         "base_dataset_path": base_dataset_path,
         "profile": profile,
         "calibration_audit": calibration_audit,
+        "policyengine_us": _coerce_policyengine_us_metadata(policyengine_us),
     }
     if target_source is not None:
         metadata["target_source"] = target_source
@@ -253,8 +242,6 @@ def write_year_metadata(
         metadata["tax_assumption"] = tax_assumption
     if support_augmentation is not None:
         metadata["support_augmentation"] = support_augmentation
-    if policyengine_us is not None:
-        metadata["policyengine_us"] = policyengine_us
     if base_dataset_snapshot is not None:
         metadata["base_dataset_snapshot"] = base_dataset_snapshot
     metadata = normalize_metadata(metadata)
@@ -294,7 +281,7 @@ def update_dataset_manifest(
     target_source: dict[str, Any] | None = None,
     tax_assumption: dict[str, Any] | None = None,
     support_augmentation: dict[str, Any] | None = None,
-    policyengine_us: dict[str, Any] | None = None,
+    policyengine_us: PolicyEngineUSBuildInfo | dict[str, Any] | None = None,
     base_dataset_snapshot: dict[str, Any] | None = None,
 ) -> Path:
     output_dir = Path(output_dir)
@@ -303,7 +290,13 @@ def update_dataset_manifest(
     target_source = _json_clone(target_source)
     tax_assumption = _json_clone(tax_assumption)
     support_augmentation = _json_clone(support_augmentation)
-    policyengine_us = _json_clone(policyengine_us)
+    policyengine_us = (
+        _coerce_policyengine_us_metadata(policyengine_us)
+        if policyengine_us is not None
+        else _metadata_policyengine_us(metadata_path)
+    )
+    if policyengine_us is None:
+        policyengine_us = get_policyengine_us_build_info().to_metadata_dict()
     base_dataset_snapshot = _json_clone(base_dataset_snapshot)
 
     if manifest_path.exists():
@@ -402,6 +395,7 @@ def update_dataset_manifest(
         "negative_weight_household_pct": calibration_audit.get(
             "negative_weight_household_pct"
         ),
+        "policyengine_us_version": policyengine_us.get("version"),
         "validation_passed": calibration_audit.get("validation_passed"),
         "validation_issue_count": len(calibration_audit.get("validation_issues", [])),
     }

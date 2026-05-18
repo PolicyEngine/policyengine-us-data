@@ -1033,6 +1033,38 @@ class TestBuildStateValues(unittest.TestCase):
         return_value=[],
     )
     @patch("policyengine_us.Microsimulation")
+    def test_takeup_affected_constraint_vars_precompute_entity_values(
+        self,
+        mock_msim_cls,
+        mock_gcv,
+    ):
+        sim = _FakeSimulation()
+        mock_msim_cls.return_value = sim
+
+        builder = self._make_builder()
+        geo = self._make_geo([37])
+
+        builder._build_state_values(
+            sim=None,
+            target_vars={"household_count"},
+            constraint_vars={"housing_assistance"},
+            reform_vars=set(),
+            geography=geo,
+            rerandomize_takeup=True,
+        )
+
+        assert (
+            "housing_assistance",
+            2024,
+            "spm_unit",
+        ) in sim.calculate_calls
+
+    @patch(
+        "policyengine_us_data.calibration"
+        ".unified_matrix_builder.get_calculated_variables",
+        return_value=[],
+    )
+    @patch("policyengine_us.Microsimulation")
     def test_count_vars_skipped(self, mock_msim_cls, mock_gcv):
         sim = _FakeSimulation()
         mock_msim_cls.return_value = sim

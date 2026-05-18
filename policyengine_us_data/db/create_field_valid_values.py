@@ -74,6 +74,7 @@ def populate_field_valid_values(session: Session) -> None:
         ("source", "CMS Marketplace", "administrative"),
         ("source", "CMS 2024 OEP state metal status PUF", "administrative"),
         ("source", "CMS Medicaid", "administrative"),
+        ("source", "HUD Picture of Subsidized Households", "administrative"),
         ("source", "Census ACS S2704", "survey"),
         ("source", "USDA FNS SNAP", "administrative"),
         ("source", "Census ACS S2201", "survey"),

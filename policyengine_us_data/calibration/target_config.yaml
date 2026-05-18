@@ -51,6 +51,9 @@ include:
   - variable: household_count
     geo_level: state
     domain_variable: snap
+  - variable: household_count
+    geo_level: state
+    domain_variable: housing_assistance
   - variable: tanf
     geo_level: state
   - variable: adjusted_gross_income
@@ -199,6 +202,9 @@ include:
   - variable: household_count
     geo_level: national
     domain_variable: spm_unit_energy_subsidy_reported
+  - variable: household_count
+    geo_level: national
+    domain_variable: housing_assistance
   - variable: tip_income
     geo_level: national
   - variable: unemployment_compensation

@@ -618,6 +618,70 @@ def test_result_writer_accepts_custom_output_strategy(tmp_path):
     assert paths["report"].name == "validation_report.json"
 
 
+def test_result_writer_accepts_default_strategy_names(tmp_path):
+    report = ValidationRunner().run(
+        _suite(_check("first"), _check("second", "warn")),
+        _context(),
+    )
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=("report", "findings", "summary"),
+    )
+
+    paths = writer.write(report)
+    summary = DiagnosticRef.from_dict(
+        json.loads(paths["summary"].read_text(encoding="utf-8"))
+    )
+
+    assert set(paths) == {"report", "findings", "summary"}
+    assert paths["report"].name == "validation_report.json"
+    assert paths["findings"].name == "validation_findings.jsonl"
+    assert paths["summary"].name == "validation_summary.json"
+    assert summary.summary["status"] == "warn"
+
+
+def test_result_writer_strategy_names_honor_filename_overrides(tmp_path):
+    report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=("validation_report_json", "validation_findings_jsonl", "summary"),
+        report_filename="report.json",
+        findings_filename="findings.jsonl",
+        summary_filename="summary.json",
+    )
+
+    paths = writer.write(report)
+
+    assert paths["report"].name == "report.json"
+    assert paths["findings"].name == "findings.jsonl"
+    assert paths["summary"].name == "summary.json"
+
+
+def test_result_writer_can_mix_strategy_names_and_objects(tmp_path):
+    report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=("report", _StatusTextOutputStrategy()),
+    )
+
+    paths = writer.write(report)
+
+    assert set(paths) == {"report", "status"}
+    assert paths["status"].read_text(encoding="utf-8") == "pass\n"
+
+
+def test_result_writer_rejects_unknown_strategy_name(tmp_path):
+    report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=("report", "unknown"),
+    )
+
+    with pytest.raises(ValueError, match="Unknown validation report output strategy"):
+        writer.write(report)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_result_writer_rejects_duplicate_output_keys(tmp_path):
     report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
     writer = ValidationReportWriter(

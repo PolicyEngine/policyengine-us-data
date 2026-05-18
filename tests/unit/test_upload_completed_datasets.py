@@ -109,6 +109,15 @@ def _fake_tax_benefit_system():
     )
 
 
+def _fake_variable(entity_key, *, formulas=None, adds=None, subtracts=None):
+    return SimpleNamespace(
+        entity=SimpleNamespace(key=entity_key),
+        formulas=formulas or {},
+        adds=adds,
+        subtracts=subtracts,
+    )
+
+
 def _write_h5(path, datasets: dict[str, np.ndarray]) -> None:
     with h5py.File(path, "w") as h5_file:
         for name, values in datasets.items():
@@ -151,11 +160,12 @@ def patch_contract_validation(monkeypatch):
     monkeypatch.setattr(
         upload_module,
         "validate_dataset_contract",
-        lambda file_path: validate_dataset_contract(
+        lambda file_path, **kwargs: validate_dataset_contract(
             file_path,
             tax_benefit_system=_fake_tax_benefit_system(),
             microsimulation_cls=_FakeMicrosimulation,
             dataset_loader=lambda path: path,
+            **kwargs,
         ),
     )
 
@@ -219,6 +229,80 @@ def test_validate_dataset_infers_time_period_for_flat_h5(tmp_path, monkeypatch):
     validate_dataset(file_path)
 
     assert _TimePeriodCheckingAggregateMicrosimulation.last_dataset.time_period == 2024
+
+
+def test_validate_cps_allows_source_computed_policyengine_variables(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "cps_2024.h5"
+    _write_h5(
+        file_path,
+        {
+            "person_id": np.array([101], dtype=np.int32),
+            "household_id": np.array([201], dtype=np.int32),
+            "employment_income": np.array([50_000.0], dtype=np.float32),
+            "household_weight": np.array([1.0], dtype=np.float32),
+        },
+    )
+    tbs = _fake_tax_benefit_system()
+    tbs.variables["employment_income"] = _fake_variable(
+        "person",
+        adds=["employment_income_before_lsr"],
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "validate_dataset_contract",
+        lambda file_path, **kwargs: validate_dataset_contract(
+            file_path,
+            tax_benefit_system=tbs,
+            microsimulation_cls=_FakeMicrosimulation,
+            dataset_loader=lambda path: path,
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        "policyengine_us.Microsimulation",
+        _TimePeriodCheckingAggregateMicrosimulation,
+    )
+
+    validate_dataset(file_path)
+
+
+def test_validate_enhanced_cps_rejects_computed_policyengine_variables(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "enhanced_cps_2024.h5"
+    _write_h5(file_path, _minimal_enhanced_cps_contract_datasets())
+    tbs = _fake_tax_benefit_system()
+    tbs.variables["employment_income"] = _fake_variable(
+        "person",
+        adds=["employment_income_before_lsr"],
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "REQUIRED_VARIABLES_BY_FILENAME",
+        {},
+    )
+    monkeypatch.setattr(
+        upload_module,
+        "validate_dataset_contract",
+        lambda file_path, **kwargs: validate_dataset_contract(
+            file_path,
+            tax_benefit_system=tbs,
+            microsimulation_cls=_FakeMicrosimulation,
+            dataset_loader=lambda path: path,
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        "policyengine_us.Microsimulation",
+        _TimePeriodCheckingAggregateMicrosimulation,
+    )
+
+    with pytest.raises(DatasetValidationError, match="employment_income"):
+        validate_dataset(file_path)
 
 
 def test_validate_dataset_rejects_temporary_reported_source_variables(

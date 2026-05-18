@@ -46,6 +46,15 @@ VALIDATED_FILENAMES = {
     "cps_2024.h5",
 }
 
+# Raw CPS is a source artifact used to construct final simulation datasets.
+# It intentionally carries some Census source measures whose names now map to
+# formula variables in policyengine-us. The leaf-input export contract is
+# enforced on final simulation datasets instead.
+ENFORCE_LEAF_INPUT_EXPORT_BY_FILENAME = {
+    "enhanced_cps_2024.h5": True,
+    "cps_2024.h5": False,
+}
+
 # Minimum file sizes in bytes for validated datasets.
 MIN_FILE_SIZES = {
     "enhanced_cps_2024.h5": 95 * 1024 * 1024,  # 95 MB
@@ -424,7 +433,13 @@ def validate_dataset(file_path: Path) -> None:
         )
 
     try:
-        contract_summary = validate_dataset_contract(file_path)
+        contract_summary = validate_dataset_contract(
+            file_path,
+            enforce_no_computed_policyengine_us_variables=ENFORCE_LEAF_INPUT_EXPORT_BY_FILENAME.get(
+                filename,
+                True,
+            ),
+        )
     except DatasetContractError as e:
         errors.append(f"Dataset contract validation failed: {e}")
         raise DatasetValidationError(

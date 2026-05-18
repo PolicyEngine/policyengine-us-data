@@ -13,13 +13,15 @@ import h5py
 import numpy as np
 import pytest
 from policyengine_us_data.datasets.cps.extended_cps import ExtendedCPS_2024
+from policyengine_us_data.utils.dataset_validation import (
+    STRUCTURAL_COMPUTED_EXPORT_VARIABLES,
+)
 
 KNOWN_FORMULA_EXCEPTIONS = {
-    "person_id",
     "interest_deduction",
     "self_employed_health_insurance_ald",
     "self_employed_pension_contribution_ald",
-}
+} | STRUCTURAL_COMPUTED_EXPORT_VARIABLES
 
 
 @pytest.fixture(scope="module")

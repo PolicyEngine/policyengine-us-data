@@ -3,6 +3,7 @@
 import sqlite3
 
 import pytest
+from policyengine_us_data.utils.target_variables import target_variable_is_valid
 
 from policyengine_us_data.storage import STORAGE_FOLDER
 
@@ -322,14 +323,16 @@ def test_congressional_district_strata(built_db):
 
 
 def test_all_target_variables_exist_in_policyengine(built_db):
-    """Every target variable must be a valid policyengine-us variable."""
+    """Every target variable/expression must use policyengine-us variables."""
     from policyengine_us.system import system
 
     conn = sqlite3.connect(str(built_db))
     variables = {r[0] for r in conn.execute("SELECT DISTINCT variable FROM targets")}
     conn.close()
 
-    missing = [v for v in variables if v not in system.variables]
+    missing = sorted(
+        v for v in variables if not target_variable_is_valid(v, system.variables)
+    )
     assert not missing, f"Target variables not in policyengine-us: {missing}"
 
 

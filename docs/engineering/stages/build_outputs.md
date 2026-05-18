@@ -71,8 +71,11 @@ prefer typed `AreaBuildRequest` objects and typed worker payloads.
 For now, `WorkerResult.to_legacy_dict()` preserves the existing coordinator
 contract with `completed`, `failed`, `errors`, `validation_rows`, and
 `validation_summary`. New code should prefer the structured `results` and
-`issues` fields. Validation exceptions remain visible in legacy `errors` so the
-current coordinator does not drop them before it migrates to structured results.
+`issues` fields. Validation exceptions remain visible as structured `issues`
+with `severity="validation"` by default; they enter legacy `errors` only when a
+worker is configured to fail on validation errors or the area result is otherwise
+failed. This keeps nonfatal validation diagnostics visible without treating them
+as coordinator-fatal worker failures.
 Removing the legacy shape and moving the coordinator off worker subprocess JSON
 is a later migration step.
 

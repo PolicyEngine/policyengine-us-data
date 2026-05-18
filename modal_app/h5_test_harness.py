@@ -117,6 +117,8 @@ def seed_h5_case(run_id: str, case_name: str) -> dict:
         "expected_district_name": seeded.expected_district_name,
         "n_clones": seeded.n_clones,
         "seed": seeded.seed,
+        "expected_output_count": seeded.expected_output_count,
+        "expected_output_paths": list(seeded.expected_output_paths),
     }
 
 

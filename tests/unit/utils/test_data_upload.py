@@ -668,6 +668,60 @@ def test_upload_release_completion_marker_requires_release_paths(monkeypatch):
     )
 
 
+def test_upload_release_completion_marker_accepts_canonical_validation_report(
+    monkeypatch,
+):
+    data_upload = _load_data_upload_module()
+    fake_api = SimpleNamespace(
+        list_repo_files=lambda **kwargs: [
+            "states/AL.h5",
+            "release_manifest.json",
+            "releases/1.73.0/release_manifest.json",
+            "trace.tro.jsonld",
+            "releases/1.73.0/trace.tro.jsonld",
+            "version_manifest.json",
+            "calibration/runs/run-123/diagnostics/validation_report.json",
+        ],
+        repo_info=lambda **kwargs: SimpleNamespace(sha="before"),
+        create_tag=lambda **kwargs: None,
+    )
+    commit_operations = []
+
+    monkeypatch.setattr(data_upload, "HfApi", lambda: fake_api)
+    monkeypatch.setattr(
+        data_upload,
+        "hf_create_commit_with_retry",
+        lambda **kwargs: (
+            commit_operations.extend(kwargs["operations"])
+            or SimpleNamespace(oid="after")
+        ),
+    )
+
+    marker = data_upload.upload_release_completion_marker_to_hf(
+        version="1.73.0",
+        run_id="run-123",
+        released_paths=["states/AL.h5"],
+        expected_paths=["states/AL.h5"],
+        release_manifest={
+            "artifacts": {
+                "states/AL": {
+                    "path": "states/AL.h5",
+                    "sha256": "abc123",
+                }
+            }
+        },
+        promoted_hf=1,
+        uploaded_gcs=1,
+    )
+
+    assert marker["required_paths"]["validation_reports"] == [
+        "calibration/runs/run-123/diagnostics/validation_report.json"
+    ]
+    assert commit_operations[0].path_in_repo == (
+        "releases/1.73.0/release-complete.json"
+    )
+
+
 def test_upload_release_completion_marker_fails_without_validation_report(
     monkeypatch,
 ):

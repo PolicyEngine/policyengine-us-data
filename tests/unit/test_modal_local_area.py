@@ -462,3 +462,88 @@ def test_build_areas_worker_surfaces_successful_worker_stderr(
     assert "Worker session ready: scope=regional, bootstrap=used" in captured.err
     assert "--scope-fingerprint" in captured_cmd["cmd"]
     assert "regional-fingerprint" in captured_cmd["cmd"]
+
+
+def test_run_phase_collects_worker_validation_errors(monkeypatch, tmp_path):
+    local_area = load_local_area_module()
+    run_dir = tmp_path / "run-123"
+    run_dir.mkdir()
+    captured_spawns = []
+
+    monkeypatch.setattr(
+        local_area,
+        "partition_work",
+        lambda work_items, num_workers, completed: [work_items],
+    )
+    monkeypatch.setattr(
+        local_area,
+        "get_completed_from_volume",
+        lambda path: {"district:NC-01"},
+    )
+    monkeypatch.setattr(
+        local_area,
+        "staging_volume",
+        SimpleNamespace(reload=lambda: None),
+    )
+
+    class FakeHandle:
+        object_id = "fc-validation-error"
+
+        def get(self):
+            return {
+                "completed": ["district:NC-01"],
+                "failed": [],
+                "errors": [
+                    {
+                        "item": "district:NC-01",
+                        "phase": "validation",
+                        "error": "validation failed",
+                    }
+                ],
+                "validation_rows": [],
+                "issues": [
+                    {
+                        "item": "district:NC-01",
+                        "phase": "validation",
+                        "error": "validation failed",
+                    }
+                ],
+            }
+
+    def fake_spawn(**kwargs):
+        captured_spawns.append(kwargs)
+        return FakeHandle()
+
+    monkeypatch.setattr(
+        local_area,
+        "build_areas_worker",
+        SimpleNamespace(spawn=fake_spawn),
+    )
+
+    completed, phase_errors, validation_rows = local_area.run_phase(
+        "All areas",
+        work_items=[{"type": "district", "id": "NC-01", "weight": 1}],
+        num_workers=1,
+        completed=set(),
+        branch="main",
+        run_id="run-123",
+        calibration_inputs={
+            "weights": "/tmp/calibration_weights.npy",
+            "dataset": "/tmp/source.h5",
+            "database": "/tmp/policy_data.db",
+        },
+        run_dir=run_dir,
+        validate=True,
+        scope_fingerprint="regional-fingerprint",
+    )
+
+    assert completed == {"district:NC-01"}
+    assert validation_rows == []
+    assert phase_errors == [
+        {
+            "item": "district:NC-01",
+            "phase": "validation",
+            "error": "validation failed",
+        }
+    ]
+    assert captured_spawns[0]["scope_fingerprint"] == "regional-fingerprint"

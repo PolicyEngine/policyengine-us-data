@@ -41,6 +41,21 @@ class SessionDatasetReader(FakeDatasetReader):
         return self.snapshot
 
 
+class SequenceDatasetReader(SessionDatasetReader):
+    """Dataset reader fake that returns a new snapshot for each load."""
+
+    def __init__(self, snapshots):
+        super().__init__(snapshots[0])
+        self.snapshots = list(snapshots)
+        self.load_index = 0
+
+    def load(self, dataset_path: Path):
+        self.loaded_paths.append(Path(dataset_path))
+        snapshot = self.snapshots[self.load_index]
+        self.load_index += 1
+        return snapshot
+
+
 class SessionGeographyLoader(FakeGeographyLoader):
     """Geography loader fake that records load calls."""
 
@@ -122,6 +137,35 @@ def test_worker_session_factory_uses_raw_loaders_without_bootstrap(tmp_path):
     assert session.weights.n_clones == artifacts.n_clones
     assert geography_loader.load_calls[0]["n_records"] == artifacts.n_records
     assert validation_service.calls[0]["inputs"] == artifacts.inputs
+
+
+def test_worker_session_factory_raw_source_loader_returns_fresh_snapshots(tmp_path):
+    first = make_bootstrap_test_artifacts(tmp_path / "first")
+    second = make_bootstrap_test_artifacts(tmp_path / "second")
+    third = make_bootstrap_test_artifacts(tmp_path / "third")
+    dataset_reader = SequenceDatasetReader(
+        (first.snapshot, second.snapshot, third.snapshot)
+    )
+
+    session = WorkerSessionFactory(
+        dataset_reader=dataset_reader,
+        geography_loader=SessionGeographyLoader(first),
+        validation_service=FakeValidationService(),
+    ).create(
+        inputs=first.inputs,
+        scope="regional",
+        validation_policy=ValidationPolicy(enabled=False),
+        period=2024,
+    )
+
+    assert session.source is first.snapshot
+    assert session.load_source() is second.snapshot
+    assert session.load_source() is third.snapshot
+    assert dataset_reader.loaded_paths == [
+        first.inputs.source_dataset_path,
+        first.inputs.source_dataset_path,
+        first.inputs.source_dataset_path,
+    ]
 
 
 def test_worker_session_factory_prefers_bootstrap_entity_graph(tmp_path):

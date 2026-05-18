@@ -268,6 +268,7 @@ def validate_dataset_contract(
     microsimulation_cls=None,
     dataset_loader=None,
     smoke_test_variable: str = "household_weight",
+    enforce_no_computed_policyengine_us_variables: bool = True,
 ) -> DatasetContractSummary:
     file_path = Path(file_path)
     policyengine_us_info = assert_locked_policyengine_us_version()
@@ -281,7 +282,7 @@ def validate_dataset_contract(
 
     dataset_lengths = _dataset_lengths(file_path)
     time_period = _infer_time_period_from_file(file_path)
-    if time_period is not None:
+    if time_period is not None and enforce_no_computed_policyengine_us_variables:
         assert_no_computed_policyengine_us_variables_exported(
             variable_names=dataset_lengths.keys(),
             time_period=time_period,

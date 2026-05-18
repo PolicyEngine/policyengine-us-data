@@ -239,6 +239,39 @@ def test_validate_dataset_contract_rejects_computed_policyengine_variables(
         )
 
 
+def test_validate_dataset_contract_can_skip_computed_variable_check(
+    tmp_path,
+    monkeypatch,
+):
+    file_path = tmp_path / "cps_2024.h5"
+    _write_test_h5(
+        file_path,
+        {
+            "person_id": np.array([101, 102], dtype=np.int32),
+            "household_id": np.array([501], dtype=np.int32),
+            "computed_income": np.array([10_000.0, 20_000.0], dtype=np.float32),
+            "household_weight": np.array([1.5], dtype=np.float32),
+        },
+    )
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.dataset_validation.assert_locked_policyengine_us_version",
+        lambda: PolicyEngineUSBuildInfo(version="1.587.0"),
+    )
+    tbs = _fake_tax_benefit_system()
+    tbs.variables["computed_income"] = _fake_variable(
+        "person",
+        adds=["computed_income_before_response"],
+    )
+
+    validate_dataset_contract(
+        file_path,
+        tax_benefit_system=tbs,
+        microsimulation_cls=_FakeMicrosimulation,
+        dataset_loader=lambda path: path,
+        enforce_no_computed_policyengine_us_variables=False,
+    )
+
+
 def test_validate_dataset_contract_allows_future_period_formulas(tmp_path, monkeypatch):
     file_path = tmp_path / "enhanced_cps_2024.h5"
     _write_test_h5(

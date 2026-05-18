@@ -108,6 +108,9 @@ jobs:
           POLICYENGINE_US_ALLOW_STALE: ${{ inputs.allow_stale_policyengine_us }}
         run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
 
+      - name: Require pyproject.toml to match finalized HF release base
+        run: python .github/scripts/check_data_release_version.py --mode fail
+
       - name: Deploy and launch pipeline on Modal
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}

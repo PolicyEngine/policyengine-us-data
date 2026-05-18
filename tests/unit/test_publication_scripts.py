@@ -348,6 +348,38 @@ def test_policyengine_us_dependency_check_allow_stale_keeps_local_errors_fatal(
     assert module.main() == 1
 
 
+def test_data_release_version_check_passes_at_latest_release(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        "check_data_release_version_current_test",
+    )
+    _write_pyproject(tmp_path, "1.115.3")
+
+    assert (
+        module.check_repository(
+            tmp_path,
+            finalized_release_version="1.115.3",
+        )
+        == []
+    )
+
+
+def test_data_release_version_check_flags_stale_package(tmp_path):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        "check_data_release_version_stale_test",
+    )
+    _write_pyproject(tmp_path, "1.115.2")
+
+    violations = module.check_repository(
+        tmp_path,
+        finalized_release_version="1.115.3",
+    )
+
+    assert any("1.115.2" in violation for violation in violations)
+    assert any("1.115.3" in violation for violation in violations)
+
+
 def test_restore_publication_changelog_restores_candidate_snapshot(
     tmp_path,
     monkeypatch,

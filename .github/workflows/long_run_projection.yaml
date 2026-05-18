@@ -269,6 +269,6 @@ jobs:
             echo "- Tax assumption: \`${TAX_ASSUMPTION}\`"
             echo "- HF staging upload: \`${UPLOAD_TO_HF_STAGING}\`"
             if [ "${UPLOAD_TO_HF_STAGING}" = "true" ]; then
-              echo "- HF staging prefix: \`staging/${CHECKED_OUT_SHA}/${RUN_ID}/long_term/\`"
+              echo "- HF staging prefix: \`staging/${CHECKED_OUT_SHA}-${RUN_ID}/long_term/\`"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

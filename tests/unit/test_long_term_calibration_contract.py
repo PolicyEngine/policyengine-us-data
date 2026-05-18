@@ -79,6 +79,7 @@ from policyengine_us_data.datasets.cps.long_term.prototype_synthetic_2100_suppor
     summarize_realized_clone_translation,
 )
 from policyengine_us_data.datasets.cps.long_term.run_household_projection_parallel import (
+    forwarded_args_for_year,
     merge_outputs,
     parse_years,
     run_year,
@@ -2124,6 +2125,34 @@ def test_parallel_projection_validate_forwarded_args_rejects_wrapper_flags():
         validate_forwarded_args(["--save-h5"])
 
 
+def test_parallel_projection_strips_support_augmentation_before_activation_year():
+    forwarded_args = [
+        "--profile",
+        "ss-payroll-tob",
+        "--target-source",
+        "trustees_2025_current_law",
+        "--support-augmentation-profile",
+        "donor-backed-composite-v1",
+        "--support-augmentation-target-year",
+        "2100",
+        "--support-augmentation-start-year",
+        "2075",
+        "--support-augmentation-blueprint-base-weight-scale",
+        "5.0",
+        "--support-augmentation-sanitize-clone-non-target-income",
+    ]
+
+    early_args = forwarded_args_for_year(2026, forwarded_args)
+    late_args = forwarded_args_for_year(2075, forwarded_args)
+
+    assert "--profile" in early_args
+    assert "--target-source" in early_args
+    assert "--support-augmentation-profile" not in early_args
+    assert "--support-augmentation-target-year" not in early_args
+    assert "--support-augmentation-sanitize-clone-non-target-income" not in early_args
+    assert late_args == forwarded_args
+
+
 def _write_parallel_temp_year(
     *,
     root,
@@ -2219,6 +2248,190 @@ def test_parallel_projection_merge_outputs_rebuilds_manifest(tmp_path):
     assert (tmp_path / "2045.h5").exists()
     assert (tmp_path / "2049.h5.metadata.json").exists()
     assert not (tmp_path / ".parallel_tmp").exists()
+
+
+def test_parallel_projection_merge_outputs_allows_support_activation_window(tmp_path):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+    tax_assumption = {
+        "name": "trustees-2025-core-thresholds-v1",
+        "start_year": 2035,
+        "end_year": 2100,
+    }
+    support_augmentation = {
+        "name": "donor-backed-composite-v1",
+        "family": "targeted_donor",
+        "activation_start_year": 2075,
+        "target_year": 2100,
+        "target_year_strategy": "fixed",
+        "report_file": "support_augmentation_report.json",
+        "report_summary": {"clone_household_count": 10},
+    }
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2026,
+        profile=profile,
+        audit=audit,
+        tax_assumption=tax_assumption,
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2075,
+        profile=profile,
+        audit=audit,
+        tax_assumption=tax_assumption,
+        support_augmentation=support_augmentation,
+    )
+
+    manifest_path = merge_outputs(
+        years=[2026, 2075],
+        output_root=tmp_path,
+        keep_temp=True,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2026, 2075]
+    assert manifest["support_augmentation"]["name"] == "donor-backed-composite-v1"
+    early_metadata = json.loads(
+        (tmp_path / "2026.h5.metadata.json").read_text(encoding="utf-8")
+    )
+    late_metadata = json.loads(
+        (tmp_path / "2075.h5.metadata.json").read_text(encoding="utf-8")
+    )
+    assert "support_augmentation" not in early_metadata
+    assert late_metadata["support_augmentation"]["activation_start_year"] == 2075
+
+
+def test_parallel_projection_merge_outputs_rejects_different_fixed_support_targets(
+    tmp_path,
+):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+    base_support = {
+        "name": "donor-backed-composite-v1",
+        "family": "targeted_donor",
+        "activation_start_year": 2075,
+        "target_year": 2100,
+        "target_year_strategy": "fixed",
+        "report_file": "support_augmentation_report.json",
+        "report_summary": {"clone_household_count": 10},
+    }
+    different_support = dict(base_support, target_year=2090)
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2075,
+        profile=profile,
+        audit=audit,
+        support_augmentation=base_support,
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2080,
+        profile=profile,
+        audit=audit,
+        support_augmentation=different_support,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Temp manifest mismatch for support_augmentation",
+    ):
+        merge_outputs(
+            years=[2075, 2080],
+            output_root=tmp_path,
+            keep_temp=True,
+        )
+
+
+def test_parallel_projection_merge_outputs_allows_dynamic_support_target_years(
+    tmp_path,
+):
+    profile = get_profile("ss-payroll-tob").to_dict()
+    audit = {
+        "method_used": "entropy",
+        "fell_back_to_ipf": False,
+        "age_max_pct_error": 0.0,
+        "negative_weight_pct": 0.0,
+        "positive_weight_count": 70000,
+        "effective_sample_size": 5000.0,
+        "top_10_weight_share_pct": 1.5,
+        "top_100_weight_share_pct": 10.0,
+        "max_constraint_pct_error": 0.0,
+        "constraints": {},
+        "validation_passed": True,
+        "validation_issues": [],
+        "calibration_quality": "exact",
+    }
+    support_2075 = {
+        "name": "donor-backed-composite-v1",
+        "family": "targeted_donor",
+        "activation_start_year": 2075,
+        "target_year": 2075,
+        "target_year_strategy": "run_year",
+        "report_file": "support_augmentation_report_2075.json",
+        "report_summary": {"clone_household_count": 10},
+    }
+    support_2080 = dict(
+        support_2075,
+        target_year=2080,
+        report_file="support_augmentation_report_2080.json",
+        report_summary={"clone_household_count": 12},
+    )
+
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2075,
+        profile=profile,
+        audit=audit,
+        support_augmentation=support_2075,
+    )
+    _write_parallel_temp_year(
+        root=tmp_path,
+        year=2080,
+        profile=profile,
+        audit=audit,
+        support_augmentation=support_2080,
+    )
+
+    manifest_path = merge_outputs(
+        years=[2075, 2080],
+        output_root=tmp_path,
+        keep_temp=True,
+    )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["years"] == [2075, 2080]
+    assert manifest["support_augmentation"]["target_year_strategy"] == "run_year"
 
 
 def test_parallel_projection_run_year_skips_existing_complete_temp_output(

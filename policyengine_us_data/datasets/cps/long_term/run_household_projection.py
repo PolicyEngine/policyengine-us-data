@@ -691,11 +691,23 @@ if SUPPORT_AUGMENTATION_PROFILE is not None:
             "Support-augmentation non-target income sanitization is only "
             "supported with donor-backed-composite-v1."
         )
-    if START_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
-        raise ValueError(
-            "Support augmentation is only supported for late-year runs. "
-            f"Received START_YEAR={START_YEAR}, requires >= "
+    if END_YEAR < SUPPORT_AUGMENTATION_START_YEAR:
+        print(
+            "Support augmentation requested but disabled for this pre-activation "
+            f"run ({START_YEAR}-{END_YEAR}); activation starts in "
             f"{SUPPORT_AUGMENTATION_START_YEAR}."
+        )
+        SUPPORT_AUGMENTATION_PROFILE = None
+    elif (
+        START_YEAR < SUPPORT_AUGMENTATION_START_YEAR
+        and not SUPPORT_AUGMENTATION_ALIGN_TO_RUN_YEAR
+    ):
+        raise ValueError(
+            "Static support augmentation cannot span both pre-activation and "
+            "late-year runs in a single process. Use the parallel production "
+            "runner, split the run, or pass --support-augmentation-align-to-run-year. "
+            f"Received START_YEAR={START_YEAR}, END_YEAR={END_YEAR}, activation "
+            f"starts in {SUPPORT_AUGMENTATION_START_YEAR}."
         )
 
 legacy_flags_used = any([USE_GREG, USE_SS, USE_PAYROLL, USE_H6_REFORM, USE_TOB])

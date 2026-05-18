@@ -74,7 +74,7 @@ python run_long_term_production.py \
 - `.github/workflows/long_run_projection.yaml` is `workflow_dispatch` only. It does not run on pull requests, normal merges, or the standard `push.yaml` publication path.
 - The workflow calls `run_long_term_production.py`, which wraps the parallel runner, writes `long_run_production_manifest.json`, and preserves per-year logs with the run metadata.
 - The default year set builds the 10-year budget window plus 5-year sampled points through `2100`; override `years` for full annual builds or narrower diagnostics.
-- Hugging Face upload is disabled by default. Set `upload_to_hf_staging=true` only for a candidate run that should publish generated H5s and metadata under `staging/{source_sha}/{run_id}/long_term/`.
+- Hugging Face upload is disabled by default. Set `upload_to_hf_staging=true` only for a candidate run that should publish generated H5s and metadata under `staging/{source_sha}-{run_id}/long_term/`.
 - Late-year support augmentation remains an explicit input. The workflow exposes the donor-backed controls, but it does not silently enable experimental support profiles.
 
 **Named profiles:**

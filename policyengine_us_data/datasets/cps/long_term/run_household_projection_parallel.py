@@ -16,6 +16,22 @@ except ImportError:  # pragma: no cover - script execution fallback
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 RUNNER_PATH = SCRIPT_DIR / "run_household_projection.py"
+DEFAULT_SUPPORT_AUGMENTATION_START_YEAR = 2075
+SUPPORT_AUGMENTATION_VALUE_FLAGS = {
+    "--support-augmentation-profile",
+    "--support-augmentation-target-year",
+    "--support-augmentation-start-year",
+    "--support-augmentation-top-n-targets",
+    "--support-augmentation-donors-per-target",
+    "--support-augmentation-max-distance",
+    "--support-augmentation-clone-weight-scale",
+    "--support-augmentation-blueprint-base-weight-scale",
+}
+SUPPORT_AUGMENTATION_BOOLEAN_FLAGS = {
+    "--support-augmentation-align-to-run-year",
+    "--support-augmentation-sanitize-worker-non-target-income",
+    "--support-augmentation-sanitize-clone-non-target-income",
+}
 
 
 def parse_years(spec: str) -> list[int]:
@@ -81,6 +97,53 @@ def validate_forwarded_args(forwarded_args: list[str]) -> None:
             )
 
 
+def _option_value(args: list[str], flag: str) -> str | None:
+    if flag not in args:
+        return None
+    index = args.index(flag)
+    if index + 1 >= len(args):
+        raise ValueError(f"{flag} requires a value")
+    return args[index + 1]
+
+
+def _has_support_augmentation_profile(args: list[str]) -> bool:
+    return "--support-augmentation-profile" in args
+
+
+def _support_augmentation_start_year(args: list[str]) -> int:
+    raw_value = _option_value(args, "--support-augmentation-start-year")
+    if raw_value is None:
+        return DEFAULT_SUPPORT_AUGMENTATION_START_YEAR
+    return int(raw_value)
+
+
+def _strip_support_augmentation_args(args: list[str]) -> list[str]:
+    stripped: list[str] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in SUPPORT_AUGMENTATION_VALUE_FLAGS:
+            if index + 1 >= len(args):
+                raise ValueError(f"{arg} requires a value")
+            index += 2
+            continue
+        if arg in SUPPORT_AUGMENTATION_BOOLEAN_FLAGS:
+            index += 1
+            continue
+        stripped.append(arg)
+        index += 1
+    return stripped
+
+
+def forwarded_args_for_year(year: int, forwarded_args: list[str]) -> list[str]:
+    """Return runner args with late-year support disabled before activation."""
+    if not _has_support_augmentation_profile(forwarded_args):
+        return list(forwarded_args)
+    if year >= _support_augmentation_start_year(forwarded_args):
+        return list(forwarded_args)
+    return _strip_support_augmentation_args(forwarded_args)
+
+
 def year_output_dir(root: Path, year: int) -> Path:
     return root / ".parallel_tmp" / str(year)
 
@@ -123,7 +186,7 @@ def run_year(
         "--output-dir",
         str(output_dir),
         "--save-h5",
-        *forwarded_args,
+        *forwarded_args_for_year(year, forwarded_args),
     ]
 
     with log_path.open("w", encoding="utf-8") as log_file:
@@ -168,6 +231,44 @@ def _json_clone(value):
     return json.loads(json.dumps(value))
 
 
+def _normalize_support_augmentation_contract(value):
+    if value is None:
+        return None
+    normalized = _json_clone(value)
+    if normalized.get("target_year_strategy") == "run_year":
+        normalized.pop("target_year", None)
+    normalized.pop("report_file", None)
+    normalized.pop("report_summary", None)
+    return normalized
+
+
+def _support_augmentation_activation_start(value) -> int | None:
+    if not isinstance(value, dict):
+        return None
+    raw_value = value.get("activation_start_year")
+    if raw_value is None:
+        return None
+    return int(raw_value)
+
+
+def support_augmentation_contracts_compatible(left, right, *, year: int) -> bool:
+    if _normalize_support_augmentation_contract(
+        left
+    ) == _normalize_support_augmentation_contract(right):
+        return True
+    if left is None and right is not None:
+        activation_year = _support_augmentation_activation_start(right)
+        return activation_year is not None and year >= activation_year
+    if left is not None and right is None:
+        activation_year = _support_augmentation_activation_start(left)
+        return activation_year is not None and year < activation_year
+    return False
+
+
+def merge_support_augmentation_contract(left, right):
+    return _json_clone(left if left is not None else right)
+
+
 def manifest_contract(manifest: dict) -> dict:
     tax_assumption = _json_clone(manifest.get("tax_assumption"))
     if isinstance(tax_assumption, dict):
@@ -209,6 +310,22 @@ def merge_outputs(
             manifest_seed = temp_contract
         else:
             for key, value in manifest_seed.items():
+                if key == "support_augmentation":
+                    support_augmentation = temp_contract.get(key)
+                    if not support_augmentation_contracts_compatible(
+                        value,
+                        support_augmentation,
+                        year=year,
+                    ):
+                        raise ValueError(
+                            f"Temp manifest mismatch for {key} in year {year}: "
+                            f"{support_augmentation} != {value}"
+                        )
+                    manifest_seed[key] = merge_support_augmentation_contract(
+                        value,
+                        support_augmentation,
+                    )
+                    continue
                 if temp_contract.get(key) != value:
                     raise ValueError(
                         f"Temp manifest mismatch for {key} in year {year}: "

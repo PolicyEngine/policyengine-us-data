@@ -12,7 +12,9 @@ from policyengine_us_data.datasets.cps.cps import (
     CPS_2024_Full,
     ESI_POLICYHOLDER_VARIABLE,
     _open_dataset_read_only,
+    load_take_up_rate,
 )
+from policyengine_us_data.datasets.cps.takeup import prioritize_reported_recipients
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
@@ -38,6 +40,7 @@ from policyengine_us_data.utils.retirement_limits import (
     get_retirement_limits,
     get_se_pension_limits,
 )
+from policyengine_us_data.utils.randomness import seeded_rng
 
 logger = logging.getLogger(__name__)
 
@@ -686,7 +689,7 @@ _FINAL_COMPUTED_OUTPUTS_TO_DROP = {
     "rent",
     "spm_unit_capped_work_childcare_expenses",
 }
-_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.01
+_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.60
 
 
 class _InMemoryTimePeriodDataset(Dataset):
@@ -707,7 +710,11 @@ class _InMemoryTimePeriodDataset(Dataset):
         return self._data
 
 
-def _load_raw_spm_capped_housing_subsidy(cps_dataset, time_period: int):
+def _load_raw_spm_capped_housing_subsidy(
+    cps_dataset,
+    time_period: int,
+    target_spm_unit_ids=None,
+):
     """Load Census SPM capped housing subsidy for validation only."""
 
     raw_cps = getattr(cps_dataset, "raw_cps", None)
@@ -719,6 +726,23 @@ def _load_raw_spm_capped_housing_subsidy(cps_dataset, time_period: int):
         if "SPM_CAPHOUSESUB" not in spm_unit.columns:
             return None
         values = np.asarray(spm_unit["SPM_CAPHOUSESUB"], dtype=float)
+        if target_spm_unit_ids is not None:
+            if "SPM_ID" in spm_unit.columns:
+                raw_spm_unit_ids = np.asarray(spm_unit["SPM_ID"])
+            else:
+                raw_spm_unit_ids = np.asarray(spm_unit.index)
+            raw_index = pd.Index(raw_spm_unit_ids.astype(str))
+            target_index = pd.Index(np.asarray(target_spm_unit_ids).astype(str))
+            aligned = pd.Series(values, index=raw_index).reindex(target_index)
+            if aligned.isna().any():
+                missing_count = int(aligned.isna().sum())
+                logger.warning(
+                    "Skipping raw SPM capped housing subsidy validation benchmark "
+                    "because %d CPS SPM unit IDs are absent from raw ASEC.",
+                    missing_count,
+                )
+                return None
+            values = aligned.to_numpy(dtype=float)
 
     return {time_period: values}
 
@@ -881,22 +905,16 @@ class ExtendedCPS(Dataset):
         data_dict = {}
         for var in data:
             data_dict[var] = {self.time_period: data[var][...]}
+        spm_unit_ids = data_dict.get("spm_unit_id", {}).get(self.time_period)
         raw_spm_capped_housing_subsidy = _load_raw_spm_capped_housing_subsidy(
             self.cps,
             self.time_period,
+            target_spm_unit_ids=spm_unit_ids,
         )
         if raw_spm_capped_housing_subsidy is not None:
-            source_values = raw_spm_capped_housing_subsidy[self.time_period]
-            spm_unit_ids = data_dict.get("spm_unit_id", {}).get(self.time_period)
-            if spm_unit_ids is not None and len(source_values) == len(spm_unit_ids):
-                data_dict["spm_unit_capped_housing_subsidy"] = (
-                    raw_spm_capped_housing_subsidy
-                )
-            else:
-                logger.warning(
-                    "Skipping raw SPM capped housing subsidy validation benchmark "
-                    "due to SPM unit length mismatch"
-                )
+            data_dict["spm_unit_capped_housing_subsidy"] = (
+                raw_spm_capped_housing_subsidy
+            )
 
         state_fips = data_dict["state_fips"][self.time_period]
         county_fips = data_dict.get("county_fips", {}).get(self.time_period)
@@ -953,6 +971,10 @@ class ExtendedCPS(Dataset):
         new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)
         new_data = self._impute_llc_eligibility_inputs(new_data, self.time_period)
         new_data = self._rename_imputed_to_inputs(new_data)
+        new_data = self._reassign_housing_assistance_takeup_with_geography(
+            new_data,
+            self.time_period,
+        )
         new_data = self._validate_housing_assistance_microsimulation(
             new_data,
             self.time_period,
@@ -1416,6 +1438,99 @@ class ExtendedCPS(Dataset):
                 "This likely means a required formula input is missing before "
                 "housing assistance formula outputs are dropped from the final export."
             )
+        return data
+
+    @classmethod
+    def _reassign_housing_assistance_takeup_with_geography(
+        cls,
+        data,
+        time_period,
+        microsimulation_cls=None,
+        take_up_rate=None,
+        draws=None,
+    ):
+        """Recompute housing-assistance take-up after county assignment.
+
+        CPS add_takeup runs before the ExtendedCPS geography assignment, so
+        HUD income-limit eligibility can only anchor on reported recipients at
+        that point. Reassign here, after county_fips is present and after PUF
+        clone income variables have been spliced in, so reported recipients are
+        preserved while non-reported take-up is drawn from the full HUD-eligible
+        pool.
+        """
+
+        if "county_fips" not in data or time_period not in data["county_fips"]:
+            return data
+
+        receives = data.get("receives_housing_assistance", {}).get(time_period)
+        existing_takeup = data.get("takes_up_housing_assistance_if_eligible", {}).get(
+            time_period
+        )
+        if receives is None and existing_takeup is None:
+            return data
+
+        if microsimulation_cls is None:
+            from policyengine_us import Microsimulation
+
+            microsimulation_cls = Microsimulation
+
+        validation_data = {
+            variable: values
+            for variable, values in data.items()
+            if variable not in _HOUSING_ASSISTANCE_FORMULA_OUTPUTS
+        }
+        simulation = microsimulation_cls(
+            dataset=_InMemoryTimePeriodDataset(validation_data, time_period)
+        )
+        eligible = simulation.calculate(
+            "is_eligible_for_housing_assistance",
+            time_period,
+        )
+        eligible = np.asarray(getattr(eligible, "values", eligible), dtype=bool)
+        spm_unit_weight = simulation.calculate(
+            "spm_unit_weight",
+            time_period,
+            use_weights=False,
+        )
+        weights = np.asarray(
+            getattr(spm_unit_weight, "values", spm_unit_weight),
+            dtype=float,
+        )
+
+        if receives is None:
+            receives = np.zeros_like(eligible, dtype=bool)
+        else:
+            receives = np.asarray(receives, dtype=bool)
+
+        if len(receives) != len(eligible):
+            raise ValueError(
+                "receives_housing_assistance length does not match HUD "
+                "eligibility length when reassigning housing assistance "
+                f"take-up: got {len(receives)}, expected {len(eligible)}."
+            )
+
+        if draws is None:
+            rng = seeded_rng("takes_up_housing_assistance_if_eligible")
+            draws = rng.random(len(receives))
+        if take_up_rate is None:
+            take_up_rate = load_take_up_rate("housing_assistance", time_period)
+
+        draws = np.asarray(draws)
+        reassigned_takeup = np.zeros_like(receives, dtype=bool)
+        assignment_groups = (weights > 0, weights <= 0)
+        for assignment_group in assignment_groups:
+            if not assignment_group.any():
+                continue
+            reassigned_takeup[assignment_group] = prioritize_reported_recipients(
+                receives[assignment_group],
+                take_up_rate,
+                draws[assignment_group],
+                eligible_mask=eligible[assignment_group],
+            )
+
+        data["takes_up_housing_assistance_if_eligible"] = {
+            time_period: reassigned_takeup
+        }
         return data
 
     @classmethod

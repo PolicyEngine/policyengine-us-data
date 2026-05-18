@@ -7,6 +7,8 @@ Uses synthetic data to verify that:
 4. Post-processing constraints enforce IRS caps and SS normalization
 """
 
+from contextlib import contextmanager
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -24,6 +26,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_STAGE2_DEMOGRAPHIC_PREDICTORS,
     CPS_STAGE2_INCOME_PREDICTORS,
     ExtendedCPS,
+    _load_raw_spm_capped_housing_subsidy,
     _apply_post_processing,
     _build_clone_test_frame,
     _derive_overtime_occupation_inputs,
@@ -58,6 +61,10 @@ class _FakeHousingMicrosimulation:
         return type(self).outputs[variable]
 
 
+class _FakeCPSDataset:
+    raw_cps = object()
+
+
 class TestVariableListConsistency:
     """Variable lists should not overlap — no variable should be
     imputed by two different mechanisms."""
@@ -65,6 +72,34 @@ class TestVariableListConsistency:
     def test_no_overlap_imputed_and_cps_only(self):
         overlap = set(IMPUTED_VARIABLES) & set(CPS_ONLY_IMPUTED_VARIABLES)
         assert overlap == set(), f"Variables in both IMPUTED and CPS_ONLY: {overlap}"
+
+    def test_load_raw_spm_capped_housing_subsidy_aligns_to_spm_unit_ids(
+        self, monkeypatch
+    ):
+        raw_spm_unit = pd.DataFrame(
+            {
+                "SPM_ID": [10, 20, 30],
+                "SPM_CAPHOUSESUB": [100.0, 200.0, 300.0],
+            }
+        )
+
+        @contextmanager
+        def fake_open_dataset_read_only(dataset_source):
+            yield {"spm_unit": raw_spm_unit}
+
+        monkeypatch.setattr(
+            extended_cps_module,
+            "_open_dataset_read_only",
+            fake_open_dataset_read_only,
+        )
+
+        result = _load_raw_spm_capped_housing_subsidy(
+            _FakeCPSDataset,
+            2024,
+            target_spm_unit_ids=np.array([30, 10]),
+        )
+
+        assert result[2024].tolist() == [300.0, 100.0]
 
     def test_no_overlap_overridden_and_cps_only(self):
         overlap = set(OVERRIDDEN_IMPUTED_VARIABLES) & set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -366,6 +401,96 @@ class TestVariableListConsistency:
                 2024,
                 microsimulation_cls=_FakeHousingMicrosimulation,
             )
+
+    def test_housing_assistance_validation_rejects_half_reported_match(self):
+        data = {
+            "receives_housing_assistance": {2024: np.array([True])},
+            "takes_up_housing_assistance_if_eligible": {2024: np.array([True])},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([100.0])},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "housing_assistance": np.array([100.0]),
+            "spm_unit_capped_housing_subsidy": np.array([59.0]),
+            "spm_unit_weight": np.array([1.0]),
+        }
+
+        with pytest.raises(RuntimeError, match="implausibly small"):
+            ExtendedCPS._validate_housing_assistance_microsimulation(
+                data,
+                2024,
+                microsimulation_cls=_FakeHousingMicrosimulation,
+            )
+
+    def test_reassign_housing_assistance_takeup_uses_geographic_eligibility(self):
+        data = {
+            "county_fips": {2024: np.array([1001, 1003, 1005, 1007])},
+            "receives_housing_assistance": {
+                2024: np.array([True, False, False, False])
+            },
+            "takes_up_housing_assistance_if_eligible": {
+                2024: np.array([True, False, False, False])
+            },
+            "housing_assistance": {2024: np.array([99_000.0] * 4)},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([99_000.0] * 4)},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "is_eligible_for_housing_assistance": np.array([True, True, True, False]),
+            "spm_unit_weight": np.array([1.0, 1.0, 1.0, 1.0]),
+        }
+
+        result = ExtendedCPS._reassign_housing_assistance_takeup_with_geography(
+            data,
+            2024,
+            microsimulation_cls=_FakeHousingMicrosimulation,
+            take_up_rate=0.75,
+            draws=np.array([0.0, 0.9, 0.0, 0.0]),
+        )
+
+        assert result["takes_up_housing_assistance_if_eligible"][2024].tolist() == [
+            True,
+            False,
+            True,
+            False,
+        ]
+        assert "housing_assistance" not in _FakeHousingMicrosimulation.seen_data
+        assert (
+            "spm_unit_capped_housing_subsidy"
+            not in _FakeHousingMicrosimulation.seen_data
+        )
+
+    def test_reassign_housing_assistance_takeup_separates_zero_weight_clones(self):
+        data = {
+            "county_fips": {2024: np.arange(6)},
+            "receives_housing_assistance": {
+                2024: np.array([True, False, False, True, False, False])
+            },
+            "takes_up_housing_assistance_if_eligible": {
+                2024: np.array([True, False, False, True, False, False])
+            },
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "is_eligible_for_housing_assistance": np.array(
+                [True, True, True, True, True, True]
+            ),
+            "spm_unit_weight": np.array([1.0, 1.0, 1.0, 0.0, 0.0, 0.0]),
+        }
+
+        result = ExtendedCPS._reassign_housing_assistance_takeup_with_geography(
+            data,
+            2024,
+            microsimulation_cls=_FakeHousingMicrosimulation,
+            take_up_rate=2 / 3,
+            draws=np.array([0.0, 0.0, 0.9, 0.0, 0.0, 0.9]),
+        )
+
+        assert result["takes_up_housing_assistance_if_eligible"][2024].tolist() == [
+            True,
+            True,
+            False,
+            True,
+            True,
+            False,
+        ]
 
     def test_drop_housing_assistance_formula_outputs_after_validation(self):
         data = {

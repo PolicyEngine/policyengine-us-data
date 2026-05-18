@@ -238,9 +238,7 @@ def normalize_worker_response(
             nonfatal_issue_keys.add(_issue_identity(normalized_issue))
 
     error_items = {
-        str(error.get("item"))
-        for error in fatal_errors
-        if error.get("item")
+        str(error.get("item")) for error in fatal_errors if error.get("item")
     }
     fatal_errors.extend(
         _coordinator_error(

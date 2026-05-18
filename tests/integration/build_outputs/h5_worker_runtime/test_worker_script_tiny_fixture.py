@@ -97,6 +97,14 @@ def _run_worker(
     return json.loads(result.stdout)
 
 
+def _assert_outputs_reload_with_policyengine(output_dir: Path, requests) -> None:
+    from policyengine_us import Microsimulation
+
+    for request in requests:
+        h5_path = output_dir / request.output_relative_path
+        Microsimulation(dataset=str(h5_path))
+
+
 def test_tiny_fixture_source_snapshot_matches_worker_artifacts(tmp_path):
     artifacts = seed_local_h5_artifacts(tmp_path / "source-snapshot")
 
@@ -140,6 +148,9 @@ def test_worker_builds_district_h5_from_saved_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == [f"district:{request.area_id}"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == f"district:{request.area_id}"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -158,6 +169,9 @@ def test_worker_builds_state_h5_from_package_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == [f"state:{request.area_id}"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == f"state:{request.area_id}"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -177,6 +191,9 @@ def test_worker_builds_national_h5_from_package_geography(tmp_path):
     assert result["failed"] == []
     assert result["errors"] == []
     assert result["completed"] == ["national:US"]
+    assert result["issues"] == []
+    assert result["results"][0]["key"] == "national:US"
+    assert result["results"][0]["status"] == "completed"
     assert (output_dir / request.output_relative_path).exists()
 
 
@@ -209,10 +226,17 @@ include:
     )
     parsed = json.loads(result.stdout)
 
+    _assert_outputs_reload_with_policyengine(output_dir, requests)
     assert result.stderr.count("Worker session ready:") == 1
     assert parsed["failed"] == []
     assert parsed["errors"] == []
     assert parsed["completed"] == ["district:NC-01", "state:NC", "national:US"]
+    assert parsed["issues"] == []
+    assert [item["key"] for item in parsed["results"]] == [
+        "district:NC-01",
+        "state:NC",
+        "national:US",
+    ]
     assert len(parsed["validation_rows"]) == 3
     assert set(parsed["validation_summary"]) == {
         "district:NC-01",

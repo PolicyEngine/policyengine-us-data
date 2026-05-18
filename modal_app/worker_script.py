@@ -10,7 +10,6 @@ import json
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
 
 
 def parse_args(argv: list[str] | None = None):
@@ -148,38 +147,6 @@ def _build_publishing_inputs(*, args, run_id: str):
     return worker_inputs.to_publishing_input_bundle(run_id=run_id)
 
 
-def _build_kwargs_from_request(request) -> dict[str, Any]:
-    """Translate a typed request into `build_h5(...)` keyword arguments."""
-
-    if request.area_type == "national":
-        return {}
-
-    if len(request.filters) != 1:
-        raise ValueError(
-            f"{request.area_type} requests must carry exactly one build filter"
-        )
-
-    build_filter = request.filters[0]
-    if (
-        request.area_type in {"state", "district"}
-        and build_filter.geography_field == "cd_geoid"
-        and build_filter.op == "in"
-    ):
-        return {"cd_subset": [str(item) for item in build_filter.value]}
-
-    if (
-        request.area_type == "city"
-        and build_filter.geography_field == "county_fips"
-        and build_filter.op == "in"
-    ):
-        return {"county_fips_filter": {str(item) for item in build_filter.value}}
-
-    raise ValueError(
-        f"Unsupported build filter for {request.area_type}: "
-        f"{build_filter.geography_field}:{build_filter.op}"
-    )
-
-
 def _request_key(request) -> str:
     """Return the stable completion key used by worker/coordinator flows."""
 
@@ -194,20 +161,6 @@ def _work_item_key(work_item) -> str:
     item_type = work_item.get("type", "<missing-type>")
     item_id = work_item.get("id", "<missing-id>")
     return f"{item_type}:{item_id}"
-
-
-def _resolve_output_path(*, output_dir: Path, output_relative_path: str) -> Path:
-    """Resolve one request output path and reject attempts to escape the run dir."""
-
-    candidate_path = (output_dir / output_relative_path).resolve(strict=False)
-    output_dir_path = output_dir.resolve(strict=False)
-    try:
-        candidate_path.relative_to(output_dir_path)
-    except ValueError as exc:
-        raise ValueError(
-            "output_relative_path must stay within the worker output_dir"
-        ) from exc
-    return candidate_path
 
 
 def _resolve_request_input(
@@ -232,6 +185,51 @@ def _resolve_request_input(
     return _request_key(request), request
 
 
+def _resolve_worker_requests(
+    *,
+    request_input_mode,
+    request_inputs,
+    area_catalog,
+    geography,
+) -> tuple[tuple, tuple]:
+    """Resolve queued CLI inputs into typed requests plus conversion issues."""
+
+    from policyengine_us_data.build_outputs.worker_service import WorkerIssue
+
+    if request_input_mode == "requests":
+        return tuple(request_inputs), ()
+
+    requests = []
+    issues = []
+    for request_input in request_inputs:
+        request_key = _work_item_key(request_input)
+        try:
+            request_key, request = _resolve_request_input(
+                request_input_mode=request_input_mode,
+                request_input=request_input,
+                area_catalog=area_catalog,
+                geography=geography,
+            )
+        except Exception as exc:
+            issues.append(
+                WorkerIssue(
+                    item=request_key,
+                    phase="request",
+                    message=str(exc),
+                    traceback=traceback.format_exc(),
+                )
+            )
+            continue
+        if request is None:
+            print(
+                f"Skipping {request_key}: no matching geography in legacy work item",
+                file=sys.stderr,
+            )
+            continue
+        requests.append(request)
+    return tuple(requests), tuple(issues)
+
+
 def _log_worker_session_ready(*, scope: str, session, geography) -> None:
     """Write worker-session setup details to stderr for Modal diagnostics."""
 
@@ -252,7 +250,6 @@ def _log_worker_session_ready(*, scope: str, session, geography) -> None:
 def main(argv: list[str] | None = None):
     args = parse_args(argv)
 
-    dataset_path = Path(args.dataset_path)
     output_dir = Path(args.output_dir)
     run_id = args.run_id or output_dir.name or "local-worker"
 
@@ -265,14 +262,16 @@ def main(argv: list[str] | None = None):
     original_stdout = sys.stdout
     sys.stdout = sys.stderr
 
-    from policyengine_us_data.calibration.publish_local_area import (
-        build_h5,
-    )
     from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog
     from policyengine_us_data.build_outputs.requests import AreaBuildRequest
     from policyengine_us_data.build_outputs.validation import (
         AreaValidationService,
         ValidationPolicy,
+    )
+    from policyengine_us_data.build_outputs.worker_service import (
+        LocalH5WorkerService,
+        WorkerExecutionConfig,
+        WorkerResult,
     )
     from policyengine_us_data.build_outputs.worker_session import WorkerSessionFactory
 
@@ -297,8 +296,6 @@ def main(argv: list[str] | None = None):
         artifacts_dir=Path(args.artifacts_dir) if args.artifacts_dir else None,
         expected_scope_fingerprint=args.scope_fingerprint,
     )
-    weights = session.weights.values
-    n_records = session.weights.n_records
     geography = session.geography
     validation_context = session.validation_context
     _log_worker_session_ready(scope=scope, session=session, geography=geography)
@@ -312,111 +309,55 @@ def main(argv: list[str] | None = None):
             file=sys.stderr,
         )
 
-    results = {
-        "completed": [],
-        "failed": [],
-        "errors": [],
-        "validation_rows": [],
-        "validation_summary": {},
-    }
+    requests, request_issues = _resolve_worker_requests(
+        request_input_mode=request_input_mode,
+        request_inputs=request_inputs,
+        area_catalog=area_catalog,
+        geography=geography,
+    )
+    worker_result = LocalH5WorkerService(
+        validation_service=validation_service,
+    ).execute(
+        session=session,
+        requests=requests,
+        config=WorkerExecutionConfig(
+            output_dir=output_dir,
+            takeup_filter=tuple(takeup_filter),
+            validate=not args.no_validate,
+        ),
+    )
+    if request_issues:
+        worker_result = WorkerResult(
+            area_results=worker_result.area_results,
+            issues=(*request_issues, *worker_result.issues),
+        )
 
-    for request_input in request_inputs:
-        try:
-            request_key = (
-                _work_item_key(request_input)
-                if request_input_mode == "work_items"
-                else None
+    for area_result in worker_result.area_results:
+        if area_result.status == "completed":
+            print(f"Completed {area_result.key}", file=sys.stderr)
+        else:
+            message = (
+                area_result.issues[0].message if area_result.issues else "unknown error"
             )
-            request_key, request = _resolve_request_input(
-                request_input_mode=request_input_mode,
-                request_input=request_input,
-                area_catalog=area_catalog,
-                geography=geography,
-            )
-            if request is None:
-                print(
-                    f"Skipping {request_key}: no matching geography in legacy work item",
-                    file=sys.stderr,
-                )
-                continue
-
-            output_path = _resolve_output_path(
-                output_dir=output_dir,
-                output_relative_path=request.output_relative_path,
-            )
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            build_kwargs = _build_kwargs_from_request(request)
-            if request.area_type == "national":
-                n_clones_from_weights = weights.shape[0] // n_records
-                if n_clones_from_weights != geography.n_clones:
-                    raise ValueError(
-                        f"National weights have {n_clones_from_weights} clones "
-                        f"but geography has {geography.n_clones}. "
-                        "Use the matching saved geography artifact."
-                    )
-                path = build_h5(
-                    weights=weights,
-                    geography=geography,
-                    dataset_path=dataset_path,
-                    output_path=output_path,
-                )
-            else:
-                path = build_h5(
-                    weights=weights,
-                    geography=geography,
-                    dataset_path=dataset_path,
-                    output_path=output_path,
-                    takeup_filter=takeup_filter,
-                    **build_kwargs,
-                )
-
-            if path:
-                results["completed"].append(request_key)
-                print(
-                    f"Completed {request_key}",
-                    file=sys.stderr,
-                )
-
-                if not args.no_validate and validation_context is not None:
-                    try:
-                        validation_result = validation_service.validate_request(
-                            context=validation_context,
-                            h5_path=str(path),
-                            request=request,
-                        )
-                        v_rows = list(validation_result.rows)
-                        results["validation_rows"].extend(v_rows)
-                        summary = dict(validation_result.summary)
-                        results["validation_summary"][request_key] = summary
-                        print(
-                            f"  Validated {request_key}: "
-                            f"{summary['n_targets']} targets, "
-                            f"{summary['n_sanity_fail']} sanity fails, "
-                            f"mean RAE={summary['mean_rel_abs_error']:.4f}",
-                            file=sys.stderr,
-                        )
-                    except Exception as ve:
-                        print(
-                            f"  Validation failed for {request_key}: {ve}",
-                            file=sys.stderr,
-                        )
-
-        except Exception as e:
-            results["failed"].append(request_key)
-            results["errors"].append(
-                {
-                    "item": request_key,
-                    "error": str(e),
-                    "traceback": traceback.format_exc(),
-                }
-            )
+            print(f"FAILED {area_result.key}: {message}", file=sys.stderr)
+        if area_result.validation_status == "passed" and area_result.validation_summary:
+            summary = area_result.validation_summary
             print(
-                f"FAILED {request_key}: {e}",
+                f"  Validated {area_result.key}: "
+                f"{summary['n_targets']} targets, "
+                f"{summary['n_sanity_fail']} sanity fails, "
+                f"mean RAE={summary['mean_rel_abs_error']:.4f}",
+                file=sys.stderr,
+            )
+        elif area_result.validation_status == "error" and area_result.issues:
+            print(
+                f"  Validation failed for {area_result.key}: "
+                f"{area_result.issues[-1].message}",
                 file=sys.stderr,
             )
 
     sys.stdout = original_stdout
-    print(json.dumps(results))
+    print(json.dumps(worker_result.to_legacy_dict()))
 
 
 if __name__ == "__main__":

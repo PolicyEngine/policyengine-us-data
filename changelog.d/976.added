@@ -1,0 +1,1 @@
+Add a reusable local H5 worker service boundary and keep the Modal worker script as a thin adapter.

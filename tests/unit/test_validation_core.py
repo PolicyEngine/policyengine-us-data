@@ -9,12 +9,16 @@ from policyengine_us_data.stage_contracts import (
     ValidationReport,
 )
 from policyengine_us_data.validation_core import (
+    ValidationFindingsJsonlOutputStrategy,
+    ValidationReportJsonOutputStrategy,
+    ValidationReportOutput,
+    ValidationReportWriter,
     ValidationArtifactResolver,
     ValidationCheck,
     ValidationContext,
-    ValidationResultWriter,
     ValidationRunner,
     ValidationSuite,
+    ValidationSummaryJsonOutputStrategy,
 )
 
 
@@ -526,7 +530,7 @@ def test_result_writer_emits_report_json_and_jsonl_findings(tmp_path):
         _suite(_check("first"), _check("second", "warn")),
         _context(),
     )
-    paths = ValidationResultWriter(
+    paths = ValidationReportWriter(
         output_dir=tmp_path,
         summary_filename="summary.json",
     ).write(report)
@@ -551,7 +555,7 @@ def test_result_writer_emits_report_json_and_jsonl_findings(tmp_path):
 
 def test_validation_report_output_round_trips_through_stage_contract_schema(tmp_path):
     report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
-    paths = ValidationResultWriter(output_dir=tmp_path).write(report)
+    paths = ValidationReportWriter(output_dir=tmp_path).write(report)
 
     restored = ValidationReport.from_dict(
         json.loads(paths["report"].read_text(encoding="utf-8"))
@@ -570,7 +574,7 @@ def test_validation_report_output_round_trips_through_stage_contract_schema(tmp_
 )
 def test_result_writer_rejects_filenames_outside_output_dir(tmp_path, field, filename):
     report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
-    writer = ValidationResultWriter(output_dir=tmp_path, **{field: filename})
+    writer = ValidationReportWriter(output_dir=tmp_path, **{field: filename})
 
     with pytest.raises(ValueError, match="plain filename"):
         writer.write(report)
@@ -578,7 +582,7 @@ def test_result_writer_rejects_filenames_outside_output_dir(tmp_path, field, fil
 
 def test_result_writer_rejects_duplicate_output_filenames(tmp_path):
     report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
-    writer = ValidationResultWriter(
+    writer = ValidationReportWriter(
         output_dir=tmp_path,
         summary_filename="validation_report.json",
     )
@@ -586,3 +590,67 @@ def test_result_writer_rejects_duplicate_output_filenames(tmp_path):
     with pytest.raises(ValueError, match="distinct"):
         writer.write(report)
     assert list(tmp_path.iterdir()) == []
+
+
+class _StatusTextOutputStrategy:
+    def build(self, report: ValidationReport) -> ValidationReportOutput:
+        return ValidationReportOutput(
+            key="status",
+            filename="status.txt",
+            content=f"{report.status}\n",
+        )
+
+
+def test_result_writer_accepts_custom_output_strategy(tmp_path):
+    report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=(
+            ValidationReportJsonOutputStrategy(),
+            _StatusTextOutputStrategy(),
+        ),
+    )
+
+    paths = writer.write(report)
+
+    assert set(paths) == {"report", "status"}
+    assert paths["status"].read_text(encoding="utf-8") == "pass\n"
+    assert paths["report"].name == "validation_report.json"
+
+
+def test_result_writer_rejects_duplicate_output_keys(tmp_path):
+    report = ValidationRunner().run(_suite(_check("artifact_exists")), _context())
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=(
+            ValidationReportJsonOutputStrategy(key="report"),
+            ValidationFindingsJsonlOutputStrategy(key="report"),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="output keys"):
+        writer.write(report)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_summary_strategy_can_be_composed_explicitly(tmp_path):
+    report = ValidationRunner().run(
+        _suite(_check("first"), _check("second", "warn")),
+        _context(),
+    )
+    writer = ValidationReportWriter(
+        output_dir=tmp_path,
+        strategies=(
+            ValidationReportJsonOutputStrategy(),
+            ValidationFindingsJsonlOutputStrategy(),
+            ValidationSummaryJsonOutputStrategy(filename="summary.json"),
+        ),
+    )
+
+    paths = writer.write(report)
+    summary = DiagnosticRef.from_dict(
+        json.loads(paths["summary"].read_text(encoding="utf-8"))
+    )
+
+    assert summary.severity == "warning"
+    assert summary.summary["finding_count"] == 2

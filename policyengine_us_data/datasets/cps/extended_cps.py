@@ -680,6 +680,12 @@ _HOUSING_ASSISTANCE_FORMULA_OUTPUTS = {
     "housing_assistance",
     "spm_unit_capped_housing_subsidy",
 }
+_FINAL_COMPUTED_OUTPUTS_TO_DROP = {
+    "dividend_income",
+    "interest_income",
+    "rent",
+    "spm_unit_capped_work_childcare_expenses",
+}
 _MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.01
 
 
@@ -970,6 +976,7 @@ class ExtendedCPS(Dataset):
                 self.time_period,
                 had_positive_mortgage_input,
             )
+        new_data = self._drop_final_computed_outputs(new_data)
         new_data = self._assert_no_computed_variables_exported(
             new_data,
             self.time_period,
@@ -1416,6 +1423,14 @@ class ExtendedCPS(Dataset):
         """Remove housing assistance formula outputs after validation."""
 
         for variable in sorted(set(data) & _HOUSING_ASSISTANCE_FORMULA_OUTPUTS):
+            del data[variable]
+        return data
+
+    @classmethod
+    def _drop_final_computed_outputs(cls, data):
+        """Remove final aggregates that policyengine-us recomputes from leaves."""
+
+        for variable in sorted(set(data) & _FINAL_COMPUTED_OUTPUTS_TO_DROP):
             del data[variable]
         return data
 

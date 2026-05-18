@@ -22,9 +22,17 @@ ENTITY_ID_VARIABLES = {
     "household": "household_id",
 }
 
-# policyengine-us defines a fallback formula for person_id, but persisted
-# datasets need stable person IDs for entity links and downstream joins.
-STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset({"person_id"})
+# policyengine-us defines fallback or derivation formulas for these variables,
+# but persisted datasets intentionally carry them as stable structural/cache
+# fields for entity links, immigration identification, and geography joins.
+STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset(
+    {
+        "person_id",
+        "has_tin",
+        "has_itin",
+        "in_nyc",
+    }
+)
 
 AUXILIARY_ENTITY_PREFIXES = {
     "person_": "person",

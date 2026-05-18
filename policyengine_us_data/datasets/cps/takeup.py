@@ -1,33 +1,10 @@
 import numpy as np
 
-VERY_LOW_INCOME_LEVELS = {"ESPECIALLY_LOW", "VERY_LOW"}
-
 
 def _validate_same_shape(*arrays: np.ndarray) -> None:
     shapes = {np.asarray(array).shape for array in arrays}
     if len(shapes) != 1:
         raise ValueError("All arrays must have the same shape")
-
-
-def _enum_names(values: np.ndarray) -> np.ndarray:
-    return np.asarray(
-        [
-            getattr(value, "name", str(value))
-            for value in np.asarray(values, dtype=object)
-        ]
-    )
-
-
-def very_low_income_renter_mask(
-    income_level: np.ndarray,
-    tenure_type: np.ndarray,
-) -> np.ndarray:
-    income_level = _enum_names(income_level)
-    tenure_type = _enum_names(tenure_type)
-    _validate_same_shape(income_level, tenure_type)
-    return np.isin(income_level, list(VERY_LOW_INCOME_LEVELS)) & (
-        tenure_type == "RENTER"
-    )
 
 
 def prioritize_reported_recipients(

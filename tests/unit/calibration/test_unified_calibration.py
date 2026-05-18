@@ -315,6 +315,22 @@ class TestBlockSaltedDraws:
 
         np.testing.assert_array_equal(result, np.array([False, True]))
 
+    def test_eligible_mask_preserves_reported_and_limits_others(self):
+        result = compute_block_takeup_for_entities(
+            "takes_up_housing_assistance_if_eligible",
+            1.0,
+            np.array(["370010001001001"] * 4),
+            np.array([1, 2, 3, 4], dtype=np.int64),
+            np.zeros(4, dtype=np.int64),
+            reported_mask=np.array([True, False, False, False]),
+            eligible_mask=np.array([False, False, True, False]),
+        )
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([True, False, True, False]),
+        )
+
 
 class TestApplyBlockTakeupToArrays:
     """Verify apply_block_takeup_to_arrays returns correct
@@ -486,6 +502,31 @@ class TestApplyBlockTakeupToArrays:
         np.testing.assert_array_equal(
             result["would_file_taxes_voluntarily"],
             np.array([False, True]),
+        )
+
+    def test_apply_block_takeup_passes_eligibility_masks(self):
+        args = self._make_arrays(4, 1, 1, 1)
+
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2024,
+            takeup_filter=["takes_up_housing_assistance_if_eligible"],
+            precomputed_rates={"housing_assistance": 1.0},
+            reported_anchors={
+                "takes_up_housing_assistance_if_eligible": np.array(
+                    [True, False, False, False]
+                )
+            },
+            eligibility_masks={
+                "takes_up_housing_assistance_if_eligible": np.array(
+                    [False, False, True, False]
+                )
+            },
+        )
+
+        np.testing.assert_array_equal(
+            result["takes_up_housing_assistance_if_eligible"],
+            np.array([True, False, True, False]),
         )
 
 

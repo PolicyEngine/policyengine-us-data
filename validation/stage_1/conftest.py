@@ -28,19 +28,6 @@ if NEEDS_EXTENDED_CPS:
     collect_ignore_glob.append("test_no_formula_variables_stored.py")
 
 
-def pytest_collection_modifyitems(config, items):
-    marker_name = "verify_behavior_skip_temporarily"
-    for item in items:
-        marker = item.get_closest_marker(marker_name)
-        if marker is None:
-            continue
-        reason = marker.kwargs.get(
-            "reason",
-            "Temporarily skipped while expected validation behavior is verified.",
-        )
-        item.add_marker(pytest.mark.skip(reason=reason))
-
-
 @pytest.fixture(scope="session", autouse=True)
 def refresh_policy_db_views():
     db_path = STORAGE_FOLDER / "calibration" / "policy_data.db"

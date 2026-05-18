@@ -36,10 +36,11 @@
   • Date: 2024  
   • Location: https://www.medicaid.gov/resources-for-states/downloads/eligib-oper-and-enrol-snap-december2024.pdf#page=26
 
-- **medicaid_enrollment_2025.csv**  
-  • Source: Medicaid.gov performance indicator dataset, latest final-report month available in the March 2026 release  
-  • Date: November 2025 final reports  
-  • Location: https://data.medicaid.gov/dataset/State-Medicaid-and-CHIP-Applications-Eligibility-Deter/pi-dataset-march-2026release
+- **medicaid_enrollment_2025.csv**
+  • Source: Medicaid.gov performance indicator dataset, updated December 2025 Applications, Eligibility, and Enrollment Data
+  • Date: December 2025 final reports, last updated April 24, 2026
+  • Location: https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360?conditions%5B0%5D%5Boperator%5D=%3D&conditions%5B0%5D%5Bproperty%5D=reporting_period&conditions%5B0%5D%5Bvalue%5D=202512&conditions%5B1%5D%5Boperator%5D=%3D&conditions%5B1%5D%5Bproperty%5D=preliminary_or_updated&conditions%5B1%5D%5Bvalue%5D=U
+  • Notes: Uses `total_medicaid_enrollment`, not combined Medicaid and CHIP enrollment.
 
 - **district_mapping.csv**
   • Source: created by the script `policyengine_us/storage/calibration_targets/make_district_mapping.py`

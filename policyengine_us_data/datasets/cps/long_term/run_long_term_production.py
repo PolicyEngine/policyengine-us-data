@@ -15,6 +15,10 @@ from policyengine_us_data.datasets.cps.long_term.run_household_projection_parall
     parse_years,
 )
 from policyengine_us_data.utils.data_upload import upload_to_staging_hf
+from policyengine_us_data.utils.policyengine import (
+    PolicyEngineUSBuildInfo,
+    assert_locked_policyengine_us_version,
+)
 from policyengine_us_data.utils.run_context import resolve_run_id, staging_prefix
 
 
@@ -176,6 +180,7 @@ def write_manifest(
     years: list[int],
     run_id: str,
     source_sha: str,
+    policyengine_us_build: PolicyEngineUSBuildInfo,
     artifacts: list[Path],
 ) -> Path:
     manifest_path = output_dir / "long_run_production_manifest.json"
@@ -197,6 +202,7 @@ def write_manifest(
             "policyengine-us": _package_version("policyengine-us"),
             "policyengine-core": _package_version("policyengine-core"),
         },
+        "policyengine_us": policyengine_us_build.to_metadata_dict(),
         "projection": {
             "years_spec": args.years,
             "years": years,
@@ -329,6 +335,7 @@ def main() -> int:
     source_sha = args.source_sha or os.environ.get("GITHUB_SHA", "") or _git_sha()
 
     command = build_projection_command(args, output_dir)
+    policyengine_us_build = assert_locked_policyengine_us_version()
     print("Running long-run projection command:")
     print(" ".join(command))
     subprocess.run(command, check=True)
@@ -341,6 +348,7 @@ def main() -> int:
         years=years,
         run_id=run_id,
         source_sha=source_sha,
+        policyengine_us_build=policyengine_us_build,
         artifacts=artifacts,
     )
     artifacts = collect_artifacts(output_dir, args.artifact_prefix)

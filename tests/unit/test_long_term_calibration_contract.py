@@ -13,6 +13,9 @@ from policyengine_us_data.datasets.cps.long_term import (
     build_long_term_target_sources as target_source_builder,
     calibration as calibration_module,
 )
+from policyengine_us_data.datasets.cps.long_term import (
+    prototype_synthetic_2100_support as synthetic_support_module,
+)
 from policyengine_us_data.datasets.cps.long_term.calibration import (
     assess_nonnegative_feasibility,
     build_calibration_audit,
@@ -43,6 +46,7 @@ from policyengine_us_data.datasets.cps.long_term.projection_utils import (
     project_input_variable_values_to_person_rows,
     validate_projected_social_security_cap,
 )
+from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 from policyengine_us_data.datasets.cps.long_term.ssa_data import (
     available_long_term_target_sources,
     describe_long_term_target_source,
@@ -346,6 +350,37 @@ def test_targeted_donor_support_builder_forwards_reform(
 
     assert calls["reform"] is reform
     assert report["profile"] == profile
+
+
+def test_role_composite_dataset_passes_reform_to_input_builder(monkeypatch):
+    reform = object()
+    captured = {}
+
+    def build_input_dataframe(**kwargs):
+        captured["reform"] = kwargs.get("reform")
+        return "input-frame", {"ok": True}
+
+    monkeypatch.setattr(
+        synthetic_support_module,
+        "build_role_composite_augmented_input_dataframe",
+        build_input_dataframe,
+    )
+    monkeypatch.setattr(
+        synthetic_support_module.Dataset,
+        "from_dataframe",
+        staticmethod(lambda df, year: {"df": df, "year": year}),
+    )
+
+    dataset, report = synthetic_support_module.build_role_composite_augmented_dataset(
+        base_dataset="base.h5",
+        base_year=2024,
+        target_year=2100,
+        reform=reform,
+    )
+
+    assert captured["reform"] is reform
+    assert dataset == {"df": "input-frame", "year": 2024}
+    assert report == {"ok": True}
 
 
 def test_support_augmentation_clones_households_with_new_ids():
@@ -1128,6 +1163,55 @@ def test_manifest_updates_and_rejects_profile_mismatch(tmp_path):
     assert rebuilt["years"] == [2026, 2027]
 
 
+def test_year_metadata_and_manifest_stamp_policyengine_us_build(tmp_path):
+    profile = get_profile("ss-payroll-tob")
+    audit = {
+        "method_used": "greg",
+        "fell_back_to_ipf": False,
+        "negative_weight_pct": 0.0,
+    }
+    build_info = PolicyEngineUSBuildInfo(
+        version="1.700.0",
+        locked_version="1.700.0",
+        git_commit="abc123",
+        git_dirty=False,
+        package_file_sha256="f" * 64,
+        package_tree_sha256="t" * 64,
+    )
+    h5_path = tmp_path / "2100.h5"
+    h5_path.write_text("", encoding="utf-8")
+
+    metadata_path = write_year_metadata(
+        h5_path,
+        year=2100,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+        policyengine_us=build_info,
+    )
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    assert metadata["policyengine_us"]["version"] == "1.700.0"
+    assert metadata["policyengine_us"]["locked_version"] == "1.700.0"
+    assert metadata["policyengine_us"]["commit_id"] == "abc123"
+    assert metadata["policyengine_us"]["git_dirty"] is False
+    assert metadata["policyengine_us"]["package_tree_sha256"] == "t" * 64
+
+    manifest_path = update_dataset_manifest(
+        tmp_path,
+        year=2100,
+        h5_path=h5_path,
+        metadata_path=metadata_path,
+        base_dataset_path="test.h5",
+        profile=profile.to_dict(),
+        calibration_audit=audit,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["policyengine_us"] == metadata["policyengine_us"]
+    assert manifest["datasets"]["2100"]["policyengine_us_version"] == "1.700.0"
+
+
 def test_hard_target_tob_affects_quality_classification():
     profile = get_profile("ss-payroll-tob")
     quality = classify_calibration_quality(
@@ -1784,6 +1868,10 @@ def test_write_year_metadata_persists_runtime_and_snapshot_provenance(tmp_path):
 
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert metadata["policyengine_us"]["git_head"] == "abc123"
+    assert metadata["policyengine_us"]["commit_id"] == "abc123"
+    assert (
+        metadata["policyengine_us"]["direct_url"]["vcs_info"]["commit_id"] == "abc123"
+    )
     assert metadata["base_dataset_snapshot"]["resolved_file_sha256"] == "deadbeef"
 
 
@@ -1843,6 +1931,10 @@ def test_update_dataset_manifest_persists_runtime_and_snapshot_provenance(tmp_pa
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["policyengine_us"]["git_head"] == "abc123"
+    assert manifest["policyengine_us"]["commit_id"] == "abc123"
+    assert (
+        manifest["policyengine_us"]["direct_url"]["vcs_info"]["commit_id"] == "abc123"
+    )
     assert manifest["base_dataset_snapshot"]["resolved_file_sha256"] == "deadbeef"
 
 
@@ -1858,12 +1950,14 @@ def test_capture_base_dataset_snapshot_fingerprints_local_file(tmp_path):
     assert snapshot["resolved_size"] == dataset_file.stat().st_size
 
 
-def test_capture_policyengine_us_provenance_includes_runtime_file():
+def test_capture_policyengine_us_provenance_uses_managed_build_schema():
     provenance = capture_policyengine_us_provenance()
 
-    assert provenance["package_file"]
     assert provenance["package_file_sha256"]
+    assert provenance["package_tree_sha256"]
     assert provenance["version"]
+    assert "source_path" not in provenance
+    assert "package_file" not in provenance
 
 
 def test_update_dataset_manifest_ignores_tax_assumption_end_year(tmp_path):
@@ -2350,6 +2444,8 @@ def test_compose_role_donor_rows_falls_back_for_missing_dependents():
     enriched = df.copy()
     enriched["__pe_payroll_uprating_factor"] = 2.0
     enriched["__pe_ss_uprating_factor"] = 3.0
+    enriched["partnership_s_corp_income__2024"] = 1_000_000.0
+    enriched["taxable_interest_income__2024"] = 500_000.0
 
     older_rows = enriched[enriched["person_tax_unit_id__2024"] == 201].copy()
     worker_rows = enriched[enriched["person_tax_unit_id__2024"] == 301].copy()

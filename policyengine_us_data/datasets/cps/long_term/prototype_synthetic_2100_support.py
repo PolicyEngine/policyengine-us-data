@@ -110,6 +110,45 @@ WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS = (
 )
 PAYROLL_UPRATING_FACTOR_COLUMN = "__pe_payroll_uprating_factor"
 SS_UPRATING_FACTOR_COLUMN = "__pe_ss_uprating_factor"
+NON_TARGET_CLONE_INCOME_COMPONENTS = (
+    "alimony_income",
+    "disability_benefits",
+    "estate_income",
+    "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "keogh_distributions",
+    "long_term_capital_gains_before_response",
+    "long_term_capital_gains_on_collectibles",
+    "miscellaneous_income",
+    "non_qualified_dividend_income",
+    "non_sch_d_capital_gains",
+    "partnership_s_corp_income",
+    "partnership_se_income",
+    "qualified_bdc_income",
+    "qualified_dividend_income",
+    "qualified_reit_and_ptp_income",
+    "rental_income",
+    "salt_refund_income",
+    "short_term_capital_gains",
+    "strike_benefits",
+    "tax_exempt_401k_distributions",
+    "tax_exempt_403b_distributions",
+    "tax_exempt_interest_income",
+    "tax_exempt_ira_distributions",
+    "tax_exempt_private_pension_income",
+    "tax_exempt_sep_distributions",
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "taxable_interest_income",
+    "taxable_ira_distributions",
+    "taxable_private_pension_income",
+    "taxable_sep_distributions",
+    "unemployment_compensation",
+    "unrecaptured_section_1250_gain",
+    "veterans_benefits",
+    "workers_compensation",
+)
 
 
 @dataclass(frozen=True)
@@ -685,8 +724,18 @@ def _scale_levels(levels: list[float], scale: float) -> list[float]:
 
 
 @lru_cache(maxsize=None)
-def load_policyengine_social_security_cap(year: int) -> float:
+def _load_policyengine_social_security_cap_without_reform(year: int) -> float:
     sim = Microsimulation(dataset=DEFAULT_DATASET)
+    return validate_projected_social_security_cap(
+        sim.tax_benefit_system.parameters,
+        year,
+    )
+
+
+def load_policyengine_social_security_cap(year: int, *, reform=None) -> float:
+    if reform is None:
+        return _load_policyengine_social_security_cap_without_reform(year)
+    sim = Microsimulation(dataset=DEFAULT_DATASET, reform=reform)
     return validate_projected_social_security_cap(
         sim.tax_benefit_system.parameters,
         year,
@@ -1868,6 +1917,21 @@ def _zero_period_columns(
     return available_columns
 
 
+def _zero_clone_non_target_income(
+    cloned: pd.DataFrame,
+    *,
+    base_year: int,
+) -> pd.DataFrame:
+    columns = [
+        _period_column(component, base_year)
+        for component in NON_TARGET_CLONE_INCOME_COMPONENTS
+        if _period_column(component, base_year) in cloned.columns
+    ]
+    if columns:
+        cloned.loc[:, columns] = 0.0
+    return cloned
+
+
 def _target_base_total_for_row(
     row: pd.Series,
     *,
@@ -1964,6 +2028,7 @@ def _clone_tax_unit_rows_to_target(
         _period_column(component, base_year) for component in SS_COMPONENTS
     )
     qbi_col = _period_column("w2_wages_from_qualified_business", base_year)
+    cloned = _zero_clone_non_target_income(cloned, base_year=base_year)
 
     target_head_payroll = _target_base_total_for_row(
         cloned.loc[head_idx],
@@ -2351,7 +2416,10 @@ def build_donor_backed_augmented_input_dataframe(
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
-    payroll_cap = load_policyengine_social_security_cap(target_year)
+    payroll_cap = load_policyengine_social_security_cap(
+        target_year,
+        reform=reform,
+    )
     candidates = generate_synthetic_candidates(
         pools,
         payroll_cap=payroll_cap,
@@ -2499,7 +2567,10 @@ def build_role_composite_augmented_input_dataframe(
         ss_scale=ss_scale,
         earnings_scale=earnings_scale,
     )
-    payroll_cap = load_policyengine_social_security_cap(target_year)
+    payroll_cap = load_policyengine_social_security_cap(
+        target_year,
+        reform=reform,
+    )
     candidates = generate_synthetic_candidates(
         pools,
         payroll_cap=payroll_cap,

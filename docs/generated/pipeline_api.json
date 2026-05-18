@@ -2217,6 +2217,33 @@
     "signature": "class VariableCloner",
     "source_file": "policyengine_us_data/build_outputs/variables.py"
   },
+  "local_h5_worker_area_result": {
+    "docstring": "Structured result for one area handled by a worker.",
+    "id": "local_h5_worker_area_result",
+    "kind": "class",
+    "line": 113,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_service.WorkerAreaResult"
+      ],
+      "description": "Structured result for one local H5 worker request.",
+      "id": "local_h5_worker_area_result",
+      "label": "WorkerAreaResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_service.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_service.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_service.WorkerAreaResult",
+    "signature": "class WorkerAreaResult",
+    "source_file": "policyengine_us_data/build_outputs/worker_service.py"
+  },
   "local_h5_worker_bootstrap_builder": {
     "docstring": "Build and persist one scope's local H5 worker bootstrap artifacts.",
     "id": "local_h5_worker_bootstrap_builder",
@@ -2349,6 +2376,115 @@
     "signature": "class WorkerCalibrationInputs",
     "source_file": "policyengine_us_data/build_outputs/worker_inputs.py"
   },
+  "local_h5_worker_execution_config": {
+    "docstring": "Execution policy for one worker chunk.",
+    "id": "local_h5_worker_execution_config",
+    "kind": "class",
+    "line": 47,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_service.WorkerExecutionConfig"
+      ],
+      "description": "Runtime policy for one local H5 worker-service execution.",
+      "id": "local_h5_worker_execution_config",
+      "label": "WorkerExecutionConfig",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_service.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_service.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_service.WorkerExecutionConfig",
+    "signature": "class WorkerExecutionConfig",
+    "source_file": "policyengine_us_data/build_outputs/worker_service.py"
+  },
+  "local_h5_worker_issue": {
+    "docstring": "Structured worker issue for request, build, write, or validation failures.",
+    "id": "local_h5_worker_issue",
+    "kind": "class",
+    "line": 78,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_service.WorkerIssue"
+      ],
+      "description": "Structured issue reported by one local H5 worker request.",
+      "id": "local_h5_worker_issue",
+      "label": "WorkerIssue",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_service.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_service.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_service.WorkerIssue",
+    "signature": "class WorkerIssue",
+    "source_file": "policyengine_us_data/build_outputs/worker_service.py"
+  },
+  "local_h5_worker_result": {
+    "docstring": "Structured result for a worker chunk.",
+    "id": "local_h5_worker_result",
+    "kind": "class",
+    "line": 166,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_service.WorkerResult"
+      ],
+      "description": "Structured result for one local H5 worker chunk.",
+      "id": "local_h5_worker_result",
+      "label": "WorkerResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_service.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_service.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_service.WorkerResult",
+    "signature": "class WorkerResult",
+    "source_file": "policyengine_us_data/build_outputs/worker_service.py"
+  },
+  "local_h5_worker_service": {
+    "docstring": "Execute typed local H5 requests for one prepared worker session.",
+    "id": "local_h5_worker_service",
+    "kind": "class",
+    "line": 226,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_service.LocalH5WorkerService"
+      ],
+      "description": "Execute one worker chunk of local H5 build requests.",
+      "id": "local_h5_worker_service",
+      "label": "LocalH5WorkerService",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_service.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_service.py",
+        "uv run pytest tests/integration/build_outputs/h5_worker_runtime/test_worker_script_tiny_fixture.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_service.LocalH5WorkerService",
+    "signature": "class LocalH5WorkerService",
+    "source_file": "policyengine_us_data/build_outputs/worker_service.py"
+  },
   "local_h5_worker_session": {
     "docstring": "Prepared local H5 state for one worker process.",
     "id": "local_h5_worker_session",
@@ -2387,7 +2523,7 @@
     "docstring": "Build worker-scoped setup from raw inputs or persisted bootstrap facts.",
     "id": "local_h5_worker_session_factory",
     "kind": "class",
-    "line": 91,
+    "line": 99,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_session.WorkerSessionFactory"

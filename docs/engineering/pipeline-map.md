@@ -1124,6 +1124,14 @@ class VariableCloner
 
 Clone source variable arrays using selected and reindexed entity rows.
 
+### `policyengine_us_data.build_outputs.worker_service.WorkerAreaResult`
+
+```python
+class WorkerAreaResult
+```
+
+Structured result for one area handled by a worker.
+
 ### `policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder`
 
 ```python
@@ -1155,6 +1163,38 @@ class WorkerCalibrationInputs
 ```
 
 Input artifact paths and runtime settings for one H5 worker batch.
+
+### `policyengine_us_data.build_outputs.worker_service.WorkerExecutionConfig`
+
+```python
+class WorkerExecutionConfig
+```
+
+Execution policy for one worker chunk.
+
+### `policyengine_us_data.build_outputs.worker_service.WorkerIssue`
+
+```python
+class WorkerIssue
+```
+
+Structured worker issue for request, build, write, or validation failures.
+
+### `policyengine_us_data.build_outputs.worker_service.WorkerResult`
+
+```python
+class WorkerResult
+```
+
+Structured result for a worker chunk.
+
+### `policyengine_us_data.build_outputs.worker_service.LocalH5WorkerService`
+
+```python
+class LocalH5WorkerService
+```
+
+Execute typed local H5 requests for one prepared worker session.
 
 ### `policyengine_us_data.build_outputs.worker_session.WorkerSession`
 

@@ -50,6 +50,7 @@ _GEO_VARS = {
 
 COUNTY_DEPENDENT_VARS = {
     "aca_ptc",
+    "housing_assistance",
 }
 
 
@@ -1316,6 +1317,10 @@ def _process_single_clone(
             ent_hh_ids = household_ids[ent_hh]
             ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
+            eligible_mask = None
+            if takeup_var == "takes_up_housing_assistance_if_eligible":
+                eligible_mask = ent_eligible > 0
+
             ent_takeup = compute_block_takeup_for_entities(
                 takeup_var,
                 precomputed_rates[info["rate_key"]],
@@ -1323,6 +1328,7 @@ def _process_single_clone(
                 ent_hh_ids,
                 ent_ci,
                 reported_mask=reported_takeup_anchors.get(takeup_var),
+                eligible_mask=eligible_mask,
             )
 
             ent_values = (ent_eligible * ent_takeup).astype(np.float32)
@@ -1548,7 +1554,7 @@ class UnifiedMatrixBuilder:
         # Identify takeup-affected targets before the state loop
         affected_targets = {}
         if rerandomize_takeup:
-            for tvar in target_vars:
+            for tvar in target_vars | constraint_vars:
                 for key, info in TAKEUP_AFFECTED_TARGETS.items():
                     if tvar == key or tvar.startswith(key):
                         affected_targets[tvar] = info
@@ -2672,8 +2678,15 @@ class UnifiedMatrixBuilder:
             for _, row in targets_df.iterrows()
             if int(row.get("reform_id", 0)) > 0
         }
+
+        # 5a. Collect unique constraint variables
+        unique_constraint_vars = set()
+        for constraints in non_geo_constraints_list:
+            for c in constraints:
+                unique_constraint_vars.add(c["variable"])
+
         variable_entity_map: Dict[str, str] = {}
-        for var in unique_variables:
+        for var in unique_variables | unique_constraint_vars:
             if var in sim.tax_benefit_system.variables:
                 variable_entity_map[var] = sim.tax_benefit_system.variables[
                     var
@@ -2689,12 +2702,6 @@ class UnifiedMatrixBuilder:
                     var
                 ].entity.key
 
-        # 5a. Collect unique constraint variables
-        unique_constraint_vars = set()
-        for constraints in non_geo_constraints_list:
-            for c in constraints:
-                unique_constraint_vars.add(c["variable"])
-
         # 5b. Per-state precomputation (51 sims on one object)
         self._entity_rel_cache = None
         state_values = self._build_state_values(
@@ -2709,7 +2716,9 @@ class UnifiedMatrixBuilder:
         )
 
         # 5b-county. Per-county precomputation for county-dependent vars
-        county_dep_targets = unique_variables & COUNTY_DEPENDENT_VARS
+        county_dep_targets = (
+            unique_variables | unique_constraint_vars
+        ) & COUNTY_DEPENDENT_VARS
         county_values = self._build_county_values(
             sim,
             county_dep_targets,
@@ -2773,8 +2782,15 @@ class UnifiedMatrixBuilder:
                     reported_takeup_anchors["takes_up_medicaid_if_eligible"] = f[
                         "has_medicaid_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
+                if (
+                    "receives_housing_assistance" in f
+                    and period_key in f["receives_housing_assistance"]
+                ):
+                    reported_takeup_anchors[
+                        "takes_up_housing_assistance_if_eligible"
+                    ] = f["receives_housing_assistance"][period_key][...].astype(bool)
 
-            for tvar in unique_variables:
+            for tvar in unique_variables | unique_constraint_vars:
                 for key, info in TAKEUP_AFFECTED_TARGETS.items():
                     if tvar == key:
                         affected_target_info[tvar] = info
@@ -3111,6 +3127,10 @@ class UnifiedMatrixBuilder:
                         ent_hh_ids = household_ids[ent_hh]
                         ent_ci = np.full(n_ent, clone_idx, dtype=np.int64)
 
+                        eligible_mask = None
+                        if takeup_var == "takes_up_housing_assistance_if_eligible":
+                            eligible_mask = ent_eligible > 0
+
                         ent_takeup = compute_block_takeup_for_entities(
                             takeup_var,
                             precomputed_rates[info["rate_key"]],
@@ -3118,6 +3138,7 @@ class UnifiedMatrixBuilder:
                             ent_hh_ids,
                             ent_ci,
                             reported_mask=reported_takeup_anchors.get(takeup_var),
+                            eligible_mask=eligible_mask,
                         )
 
                         ent_values = (ent_eligible * ent_takeup).astype(np.float32)

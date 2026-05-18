@@ -206,6 +206,28 @@ class TestLoadTargetConfig:
             "domain_variable": "adjusted_gross_income,non_refundable_ctc",
         } in include_rules
 
+    def test_training_config_includes_housing_assistance_count_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "household_count",
+            "geo_level": "state",
+            "domain_variable": "housing_assistance",
+        } in include_rules
+        assert {
+            "variable": "household_count",
+            "geo_level": "national",
+            "domain_variable": "housing_assistance",
+        } in include_rules
+
     def test_training_config_includes_national_capital_income_agi_targets(self):
         config = load_target_config(
             str(

@@ -76,7 +76,7 @@ SIMPLE_TAKEUP_VARS = [
         "variable": "takes_up_housing_assistance_if_eligible",
         "entity": "spm_unit",
         "rate_key": "housing_assistance",
-        "target": None,
+        "target": "housing_assistance",
     },
 ]
 

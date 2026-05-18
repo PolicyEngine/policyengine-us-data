@@ -348,6 +348,18 @@ def test_policyengine_us_dependency_check_allow_stale_keeps_local_errors_fatal(
     assert module.main() == 1
 
 
+def test_pr_workflow_fails_on_stale_policyengine_us_dependency():
+    workflow = (REPO_ROOT / ".github/workflows/pr.yaml").read_text()
+
+    assert "require-current-policyengine-us:" in workflow
+    assert "name: Require current PolicyEngine US dependency" in workflow
+    assert (
+        "python .github/scripts/check_policyengine_us_dependency.py --mode fail"
+        in workflow
+    )
+    assert "check_policyengine_us_dependency.py --mode warn" not in workflow
+
+
 def test_restore_publication_changelog_restores_candidate_snapshot(
     tmp_path,
     monkeypatch,

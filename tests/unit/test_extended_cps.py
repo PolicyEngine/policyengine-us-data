@@ -213,6 +213,57 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
+    def test_final_export_contract_allows_structural_cache_variables(self):
+        data = {
+            "person_id": {2024: np.array([1])},
+            "has_tin": {2024: np.array([True])},
+            "has_itin": {2024: np.array([True])},
+            "in_nyc": {2024: np.array([False])},
+        }
+
+        ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_drop_final_computed_outputs_keeps_leaf_inputs(self):
+        data = {
+            "interest_income": {2024: np.array([100.0])},
+            "taxable_interest_income": {2024: np.array([80.0])},
+            "tax_exempt_interest_income": {2024: np.array([20.0])},
+            "dividend_income": {2024: np.array([50.0])},
+            "qualified_dividend_income": {2024: np.array([30.0])},
+            "non_qualified_dividend_income": {2024: np.array([20.0])},
+            "rent": {2024: np.array([1_000.0])},
+            "pre_subsidy_rent": {2024: np.array([1_000.0])},
+            "spm_unit_capped_work_childcare_expenses": {2024: np.array([500.0])},
+            "spm_unit_pre_subsidy_childcare_expenses": {2024: np.array([600.0])},
+            "has_tin": {2024: np.array([True])},
+            "has_itin": {2024: np.array([True])},
+            "in_nyc": {2024: np.array([False])},
+        }
+
+        result = ExtendedCPS._drop_final_computed_outputs(data)
+
+        for variable in (
+            "interest_income",
+            "dividend_income",
+            "rent",
+            "spm_unit_capped_work_childcare_expenses",
+        ):
+            assert variable not in result
+        for variable in (
+            "taxable_interest_income",
+            "tax_exempt_interest_income",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+            "pre_subsidy_rent",
+            "spm_unit_pre_subsidy_childcare_expenses",
+            "has_tin",
+            "has_itin",
+            "in_nyc",
+        ):
+            assert variable in result
+
+        ExtendedCPS._assert_no_computed_variables_exported(result, 2024)
+
     def test_drop_puf_computed_intermediates_after_clone(self):
         data = {
             "cdcc_relevant_expenses": {2024: np.array([1_000.0])},

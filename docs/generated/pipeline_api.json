@@ -2724,7 +2724,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1902,
+    "line": 1908,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3003,7 +3003,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 899,
+    "line": 905,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3338,6 +3338,178 @@
     "object_path": "modal_app.local_area.validate_staging",
     "signature": "def validate_staging(branch: str, run_id: str, version: str = '') -> Dict",
     "source_file": "modal_app/local_area.py"
+  },
+  "validation_core_artifact_resolver": {
+    "docstring": "Resolve logical validation artifact names to stage-contract references.",
+    "id": "validation_core_artifact_resolver",
+    "kind": "class",
+    "line": 71,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.context.ValidationArtifactResolver"
+      ],
+      "description": "Resolve logical validation artifact names to canonical stage-contract artifact references.",
+      "id": "validation_core_artifact_resolver",
+      "label": "ValidationArtifactResolver",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/context.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.context.ValidationArtifactResolver",
+    "signature": "class ValidationArtifactResolver",
+    "source_file": "policyengine_us_data/validation_core/context.py"
+  },
+  "validation_core_check": {
+    "docstring": "One executable validation check with stable identity and dependencies.",
+    "id": "validation_core_check",
+    "kind": "class",
+    "line": 63,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.checks.ValidationCheck"
+      ],
+      "description": "Stable declaration for one executable validation check and its artifact dependencies.",
+      "id": "validation_core_check",
+      "label": "ValidationCheck",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/checks.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.checks.ValidationCheck",
+    "signature": "class ValidationCheck",
+    "source_file": "policyengine_us_data/validation_core/checks.py"
+  },
+  "validation_core_context": {
+    "docstring": "Read-only context passed to validation checks.",
+    "id": "validation_core_context",
+    "kind": "class",
+    "line": 119,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.context.ValidationContext"
+      ],
+      "description": "Read-only cross-stage validation context with canonical stage identity.",
+      "id": "validation_core_context",
+      "label": "ValidationContext",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/context.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.context.ValidationContext",
+    "signature": "class ValidationContext",
+    "source_file": "policyengine_us_data/validation_core/context.py"
+  },
+  "validation_core_report_writer": {
+    "docstring": "Write validation report outputs generated by output strategies.",
+    "id": "validation_core_report_writer",
+    "kind": "class",
+    "line": 171,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.writers.ValidationReportWriter"
+      ],
+      "artifacts_in": [
+        "ValidationReport"
+      ],
+      "artifacts_out": [
+        "validation_report.json",
+        "validation_findings.jsonl"
+      ],
+      "description": "Write canonical validation artifacts using configurable output strategies.",
+      "id": "validation_core_report_writer",
+      "label": "ValidationReportWriter",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/writers.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.writers.ValidationReportWriter",
+    "signature": "class ValidationReportWriter",
+    "source_file": "policyengine_us_data/validation_core/writers.py"
+  },
+  "validation_core_runner": {
+    "docstring": "Run validation suites and aggregate canonical stage-contract reports.",
+    "id": "validation_core_runner",
+    "kind": "class",
+    "line": 35,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.runner.ValidationRunner"
+      ],
+      "artifacts_out": [
+        "ValidationReport"
+      ],
+      "description": "Shared runner that executes validation suites and aggregates canonical ValidationReport output.",
+      "id": "validation_core_runner",
+      "label": "ValidationRunner",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/runner.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.runner.ValidationRunner",
+    "signature": "class ValidationRunner",
+    "source_file": "policyengine_us_data/validation_core/runner.py"
+  },
+  "validation_core_suite": {
+    "docstring": "Ordered validation checks for one stage or substage boundary.",
+    "id": "validation_core_suite",
+    "kind": "class",
+    "line": 116,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.validation_core.checks.ValidationSuite"
+      ],
+      "description": "Ordered cross-stage validation suite for a canonical stage or substage boundary.",
+      "id": "validation_core_suite",
+      "label": "ValidationSuite",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/checks.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.validation_core.checks.ValidationSuite",
+    "signature": "class ValidationSuite",
+    "source_file": "policyengine_us_data/validation_core/checks.py"
   },
   "verify_runtime_seams": {
     "docstring": "Verify deployed-image imports and subprocess seams.",

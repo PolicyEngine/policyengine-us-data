@@ -1355,6 +1355,124 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.validation_core.context.ValidationArtifactResolver"
+      ],
+      "description": "Resolve logical validation artifact names to canonical stage-contract artifact references.",
+      "id": "validation_core_artifact_resolver",
+      "label": "ValidationArtifactResolver",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/context.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.validation_core.checks.ValidationCheck"
+      ],
+      "description": "Stable declaration for one executable validation check and its artifact dependencies.",
+      "id": "validation_core_check",
+      "label": "ValidationCheck",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/checks.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.validation_core.context.ValidationContext"
+      ],
+      "description": "Read-only cross-stage validation context with canonical stage identity.",
+      "id": "validation_core_context",
+      "label": "ValidationContext",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/context.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.validation_core.writers.ValidationReportWriter"
+      ],
+      "artifacts_in": [
+        "ValidationReport"
+      ],
+      "artifacts_out": [
+        "validation_report.json",
+        "validation_findings.jsonl"
+      ],
+      "description": "Write canonical validation artifacts using configurable output strategies.",
+      "id": "validation_core_report_writer",
+      "label": "ValidationReportWriter",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/writers.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.validation_core.runner.ValidationRunner"
+      ],
+      "artifacts_out": [
+        "ValidationReport"
+      ],
+      "description": "Shared runner that executes validation suites and aggregates canonical ValidationReport output.",
+      "id": "validation_core_runner",
+      "label": "ValidationRunner",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/runner.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.validation_core.checks.ValidationSuite"
+      ],
+      "description": "Ordered cross-stage validation suite for a canonical stage or substage boundary.",
+      "id": "validation_core_suite",
+      "label": "ValidationSuite",
+      "node_type": "library",
+      "pathways": [
+        "cross_stage_validation"
+      ],
+      "source_file": "policyengine_us_data/validation_core/checks.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_validation_core.py"
+      ]
+    },
+    {
+      "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"
       ],
       "description": "Check import, subprocess, baked-file, and Modal function seams before heavy pipeline execution.",
@@ -1424,9 +1542,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 69,
+    "api_node_count": 75,
     "canonical_stage_count": 5,
-    "decorated_object_count": 118,
+    "decorated_object_count": 124,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

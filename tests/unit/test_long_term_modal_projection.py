@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 
 def _load_long_term_projection_module(monkeypatch):
     fake_modal = ModuleType("modal")
@@ -146,6 +148,7 @@ def test_main_spawn_resolves_git_sha_sanitizes_run_id_and_reports_volume(
     long_term = _load_long_term_projection_module(monkeypatch)
     monkeypatch.delenv("GITHUB_SHA", raising=False)
     monkeypatch.setattr(long_term, "_local_git_sha", lambda: "abc123")
+    monkeypatch.setattr(long_term, "_local_git_dirty", lambda: False)
 
     captured_kwargs = {}
 
@@ -173,6 +176,58 @@ def test_main_spawn_resolves_git_sha_sanitizes_run_id_and_reports_volume(
     assert captured_kwargs["run_id"] == "crfb-sentinel"
     assert captured_kwargs["source_sha"] == "abc123"
     assert captured_kwargs["upload_to_hf_staging"] is False
+
+
+def test_main_refuses_dirty_source_by_default(monkeypatch):
+    long_term = _load_long_term_projection_module(monkeypatch)
+    monkeypatch.setattr(long_term, "_local_git_dirty", lambda: True)
+
+    with pytest.raises(ValueError, match="uncommitted changes"):
+        long_term.main(
+            years="2026",
+            run_id="run-123",
+            source_sha="abc123",
+            spawn=True,
+        )
+
+
+def test_main_refuses_source_sha_that_does_not_match_local_checkout(monkeypatch):
+    long_term = _load_long_term_projection_module(monkeypatch)
+    monkeypatch.setattr(long_term, "_local_git_dirty", lambda: False)
+    monkeypatch.setattr(long_term, "_local_git_sha", lambda: "localabc")
+
+    with pytest.raises(ValueError, match="does not match the local checkout"):
+        long_term.main(
+            years="2026",
+            run_id="run-123",
+            source_sha="otherabc",
+            spawn=True,
+        )
+
+
+def test_main_allows_dirty_source_only_when_explicit(monkeypatch, capsys):
+    long_term = _load_long_term_projection_module(monkeypatch)
+    monkeypatch.setattr(long_term, "_local_git_dirty", lambda: True)
+
+    captured_kwargs = {}
+
+    def fake_spawn(**kwargs):
+        captured_kwargs.update(kwargs)
+        return SimpleNamespace(object_id="fc-123")
+
+    long_term.build_long_term_projection = SimpleNamespace(spawn=fake_spawn)
+
+    long_term.main(
+        years="2026",
+        run_id="run-123",
+        source_sha="abc123",
+        spawn=True,
+        allow_dirty_source=True,
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["function_call_id"] == "fc-123"
+    assert captured_kwargs["source_sha"] == "abc123"
 
 
 def test_remote_result_reports_hf_staging_prefix(monkeypatch, tmp_path):

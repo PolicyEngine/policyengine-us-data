@@ -3,7 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 from argparse import Namespace
+from importlib import metadata
+from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import pytest
@@ -16,6 +19,7 @@ from policyengine_us_data.datasets.cps.long_term import (
 from policyengine_us_data.datasets.cps.long_term import (
     prototype_synthetic_2100_support as synthetic_support_module,
 )
+from policyengine_us_data.datasets.cps.long_term import run_long_term_production
 from policyengine_us_data.datasets.cps.long_term.calibration import (
     assess_nonnegative_feasibility,
     build_calibration_audit,
@@ -88,7 +92,9 @@ from policyengine_us_data.datasets.cps.long_term.run_household_projection_parall
     year_output_dir,
 )
 from policyengine_us_data.datasets.cps.long_term.run_long_term_production import (
+    _package_version,
     build_projection_command,
+    stamp_projection_provenance,
 )
 
 
@@ -2116,6 +2122,170 @@ def test_long_term_production_command_carries_2100_contract(tmp_path):
     assert "--support-augmentation-sanitize-worker-non-target-income" not in command
     assert "--support-augmentation-sanitize-clone-non-target-income" in command
     assert "--allow-validation-failures" in command
+
+
+def test_long_term_production_stamps_source_sha_into_projection_artifacts(tmp_path):
+    import h5py
+
+    h5_path = tmp_path / "2075.h5"
+    with h5py.File(h5_path, "w") as h5_file:
+        h5_file.create_dataset("household_weight/2075", data=[1.0])
+    metadata_path = tmp_path / "2075.h5.metadata.json"
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "year": 2075,
+                "calibration_audit": {"calibration_quality": "exact"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "calibration_manifest.json"
+    manifest_path.write_text(
+        json.dumps({"datasets": {"2075": {"h5": "2075.h5"}}}),
+        encoding="utf-8",
+    )
+
+    stamp_projection_provenance(
+        output_dir=tmp_path,
+        source_sha="abc123",
+        run_id="run-123",
+    )
+
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert metadata["source_sha"] == "abc123"
+    assert metadata["run_id"] == "run-123"
+    with h5py.File(h5_path) as h5_file:
+        assert h5_file.attrs["source_sha"] == "abc123"
+        assert h5_file.attrs["run_id"] == "run-123"
+    assert manifest["source_sha"] == "abc123"
+    assert manifest["run_id"] == "run-123"
+    assert manifest["datasets"]["2075"]["source_sha"] == "abc123"
+    assert manifest["datasets"]["2075"]["run_id"] == "run-123"
+
+
+def test_long_term_production_main_uploads_stamped_artifacts(
+    tmp_path,
+    monkeypatch,
+):
+    import h5py
+
+    output_dir = tmp_path / "out"
+    captured_command = []
+
+    def fake_run(command, check):
+        del check
+        captured_command.extend(command)
+        command_output_dir = Path(command[command.index("--output-dir") + 1])
+        command_output_dir.mkdir(parents=True, exist_ok=True)
+        with h5py.File(command_output_dir / "2075.h5", "w") as h5_file:
+            h5_file.create_dataset("household_weight/2075", data=[1.0])
+        (command_output_dir / "2075.h5.metadata.json").write_text(
+            json.dumps(
+                {
+                    "year": 2075,
+                    "base_dataset_path": "hf://example/base.h5",
+                    "profile": {"name": "ss-payroll-tob"},
+                    "calibration_audit": {"calibration_quality": "exact"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        (command_output_dir / "calibration_manifest.json").write_text(
+            json.dumps({"datasets": {"2075": {"h5": "2075.h5"}}}),
+            encoding="utf-8",
+        )
+
+    uploaded = []
+
+    def fake_upload(
+        *,
+        artifacts,
+        output_dir,
+        args,
+        run_id,
+        source_sha,
+    ):
+        uploaded.extend(path.name for path in artifacts if path.suffix == ".json")
+        metadata_payload = json.loads(
+            (output_dir / "2075.h5.metadata.json").read_text(encoding="utf-8")
+        )
+        manifest_payload = json.loads(
+            (output_dir / "calibration_manifest.json").read_text(encoding="utf-8")
+        )
+        assert metadata_payload["source_sha"] == "abc123"
+        assert manifest_payload["source_sha"] == "abc123"
+        assert run_id == "run-123"
+        assert source_sha == "abc123"
+        assert args.upload_to_hf_staging is True
+        return len(artifacts)
+
+    build_info = PolicyEngineUSBuildInfo(
+        version="1.693.4",
+        locked_version="1.693.4",
+        package_file_sha256="file-sha",
+        package_tree_sha256="tree-sha",
+    )
+    monkeypatch.setattr(
+        run_long_term_production.subprocess,
+        "run",
+        fake_run,
+    )
+    monkeypatch.setattr(
+        run_long_term_production,
+        "assert_locked_policyengine_us_version",
+        lambda: build_info,
+    )
+    monkeypatch.setattr(
+        run_long_term_production,
+        "upload_artifacts",
+        fake_upload,
+    )
+    monkeypatch.setattr(run_long_term_production, "_git_sha", lambda: "abc123")
+    monkeypatch.setenv("HUGGING_FACE_TOKEN", "token")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_long_term_production.py",
+            "--years",
+            "2075",
+            "--jobs",
+            "1",
+            "--output-dir",
+            str(output_dir),
+            "--run-id",
+            "run-123",
+            "--source-sha",
+            "abc123",
+            "--upload-to-hf-staging",
+        ],
+    )
+
+    assert run_long_term_production.main() == 0
+
+    assert captured_command
+    assert "2075.h5.metadata.json" in uploaded
+    assert "calibration_manifest.json" in uploaded
+    with h5py.File(output_dir / "2075.h5") as h5_file:
+        assert h5_file.attrs["source_sha"] == "abc123"
+        assert h5_file.attrs["run_id"] == "run-123"
+
+
+def test_long_term_production_reads_source_tree_data_package_version(monkeypatch):
+    from policyengine_us_data.__version__ import __version__
+
+    def fail_metadata_version(package_name):
+        raise metadata.PackageNotFoundError(package_name)
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.cps.long_term."
+        "run_long_term_production.metadata.version",
+        fail_metadata_version,
+    )
+
+    assert _package_version("policyengine-us-data") == __version__
 
 
 def test_parallel_projection_validate_forwarded_args_rejects_wrapper_flags():

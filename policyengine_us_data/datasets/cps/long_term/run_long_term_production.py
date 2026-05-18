@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
-from importlib import metadata
+from importlib import import_module, metadata
 from pathlib import Path
 
 from policyengine_us_data.datasets.cps.long_term.run_household_projection_parallel import (
@@ -27,6 +27,10 @@ PARALLEL_RUNNER = SCRIPT_DIR / "run_household_projection_parallel.py"
 DEFAULT_HF_REPO = "policyengine/policyengine-us-data"
 DEFAULT_ARTIFACT_PREFIX = "long_term"
 DEFAULT_TAX_ASSUMPTION = "trustees-2025-core-thresholds-v1"
+PACKAGE_VERSION_MODULES = {
+    "policyengine-us-data": "policyengine_us_data.__version__",
+    "policyengine_us_data": "policyengine_us_data.__version__",
+}
 
 
 def _git_sha() -> str:
@@ -47,7 +51,73 @@ def _package_version(package_name: str) -> str | None:
     try:
         return metadata.version(package_name)
     except metadata.PackageNotFoundError:
-        return None
+        version_module = PACKAGE_VERSION_MODULES.get(package_name)
+        if version_module is None:
+            return None
+        try:
+            module = import_module(version_module)
+        except ImportError:
+            return None
+        return getattr(module, "__version__", None)
+
+
+def _write_json(path: Path, payload: dict) -> None:
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def stamp_projection_provenance(
+    *,
+    output_dir: Path,
+    source_sha: str,
+    run_id: str,
+) -> None:
+    """Stamp run provenance into artifacts created by the year runner."""
+    metadata_paths = sorted(output_dir.glob("*.h5.metadata.json"))
+    if not metadata_paths:
+        raise FileNotFoundError(f"No year metadata sidecars found in {output_dir}.")
+
+    for metadata_path in metadata_paths:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if source_sha:
+            payload["source_sha"] = source_sha
+        if run_id:
+            payload["run_id"] = run_id
+        _write_json(metadata_path, payload)
+
+        h5_path = Path(str(metadata_path).removesuffix(".metadata.json"))
+        if not h5_path.exists():
+            raise FileNotFoundError(f"Missing H5 artifact for {metadata_path}.")
+        with _open_h5_append(h5_path) as h5_file:
+            if source_sha:
+                h5_file.attrs["source_sha"] = source_sha
+            if run_id:
+                h5_file.attrs["run_id"] = run_id
+
+    calibration_manifest_path = output_dir / "calibration_manifest.json"
+    if not calibration_manifest_path.exists():
+        raise FileNotFoundError(
+            f"Missing calibration manifest: {calibration_manifest_path}"
+        )
+    manifest = json.loads(calibration_manifest_path.read_text(encoding="utf-8"))
+    if source_sha:
+        manifest["source_sha"] = source_sha
+    if run_id:
+        manifest["run_id"] = run_id
+    for dataset in manifest.get("datasets", {}).values():
+        if source_sha:
+            dataset["source_sha"] = source_sha
+        if run_id:
+            dataset["run_id"] = run_id
+    _write_json(calibration_manifest_path, manifest)
+
+
+def _open_h5_append(path: Path):
+    import h5py
+
+    return h5py.File(path, "a")
 
 
 def _add_optional_value(
@@ -198,7 +268,7 @@ def write_manifest(
             "run_url": os.environ.get("US_DATA_GITHUB_RUN_URL", ""),
         },
         "package_versions": {
-            "policyengine-us-data": _package_version("policyengine_us_data"),
+            "policyengine-us-data": _package_version("policyengine-us-data"),
             "policyengine-us": _package_version("policyengine-us"),
             "policyengine-core": _package_version("policyengine-core"),
         },
@@ -339,6 +409,11 @@ def main() -> int:
     print("Running long-run projection command:")
     print(" ".join(command))
     subprocess.run(command, check=True)
+    stamp_projection_provenance(
+        output_dir=output_dir,
+        source_sha=source_sha,
+        run_id=run_id,
+    )
 
     artifacts = collect_artifacts(output_dir, args.artifact_prefix)
     manifest_path = write_manifest(

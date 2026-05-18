@@ -44,8 +44,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - name: Warn if policyengine-us is stale
-        run: python .github/scripts/check_policyengine_us_dependency.py --mode warn
+      - name: Require current PolicyEngine US dependency
+        run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
 
   lint:
     runs-on: ubuntu-latest

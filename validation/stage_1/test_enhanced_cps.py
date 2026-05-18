@@ -278,50 +278,14 @@ def test_has_tin_matches_identification_inputs(ecps_sim):
 
 
 def test_aca_calibration():
-    import pandas as pd
-    from pathlib import Path
     from policyengine_us import Microsimulation
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from validation.stage_1.aca_calibration import assert_aca_ptc_calibration
 
-    TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
-    )
-    targets = pd.read_csv(TARGETS_PATH)
-    # Monthly to yearly
-    targets["spending"] = targets["spending"] * 12
-    # Adjust to match national target
-    targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
-
+    # Use IRS SOI total premium tax credit targets. The older CMS APTC file is
+    # an outlay concept and is especially weak for Basic Health Program states.
     sim = Microsimulation(dataset=EnhancedCPS_2024)
-    state_code_hh = sim.calculate("state_code", map_to="household").values
-    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
-
-    # Per-state CMS APTC targets mix outlay vs claimed-PTC concepts and
-    # do not account for ACA §1331 Basic Health Programs (NY Essential
-    # Plan, MN MinnesotaCare), which divert 138–200% FPL enrollees out
-    # of the Marketplace. Simulated aca_ptc is closer to total PTC
-    # claim than to CMS APTC paid. A full target-side redesign is in
-    # issue #805 (switch to IRS SOI A85770 total PTC claimed). Until
-    # that lands, hold a loose tolerance here so the build is not
-    # chronically blocked.
-    TOLERANCE = 10.0
-    failed = False
-    for _, row in targets.iterrows():
-        state = row["state"]
-        target_spending = row["spending"]
-        simulated = aca_ptc[state_code_hh == state].sum()
-
-        pct_error = abs(simulated - target_spending) / target_spending
-        print(
-            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
-            f"target ${target_spending / 1e9:.2f} bn  "
-            f"error {pct_error:.2%}"
-        )
-
-        if pct_error > TOLERANCE:
-            failed = True
-
-    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert_aca_ptc_calibration(sim, emit=print)
 
 
 def test_aca_2025_takeup_override_helper():

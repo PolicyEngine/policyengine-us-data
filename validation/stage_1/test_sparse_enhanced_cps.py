@@ -193,38 +193,11 @@ def test_sparse_has_tin_matches_identification_inputs(sim):
 
 
 def test_sparse_aca_calibration(sim):
-    TARGETS_PATH = Path(
-        "policyengine_us_data/storage/calibration_targets/aca_spending_and_enrollment_2024.csv"
+    from validation.stage_1.aca_calibration import (
+        assert_aca_ptc_calibration,
     )
-    targets = pd.read_csv(TARGETS_PATH)
-    # Monthly to yearly
-    targets["spending"] = targets["spending"] * 12
-    # Adjust to match national target
-    targets["spending"] = targets["spending"] * (98e9 / targets["spending"].sum())
 
-    state_code_hh = sim.calculate("state_code", map_to="household").values
-    aca_ptc = sim.calculate("aca_ptc", map_to="household", period=2025)
-
-    # See test_aca_calibration in test_enhanced_cps.py for the full
-    # CMS-vs-IRS concept mismatch rationale; tracked in issue #805.
-    TOLERANCE = 10.0
-    failed = False
-    for _, row in targets.iterrows():
-        state = row["state"]
-        target_spending = row["spending"]
-        simulated = aca_ptc[state_code_hh == state].sum()
-
-        pct_error = abs(simulated - target_spending) / target_spending
-        logging.info(
-            f"{state}: simulated ${simulated / 1e9:.2f} bn  "
-            f"target ${target_spending / 1e9:.2f} bn  "
-            f"error {pct_error:.2%}"
-        )
-
-        if pct_error > TOLERANCE:
-            failed = True
-
-    assert not failed, f"One or more states exceeded tolerance of {TOLERANCE:.0%}."
+    assert_aca_ptc_calibration(sim, emit=logging.info)
 
 
 def test_sparse_medicaid_calibration(sim):

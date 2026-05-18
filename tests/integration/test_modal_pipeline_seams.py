@@ -67,6 +67,11 @@ def test_pipeline_image_runtime_seams():
         "policyengine_us_data/calibration/target_config_full.yaml": True,
         "policyengine_us_data/utils/run_context.py": True,
         "policyengine_us_data/utils/step_manifest.py": True,
+        "policyengine_us_data/validation_core/__init__.py": True,
+        "policyengine_us_data/validation_core/checks.py": True,
+        "policyengine_us_data/validation_core/context.py": True,
+        "policyengine_us_data/validation_core/runner.py": True,
+        "policyengine_us_data/validation_core/writers.py": True,
     }
 
     for module_name in (
@@ -89,6 +94,7 @@ def test_pipeline_image_runtime_seams():
         "policyengine_us_data",
         "policyengine_us_data.utils.run_context",
         "policyengine_us_data.utils.step_manifest",
+        "policyengine_us_data.validation_core",
         "modal_app.worker_script",
         "spm_calculator",
         "sqlalchemy",

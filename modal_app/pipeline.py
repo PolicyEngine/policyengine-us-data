@@ -552,6 +552,11 @@ def verify_runtime_seams() -> dict:
         "policyengine_us_data/calibration/target_config_full.yaml",
         "policyengine_us_data/utils/run_context.py",
         "policyengine_us_data/utils/step_manifest.py",
+        "policyengine_us_data/validation_core/__init__.py",
+        "policyengine_us_data/validation_core/checks.py",
+        "policyengine_us_data/validation_core/context.py",
+        "policyengine_us_data/validation_core/runner.py",
+        "policyengine_us_data/validation_core/writers.py",
     )
     result = {
         "interpreter": {
@@ -597,6 +602,7 @@ def verify_runtime_seams() -> dict:
         "policyengine_us_data",
         "policyengine_us_data.utils.run_context",
         "policyengine_us_data.utils.step_manifest",
+        "policyengine_us_data.validation_core",
         "spm_calculator",
         "sqlalchemy",
     ):

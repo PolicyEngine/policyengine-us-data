@@ -77,6 +77,7 @@ LOCAL_AREA_FINALIZE_REQUIRED_COUNTS = {
     "cities/": 1,
 }
 VALIDATION_REPORT_FILENAMES = (
+    "validation_report.json",
     "validation_summary.json",
     "validation_results.csv",
     "national_validation.txt",

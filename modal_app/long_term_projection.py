@@ -69,6 +69,44 @@ def _local_git_sha() -> str:
     return result.stdout.strip()
 
 
+def _local_git_dirty() -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=_local,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return True
+    return bool(result.stdout.strip())
+
+
+def _validate_local_source(source_sha: str, *, allow_dirty_source: bool) -> None:
+    if allow_dirty_source:
+        return
+    if _local_git_dirty():
+        raise ValueError(
+            "The local policyengine-us-data checkout has uncommitted changes. "
+            "Commit and pass its SHA with --source-sha before running Modal, or "
+            "rerun with --allow-dirty-source for an explicitly non-publishable "
+            "experiment."
+        )
+    local_sha = _local_git_sha()
+    if not local_sha:
+        raise ValueError(
+            "Could not resolve the local policyengine-us-data git SHA; pass "
+            "--allow-dirty-source only for an explicitly non-publishable experiment."
+        )
+    if local_sha != source_sha:
+        raise ValueError(
+            "The requested source_sha does not match the local checkout that Modal "
+            f"will package: {source_sha} != {local_sha}. Check out the exact "
+            "source SHA before running production."
+        )
+
+
 def _append_optional_value(
     command: list[str],
     flag: str,
@@ -359,11 +397,16 @@ def main(
     support_augmentation_sanitize_worker_non_target_income: bool = False,
     support_augmentation_sanitize_clone_non_target_income: bool = False,
     spawn: bool = False,
+    allow_dirty_source: bool = False,
 ) -> None:
     if not source_sha:
         source_sha = os.environ.get("GITHUB_SHA", "") or _local_git_sha()
     if not source_sha:
         raise ValueError("source_sha is required; pass --source-sha.")
+    _validate_local_source(
+        source_sha,
+        allow_dirty_source=allow_dirty_source,
+    )
     run_id = sanitize_run_id(run_id)
     kwargs = {
         "years": years,

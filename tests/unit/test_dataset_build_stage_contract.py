@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from policyengine_us_data.stage_contracts import (
+    DiagnosticRef,
     StageContract,
     contract_from_json,
     contract_to_json,
@@ -205,3 +206,26 @@ def test_dataset_build_contract_fingerprint_excludes_run_id(tmp_path):
 
 def test_dataset_build_contract_filename_is_stable():
     assert DATASET_BUILD_OUTPUT_CONTRACT_FILENAME == "dataset_build_output.json"
+
+
+def test_dataset_build_contract_records_diagnostic_refs(tmp_path):
+    _write_artifacts(tmp_path)
+    diagnostic = DiagnosticRef(
+        name="dataset_inventory",
+        kind="dataset_inventory",
+        summary={"artifact_count": 13},
+    )
+
+    contract = build_dataset_build_output_contract(
+        artifacts_dir=tmp_path,
+        run_id="run-a",
+        code_sha="abc123",
+        package_version="1.98.2",
+        checkpoint_stats={"expected_outputs": 4},
+        started_at="2026-05-08T12:00:00Z",
+        completed_at="2026-05-08T12:01:00Z",
+        diagnostics=(diagnostic,),
+    )
+
+    assert contract.diagnostics == (diagnostic,)
+    assert contract.metadata["diagnostic_count"] == 1

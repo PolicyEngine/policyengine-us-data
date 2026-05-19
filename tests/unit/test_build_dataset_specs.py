@@ -128,6 +128,7 @@ def test_stage_1_skip_flags_identify_expected_artifacts():
     } <= enhanced_cps_skipped
     assert {
         "small_enhanced_cps_2024.h5",
+        "source_dataset_schema_summary.json",
         "source_imputed_stratified_extended_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
     } == stage_5_skipped

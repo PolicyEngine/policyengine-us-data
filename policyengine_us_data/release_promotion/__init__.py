@@ -24,6 +24,15 @@ from .stage4_reader import (
     build_release_candidate_bundle_from_stage4_contract,
     read_stage4_release_candidate_bundle,
 )
+from .contract import (
+    RELEASE_PROMOTION_CONTRACT_FILENAME,
+    RELEASE_PROMOTION_CONTRACT_TYPE,
+    ReleasePromotionContractBuilder,
+    build_release_promotion_contract,
+    release_promotion_contract_path,
+    release_promotion_contract_repo_path,
+    write_release_promotion_contract,
+)
 from .results import (
     CleanupPromotionResult,
     CompletionMarkerPromotionResult,
@@ -32,6 +41,7 @@ from .results import (
     HuggingFacePromotionResult,
     ReleaseManifestPromotionResult,
     VersionManifestPromotionResult,
+    parse_full_promotion_result_json,
 )
 from .validation import build_release_candidate_shape_report
 from .validation import (
@@ -48,6 +58,8 @@ __all__ = [
     "BASE_RELEASE_ARTIFACT_PATHS",
     "DEFAULT_REQUIRED_RELEASE_ARTIFACT_FAMILIES",
     "RELEASE_VALIDATION_SUBSTAGE_ID",
+    "RELEASE_PROMOTION_CONTRACT_FILENAME",
+    "RELEASE_PROMOTION_CONTRACT_TYPE",
     "CleanupPromotionResult",
     "CompletionMarkerPromotionResult",
     "FullPromotionResult",
@@ -55,6 +67,7 @@ __all__ = [
     "HuggingFacePromotionResult",
     "ReleaseArtifactSpec",
     "ReleaseCandidateInputBundle",
+    "ReleasePromotionContractBuilder",
     "ReleasePromotionContext",
     "ReleaseCandidateValidationDependencies",
     "ReleaseCandidateValidator",
@@ -63,6 +76,7 @@ __all__ = [
     "VALIDATION_REPORT_POLICY_PRESENCE_ONLY",
     "VALIDATION_REPORT_POLICY_REQUIRE_PASSING",
     "build_legacy_release_candidate_bundle",
+    "build_release_promotion_contract",
     "build_release_candidate_bundle_from_stage4_contract",
     "build_release_candidate_shape_report",
     "default_release_candidate_validation_dependencies",
@@ -71,6 +85,10 @@ __all__ = [
     "infer_release_artifact_spec",
     "logical_name_for_release_path",
     "normalize_release_path",
+    "parse_full_promotion_result_json",
+    "release_promotion_contract_path",
+    "release_promotion_contract_repo_path",
     "read_stage4_release_candidate_bundle",
     "strip_staging_prefix",
+    "write_release_promotion_contract",
 ]

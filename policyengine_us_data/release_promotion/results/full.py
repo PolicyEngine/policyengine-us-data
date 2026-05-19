@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+import json
 from typing import Any
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
@@ -292,3 +293,15 @@ class FullPromotionResult:
             ),
             already_finalized=already_finalized,
         )
+
+
+def parse_full_promotion_result_json(payload: str) -> FullPromotionResult:
+    """Parse a JSON legacy promotion payload into a typed promotion result."""
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ValueError("promotion result payload must be JSON") from exc
+    if not isinstance(data, Mapping):
+        raise ValueError("promotion result payload must be a JSON object")
+    return FullPromotionResult.from_legacy_dict(data)

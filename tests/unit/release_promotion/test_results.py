@@ -1,8 +1,12 @@
+import json
 from pathlib import Path
 
 import pytest
 
-from policyengine_us_data.release_promotion import FullPromotionResult
+from policyengine_us_data.release_promotion import (
+    FullPromotionResult,
+    parse_full_promotion_result_json,
+)
 from policyengine_us_data.utils.release_promotion import (
     FullReleasePromotionConfig,
     FullReleasePromotionDependencies,
@@ -218,6 +222,22 @@ def test_full_promotion_result_wraps_legacy_dict() -> None:
     assert result.cleanup.cleaned_count == 3
     assert result.cleanup.status == "completed"
     assert FullPromotionResult.from_dict(result.to_dict()) == result
+
+
+def test_parse_full_promotion_result_json_wraps_legacy_subprocess_payload() -> None:
+    result = parse_full_promotion_result_json(
+        json.dumps(_legacy_result_payload(artifact_count=2))
+    )
+
+    assert result.run_id == "run-123"
+    assert result.hf.repo_name == "policyengine/policyengine-us-data"
+    assert result.gcs.bucket_name == "policyengine-us-data"
+    assert result.release_manifest.root_path == _RELEASE_MANIFEST_PATH
+
+
+def test_parse_full_promotion_result_json_rejects_invalid_payload() -> None:
+    with pytest.raises(ValueError, match="must be JSON"):
+        parse_full_promotion_result_json("not-json")
 
 
 def test_promote_full_release_with_result_preserves_transaction_order(tmp_path) -> None:

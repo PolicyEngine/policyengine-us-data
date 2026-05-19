@@ -1395,6 +1395,14 @@ class ReleasePromotionContext
 
 Canonical run, candidate, release, and destination identity for Stage 5.
 
+### `policyengine_us_data.release_promotion.contract.ReleasePromotionContractBuilder`
+
+```python
+class ReleasePromotionContractBuilder
+```
+
+Build a Stage 5 contract from candidate identity and promotion results.
+
 ### `modal_app.local_area._resolve_scope_fingerprint`
 
 ```python

@@ -11,7 +11,7 @@ from .destinations import (
     GcsPromotionResult,
     HuggingFacePromotionResult,
 )
-from .full import FullPromotionResult
+from .full import FullPromotionResult, parse_full_promotion_result_json
 from .manifests import (
     CompletionMarkerPromotionResult,
     ReleaseManifestPromotionResult,
@@ -28,6 +28,7 @@ __all__ = [
     "FullPromotionResult",
     "GcsPromotionResult",
     "HuggingFacePromotionResult",
+    "parse_full_promotion_result_json",
     "ReleaseManifestPromotionResult",
     "VersionManifestPromotionResult",
 ]

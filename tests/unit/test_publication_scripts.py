@@ -406,6 +406,42 @@ def test_restore_publication_changelog_restores_candidate_snapshot(
     assert (root_changelog / "123.changed.md").read_text() == "Changed a thing.\n"
 
 
+def test_restore_publication_changelog_falls_back_to_scope_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/restore_publication_changelog.py",
+        "restore_publication_changelog_scope_fallback_test",
+    )
+    root_changelog = tmp_path / "changelog.d"
+    publication_dir = tmp_path / ".github" / "publication_candidates"
+    snapshot = publication_dir / "versioning-run" / "changelog.d"
+    snapshot.mkdir(parents=True)
+    (snapshot / "123.changed.md").write_text("Changed a thing.\n")
+    scope_path = tmp_path / ".github" / "publication_scope.json"
+    scope_path.write_text(
+        json.dumps(
+            {
+                "base_release_version": "1.115.3",
+                "candidate_scope": "1.115.3-patch",
+                "release_bump": "patch",
+                "run_id": "versioning-run",
+            }
+        )
+    )
+    monkeypatch.setenv("US_DATA_CANDIDATE_VERSION", "1.115.3-patch")
+    monkeypatch.setenv("US_DATA_BASE_RELEASE_VERSION", "1.115.3")
+    monkeypatch.setenv("US_DATA_RELEASE_BUMP", "patch")
+    monkeypatch.setattr(module, "ROOT_CHANGELOG_DIR", root_changelog)
+    monkeypatch.setattr(module, "PUBLICATION_SCOPE_PATH", scope_path)
+    monkeypatch.setattr(module, "PUBLICATION_CANDIDATES_DIR", publication_dir)
+
+    module.restore_candidate_changelog("pipeline-run")
+
+    assert (root_changelog / "123.changed.md").read_text() == "Changed a thing.\n"
+
+
 def test_restore_publication_changelog_rejects_unrelated_root_fragments(
     tmp_path,
     monkeypatch,
@@ -648,6 +684,49 @@ def test_promote_publication_script_derives_release_from_status(
     ]
     assert "US_DATA_RELEASE_VERSION=1.74.0" in github_env.read_text()
     assert "VERSION_OVERRIDE" not in json.dumps(captured["calls"])
+
+
+def test_promote_publication_script_prefers_manifest_release_version(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "modal",
+        types.SimpleNamespace(Function=types.SimpleNamespace()),
+    )
+    module = _load_script(
+        ".github/scripts/promote_publication_pipeline.py",
+        "promote_publication_pipeline_release_version_test",
+    )
+    _write_pyproject(tmp_path, "1.74.0")
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+    context = module.RunContext.from_mapping(
+        {"run_id": "run-123"},
+        modal_app_name="app",
+        modal_environment="main",
+    )
+
+    promoted_context = module._promotion_context_from_status(
+        context,
+        {
+            "run_manifest": {
+                "run_id": "run-123",
+                "candidate_version": "1.73.0-minor",
+                "base_release_version": "1.73.0",
+                "release_bump": "minor",
+                "release_version": "1.74.0",
+                "run_context": {
+                    "run_id": "run-123",
+                    "candidate_version": "1.73.0-minor",
+                    "base_release_version": "1.73.0",
+                    "release_bump": "minor",
+                },
+            }
+        },
+    )
+
+    assert promoted_context.release_version == "1.74.0"
 
 
 def test_promote_publication_script_requires_release_bump(

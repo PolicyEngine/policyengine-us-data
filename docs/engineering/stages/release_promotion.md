@@ -96,3 +96,29 @@ promotion outcomes to contracts, status APIs, or orchestration summaries. The
 current compatibility wrapper, `promote_full_release_with_result()`, must keep
 calling the existing transaction engine first and only wrap its dictionary
 output afterward so the promotion order remains unchanged.
+
+## Release Promotion Contract
+
+Stage 5 writes `release_promotion_contract.json` under the run-local
+`diagnostics/contracts/` directory after the promotion transaction succeeds and
+before the Stage 5 step manifest is completed. The contract is the semantic
+record for the Stage 5 boundary: it ties the canonical `run_id`, candidate
+identity, Stage 4 output contract reference when available, validation report
+paths, public Hugging Face and GCS refs, cleanup status, and typed
+`FullPromotionResult` into one durable `StageContract`.
+
+The contract complements the public release files instead of replacing them:
+
+- `release_manifest.json` and `releases/{version}/release_manifest.json` remain
+  the public artifact inventory for the stable release.
+- `version_manifest.json` remains the public version registry used by clients
+  and publication checks.
+- `releases/{version}/release-complete.json` remains the final completion
+  marker and tag target proving the release was fully finalized.
+- `release_promotion_contract.json` remains run-scoped diagnostics material for
+  dashboards, AI agents, rerun comparison, and promotion auditability.
+
+Runtime step manifests for `5_validate_and_promote_release` should include the
+contract as a JSON `contract` output. They may still record legacy validated
+input artifacts for compatibility, but the contract is the preferred semantic
+entry point for Stage 5 status and lineage.

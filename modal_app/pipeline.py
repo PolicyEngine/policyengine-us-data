@@ -512,6 +512,122 @@ print(json.dumps(result, indent=2, sort_keys=True))
     )
 
 
+def _promotion_result_from_stdout(promotion_stdout: str):
+    """Parse typed promotion results from the promotion subprocess output."""
+
+    from policyengine_us_data.release_promotion import FullPromotionResult
+
+    try:
+        payload = json.loads(promotion_stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "Full release promotion subprocess did not return JSON."
+        ) from exc
+    return FullPromotionResult.from_legacy_dict(payload)
+
+
+def _release_promotion_context_from_run_context(run_context: RunContext):
+    """Build the Stage 5 library context from the orchestration run context."""
+
+    from policyengine_us_data.release_promotion import ReleasePromotionContext
+
+    return ReleasePromotionContext(
+        run_id=run_context.run_id,
+        candidate_version=run_context.candidate_version,
+        release_version=run_context.release_version,
+        hf_repo_name="policyengine/policyengine-us-data",
+        gcs_bucket_name="policyengine-us-data",
+        base_release_version=run_context.base_release_version or None,
+        release_bump=run_context.release_bump or None,
+        modal_app_name=run_context.modal_app_name or None,
+        modal_environment=run_context.modal_environment or None,
+        hf_staging_prefix=run_context.hf_staging_prefix or None,
+        metadata={"run_context": run_context.to_dict()},
+    )
+
+
+def _release_artifact_metadata_by_path(
+    run_id: str,
+    rel_paths: list[str],
+) -> dict[str, dict[str, object]]:
+    """Return local checksum/size metadata for staged release artifacts."""
+
+    metadata: dict[str, dict[str, object]] = {}
+    for local_path, rel_path in _full_release_manifest_files(run_id, rel_paths):
+        path = Path(local_path)
+        if not path.exists() or not path.is_file():
+            continue
+        reference = ArtifactReference.from_path(path)
+        metadata[rel_path] = {
+            "sha256": f"sha256:{reference.sha256}",
+            "size_bytes": reference.size_bytes,
+        }
+    return metadata
+
+
+def _stage4_output_contract_repo_path_if_available(run_id: str) -> str | None:
+    """Return the run-repo path for the Stage 4 contract when it exists locally."""
+
+    run_dir = _run_dir(run_id)
+    candidates = (
+        run_dir / "diagnostics" / "contracts" / "output_build_contract.json",
+        run_dir / "contracts" / "output_build_contract.json",
+        run_dir / "output_build_contract.json",
+    )
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return f"calibration/runs/{run_id}/{path.relative_to(run_dir).as_posix()}"
+    return None
+
+
+def _write_release_promotion_contract_for_run(
+    *,
+    meta: RunMetadata,
+    run_context: RunContext,
+    rel_paths: list[str],
+    promotion_result,
+) -> ArtifactReference:
+    """Write Stage 5's run-local contract and return its manifest reference."""
+
+    from policyengine_us_data.release_promotion import (
+        build_legacy_release_candidate_bundle,
+        release_promotion_contract_path,
+        write_release_promotion_contract,
+    )
+
+    run_dir = _run_dir(run_context.run_id)
+    contract_path = release_promotion_contract_path(run_dir)
+    candidate_bundle = build_legacy_release_candidate_bundle(
+        context=_release_promotion_context_from_run_context(run_context),
+        rel_paths=rel_paths,
+        artifact_metadata_by_path=_release_artifact_metadata_by_path(
+            run_context.run_id,
+            rel_paths,
+        ),
+        source_output_contract_path=_stage4_output_contract_repo_path_if_available(
+            run_context.run_id
+        ),
+    )
+    write_release_promotion_contract(
+        contract_path=contract_path,
+        candidate_bundle=candidate_bundle,
+        promotion_result=promotion_result,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        code_sha=meta.sha,
+        package_version=meta.version,
+        metadata={
+            "writer": "modal_app.pipeline.promote_run",
+            "branch": meta.branch,
+        },
+    )
+    return ArtifactReference.from_path(
+        contract_path,
+        role="contract",
+        base_dir=run_dir,
+        media_type="application/json",
+    )
+
+
 @app.function(
     image=image,
     timeout=300,
@@ -2037,6 +2153,13 @@ def promote_run(
             promotion_context.to_dict(),
         )
         print(f"  {promotion_stdout}")
+        promotion_result = _promotion_result_from_stdout(promotion_stdout)
+        release_promotion_contract_ref = _write_release_promotion_contract_for_run(
+            meta=meta,
+            run_context=promotion_context,
+            rel_paths=rel_paths,
+            promotion_result=promotion_result,
+        )
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"
@@ -2045,8 +2168,11 @@ def promote_run(
         _complete_step_manifest(
             promote_manifest,
             outputs=[
-                ArtifactReference.from_dict(artifact)
-                for artifact in promote_inputs["validated_step_outputs"]
+                *[
+                    ArtifactReference.from_dict(artifact)
+                    for artifact in promote_inputs["validated_step_outputs"]
+                ],
+                release_promotion_contract_ref,
             ],
             reuse_decision="computed",
             vol=pipeline_volume,

@@ -15,7 +15,10 @@ from modal_app.pipeline import (  # noqa: E402
     _calibration_package_parameters,
     _new_run_metadata,
     _pipeline_error_summary,
+    _promotion_result_from_stdout,
+    _release_artifact_metadata_by_path,
     _run_required_promotion_subprocess,
+    _stage4_output_contract_repo_path_if_available,
     _try_reload_pipeline_volume_after_h5_builds,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
@@ -126,6 +129,60 @@ def test_pipeline_error_summary_falls_back_to_bounded_traceback(monkeypatch):
     assert summary.startswith("\n[truncated older error text; omitted ")
     assert summary.endswith("newest <redacted:API_TOKEN>")
     assert "old traceback" not in summary
+
+
+def test_promotion_result_from_stdout_returns_typed_result():
+    result = _promotion_result_from_stdout(
+        json.dumps(
+            {
+                "run_id": "run-123",
+                "candidate_version": "1.73.0rc1",
+                "release_version": "1.73.0",
+                "artifact_count": 1,
+                "hf_promoted": 1,
+                "gcs_uploaded": 1,
+                "release_manifest_artifacts": 1,
+                "version_manifest_updated": True,
+                "release_completion_marker": ("releases/1.73.0/release-complete.json"),
+                "staging_cleaned": 2,
+            }
+        )
+    )
+
+    assert result.run_id == "run-123"
+    assert result.artifact_count == 1
+    assert result.hf.promoted_count == 1
+
+
+def test_release_artifact_metadata_by_path_uses_local_files(tmp_path, monkeypatch):
+    artifact = tmp_path / "states" / "AL.h5"
+    artifact.parent.mkdir(parents=True)
+    artifact.write_text("state fixture", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "modal_app.pipeline._full_release_manifest_files",
+        lambda run_id, rel_paths: [(artifact, "states/AL.h5")],
+    )
+
+    metadata = _release_artifact_metadata_by_path("run-123", ["states/AL.h5"])
+
+    assert metadata["states/AL.h5"]["sha256"].startswith("sha256:")
+    assert metadata["states/AL.h5"]["size_bytes"] == artifact.stat().st_size
+
+
+def test_stage4_output_contract_repo_path_detects_run_local_contract(
+    tmp_path,
+    monkeypatch,
+):
+    run_dir = tmp_path / "run-123"
+    contract_path = run_dir / "diagnostics" / "contracts" / "output_build_contract.json"
+    contract_path.parent.mkdir(parents=True)
+    contract_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("modal_app.pipeline._run_dir", lambda run_id: run_dir)
+
+    assert _stage4_output_contract_repo_path_if_available("run-123") == (
+        "calibration/runs/run-123/diagnostics/contracts/output_build_contract.json"
+    )
 
 
 def test_new_run_metadata_accepts_release_context_fields_once():

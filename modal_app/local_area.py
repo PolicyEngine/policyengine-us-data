@@ -17,9 +17,10 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List, Mapping
+from typing import Dict, List, Mapping, Sequence
 
 import modal
+import numpy as np
 
 _baked = "/root/policyengine-us-data"
 _local = str(Path(__file__).resolve().parent.parent)
@@ -32,12 +33,24 @@ from modal_app.resilience import reconcile_run_dir_fingerprint  # noqa: E402
 from policyengine_us_data.build_outputs.bootstrap import (  # noqa: E402
     WorkerBootstrapBuilder,
 )
+from policyengine_us_data.build_outputs.area_catalog import USAreaCatalog  # noqa: E402
 from policyengine_us_data.build_outputs.fingerprinting import (  # noqa: E402
     FingerprintingService,
     PublishingInputBundle,
 )
+from policyengine_us_data.build_outputs.geography_loader import (  # noqa: E402
+    CalibrationGeographyLoader,
+)
 from policyengine_us_data.build_outputs.partitioning import (  # noqa: E402
+    WeightedAreaRequest,
+    partition_weighted_area_requests,
     partition_weighted_work_items,
+)
+from policyengine_us_data.build_outputs.target_universe import (  # noqa: E402
+    TargetUniverseReader,
+)
+from policyengine_us_data.build_outputs.worker_responses import (  # noqa: E402
+    normalize_worker_response,
 )
 from policyengine_us_data.build_outputs.worker_inputs import (  # noqa: E402
     WorkerCalibrationInputs,
@@ -531,6 +544,125 @@ def _build_worker_calibration_inputs(
     )
 
 
+def _existing_path(path: Path | None) -> Path | None:
+    if path is None:
+        return None
+    return path if Path(path).exists() else None
+
+
+def _infer_weight_record_count(*, weights_path: Path, n_clones: int) -> int:
+    """Infer source-record count from a flat weight vector without loading it."""
+
+    if isinstance(n_clones, bool) or not isinstance(n_clones, int | np.integer):
+        raise TypeError("n_clones must be an integer")
+    normalized_clones = int(n_clones)
+    if normalized_clones <= 0:
+        raise ValueError("n_clones must be positive")
+
+    weights = np.load(weights_path, mmap_mode="r")
+    if weights.ndim != 1:
+        raise ValueError("Weight vector must be one-dimensional")
+    if weights.size == 0:
+        raise ValueError("Weight vector must be non-empty")
+    if not np.issubdtype(weights.dtype, np.number):
+        raise TypeError("Weight vector must have a numeric dtype")
+    if np.issubdtype(weights.dtype, np.complexfloating):
+        raise TypeError("Weight vector must have a real numeric dtype")
+    if weights.size % normalized_clones != 0:
+        raise ValueError(
+            f"Weight vector length {weights.size} is not divisible by "
+            f"n_clones={normalized_clones}"
+        )
+    return weights.size // normalized_clones
+
+
+def _load_area_catalog_geography_index(
+    *,
+    weights_path: Path,
+    n_clones: int,
+    geography_path: Path | None,
+    calibration_package_path: Path | None = None,
+    legacy_blocks_path: Path | None = None,
+):
+    """Load lightweight geography fields for coordinator request planning."""
+
+    n_records = _infer_weight_record_count(
+        weights_path=weights_path,
+        n_clones=n_clones,
+    )
+    return CalibrationGeographyLoader().load_index(
+        weights_path=weights_path,
+        n_records=n_records,
+        n_clones=n_clones,
+        geography_path=_existing_path(geography_path),
+        blocks_path=_existing_path(legacy_blocks_path),
+        calibration_package_path=_existing_path(calibration_package_path),
+    )
+
+
+def _build_regional_weighted_requests(
+    *,
+    geography,
+    target_cd_geoids: Sequence[str],
+    catalog: USAreaCatalog | None = None,
+) -> tuple[WeightedAreaRequest, ...]:
+    """Build canonical weighted regional H5 requests from release targets."""
+
+    catalog = catalog or USAreaCatalog.default()
+    requests = catalog.build_expected_regional_requests(
+        target_cd_geoids=target_cd_geoids,
+        geography=geography,
+    )
+
+    from collections import Counter
+
+    districts_by_state = Counter(
+        request.area_id.split("-", 1)[0]
+        for request in requests
+        if request.area_type == "district"
+    )
+    city_weights = {"NYC": 11}
+
+    weighted: list[WeightedAreaRequest] = []
+    for request in requests:
+        if request.area_type == "state":
+            weight = districts_by_state.get(request.area_id, 1)
+        elif request.area_type == "city":
+            weight = city_weights.get(request.area_id, 3)
+        else:
+            weight = 1
+        weighted.append(
+            WeightedAreaRequest(
+                request=request,
+                weight=weight,
+            )
+        )
+    return tuple(weighted)
+
+
+def _build_weighted_requests_from_work_items(
+    *,
+    work_items: Sequence[Mapping[str, object]],
+    geography,
+    catalog: USAreaCatalog | None = None,
+) -> tuple[WeightedAreaRequest, ...]:
+    """Convert legacy override work items into canonical weighted requests."""
+
+    catalog = catalog or USAreaCatalog.default()
+    weighted: list[WeightedAreaRequest] = []
+    for item in work_items:
+        request = catalog.build_request_from_work_item(item, geography=geography)
+        if request is None:
+            continue
+        weighted.append(
+            WeightedAreaRequest(
+                request=request,
+                weight=item.get("weight", 1),
+            )
+        )
+    return tuple(weighted)
+
+
 @pipeline_node(
     PipelineNode(
         id="coordinate_work_partition",
@@ -582,6 +714,25 @@ def get_completed_from_volume(run_dir: Path) -> set:
     return completed
 
 
+def _measure_expected_completion(
+    *,
+    expected_keys: set[str],
+    initially_completed: set[str],
+    completed: set[str],
+) -> tuple[set[str], dict[str, int]]:
+    """Measure completion against the explicit expected request set."""
+
+    missing_keys = expected_keys - completed
+    reused_outputs = initially_completed & completed & expected_keys
+    recomputed_outputs = (completed - initially_completed) & expected_keys
+    return missing_keys, {
+        "expected_outputs": len(expected_keys),
+        "valid_reused_outputs": len(reused_outputs),
+        "recomputed_outputs": len(recomputed_outputs),
+        "invalid_outputs": len(missing_keys),
+    }
+
+
 @pipeline_node(
     PipelineNode(
         id="run_local_h5_phase",
@@ -598,7 +749,7 @@ def get_completed_from_volume(run_dir: Path) -> set:
 )
 def run_phase(
     phase_name: str,
-    work_items: List[Dict],
+    weighted_requests: Sequence[WeightedAreaRequest] | None,
     num_workers: int,
     completed: set,
     branch: str,
@@ -607,6 +758,7 @@ def run_phase(
     run_dir: Path,
     validate: bool = True,
     scope_fingerprint: str | None = None,
+    work_items: List[Dict] | None = None,
 ) -> tuple:
     """Run a single build phase, spawning workers and collecting results.
 
@@ -616,7 +768,14 @@ def run_phase(
         and crashes, and validation_rows is a list of per-target
         validation result dicts.
     """
-    work_chunks = partition_work(work_items, num_workers, completed)
+    if weighted_requests is not None:
+        work_chunks = partition_weighted_area_requests(
+            weighted_requests,
+            num_workers,
+            completed,
+        )
+    else:
+        work_chunks = partition_work(work_items or [], num_workers, completed)
     total_remaining = sum(len(c) for c in work_chunks)
     worker_input_payload = WorkerCalibrationInputs.from_wire_dict(
         calibration_inputs
@@ -631,13 +790,21 @@ def run_phase(
 
     handles = []
     for i, chunk in enumerate(work_chunks):
-        total_weight = sum(item["weight"] for item in chunk)
+        if weighted_requests is not None:
+            total_weight = sum(item.weight for item in chunk)
+            request_payloads = [item.to_worker_payload() for item in chunk]
+            legacy_work_items = None
+        else:
+            total_weight = sum(item["weight"] for item in chunk)
+            request_payloads = None
+            legacy_work_items = chunk
         print(f"  Worker {i}: {len(chunk)} items, weight {total_weight}")
         handle = build_areas_worker.spawn(
             branch=branch,
             run_id=run_id,
             scope="regional",
-            work_items=chunk,
+            work_items=legacy_work_items,
+            request_payloads=request_payloads,
             calibration_inputs=worker_input_payload,
             validate=validate,
             scope_fingerprint=scope_fingerprint,
@@ -653,30 +820,38 @@ def run_phase(
     for i, handle in enumerate(handles):
         try:
             result = handle.get()
-            if result is None:
-                all_errors.append({"worker": i, "error": "Worker returned None"})
-                print(f"  Worker {i}: returned None (no results)")
-                continue
-            all_results.append(result)
-            print(
-                f"  Worker {i}: {len(result['completed'])} completed, "
-                f"{len(result['failed'])} failed"
+            worker_result = normalize_worker_response(
+                worker_index=i,
+                result=result,
             )
-            if result["errors"]:
-                all_errors.extend(result["errors"])
-            # Collect validation rows
-            v_rows = result.get("validation_rows", [])
-            if v_rows:
-                all_validation_rows.extend(v_rows)
-                print(f"  Worker {i}: {len(v_rows)} validation rows")
+            all_results.append(worker_result)
+            print(
+                f"  Worker {i}: {len(worker_result.completed)} completed, "
+                f"{len(worker_result.failed)} failed"
+            )
+            if worker_result.fatal_errors:
+                all_errors.extend(worker_result.fatal_errors)
+            if worker_result.issues:
+                all_errors.extend(worker_result.issues)
+            if worker_result.validation_rows:
+                all_validation_rows.extend(worker_result.validation_rows)
+                print(
+                    f"  Worker {i}: {len(worker_result.validation_rows)} validation rows"
+                )
         except Exception as e:
             all_errors.append(
-                {"worker": i, "error": str(e), "traceback": traceback.format_exc()}
+                {
+                    "worker": i,
+                    "phase": "transport",
+                    "severity": "transport",
+                    "error": str(e),
+                    "traceback": traceback.format_exc(),
+                }
             )
             print(f"  Worker {i}: CRASHED - {e}")
 
-    total_completed = sum(len(r["completed"]) for r in all_results)
-    total_failed = sum(len(r["failed"]) for r in all_results)
+    total_completed = sum(len(result.completed) for result in all_results)
+    total_failed = sum(len(result.failed) for result in all_results)
 
     staging_volume.reload()
     volume_completed = get_completed_from_volume(run_dir)
@@ -734,10 +909,11 @@ def build_areas_worker(
     branch: str,
     run_id: str,
     scope: str,
-    work_items: List[Dict],
-    calibration_inputs: WorkerCalibrationInputs | Mapping[str, object],
+    work_items: List[Dict] | None = None,
+    calibration_inputs: WorkerCalibrationInputs | Mapping[str, object] | None = None,
     validate: bool = True,
     scope_fingerprint: str | None = None,
+    request_payloads: List[Dict] | None = None,
 ) -> Dict:
     """
     Worker function that builds a subset of H5 files.
@@ -751,13 +927,25 @@ def build_areas_worker(
     output_dir = Path(VOLUME_MOUNT) / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    work_items_json = json.dumps(work_items)
+    if calibration_inputs is None:
+        raise ValueError("calibration_inputs must be provided")
     worker_inputs = WorkerCalibrationInputs.from_wire_dict(calibration_inputs)
+    if request_payloads is not None:
+        request_args = ["--requests-json", json.dumps(request_payloads)]
+        failed_items = [
+            f"{item.get('area_type', '<missing-type>')}:"
+            f"{item.get('area_id', '<missing-id>')}"
+            for item in request_payloads
+        ]
+    elif work_items is not None:
+        request_args = ["--work-items", json.dumps(work_items)]
+        failed_items = [f"{item['type']}:{item['id']}" for item in work_items]
+    else:
+        raise ValueError("Either request_payloads or work_items must be provided")
 
     worker_cmd = [
         *_python_cmd("-m", "modal_app.worker_script"),
-        "--work-items",
-        work_items_json,
+        *request_args,
         *worker_inputs.to_worker_cli_args(),
         "--output-dir",
         str(output_dir),
@@ -800,7 +988,7 @@ def build_areas_worker(
     if result.returncode != 0:
         return {
             "completed": [],
-            "failed": [f"{item['type']}:{item['id']}" for item in work_items],
+            "failed": failed_items,
             "errors": [{"error": (result.stderr or "No stderr")[:2000]}],
         }
 
@@ -846,12 +1034,6 @@ def validate_staging(branch: str, run_id: str, version: str = "") -> Dict:
     if not version:
         version = run_id.split("_", 1)[0]
 
-    # PR 9 migration note:
-    # The coordinator still enumerates states, districts, and cities inline
-    # and emits legacy work_items. This is intentionally temporary for the
-    # dual-path migration. The target cleanup is to delegate regional request
-    # enumeration to USAreaCatalog and send typed --requests-json payloads to
-    # workers so area construction no longer lives in the coordinator.
     result = subprocess.run(
         _python_cmd(
             "-c",
@@ -1159,6 +1341,13 @@ def coordinate_publish(
         calibration_package_path=calibration_package_path,
     )
     validate_artifacts(config_json_path, artifacts)
+    regional_geography_index = _load_area_catalog_geography_index(
+        weights_path=weights_path,
+        n_clones=n_clones,
+        geography_path=geography_path,
+        calibration_package_path=calibration_package_path,
+        legacy_blocks_path=artifacts / "stacked_blocks.npy",
+    )
 
     if validate:
         try:
@@ -1211,60 +1400,21 @@ def coordinate_publish(
     pipeline_volume.commit()
     staging_volume.commit()
     if work_items_override is None:
-        result = subprocess.run(
-            _python_cmd(
-                "-c",
-                (
-                    "import json\n"
-                    "from policyengine_us_data.calibration.calibration_utils "
-                    "import get_all_cds_from_database, STATE_CODES\n"
-                    "from policyengine_us_data.calibration.publish_local_area "
-                    "import get_district_friendly_name\n"
-                    f'db_uri = "sqlite:///{db_path}"\n'
-                    "cds = get_all_cds_from_database(db_uri)\n"
-                    "states = list(STATE_CODES.values())\n"
-                    "districts = [get_district_friendly_name(cd) for cd in cds]\n"
-                    'print(json.dumps({"states": states, "districts": districts, '
-                    '"cities": ["NYC"], "cds": cds}))\n'
-                ),
-            ),
-            capture_output=True,
-            text=True,
-            env=os.environ.copy(),
+        target_universe = TargetUniverseReader.from_sqlite(db_path).regional()
+        weighted_requests = _build_regional_weighted_requests(
+            geography=regional_geography_index,
+            target_cd_geoids=target_universe.cd_geoids,
         )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to get work items: {result.stderr}")
-
-        work_info = json.loads(result.stdout)
-        states = work_info["states"]
-        districts = work_info["districts"]
-        cities = work_info["cities"]
-
-        from collections import Counter
-
-        cds_per_state = Counter(d.split("-")[0] for d in districts)
-
-        CITY_WEIGHTS = {"NYC": 11}
-
-        work_items = []
-        for s in states:
-            work_items.append(
-                {"type": "state", "id": s, "weight": cds_per_state.get(s, 1)}
-            )
-        for d in districts:
-            work_items.append({"type": "district", "id": d, "weight": 1})
-        for c in cities:
-            work_items.append(
-                {"type": "city", "id": c, "weight": CITY_WEIGHTS.get(c, 3)}
-            )
     else:
-        work_items = work_items_override
-        states = [item["id"] for item in work_items if item.get("type") == "state"]
-        districts = [
-            item["id"] for item in work_items if item.get("type") == "district"
-        ]
-        cities = [item["id"] for item in work_items if item.get("type") == "city"]
+        weighted_requests = _build_weighted_requests_from_work_items(
+            work_items=work_items_override,
+            geography=regional_geography_index,
+        )
+    if not weighted_requests:
+        raise RuntimeError("No regional H5 requests found for coordinator geography")
+
+    expected_total = len(weighted_requests)
+    expected_keys = {item.key for item in weighted_requests}
 
     staging_volume.reload()
     completed = get_completed_from_volume(run_dir)
@@ -1286,49 +1436,58 @@ def coordinate_publish(
 
     completed, phase_errors, v_rows = run_phase(
         "All areas",
-        work_items=work_items,
+        weighted_requests=weighted_requests,
         completed=completed,
         **phase_args,
     )
     accumulated_errors.extend(phase_errors)
     accumulated_validation_rows.extend(v_rows)
 
-    expected_total = len(states) + len(districts) + len(cities)
-
     # If workers crashed but all files landed on the volume,
     # treat as transient infrastructure errors (e.g. gRPC stream resets).
+    missing_keys, reuse_measurement = _measure_expected_completion(
+        expected_keys=expected_keys,
+        initially_completed=initially_completed,
+        completed=completed,
+    )
     if accumulated_errors:
-        crash_errors = [e for e in accumulated_errors if "worker" in e]
-        if crash_errors and len(completed) >= expected_total:
-            print(
-                f"WARNING: {len(crash_errors)} worker error(s) occurred "
-                f"but all {expected_total} files present on volume. "
-                f"Treating as transient. Errors: {crash_errors[:3]}"
-            )
-        elif crash_errors:
+        fatal_worker_errors = [
+            error
+            for error in accumulated_errors
+            if error.get("severity") in {"protocol", "worker_failure"}
+        ]
+        transport_errors = [
+            error
+            for error in accumulated_errors
+            if error.get("severity") == "transport"
+        ]
+        if fatal_worker_errors:
             raise RuntimeError(
-                f"Build failed: {len(crash_errors)} worker "
-                f"crash(es) detected and only "
-                f"{len(completed)}/{expected_total} files on volume. "
-                f"Errors: {crash_errors[:3]}"
+                f"Build failed: {len(fatal_worker_errors)} fatal worker "
+                f"error(s) detected. Errors: {fatal_worker_errors[:3]}"
+            )
+        if transport_errors and not missing_keys:
+            print(
+                f"WARNING: {len(transport_errors)} worker transport error(s) occurred "
+                f"but all {expected_total} files present on volume. "
+                f"Treating as transient. Errors: {transport_errors[:3]}"
+            )
+        elif transport_errors:
+            raise RuntimeError(
+                f"Build failed: {len(transport_errors)} worker "
+                f"transport error(s) detected and only "
+                f"{expected_total - len(missing_keys)}/{expected_total} "
+                f"expected files on volume. "
+                f"Errors: {transport_errors[:3]}"
             )
 
-    if len(completed) < expected_total:
-        missing = expected_total - len(completed)
+    if missing_keys:
         raise RuntimeError(
-            f"Build incomplete: {missing} files missing from "
-            f"volume ({len(completed)}/{expected_total}). "
+            f"Build incomplete: {len(missing_keys)} expected files missing from "
+            f"volume ({expected_total - len(missing_keys)}/{expected_total}). "
+            f"Missing: {sorted(missing_keys)[:5]}. "
             f"Volume preserved for retry."
         )
-
-    reused_outputs = initially_completed & completed
-    recomputed_outputs = completed - initially_completed
-    reuse_measurement = {
-        "expected_outputs": expected_total,
-        "valid_reused_outputs": len(reused_outputs),
-        "recomputed_outputs": len(recomputed_outputs),
-        "invalid_outputs": max(expected_total - len(completed), 0),
-    }
 
     if skip_upload:
         print("\nSkipping upload (--skip-upload flag set)")
@@ -1342,7 +1501,6 @@ def coordinate_publish(
     print("\nValidating staging...")
     manifest = validate_staging.remote(branch=branch, run_id=run_id, version=version)
 
-    expected_total = len(states) + len(districts) + len(cities)
     actual_total = (
         manifest["totals"]["states"]
         + manifest["totals"]["districts"]
@@ -1514,26 +1672,27 @@ def coordinate_national_publish(
     pipeline_volume.commit()
     national_h5 = run_dir / "national" / "US.h5"
 
-    work_items = [{"type": "national", "id": "US"}]
+    national_request = USAreaCatalog.default().build_national_request()
     print("Spawning worker for national H5 build...")
-    worker_result = build_areas_worker.remote(
+    raw_worker_result = build_areas_worker.remote(
         branch=branch,
         run_id=run_id,
         scope="national",
-        work_items=work_items,
+        request_payloads=[national_request.to_dict()],
         calibration_inputs=calibration_inputs.to_wire_dict(),
         validate=validate,
         scope_fingerprint=fingerprint,
     )
+    worker_result = normalize_worker_response(worker_index=0, result=raw_worker_result)
 
     print(
         f"Worker result: "
-        f"{len(worker_result['completed'])} completed, "
-        f"{len(worker_result['failed'])} failed"
+        f"{len(worker_result.completed)} completed, "
+        f"{len(worker_result.failed)} failed"
     )
 
-    if worker_result["failed"]:
-        raise RuntimeError(f"National build failed: {worker_result['errors']}")
+    if worker_result.fatal_errors:
+        raise RuntimeError(f"National build failed: {worker_result.fatal_errors}")
 
     staging_volume.reload()
     national_h5 = run_dir / "national" / "US.h5"

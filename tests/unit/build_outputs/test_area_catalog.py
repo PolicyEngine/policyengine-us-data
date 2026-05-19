@@ -57,6 +57,61 @@ def test_build_city_requests_emits_nyc_request_with_district_validation_ids():
     assert requests[0].validation_geographic_ids == ("3601", "3603")
 
 
+def test_catalog_requests_all_states_districts_and_nyc_present_in_geography():
+    catalog = make_catalog()
+    geography = make_geography(
+        cd_geoids=["101", "102", "298", "3601", "3603"],
+        county_fips=["01001", "01003", "02020", "36061", "36081"],
+    )
+
+    state_requests = catalog.build_state_requests(geography)
+    district_requests = catalog.build_district_requests(geography)
+    city_requests = catalog.build_city_requests(geography)
+
+    assert [request.area_id for request in state_requests] == ["AL", "AK", "NY"]
+    assert [request.area_id for request in district_requests] == [
+        "AL-01",
+        "AL-02",
+        "AK-01",
+        "NY-01",
+        "NY-03",
+    ]
+    assert [request.area_id for request in city_requests] == ["NYC"]
+
+
+def test_build_expected_regional_requests_defines_release_shape():
+    catalog = make_catalog()
+    geography = make_geography(
+        cd_geoids=["3601", "3603", "101"],
+        county_fips=["36061", "36081", "01001"],
+    )
+
+    requests = catalog.build_expected_regional_requests(
+        target_cd_geoids=["101", "102", "298", "3601", "3603"],
+        geography=geography,
+    )
+
+    assert [request.area_id for request in requests] == [
+        "AL",
+        "AK",
+        "NY",
+        "AL-01",
+        "AL-02",
+        "AK-01",
+        "NY-01",
+        "NY-03",
+        "NYC",
+    ]
+    state_requests = requests[:3]
+    assert [request.filters[0].geography_field for request in state_requests] == [
+        "state_fips",
+        "state_fips",
+        "state_fips",
+    ]
+    assert [request.filters[0].value for request in state_requests] == [1, 2, 36]
+    assert requests[-1].validation_geographic_ids == ("3601", "3603")
+
+
 def test_build_national_request_returns_canonical_us_request():
     catalog = make_catalog()
 

@@ -30,6 +30,7 @@ GeographySourceKind = Literal["saved_geography", "calibration_package", "legacy_
 CanonicalGeographyChecksum = str
 
 __all__ = [
+    "CalibrationGeographyIndex",
     "CalibrationGeographyLoader",
     "CanonicalGeographyChecksum",
     "GeographySourceKind",
@@ -61,6 +62,63 @@ class ResolvedGeographySource:
 
     kind: GeographySourceKind
     path: Path
+
+
+@pipeline_node(
+    id="local_h5_calibration_geography_index",
+    label="CalibrationGeographyIndex",
+    node_type="library",
+    description="Lightweight clone geography index used by H5 coordinators.",
+    source_file="policyengine_us_data/build_outputs/geography_loader.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
+    ],
+)
+@dataclass(frozen=True)
+class CalibrationGeographyIndex:
+    """Clone geography fields needed for coordinator-side request planning."""
+
+    cd_geoid: np.ndarray
+    county_fips: np.ndarray
+    n_records: int
+    n_clones: int
+
+    def __post_init__(self) -> None:
+        n_records = int(self.n_records)
+        n_clones = int(self.n_clones)
+        if n_records <= 0:
+            raise ValueError("n_records must be positive")
+        if n_clones <= 0:
+            raise ValueError("n_clones must be positive")
+
+        cd_geoids = np.asarray(self.cd_geoid, dtype=str)
+        county_fips = np.asarray(self.county_fips, dtype=str)
+        expected = n_records * n_clones
+        if cd_geoids.ndim != 1 or county_fips.ndim != 1:
+            raise ValueError("Geography index arrays must be one-dimensional")
+        if len(cd_geoids) != expected:
+            raise ValueError(
+                f"cd_geoid length {len(cd_geoids)} does not equal "
+                f"n_records * n_clones={expected}"
+            )
+        if len(county_fips) != expected:
+            raise ValueError(
+                f"county_fips length {len(county_fips)} does not equal "
+                f"n_records * n_clones={expected}"
+            )
+
+        cd_geoids = np.array(cd_geoids, copy=True)
+        county_fips = np.array(county_fips, copy=True)
+        cd_geoids.setflags(write=False)
+        county_fips.setflags(write=False)
+
+        object.__setattr__(self, "cd_geoid", cd_geoids)
+        object.__setattr__(self, "county_fips", county_fips)
+        object.__setattr__(self, "n_records", n_records)
+        object.__setattr__(self, "n_clones", n_clones)
 
 
 def _calibration_artifact_prefix(weights_path: Path) -> str:
@@ -225,6 +283,60 @@ class CalibrationGeographyLoader:
             n_clones=n_clones,
         )
 
+    def load_index(
+        self,
+        *,
+        weights_path: Path,
+        n_records: int,
+        n_clones: int | None = None,
+        geography_path: Path | None = None,
+        blocks_path: Path | None = None,
+        calibration_package_path: Path | None = None,
+    ) -> CalibrationGeographyIndex:
+        """Load only coordinator-needed geography fields.
+
+        This avoids constructing a full `GeographyAssignment` in Modal
+        coordinators, which only need CD and county arrays to plan regional H5
+        requests. Worker containers still use `load()` because they need the
+        full block/state/county/CD geography for clone selection.
+        """
+
+        resolved = self.resolve_source(
+            weights_path=Path(weights_path),
+            geography_path=geography_path,
+            blocks_path=blocks_path,
+            calibration_package_path=calibration_package_path,
+        )
+        if resolved is None:
+            geo_hint = _sibling_artifact_path(Path(weights_path), GEOGRAPHY_FILENAME)
+            legacy_hint = _sibling_artifact_path(
+                Path(weights_path),
+                LEGACY_BLOCKS_FILENAME,
+            )
+            raise FileNotFoundError(
+                "No saved calibration geography found. Expected either "
+                f"{geo_hint} or {legacy_hint}. Re-run calibration on this branch or "
+                "provide --geography-path."
+            )
+
+        if resolved.kind == "saved_geography":
+            return self._load_saved_geography_index(
+                path=resolved.path,
+                n_records=n_records,
+                n_clones=n_clones,
+            )
+        if resolved.kind == "calibration_package":
+            return self._load_package_geography_index(
+                path=resolved.path,
+                n_records=n_records,
+                n_clones=n_clones,
+            )
+        return self._load_blocks_geography_index(
+            path=resolved.path,
+            n_records=n_records,
+            n_clones=n_clones,
+        )
+
     def compute_canonical_checksum(
         self,
         *,
@@ -287,6 +399,30 @@ class CalibrationGeographyLoader:
             )
         return geography
 
+    def _load_saved_geography_index(
+        self,
+        *,
+        path: Path,
+        n_records: int,
+        n_clones: int | None,
+    ) -> CalibrationGeographyIndex:
+        with np.load(path, allow_pickle=True) as data:
+            artifact_n_records = int(data["n_records"][0])
+            artifact_n_clones = int(data["n_clones"][0])
+            self._validate_dimensions(
+                path=path,
+                actual_n_records=artifact_n_records,
+                actual_n_clones=artifact_n_clones,
+                expected_n_records=n_records,
+                expected_n_clones=n_clones,
+            )
+            return CalibrationGeographyIndex(
+                cd_geoid=data["cd_geoid"],
+                county_fips=data["county_fips"],
+                n_records=artifact_n_records,
+                n_clones=artifact_n_clones,
+            )
+
     def _load_from_package(
         self,
         *,
@@ -305,27 +441,14 @@ class CalibrationGeographyLoader:
             )
         block_geoids = np.asarray(raw_block_geoids, dtype=str)
         cd_geoids = np.asarray(raw_cd_geoids, dtype=str)
-        if len(block_geoids) == 0 or len(cd_geoids) == 0:
-            raise ValueError(
-                f"Calibration package {path} does not contain geography arrays"
-            )
-        if len(block_geoids) != len(cd_geoids):
-            raise ValueError(
-                f"Calibration package {path} has mismatched geography lengths "
-                f"({len(block_geoids)} blocks vs {len(cd_geoids)} CDs)"
-            )
-        if len(block_geoids) % n_records != 0:
-            raise ValueError(
-                f"Calibration package {path} has {len(block_geoids)} geography rows, "
-                f"not divisible by n_records={n_records}"
-            )
-
-        inferred_n_clones = len(block_geoids) // n_records
-        if n_clones is not None and inferred_n_clones != n_clones:
-            raise ValueError(
-                f"Calibration package {path} implies n_clones={inferred_n_clones}, "
-                f"expected {n_clones}"
-            )
+        inferred_n_clones = self._validate_flat_geography_rows(
+            path=path,
+            row_count=len(block_geoids),
+            cd_count=len(cd_geoids),
+            n_records=n_records,
+            n_clones=n_clones,
+            source_label="Calibration package",
+        )
 
         return GeographyAssignment(
             block_geoid=block_geoids,
@@ -338,6 +461,43 @@ class CalibrationGeographyLoader:
             state_fips=np.fromiter(
                 (int(str(block)[:2]) for block in block_geoids),
                 dtype=np.int32,
+                count=len(block_geoids),
+            ),
+            n_records=n_records,
+            n_clones=inferred_n_clones,
+        )
+
+    def _load_package_geography_index(
+        self,
+        *,
+        path: Path,
+        n_records: int,
+        n_clones: int | None,
+    ) -> CalibrationGeographyIndex:
+        with open(path, "rb") as package_file:
+            package = pickle.load(package_file)
+
+        raw_block_geoids = package.get("block_geoid")
+        raw_cd_geoids = package.get("cd_geoid")
+        if raw_block_geoids is None or raw_cd_geoids is None:
+            raise ValueError(
+                f"Calibration package {path} does not contain geography arrays"
+            )
+        block_geoids = np.asarray(raw_block_geoids, dtype=str)
+        cd_geoids = np.asarray(raw_cd_geoids, dtype=str)
+        inferred_n_clones = self._validate_flat_geography_rows(
+            path=path,
+            row_count=len(block_geoids),
+            cd_count=len(cd_geoids),
+            n_records=n_records,
+            n_clones=n_clones,
+            source_label="Calibration package",
+        )
+        return CalibrationGeographyIndex(
+            cd_geoid=cd_geoids,
+            county_fips=np.fromiter(
+                (str(block)[:5] for block in block_geoids),
+                dtype="U5",
                 count=len(block_geoids),
             ),
             n_records=n_records,
@@ -368,3 +528,72 @@ class CalibrationGeographyLoader:
             n_records=n_records,
             n_clones=inferred_n_clones,
         )
+
+    def _load_blocks_geography_index(
+        self,
+        *,
+        path: Path,
+        n_records: int,
+        n_clones: int | None,
+    ) -> CalibrationGeographyIndex:
+        geography = self._load_from_blocks(
+            path=path,
+            n_records=n_records,
+            n_clones=n_clones,
+        )
+        return CalibrationGeographyIndex(
+            cd_geoid=geography.cd_geoid,
+            county_fips=geography.county_fips,
+            n_records=geography.n_records,
+            n_clones=geography.n_clones,
+        )
+
+    @staticmethod
+    def _validate_dimensions(
+        *,
+        path: Path,
+        actual_n_records: int,
+        actual_n_clones: int,
+        expected_n_records: int,
+        expected_n_clones: int | None,
+    ) -> None:
+        if actual_n_records != expected_n_records:
+            raise ValueError(
+                f"Geography artifact {path} has n_records={actual_n_records}, "
+                f"expected {expected_n_records}"
+            )
+        if expected_n_clones is not None and actual_n_clones != expected_n_clones:
+            raise ValueError(
+                f"Geography artifact {path} has n_clones={actual_n_clones}, "
+                f"expected {expected_n_clones}"
+            )
+
+    @staticmethod
+    def _validate_flat_geography_rows(
+        *,
+        path: Path,
+        row_count: int,
+        cd_count: int,
+        n_records: int,
+        n_clones: int | None,
+        source_label: str,
+    ) -> int:
+        if row_count == 0 or cd_count == 0:
+            raise ValueError(f"{source_label} {path} does not contain geography arrays")
+        if row_count != cd_count:
+            raise ValueError(
+                f"{source_label} {path} has mismatched geography lengths "
+                f"({row_count} blocks vs {cd_count} CDs)"
+            )
+        if row_count % n_records != 0:
+            raise ValueError(
+                f"{source_label} {path} has {row_count} geography rows, "
+                f"not divisible by n_records={n_records}"
+            )
+        inferred_n_clones = row_count // n_records
+        if n_clones is not None and inferred_n_clones != n_clones:
+            raise ValueError(
+                f"{source_label} {path} implies n_clones={inferred_n_clones}, "
+                f"expected {n_clones}"
+            )
+        return inferred_n_clones

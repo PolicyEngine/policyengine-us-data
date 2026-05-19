@@ -16,6 +16,7 @@ from .writer import H5Writer
 
 WorkerAreaStatus = Literal["completed", "failed", "skipped"]
 WorkerIssuePhase = Literal["request", "build", "write", "validation"]
+WorkerIssueSeverity = Literal["worker_failure", "validation"]
 WorkerValidationStatus = Literal["not_run", "passed", "error"]
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "WorkerExecutionConfig",
     "WorkerIssue",
     "WorkerIssuePhase",
+    "WorkerIssueSeverity",
     "WorkerResult",
     "WorkerValidationStatus",
 ]
@@ -82,6 +84,7 @@ class WorkerIssue:
     phase: WorkerIssuePhase
     message: str
     traceback: str | None = None
+    severity: WorkerIssueSeverity = "worker_failure"
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize the issue to worker JSON output."""
@@ -90,6 +93,7 @@ class WorkerIssue:
             "item": self.item,
             "phase": self.phase,
             "error": self.message,
+            "severity": self.severity,
         }
         if self.traceback:
             payload["traceback"] = self.traceback
@@ -194,7 +198,7 @@ class WorkerResult:
                 validation_summary[result.key] = dict(result.validation_summary)
             issue_dicts = [issue.to_dict() for issue in result.issues]
             structured_issues.extend(issue_dicts)
-            if result.status == "failed" or result.validation_status == "error":
+            if result.status == "failed":
                 legacy_errors.extend(issue_dicts)
 
         return {
@@ -323,7 +327,16 @@ class LocalH5WorkerService:
                 validation_summary = dict(validation_result.summary)
                 validation_status = "passed"
             except Exception as exc:
-                issue = _issue(key=key, phase="validation", error=exc)
+                issue = _issue(
+                    key=key,
+                    phase="validation",
+                    error=exc,
+                    severity=(
+                        "worker_failure"
+                        if config.fail_on_validation_error
+                        else "validation"
+                    ),
+                )
                 issues = (issue,)
                 validation_status = "error"
                 if config.fail_on_validation_error:
@@ -413,10 +426,12 @@ def _issue(
     key: str,
     phase: WorkerIssuePhase,
     error: Exception,
+    severity: WorkerIssueSeverity = "worker_failure",
 ) -> WorkerIssue:
     return WorkerIssue(
         item=key,
         phase=phase,
         message=str(error),
         traceback=traceback_module.format_exc(),
+        severity=severity,
     )

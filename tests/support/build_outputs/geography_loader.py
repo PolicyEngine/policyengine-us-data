@@ -22,6 +22,7 @@ def load_geography_loader_exports():
     )
     _GEOGRAPHY_LOADER_EXPORTS = {
         "module": module,
+        "CalibrationGeographyIndex": module.CalibrationGeographyIndex,
         "CalibrationGeographyLoader": module.CalibrationGeographyLoader,
         "ResolvedGeographySource": module.ResolvedGeographySource,
     }

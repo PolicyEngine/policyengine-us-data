@@ -144,7 +144,12 @@ def test_worker_result_preserves_legacy_and_structured_shapes(tmp_path):
     assert payload["completed"] == ["district:NC-01"]
     assert payload["failed"] == ["district:bad"]
     assert payload["errors"] == [
-        {"item": "district:bad", "phase": "request", "error": "bad request"}
+        {
+            "item": "district:bad",
+            "phase": "request",
+            "error": "bad request",
+            "severity": "worker_failure",
+        }
     ]
     assert payload["validation_rows"] == [{"variable": "household_count"}]
     assert payload["validation_summary"] == {"district:NC-01": {"n_targets": 1}}
@@ -284,9 +289,10 @@ def test_worker_service_records_validation_errors_without_failing_by_default(
 
     assert payload["completed"] == ["district:NC-01"]
     assert payload["failed"] == []
-    assert payload["errors"][0]["phase"] == "validation"
-    assert payload["errors"][0]["error"] == "validation failed"
+    assert payload["errors"] == []
     assert payload["issues"][0]["phase"] == "validation"
+    assert payload["issues"][0]["error"] == "validation failed"
+    assert payload["issues"][0]["severity"] == "validation"
     assert payload["results"][0]["validation_status"] == "error"
 
 
@@ -312,6 +318,7 @@ def test_worker_service_can_fail_on_validation_error(tmp_path):
     assert payload["completed"] == []
     assert payload["failed"] == ["district:NC-01"]
     assert payload["errors"][0]["phase"] == "validation"
+    assert payload["errors"][0]["severity"] == "worker_failure"
 
 
 def test_worker_service_rejects_output_path_escape(tmp_path):

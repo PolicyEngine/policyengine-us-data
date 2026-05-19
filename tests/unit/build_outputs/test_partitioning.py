@@ -5,13 +5,60 @@ from tests.support.build_outputs.partitioning import (
 
 partitioning = load_partitioning_exports()
 flatten_chunks = partitioning["flatten_chunks"]
+partition_weighted_area_requests = partitioning["partition_weighted_area_requests"]
 partition_weighted_work_items = partitioning["partition_weighted_work_items"]
+WeightedAreaRequest = partitioning["WeightedAreaRequest"]
 work_item_key = partitioning["work_item_key"]
+
+
+class FakeAreaRequest:
+    def __init__(self, *, area_type: str, area_id: str):
+        self.area_type = area_type
+        self.area_id = area_id
+
+    def to_dict(self):
+        return {
+            "area_type": self.area_type,
+            "area_id": self.area_id,
+        }
 
 
 def test_work_item_key_uses_existing_completion_shape():
     item = {"type": "district", "id": "CA-12", "weight": 1}
     assert work_item_key(item) == "district:CA-12"
+
+
+def test_weighted_area_request_uses_existing_completion_shape():
+    item = WeightedAreaRequest(
+        request=FakeAreaRequest(area_type="district", area_id="CA-12"),
+        weight=1,
+    )
+
+    assert item.key == "district:CA-12"
+    assert item.to_worker_payload() == {
+        "area_type": "district",
+        "area_id": "CA-12",
+    }
+
+
+def test_partition_typed_requests_filters_completed_items():
+    requests = (
+        WeightedAreaRequest(FakeAreaRequest(area_type="state", area_id="CA"), weight=3),
+        WeightedAreaRequest(
+            FakeAreaRequest(area_type="district", area_id="CA-12"),
+            weight=1,
+        ),
+        WeightedAreaRequest(FakeAreaRequest(area_type="city", area_id="NYC"), weight=2),
+    )
+
+    chunks = partition_weighted_area_requests(
+        requests,
+        num_workers=2,
+        completed={"district:CA-12"},
+    )
+
+    flattened = flatten_chunks(chunks)
+    assert [item.key for item in flattened] == ["state:CA", "city:NYC"]
 
 
 def test_partition_filters_completed_items():

@@ -76,6 +76,12 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         fake_pipeline_schema = ModuleType("policyengine_us_data.pipeline_schema")
         fake_utils = ModuleType("policyengine_us_data.utils")
         fake_run_context = ModuleType("policyengine_us_data.utils.run_context")
+        fake_area_catalog = ModuleType(
+            "policyengine_us_data.build_outputs.area_catalog"
+        )
+        fake_geography_loader = ModuleType(
+            "policyengine_us_data.build_outputs.geography_loader"
+        )
         fake_partitioning = ModuleType(
             "policyengine_us_data.build_outputs.partitioning"
         )
@@ -85,6 +91,12 @@ def load_local_area_module(*, stub_policyengine: bool = True):
         )
         fake_worker_inputs = ModuleType(
             "policyengine_us_data.build_outputs.worker_inputs"
+        )
+        fake_worker_responses = ModuleType(
+            "policyengine_us_data.build_outputs.worker_responses"
+        )
+        fake_target_universe = ModuleType(
+            "policyengine_us_data.build_outputs.target_universe"
         )
         fake_policyengine.__path__ = []
         fake_calibration.__path__ = []
@@ -122,7 +134,162 @@ def load_local_area_module(*, stub_policyengine: bool = True):
 
         fake_run_context.resolve_candidate_version = _fake_resolve_candidate_version
         fake_run_context.resolve_run_id = lambda explicit="", **kwargs: explicit
+
+        class _FakeAreaRequest:
+            def __init__(self, *, area_type, area_id):
+                self.area_type = area_type
+                self.area_id = area_id
+
+            def to_dict(self):
+                return {
+                    "area_type": self.area_type,
+                    "area_id": self.area_id,
+                }
+
+        class _FakeUSAreaCatalog:
+            @classmethod
+            def default(cls):
+                return cls()
+
+            def build_state_requests(self, geography):
+                return ()
+
+            def build_district_requests(self, geography):
+                return ()
+
+            def build_city_requests(self, geography):
+                return ()
+
+            def build_expected_regional_requests(self, *, target_cd_geoids, **kwargs):
+                return tuple(
+                    _FakeAreaRequest(area_type="district", area_id=str(cd_geoid))
+                    for cd_geoid in target_cd_geoids
+                )
+
+            def build_national_request(self):
+                return _FakeAreaRequest(area_type="national", area_id="US")
+
+            def build_request_from_work_item(self, item, *, geography):
+                return _FakeAreaRequest(area_type=item["type"], area_id=item["id"])
+
+        class _FakeCalibrationGeographyLoader:
+            def load(self, **kwargs):
+                return SimpleNamespace()
+
+            def load_index(self, **kwargs):
+                return SimpleNamespace()
+
+        class _FakeWeightedAreaRequest:
+            def __init__(self, request, weight=1):
+                self.request = request
+                self.weight = weight
+
+            @property
+            def key(self):
+                return f"{self.request.area_type}:{self.request.area_id}"
+
+            def to_worker_payload(self):
+                return self.request.to_dict()
+
+        def _fake_partition_typed(requests, num_workers, completed=None):
+            completed = completed or set()
+            remaining = [item for item in requests if item.key not in completed]
+            return [remaining] if remaining else []
+
+        fake_area_catalog.USAreaCatalog = _FakeUSAreaCatalog
+        fake_geography_loader.CalibrationGeographyLoader = (
+            _FakeCalibrationGeographyLoader
+        )
+        fake_partitioning.WeightedAreaRequest = _FakeWeightedAreaRequest
+        fake_partitioning.partition_weighted_area_requests = _fake_partition_typed
         fake_partitioning.partition_weighted_work_items = lambda *args, **kwargs: []
+
+        def _fake_issue_severity(issue, *, default_severity):
+            severity = issue.get("severity")
+            if isinstance(severity, str) and severity:
+                return severity
+            if issue.get("phase") == "validation":
+                return "validation"
+            return default_severity
+
+        def _fake_issue_identity(issue):
+            return issue.get("item"), issue.get("phase"), issue.get("error")
+
+        def _fake_normalized_issue(issue, *, worker_index, severity):
+            payload = dict(issue)
+            payload.setdefault("worker", worker_index)
+            payload["severity"] = severity
+            return payload
+
+        def _fake_normalize_worker_response(*, worker_index, result):
+            if result is None:
+                return SimpleNamespace(
+                    completed=(),
+                    failed=(),
+                    fatal_errors=(
+                        {
+                            "worker": worker_index,
+                            "severity": "protocol",
+                            "error": "Worker returned None",
+                        },
+                    ),
+                    issues=(),
+                    validation_rows=(),
+                )
+            fatal_errors = []
+            issues = []
+            issue_keys = set()
+            for error in result.get("errors", ()):
+                severity = _fake_issue_severity(
+                    error,
+                    default_severity="worker_failure",
+                )
+                normalized = _fake_normalized_issue(
+                    error,
+                    worker_index=worker_index,
+                    severity=severity,
+                )
+                if severity in {"protocol", "worker_failure"}:
+                    fatal_errors.append(normalized)
+                else:
+                    issues.append(normalized)
+                    issue_keys.add(_fake_issue_identity(normalized))
+            for issue in result.get("issues", ()):
+                severity = _fake_issue_severity(
+                    issue,
+                    default_severity="worker_issue",
+                )
+                normalized = _fake_normalized_issue(
+                    issue,
+                    worker_index=worker_index,
+                    severity=severity,
+                )
+                if severity in {"protocol", "worker_failure"}:
+                    fatal_errors.append(normalized)
+                elif _fake_issue_identity(normalized) not in issue_keys:
+                    issues.append(normalized)
+                    issue_keys.add(_fake_issue_identity(normalized))
+            return SimpleNamespace(
+                completed=tuple(result.get("completed", ())),
+                failed=tuple(result.get("failed", ())),
+                fatal_errors=tuple(fatal_errors),
+                issues=tuple(issues),
+                validation_rows=tuple(result.get("validation_rows", ())),
+            )
+
+        fake_worker_responses.normalize_worker_response = (
+            _fake_normalize_worker_response
+        )
+
+        class _FakeTargetUniverseReader:
+            @classmethod
+            def from_sqlite(cls, db_path):
+                return cls()
+
+            def regional(self):
+                return SimpleNamespace(cd_geoids=("3701",))
+
+        fake_target_universe.TargetUniverseReader = _FakeTargetUniverseReader
 
         class _FakeWorkerBootstrapBuilder:
             def build(self, *args, **kwargs):
@@ -245,13 +412,23 @@ def load_local_area_module(*, stub_policyengine: bool = True):
                 "policyengine_us_data.utils": fake_utils,
                 "policyengine_us_data.utils.run_context": fake_run_context,
                 "policyengine_us_data.build_outputs": fake_build_outputs,
+                "policyengine_us_data.build_outputs.area_catalog": fake_area_catalog,
                 "policyengine_us_data.build_outputs.bootstrap": fake_bootstrap,
                 "policyengine_us_data.build_outputs.fingerprinting": (
                     fake_fingerprinting
                 ),
+                "policyengine_us_data.build_outputs.geography_loader": (
+                    fake_geography_loader
+                ),
                 "policyengine_us_data.build_outputs.partitioning": (fake_partitioning),
                 "policyengine_us_data.build_outputs.worker_inputs": (
                     fake_worker_inputs
+                ),
+                "policyengine_us_data.build_outputs.worker_responses": (
+                    fake_worker_responses
+                ),
+                "policyengine_us_data.build_outputs.target_universe": (
+                    fake_target_universe
                 ),
             }
         )

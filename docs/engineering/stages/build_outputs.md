@@ -34,6 +34,19 @@ a postprocessor.
 
 ## Worker Chunk Execution
 
+The Modal coordinator builds canonical typed area requests before spawning
+workers. Regional publish reads the target congressional district universe from
+the staged target database through `TargetUniverseReader`, reads only
+coordinator-needed CD and county geography fields through
+`CalibrationGeographyLoader.load_index()`, then asks `USAreaCatalog` to define
+the regional release shape: every configured state, every target congressional
+district, and the explicitly supported city outputs such as NYC. The
+coordinator wraps those requests in `WeightedAreaRequest`, partitions them with
+`partition_weighted_area_requests()`, and sends workers typed
+`--requests-json` payloads. Completion is measured against the explicit request
+keys, not just a raw file count, so stale or unrelated H5 files cannot satisfy a
+missing expected area.
+
 `LocalH5WorkerService` is the reusable Stage 4 boundary for executing one
 prepared local-H5 worker chunk. It consumes a `WorkerSession`, typed
 `AreaBuildRequest` objects, and a `WorkerExecutionConfig`, then returns a
@@ -51,11 +64,18 @@ service. It may parse legacy `--work-items` and typed `--requests-json`, prepare
 the worker session, and print the legacy coordinator JSON shape, but it should
 not regain build-loop, write-loop, or validation-loop logic.
 
+The legacy `--work-items` input path remains compatibility-only while older
+tests and explicit override callers are retired. New coordinator work should
+prefer typed `AreaBuildRequest` objects and typed worker payloads.
+
 For now, `WorkerResult.to_legacy_dict()` preserves the existing coordinator
 contract with `completed`, `failed`, `errors`, `validation_rows`, and
 `validation_summary`. New code should prefer the structured `results` and
-`issues` fields. Validation exceptions remain visible in legacy `errors` so the
-current coordinator does not drop them before it migrates to structured results.
+`issues` fields. Validation exceptions remain visible as structured `issues`
+with `severity="validation"` by default; they enter legacy `errors` only when a
+worker is configured to fail on validation errors or the area result is otherwise
+failed. This keeps nonfatal validation diagnostics visible without treating them
+as coordinator-fatal worker failures.
 Removing the legacy shape and moving the coordinator off worker subprocess JSON
 is a later migration step.
 

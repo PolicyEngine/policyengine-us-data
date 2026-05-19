@@ -34,22 +34,45 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 
 # National calibration targets consumed by build_loss_matrix().
 # These values are specific to 2024 — they should NOT be applied to
-# other years without re-sourcing.  They are duplicated in
-# db/etl_national_targets.py which loads them into policy_data.db.
-# A future PR should wire build_loss_matrix() to read from the
-# database so this dict can be deleted.  See PR #488.
+# other years without re-sourcing. They must stay registered here for
+# ECPS calibration, in db/etl_national_targets.py for policy_data.db,
+# and in calibration/target_config.yaml when the default calibration
+# include list should train on them. A future PR should wire
+# build_loss_matrix() to read from the database so this duplication can
+# be deleted. See PR #488.
 
 BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
 BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
 BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
 BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = (
-    "total_self_employment_income+farm_operations_income+partnership_s_corp_income"
-)
+NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
     "taxable_interest_income+dividend_income"
+)
+
+BEA_NIPA_DIRECT_SUM_TARGETS = (
+    (
+        "nation/bea/nipa_wages_and_salaries",
+        "employment_income_before_lsr",
+        BEA_NIPA_WAGES_AND_SALARIES_2024,
+    ),
+    (
+        "nation/bea/nipa_proprietors_income",
+        NIPA_PROPRIETORS_INCOME_VARIABLE,
+        BEA_NIPA_PROPRIETORS_INCOME_2024,
+    ),
+    (
+        "nation/bea/nipa_personal_interest_income",
+        NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
+        BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
+    ),
+    (
+        "nation/bea/nipa_personal_dividend_income",
+        "dividend_income",
+        BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
+    ),
 )
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
@@ -1249,29 +1272,7 @@ def build_loss_matrix(dataset: type, time_period):
         )
         targets_array.append(income_by_source._children[parameter])
 
-    bea_nipa_targets = [
-        (
-            "nation/bea/nipa_wages_and_salaries",
-            "employment_income_before_lsr",
-            BEA_NIPA_WAGES_AND_SALARIES_2024,
-        ),
-        (
-            "nation/bea/nipa_proprietors_income",
-            NIPA_PROPRIETORS_INCOME_VARIABLE,
-            BEA_NIPA_PROPRIETORS_INCOME_2024,
-        ),
-        (
-            "nation/bea/nipa_personal_interest_income",
-            NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
-            BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
-        ),
-        (
-            "nation/bea/nipa_personal_dividend_income",
-            "dividend_income",
-            BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
-        ),
-    ]
-    for label, variable, target in bea_nipa_targets:
+    for label, variable, target in BEA_NIPA_DIRECT_SUM_TARGETS:
         loss_matrix[label] = _calculate_household_target_values(
             sim,
             variable,

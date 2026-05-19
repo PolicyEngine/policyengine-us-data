@@ -14,6 +14,7 @@ from policyengine_us_data.calibration.unified_calibration import (
     save_calibration_package,
     load_calibration_package,
 )
+from policyengine_us_data.db import etl_national_targets
 
 
 @pytest.fixture
@@ -344,6 +345,25 @@ class TestLoadTargetConfig:
             "variable": "medicare_part_b_premium",
             "geo_level": "national",
         } in config["include"]
+
+    def test_training_config_includes_bea_nipa_direct_sum_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        for variable in [
+            "employment_income_before_lsr",
+            etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE,
+            etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
+            "dividend_income",
+        ]:
+            assert {"variable": variable, "geo_level": "national"} in include_rules
 
     def test_training_config_includes_soi_ltcg_target(self):
         config = load_target_config(

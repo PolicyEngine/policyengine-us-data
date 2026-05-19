@@ -20,6 +20,25 @@ artifacts, or public library functions, read
 When diagnosing a deployed Modal pipeline run or a failed publication pipeline,
 read `docs/engineering/skills/pipeline_operations.md`.
 
+When adding, changing, or reviewing calibration target definitions, read
+`docs/engineering/skills/calibration_targets.md`.
+
+## Calibration targets
+
+Manually sourced national or local-file calibration targets must be registered
+in every active target path before merging:
+
+1. `policyengine_us_data/utils/loss.py` for the ECPS loss matrix.
+2. `policyengine_us_data/db/etl_national_targets.py` for `policy_data.db` and
+   local H5 validation inputs.
+3. `policyengine_us_data/calibration/target_config.yaml` when the default
+   calibration uses an `include:` list; otherwise the target can exist in
+   `policy_data.db` but still be omitted from calibration.
+
+Do not treat a target appearing in `policy_data.db` as proof that published
+datasets were calibrated to it. Add or update tests that fail if a new target is
+present in one path but missing from another.
+
 ## GitHub PRs
 
 Read `docs/engineering/skills/github-prs.md` before opening, replacing, or

@@ -10,6 +10,7 @@ from policyengine_us_data.utils.loss import (
     AGE_BUCKETED_HEALTH_TARGETS,
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
+    BEA_NIPA_DIRECT_SUM_TARGETS,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     TRANSFER_BALANCE_TARGETS,
@@ -32,11 +33,33 @@ from policyengine_us_data.utils.loss import (
     build_loss_matrix,
     get_target_error_normalisation,
 )
+from policyengine_us_data.db import etl_national_targets
 
 
 def test_legacy_loss_targets_include_aggregate_qbi_deduction():
     assert "qualified_business_income_deduction" in AGGREGATE_LEVEL_TARGETED_VARIABLES
     assert "qualified_business_income_deduction" not in AGI_LEVEL_TARGETED_VARIABLES
+
+
+def test_bea_nipa_direct_sum_targets_match_targets_db():
+    loss_targets_by_variable = {
+        variable: target for _, variable, target in BEA_NIPA_DIRECT_SUM_TARGETS
+    }
+
+    assert loss_targets_by_variable == {
+        "employment_income_before_lsr": (
+            etl_national_targets.BEA_NIPA_WAGES_AND_SALARIES_2024
+        ),
+        etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE: (
+            etl_national_targets.BEA_NIPA_PROPRIETORS_INCOME_2024
+        ),
+        etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE: (
+            etl_national_targets.BEA_NIPA_PERSONAL_INTEREST_INCOME_2024
+        ),
+        "dividend_income": (
+            etl_national_targets.BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024
+        ),
+    }
 
 
 def test_aca_targets_roll_forward_to_2025():

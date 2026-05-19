@@ -19,6 +19,10 @@ from policyengine_us_data.utils.dataset_validation import validate_dataset_contr
 from policyengine_us_data.utils.policyengine import PolicyEngineUSBuildInfo
 
 
+ORIGINAL_MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME = (
+    upload_module.MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME
+)
+
 VALID_CLONE_DIAGNOSTICS = {
     "period": 2024,
     "clone_household_weight_share_pct": 5.0,
@@ -411,6 +415,51 @@ def test_validate_dataset_rejects_configured_implausible_mapped_aggregate(
         2024,
         "person",
     ) in _TimePeriodCheckingAggregateMicrosimulation.calls
+
+
+def test_enhanced_cps_employment_income_gate_rejects_missing_nipa_target(
+    monkeypatch,
+):
+    target = upload_module.BEA_NIPA_WAGES_AND_SALARIES_2024
+
+    assert upload_module.MIN_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM == pytest.approx(
+        target * 0.9
+    )
+    assert upload_module.MAX_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM == pytest.approx(
+        target * 1.1
+    )
+
+    monkeypatch.setattr(
+        upload_module,
+        "MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME",
+        ORIGINAL_MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME,
+    )
+    _TimePeriodCheckingAggregateMicrosimulation.overrides = {
+        "employment_income": [8_805_350_912_424.707],
+        "social_security_retirement": [1.0e12],
+        "person_in_poverty": [0.2, 0.2, 0.2],
+        "age": [20, 67, 80],
+    }
+    errors = []
+    results = upload_module._run_microsimulation_aggregate_checks(
+        _TimePeriodCheckingAggregateMicrosimulation(
+            dataset=SimpleNamespace(time_period=2024)
+        ),
+        filename="enhanced_cps_2024.h5",
+        period=2024,
+        errors=errors,
+    )
+
+    assert (
+        "employment_income sum vs NIPA wages target",
+        8_805_350_912_424.707,
+    ) in results
+    assert errors == [
+        (
+            "employment_income sum vs NIPA wages target = "
+            "8,805,350,912,425, expected >= 11,149,136,100,000."
+        )
+    ]
 
 
 def _prepare_release_files(tmp_path, monkeypatch):

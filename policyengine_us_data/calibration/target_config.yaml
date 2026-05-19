@@ -164,6 +164,14 @@ include:
     geo_level: national
   - variable: childcare_expenses
     geo_level: national
+  - variable: employment_income_before_lsr
+    geo_level: national
+  - variable: nipa_proprietors_income
+    geo_level: national
+  - variable: interest_income
+    geo_level: national
+  - variable: dividend_income
+    geo_level: national
   - variable: long_term_capital_gains
     geo_level: national
   - variable: medicaid

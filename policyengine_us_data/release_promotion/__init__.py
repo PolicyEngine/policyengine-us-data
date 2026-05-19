@@ -23,15 +23,27 @@ from .candidate import (
 )
 from .context import ReleasePromotionContext
 from .validation import build_release_candidate_shape_report
+from .validation import (
+    DEFAULT_REQUIRED_RELEASE_ARTIFACT_FAMILIES,
+    RELEASE_VALIDATION_SUBSTAGE_ID,
+    ReleaseCandidateValidationDependencies,
+    ReleaseCandidateValidator,
+    default_release_candidate_validation_dependencies,
+)
 
 __all__ = [
     "BASE_RELEASE_ARTIFACT_PATHS",
+    "DEFAULT_REQUIRED_RELEASE_ARTIFACT_FAMILIES",
+    "RELEASE_VALIDATION_SUBSTAGE_ID",
     "ReleaseArtifactSpec",
     "ReleaseCandidateInputBundle",
     "ReleasePromotionContext",
+    "ReleaseCandidateValidationDependencies",
+    "ReleaseCandidateValidator",
     "build_legacy_release_candidate_bundle",
     "build_release_candidate_bundle_from_stage4_contract",
     "build_release_candidate_shape_report",
+    "default_release_candidate_validation_dependencies",
     "dedupe_normalized_release_paths",
     "infer_artifact_identity",
     "infer_release_artifact_spec",

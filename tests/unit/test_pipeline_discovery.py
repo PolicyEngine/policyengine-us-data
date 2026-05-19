@@ -1,11 +1,13 @@
 import pytest
 
 from modal_app.pipeline_discovery_core import (
-    DeployedPipelineRunsPayload,
     build_deployed_pipeline_runs_payload,
     derive_run_id_from_app_name,
     is_publication_pipeline_app_name,
     pipeline_app_candidates,
+)
+from modal_app.pipeline_discovery_schema import (
+    DeployedPipelineRunsPayload,
 )
 
 
@@ -94,8 +96,10 @@ def test_derives_run_id_from_current_and_legacy_publication_app_names():
     [
         ("us-data-1-115-4-minor-usdata-gha26114604836-a1", True),
         ("policyengine-us-data-pub-usdata-gha123-a1", True),
+        ("policyengine-us-data-1-115-4-minor-usdata-gha123-a1", True),
         ("us-data-pipeline-pr-1035-26117326123-1", False),
         ("us-data-local-area-pr-1035-26117326123-1", False),
+        ("us-data-h5-pr-1035-26117326123-1", False),
         ("policyengine-us-data-pipeline", False),
         ("state-research-tracker", False),
     ],

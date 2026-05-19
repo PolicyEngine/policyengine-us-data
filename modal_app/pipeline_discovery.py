@@ -28,6 +28,7 @@ from policyengine_us_data.utils.run_context import (  # noqa: E402
 
 
 DISCOVERY_APP_NAME = "policyengine-us-data-pipeline-status"
+modal_token_secret = modal.Secret.from_name("modal-token")
 
 app = modal.App(
     os.environ.get("US_DATA_PIPELINE_DISCOVERY_APP_NAME") or DISCOVERY_APP_NAME
@@ -118,7 +119,7 @@ def _build_deployed_pipeline_runs(
     return payload.to_dict()
 
 
-@app.function(image=image, timeout=180)
+@app.function(image=image, timeout=180, secrets=[modal_token_secret])
 def list_deployed_pipeline_runs(
     limit: int = 25,
     status: str = "",
@@ -137,7 +138,7 @@ def list_deployed_pipeline_runs(
     )
 
 
-@app.function(image=status_image, timeout=180)
+@app.function(image=status_image, timeout=180, secrets=[modal_token_secret])
 @modal.fastapi_endpoint(
     method="GET",
     docs=False,

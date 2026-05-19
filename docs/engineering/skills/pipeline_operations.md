@@ -46,6 +46,11 @@ app, not in a run-scoped pipeline app:
   cross-app discovery payload. Use this for dashboards that need to discover all
   deployed publication runs.
 
+The stable discovery app requires the `modal-token` Modal Secret in its
+environment. That Secret must contain `MODAL_TOKEN_ID` and
+`MODAL_TOKEN_SECRET`, and it should be attached only to functions that need
+Modal control-plane access.
+
 ## Fetch Status
 
 First identify the run context from the GitHub Actions summary, workflow logs, or

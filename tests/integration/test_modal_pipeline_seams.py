@@ -57,6 +57,7 @@ def test_pipeline_image_runtime_seams():
         "modal_app/local_area.py": True,
         "modal_app/pipeline_discovery.py": True,
         "modal_app/pipeline_discovery_core.py": True,
+        "modal_app/pipeline_discovery_schema.py": True,
         "modal_app/pipeline_status.py": True,
         "modal_app/h5_test_harness.py": True,
         "modal_app/step_manifests/specs.py": True,
@@ -87,6 +88,7 @@ def test_pipeline_image_runtime_seams():
         "modal_app.local_area",
         "modal_app.pipeline_discovery",
         "modal_app.pipeline_discovery_core",
+        "modal_app.pipeline_discovery_schema",
         "modal_app.pipeline_status",
         "modal_app.remote_calibration_runner",
         "modal_app.step_manifests.specs",
@@ -163,6 +165,8 @@ def test_pipeline_discovery_callable_reports_structured_index():
     assert result["schema_version"] == "1"
     assert result["source"] == "modal_app_names"
     assert result["modal_environment"] == MODAL_ENVIRONMENT
+    assert isinstance(result["discovered_count"], int)
+    assert isinstance(result["queried_count"], int)
     assert result["limit"] == 1
     assert result["count"] <= 1
     assert isinstance(result["runs"], list)
@@ -252,6 +256,8 @@ def test_pipeline_discovery_http_endpoint_reports_structured_index():
     assert result["schema_version"] == "1"
     assert result["source"] == "modal_app_names"
     assert result["modal_environment"] == MODAL_ENVIRONMENT
+    assert isinstance(result["discovered_count"], int)
+    assert isinstance(result["queried_count"], int)
     assert result["limit"] == 1
     assert result["count"] <= 1
     assert isinstance(result["runs"], list)

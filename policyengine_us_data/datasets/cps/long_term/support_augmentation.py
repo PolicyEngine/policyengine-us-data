@@ -8,6 +8,11 @@ import pandas as pd
 from policyengine_core.data.dataset import Dataset
 from policyengine_us import Microsimulation
 
+try:
+    from .projection_utils import ensure_person_level_identity_inputs
+except ImportError:  # pragma: no cover - script execution fallback
+    from projection_utils import ensure_person_level_identity_inputs
+
 
 SS_COMPONENTS = (
     "social_security_retirement",
@@ -700,7 +705,6 @@ def clone_households_with_age_shift(
     person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
     age_col = _period_column("age", base_year)
     household_weight_col = _period_column("household_weight", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
 
     donors = input_df[input_df[household_id_col].isin(household_ids)].copy()
 
@@ -762,10 +766,6 @@ def clone_households_with_age_shift(
     if household_weight_col in donors.columns:
         donors[household_weight_col] = (
             donors[household_weight_col].astype(float) * clone_weight_scale
-        )
-    if person_weight_col in donors.columns:
-        donors[person_weight_col] = (
-            donors[person_weight_col].astype(float) * clone_weight_scale
         )
 
     return donors, next_ids
@@ -848,14 +848,12 @@ def _clone_single_donor_person_row(
     base_year: int,
     shared_household_id: int,
     household_weight: float,
-    person_weight: float,
     donor_age_shift: int,
     id_counters: dict[str, int],
 ) -> tuple[pd.Series, dict[str, int]]:
     cloned = donor_row.copy()
     person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
     household_weight_col = _period_column("household_weight", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
     age_col = _period_column("age", base_year)
 
     cloned[person_id_col] = id_counters["person"]
@@ -878,8 +876,6 @@ def _clone_single_donor_person_row(
     cloned[age_col] = min(float(cloned[age_col]) + donor_age_shift, 85)
     if household_weight_col in cloned.index:
         cloned[household_weight_col] = household_weight
-    if person_weight_col in cloned.index:
-        cloned[person_weight_col] = person_weight
     return cloned, id_counters
 
 
@@ -1028,7 +1024,6 @@ def synthesize_single_person_grid_households(
     age_col = _period_column("age", base_year)
     person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
     household_weight_col = _period_column("household_weight", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
     employment_col = _period_column("employment_income_before_lsr", base_year)
     self_employment_col = _period_column("self_employment_income_before_lsr", base_year)
     qbi_col = _period_column("w2_wages_from_qualified_business", base_year)
@@ -1102,10 +1097,6 @@ def synthesize_single_person_grid_households(
                     base_row[household_weight_col] = (
                         float(base_row[household_weight_col]) * rule.clone_weight_scale
                     )
-                if person_weight_col in base_row:
-                    base_row[person_weight_col] = (
-                        float(base_row[person_weight_col]) * rule.clone_weight_scale
-                    )
                 synthetic_rows.append(base_row)
 
     synthetic_df = pd.DataFrame(synthetic_rows, columns=input_df.columns)
@@ -1172,7 +1163,6 @@ def synthesize_mixed_age_households(
     )
 
     household_id_col = _period_column("household_id", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
 
     original_recipients = pd.unique(
         input_df[
@@ -1201,17 +1191,11 @@ def synthesize_mixed_age_households(
         household_weight = float(
             cloned_household_rows.iloc[0][_period_column("household_weight", base_year)]
         )
-        person_weight = (
-            float(cloned_household_rows.iloc[0][person_weight_col])
-            if person_weight_col in cloned_household_rows.columns
-            else household_weight
-        )
         donor_row, next_ids = _clone_single_donor_person_row(
             donor_rows.loc[donor_row_idx],
             base_year=base_year,
             shared_household_id=cloned_household_id,
             household_weight=household_weight,
-            person_weight=person_weight,
             donor_age_shift=rule.donor_age_shift,
             id_counters=next_ids,
         )
@@ -1325,6 +1309,11 @@ def augment_input_dataframe(
         augmented_df = pd.concat([input_df, *clone_frames], ignore_index=True)
     else:
         augmented_df = input_df.copy()
+    augmented_df.drop(
+        columns=[_period_column("person_weight", base_year)],
+        inplace=True,
+        errors="ignore",
+    )
 
     report = {
         "profile": profile_obj.name,
@@ -1350,6 +1339,11 @@ def build_augmented_dataset(
 ) -> tuple[Dataset, dict[str, Any]]:
     sim = Microsimulation(dataset=base_dataset)
     input_df = sim.to_input_dataframe()
+    input_df = ensure_person_level_identity_inputs(
+        input_df,
+        sim,
+        base_period=base_year,
+    )
     augmented_df, report = augment_input_dataframe(
         input_df,
         base_year=base_year,

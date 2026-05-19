@@ -1,6 +1,7 @@
 import pytest
 
 from modal_app.pipeline_discovery_core import (
+    DeployedPipelineRunsPayload,
     build_deployed_pipeline_runs_payload,
     derive_run_id_from_app_name,
     is_publication_pipeline_app_name,
@@ -143,24 +144,28 @@ def test_build_deployed_pipeline_runs_payload_queries_status_by_derived_run_id()
     )
 
     assert seen == [(app_name, "usdata-gha26114604836-a1")]
-    assert payload["schema_version"] == "1"
-    assert payload["source"] == "modal_app_names"
-    assert payload["discovered_count"] == 1
-    assert payload["queried_count"] == 1
-    assert payload["count"] == 1
-    run = payload["runs"][0]
-    assert run["run_id"] == "usdata-gha26114604836-a1"
-    assert run["status_lookup"] == "ok"
-    assert run["status"] == "running"
-    assert run["branch"] == "main"
-    assert run["modal_app_id"] == "ap-run"
-    assert run["modal_task_count"] == 4
-    assert run["latest_manifest"]["step_id"] == "1_build_datasets"
-    assert run["progress"] == {
+    assert isinstance(payload, DeployedPipelineRunsPayload)
+    assert payload.schema_version == "1"
+    assert payload.source == "modal_app_names"
+    assert payload.discovered_count == 1
+    assert payload.queried_count == 1
+    assert payload.count == 1
+    run = payload.runs[0]
+    assert run.run_id == "usdata-gha26114604836-a1"
+    assert run.status_lookup == "ok"
+    assert run.status == "running"
+    assert run.branch == "main"
+    assert run.modal_app_id == "ap-run"
+    assert run.modal_task_count == 4
+    assert run.latest_manifest is not None
+    assert run.latest_manifest.step_id == "1_build_datasets"
+    assert run.progress is not None
+    assert run.progress.to_dict() == {
         "expected_manifests": 2,
         "present_manifests": 1,
         "missing_manifests": 1,
     }
+    assert payload.to_dict()["runs"][0]["run_id"] == "usdata-gha26114604836-a1"
 
 
 def test_deployed_pipeline_runs_payload_keeps_unreachable_apps_structured():
@@ -173,12 +178,13 @@ def test_deployed_pipeline_runs_payload_keeps_unreachable_apps_structured():
         max_workers=1,
     )
 
-    assert payload["count"] == 1
-    run = payload["runs"][0]
-    assert run["run_id"] == "usdata-gha26114604836-a1"
-    assert run["status_lookup"] == "unreachable"
-    assert run["status"] == "unreachable"
-    assert run["error"]["error_type"] == "RuntimeError"
+    assert payload.count == 1
+    run = payload.runs[0]
+    assert run.run_id == "usdata-gha26114604836-a1"
+    assert run.status_lookup == "unreachable"
+    assert run.status == "unreachable"
+    assert run.error is not None
+    assert run.error.error_type == "RuntimeError"
 
 
 def test_deployed_pipeline_runs_payload_applies_limit_after_filters():
@@ -205,14 +211,14 @@ def test_deployed_pipeline_runs_payload_applies_limit_after_filters():
         max_workers=1,
     )
 
-    assert payload["limit"] == 1
-    assert payload["filters"] == {
+    assert payload.limit == 1
+    assert payload.filters.to_dict() == {
         "status": "",
         "branch": "main",
         "include_unreachable": True,
     }
-    assert payload["queried_count"] == 2
-    assert [run["run_id"] for run in payload["runs"]] == ["usdata-gha1-a1"]
+    assert payload.queried_count == 2
+    assert [run.run_id for run in payload.runs] == ["usdata-gha1-a1"]
 
 
 def test_deployed_pipeline_runs_payload_can_exclude_unreachable_apps():
@@ -226,7 +232,7 @@ def test_deployed_pipeline_runs_payload_can_exclude_unreachable_apps():
         max_workers=1,
     )
 
-    assert payload["discovered_count"] == 1
-    assert payload["queried_count"] == 1
-    assert payload["count"] == 0
-    assert payload["runs"] == []
+    assert payload.discovered_count == 1
+    assert payload.queried_count == 1
+    assert payload.count == 0
+    assert payload.runs == ()

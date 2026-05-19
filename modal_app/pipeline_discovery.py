@@ -6,7 +6,6 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 import modal
 
@@ -18,6 +17,8 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.pipeline_discovery_core import (  # noqa: E402
+    JSONDict,
+    RawRecord,
     build_deployed_pipeline_runs_payload,
 )
 from policyengine_us_data.utils.run_context import (  # noqa: E402
@@ -49,7 +50,7 @@ def _modal_state_name(api_pb2, state: int) -> str:
         return str(state)
 
 
-async def _list_modal_app_records_async(environment_name: str) -> list[dict[str, Any]]:
+async def _list_modal_app_records_async(environment_name: str) -> list[JSONDict]:
     from modal.client import _Client
     from modal_proto import api_pb2
 
@@ -71,7 +72,7 @@ async def _list_modal_app_records_async(environment_name: str) -> list[dict[str,
     ]
 
 
-def _list_modal_app_records(environment_name: str) -> list[dict[str, Any]]:
+def _list_modal_app_records(environment_name: str) -> list[JSONDict]:
     return asyncio.run(_list_modal_app_records_async(environment_name))
 
 
@@ -80,13 +81,14 @@ def _pipeline_status_lookup(
     app_name: str,
     run_id: str,
     environment_name: str,
-) -> dict[str, Any]:
+) -> RawRecord:
     status_fn = modal.Function.from_name(
         app_name,
         "get_pipeline_status",
         environment_name=environment_name,
     )
-    return status_fn.remote(run_id)
+    payload = status_fn.remote(run_id)
+    return payload if isinstance(payload, dict) else {}
 
 
 def _build_deployed_pipeline_runs(
@@ -96,10 +98,10 @@ def _build_deployed_pipeline_runs(
     branch: str,
     include_unreachable: bool,
     modal_environment: str,
-) -> dict[str, Any]:
+) -> JSONDict:
     environment_name = _modal_environment(modal_environment)
     app_records = _list_modal_app_records(environment_name)
-    return build_deployed_pipeline_runs_payload(
+    payload = build_deployed_pipeline_runs_payload(
         app_records,
         lambda candidate: _pipeline_status_lookup(
             app_name=candidate.app_name,
@@ -112,6 +114,7 @@ def _build_deployed_pipeline_runs(
         include_unreachable=include_unreachable,
         modal_environment=environment_name,
     )
+    return payload.to_dict()
 
 
 @app.function(image=image, timeout=180)
@@ -121,7 +124,7 @@ def list_deployed_pipeline_runs(
     branch: str = "",
     include_unreachable: bool = True,
     modal_environment: str = "",
-) -> dict[str, Any]:
+) -> JSONDict:
     """Return deployed publication pipeline runs discovered from Modal app names."""
 
     return _build_deployed_pipeline_runs(
@@ -145,7 +148,7 @@ def deployed_pipeline_runs_endpoint(
     branch: str = "",
     include_unreachable: bool = True,
     modal_environment: str = "",
-) -> dict[str, Any]:
+) -> JSONDict:
     """Protected HTTP endpoint for deployed publication pipeline discovery."""
 
     return _build_deployed_pipeline_runs(

@@ -147,3 +147,18 @@ Runtime step manifests for `5_validate_and_promote_release` should include the
 contract as a JSON `contract` output. They may still record legacy validated
 input artifacts for compatibility, but the contract is the preferred semantic
 entry point for Stage 5 status and lineage.
+
+## Published Artifact Index
+
+Stage 5 also writes `published_artifact_index.jsonl` under the run-local
+`diagnostics/` directory. Each JSONL row describes one promoted artifact or
+release metadata artifact with its canonical `run_id`, candidate version,
+release version, source-stage metadata, final Hugging Face URI, and GCS URI
+when the artifact is mirrored to GCS.
+
+Build index rows from typed release candidate and promotion-result objects, not
+from console logs. Release manifest entries may supply final checksum, size,
+revision, and kind fields for promoted data artifacts; the index should leave
+the release manifest schema unchanged. The release promotion contract must
+reference the index as a `published_artifact_index` output so dashboards and AI
+systems can discover the per-artifact rows from the Stage 5 contract.

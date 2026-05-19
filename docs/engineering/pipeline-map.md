@@ -751,7 +751,7 @@ Finalize release manifests, record run diagnostics paths, and clean staging stat
 ### `modal_app.local_area.build_areas_worker`
 
 ```python
-def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict], calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], validate: bool = True, scope_fingerprint: str | None = None) -> Dict
+def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict] | None = None, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object] | None = None, validate: bool = True, scope_fingerprint: str | None = None, request_payloads: List[Dict] | None = None) -> Dict
 ```
 
 Worker function that builds a subset of H5 files.
@@ -916,6 +916,14 @@ class LocalAreaBuildResult
 
 In-memory output from building one local H5 area.
 
+### `policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyIndex`
+
+```python
+class CalibrationGeographyIndex
+```
+
+Clone geography fields needed for coordinator-side request planning.
+
 ### `policyengine_us_data.build_outputs.selection.CloneSelection`
 
 ```python
@@ -923,6 +931,14 @@ class CloneSelection
 ```
 
 Active clone rows selected for one H5 output.
+
+### `policyengine_us_data.build_outputs.worker_responses.CoordinatorWorkerResult`
+
+```python
+class CoordinatorWorkerResult
+```
+
+Normalized worker response with explicit fatal and nonfatal issue classes.
 
 ### `policyengine_us_data.build_outputs.builder.LocalAreaDatasetBuilder`
 
@@ -956,6 +972,14 @@ def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: 
 
 Compute a scope fingerprint for local H5 checkpoint and resume decisions.
 
+### `policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items`
+
+```python
+def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks
+```
+
+Partition remaining H5 work across worker chunks.
+
 ### `policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider`
 
 ```python
@@ -964,13 +988,13 @@ class MicrosimulationVariableProvider
 
 Lazy holder-backed variable reader for a source microsimulation.
 
-### `policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items`
+### `policyengine_us_data.build_outputs.partitioning.partition_weighted_area_requests`
 
 ```python
-def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks
+def partition_weighted_area_requests(requests: Sequence[WeightedAreaRequest], num_workers: int, completed: set[str] | None = None) -> WeightedAreaRequestChunks
 ```
 
-Partition remaining H5 work across worker chunks.
+Partition remaining typed H5 requests across worker chunks.
 
 ### `policyengine_us_data.build_outputs.payload.H5Payload`
 
@@ -1004,6 +1028,14 @@ class PublishingInputBundle
 
 Input artifact bundle for one local H5 publication scope.
 
+### `policyengine_us_data.build_outputs.target_universe.RegionalTargetUniverse`
+
+```python
+class RegionalTargetUniverse
+```
+
+Congressional district target universe for regional H5 outputs.
+
 ### `policyengine_us_data.build_outputs.reindexing.ReindexedEntities`
 
 ```python
@@ -1027,6 +1059,14 @@ class SourceDatasetSnapshot
 ```
 
 Explicit in-memory worker view of a source H5 dataset.
+
+### `policyengine_us_data.build_outputs.target_universe.TargetUniverseReader`
+
+```python
+class TargetUniverseReader
+```
+
+Adapter from the Stage 1 target database artifact to H5 target contracts.
 
 ### `policyengine_us_data.build_outputs.fingerprinting.FingerprintingService`
 
@@ -1123,6 +1163,14 @@ class VariableCloner
 ```
 
 Clone source variable arrays using selected and reindexed entity rows.
+
+### `policyengine_us_data.build_outputs.partitioning.WeightedAreaRequest`
+
+```python
+class WeightedAreaRequest
+```
+
+Area build request plus scheduling weight for coordinator partitioning.
 
 ### `policyengine_us_data.build_outputs.worker_service.WorkerAreaResult`
 
@@ -1236,6 +1284,14 @@ def stage(files: list, version: str, run_id: str = '')
 
 Upload locally built H5 files into Hugging Face staging paths.
 
+### `policyengine_us_data.build_outputs.worker_responses.normalize_worker_response`
+
+```python
+def normalize_worker_response(*, worker_index: int, result: object) -> CoordinatorWorkerResult
+```
+
+Normalize worker JSON into explicit fatal and nonfatal coordinator issues.
+
 ### `modal_app.local_area._resolve_scope_fingerprint`
 
 ```python
@@ -1255,7 +1311,7 @@ Run unified calibration pipeline.
 ### `modal_app.local_area.run_phase`
 
 ```python
-def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None) -> tuple
+def run_phase(phase_name: str, weighted_requests: Sequence[WeightedAreaRequest] | None, num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None, work_items: List[Dict] | None = None) -> tuple
 ```
 
 Run a single build phase, spawning workers and collecting results.

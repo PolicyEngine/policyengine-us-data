@@ -438,6 +438,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyIndex"
+      ],
+      "description": "Lightweight clone geography index used by H5 coordinators.",
+      "id": "local_h5_calibration_geography_index",
+      "label": "CalibrationGeographyIndex",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/geography_loader.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.selection.CloneSelection"
       ],
       "description": "Selected clone-household rows for one local H5 output.",
@@ -452,6 +470,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_selection.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_responses.CoordinatorWorkerResult"
+      ],
+      "description": "Coordinator-normalized view of one local H5 worker response.",
+      "id": "local_h5_coordinator_worker_result",
+      "label": "CoordinatorWorkerResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_responses.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_responses.py"
       ]
     },
     {
@@ -529,6 +565,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
+      ],
+      "description": "Compatibility wrapper for assigning legacy local H5 work items to workers.",
+      "id": "local_h5_legacy_work_item_partition",
+      "label": "Partition Legacy Local H5 Work Items",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/partitioning.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_partitioning.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.source_dataset.MicrosimulationVariableProvider"
       ],
       "description": "Lazy source variable access wrapper for local H5 source snapshots.",
@@ -547,7 +601,7 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_area_requests"
       ],
       "description": "Assign weighted area work items to worker batches using longest-processing-time scheduling.",
       "id": "local_h5_partition",
@@ -634,6 +688,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.build_outputs.target_universe.RegionalTargetUniverse"
+      ],
+      "description": "Target congressional district universe used to enumerate regional local H5 outputs.",
+      "id": "local_h5_regional_target_universe",
+      "label": "RegionalTargetUniverse",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/target_universe.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_target_universe.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.reindexing.ReindexedEntities"
       ],
       "description": "Output entity IDs and source row indices after local H5 clone selection.",
@@ -684,6 +756,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_source_dataset.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.target_universe.TargetUniverseReader"
+      ],
+      "description": "Read local H5 target-universe contracts from the staged target database.",
+      "id": "local_h5_target_universe_reader",
+      "label": "TargetUniverseReader",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/target_universe.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_target_universe.py"
       ]
     },
     {
@@ -900,6 +990,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/build_outputs/test_variables.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.partitioning.WeightedAreaRequest"
+      ],
+      "description": "Typed local H5 request with coordinator scheduling weight.",
+      "id": "local_h5_weighted_area_request",
+      "label": "WeightedAreaRequest",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/partitioning.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_partitioning.py"
       ]
     },
     {
@@ -1196,6 +1304,24 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/test_promote_local_h5s.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_responses.normalize_worker_response"
+      ],
+      "description": "Normalize legacy worker JSON into explicit coordinator severity classes.",
+      "id": "normalize_local_h5_worker_response",
+      "label": "Normalize Local H5 Worker Response",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_responses.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_responses.py"
       ]
     },
     {
@@ -1542,9 +1668,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 75,
+    "api_node_count": 82,
     "canonical_stage_count": 5,
-    "decorated_object_count": 124,
+    "decorated_object_count": 131,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 733,
+    "line": 908,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -440,7 +440,7 @@
       ]
     },
     "object_path": "modal_app.local_area.build_areas_worker",
-    "signature": "def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict], calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], validate: bool = True, scope_fingerprint: str | None = None) -> Dict",
+    "signature": "def build_areas_worker(branch: str, run_id: str, scope: str, work_items: List[Dict] | None = None, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object] | None = None, validate: bool = True, scope_fingerprint: str | None = None, request_payloads: List[Dict] | None = None) -> Dict",
     "source_file": "modal_app/local_area.py"
   },
   "build_cities": {
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 394,
+    "line": 407,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
     "id": "build_worker_bootstrap",
     "kind": "function",
-    "line": 487,
+    "line": 500,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
@@ -752,7 +752,7 @@
     "docstring": "Resolve, load, and checksum exact geography artifacts.\n\nThe loader hides compatibility ordering across current saved geography\nbundles, calibration packages, and legacy block arrays. Public callers can\nuse `resolve_source` to inspect what would be loaded or `load` to return the\nnormalized `GeographyAssignment`.",
     "id": "calibration_geography_loader",
     "kind": "class",
-    "line": 90,
+    "line": 148,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader"
@@ -904,7 +904,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 1089,
+    "line": 1271,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -939,7 +939,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 550,
+    "line": 682,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -1517,6 +1517,33 @@
     "signature": "class LocalAreaBuildResult",
     "source_file": "policyengine_us_data/build_outputs/builder.py"
   },
+  "local_h5_calibration_geography_index": {
+    "docstring": "Clone geography fields needed for coordinator-side request planning.",
+    "id": "local_h5_calibration_geography_index",
+    "kind": "class",
+    "line": 81,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyIndex"
+      ],
+      "description": "Lightweight clone geography index used by H5 coordinators.",
+      "id": "local_h5_calibration_geography_index",
+      "label": "CalibrationGeographyIndex",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/geography_loader.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_geography_loader.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyIndex",
+    "signature": "class CalibrationGeographyIndex",
+    "source_file": "policyengine_us_data/build_outputs/geography_loader.py"
+  },
   "local_h5_clone_selection": {
     "docstring": "Active clone rows selected for one H5 output.",
     "id": "local_h5_clone_selection",
@@ -1543,6 +1570,33 @@
     "object_path": "policyengine_us_data.build_outputs.selection.CloneSelection",
     "signature": "class CloneSelection",
     "source_file": "policyengine_us_data/build_outputs/selection.py"
+  },
+  "local_h5_coordinator_worker_result": {
+    "docstring": "Normalized worker response with explicit fatal and nonfatal issue classes.",
+    "id": "local_h5_coordinator_worker_result",
+    "kind": "class",
+    "line": 30,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_responses.CoordinatorWorkerResult"
+      ],
+      "description": "Coordinator-normalized view of one local H5 worker response.",
+      "id": "local_h5_coordinator_worker_result",
+      "label": "CoordinatorWorkerResult",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_responses.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_responses.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_responses.CoordinatorWorkerResult",
+    "signature": "class CoordinatorWorkerResult",
+    "source_file": "policyengine_us_data/build_outputs/worker_responses.py"
   },
   "local_h5_dataset_builder": {
     "docstring": "Coordinate clone selection, reindexing, variable cloning, and postprocessing.",
@@ -1653,6 +1707,33 @@
     "signature": "def compute_input_fingerprint(weights_path: Path, dataset_path: Path, n_clones: Optional[int] = None, seed: int = 42, geography_path: Optional[Path] = None, blocks_path: Optional[Path] = None, target_db_path: Optional[Path] = None, run_config_path: Optional[Path] = None, calibration_package_path: Optional[Path] = None, scope: str = 'regional') -> str",
     "source_file": "policyengine_us_data/calibration/publish_local_area.py"
   },
+  "local_h5_legacy_work_item_partition": {
+    "docstring": "Partition remaining H5 work across worker chunks.\n\nThe function uses longest-processing-time scheduling: uncompleted work items\nare sorted by descending `weight`, then assigned to the currently lightest\nworker chunk. This keeps expensive state or district builds from clustering\non one worker.\n\nArgs:\n    work_items: Candidate work items. Each item must contain `type`, `id`,\n        and numeric `weight` keys.\n    num_workers: Maximum number of worker chunks to produce.\n    completed: Stable completion keys, formatted as `\"{type}:{id}\"`, that\n        should be skipped.\n\nReturns:\n    Non-empty worker chunks. Returns an empty list when `num_workers <= 0` or\n    every item is already completed.",
+    "id": "local_h5_legacy_work_item_partition",
+    "kind": "function",
+    "line": 108,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
+      ],
+      "description": "Compatibility wrapper for assigning legacy local H5 work items to workers.",
+      "id": "local_h5_legacy_work_item_partition",
+      "label": "Partition Legacy Local H5 Work Items",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/partitioning.py",
+      "stability": "moving",
+      "status": "legacy",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_partitioning.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
+    "signature": "def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks",
+    "source_file": "policyengine_us_data/build_outputs/partitioning.py"
+  },
   "local_h5_microsimulation_variable_provider": {
     "docstring": "Lazy holder-backed variable reader for a source microsimulation.\n\nThe provider intentionally reads arrays only when callers request a\nvariable/period pair. It caches the normalized array for repeated access\nwhile keeping construction lightweight.\n\nAttributes:\n    simulation: Source `policyengine_us.Microsimulation` or a compatible\n        test double with `input_variables` and `get_holder(...)`.",
     "id": "local_h5_microsimulation_variable_provider",
@@ -1681,13 +1762,13 @@
     "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
   },
   "local_h5_partition": {
-    "docstring": "Partition remaining H5 work across worker chunks.\n\nThe function uses longest-processing-time scheduling: uncompleted work items\nare sorted by descending `weight`, then assigned to the currently lightest\nworker chunk. This keeps expensive state or district builds from clustering\non one worker.\n\nArgs:\n    work_items: Candidate work items. Each item must contain `type`, `id`,\n        and numeric `weight` keys.\n    num_workers: Maximum number of worker chunks to produce.\n    completed: Stable completion keys, formatted as `\"{type}:{id}\"`, that\n        should be skipped.\n\nReturns:\n    Non-empty worker chunks. Returns an empty list when `num_workers <= 0` or\n    every item is already completed.",
+    "docstring": "Partition remaining typed H5 requests across worker chunks.",
     "id": "local_h5_partition",
     "kind": "function",
-    "line": 40,
+    "line": 81,
     "metadata": {
       "api_refs": [
-        "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items"
+        "policyengine_us_data.build_outputs.partitioning.partition_weighted_area_requests"
       ],
       "description": "Assign weighted area work items to worker batches using longest-processing-time scheduling.",
       "id": "local_h5_partition",
@@ -1703,8 +1784,8 @@
         "uv run pytest tests/unit/build_outputs/test_partitioning.py"
       ]
     },
-    "object_path": "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
-    "signature": "def partition_weighted_work_items(work_items: WorkItems, num_workers: int, completed: set[str] | None = None) -> WorkChunks",
+    "object_path": "policyengine_us_data.build_outputs.partitioning.partition_weighted_area_requests",
+    "signature": "def partition_weighted_area_requests(requests: Sequence[WeightedAreaRequest], num_workers: int, completed: set[str] | None = None) -> WeightedAreaRequestChunks",
     "source_file": "policyengine_us_data/build_outputs/partitioning.py"
   },
   "local_h5_payload": {
@@ -1812,6 +1893,33 @@
     "signature": "class PublishingInputBundle",
     "source_file": "policyengine_us_data/build_outputs/fingerprinting.py"
   },
+  "local_h5_regional_target_universe": {
+    "docstring": "Congressional district target universe for regional H5 outputs.",
+    "id": "local_h5_regional_target_universe",
+    "kind": "class",
+    "line": 31,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.target_universe.RegionalTargetUniverse"
+      ],
+      "description": "Target congressional district universe used to enumerate regional local H5 outputs.",
+      "id": "local_h5_regional_target_universe",
+      "label": "RegionalTargetUniverse",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/target_universe.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_target_universe.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.target_universe.RegionalTargetUniverse",
+    "signature": "class RegionalTargetUniverse",
+    "source_file": "policyengine_us_data/build_outputs/target_universe.py"
+  },
   "local_h5_reindexed_entities": {
     "docstring": "Entity IDs, relationship arrays, and source indices for one H5 output.",
     "id": "local_h5_reindexed_entities",
@@ -1843,7 +1951,7 @@
     "docstring": "Resolved physical source used to recover calibration geography.\n\nAttributes:\n    kind: Source format selected by `CalibrationGeographyLoader`.\n    path: Path to the selected source artifact.",
     "id": "local_h5_resolved_geography_source",
     "kind": "class",
-    "line": 54,
+    "line": 55,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.ResolvedGeographySource"
@@ -1892,6 +2000,33 @@
     "object_path": "policyengine_us_data.build_outputs.source_dataset.SourceDatasetSnapshot",
     "signature": "class SourceDatasetSnapshot",
     "source_file": "policyengine_us_data/build_outputs/source_dataset.py"
+  },
+  "local_h5_target_universe_reader": {
+    "docstring": "Adapter from the Stage 1 target database artifact to H5 target contracts.",
+    "id": "local_h5_target_universe_reader",
+    "kind": "class",
+    "line": 57,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.target_universe.TargetUniverseReader"
+      ],
+      "description": "Read local H5 target-universe contracts from the staged target database.",
+      "id": "local_h5_target_universe_reader",
+      "label": "TargetUniverseReader",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/target_universe.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_target_universe.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.target_universe.TargetUniverseReader",
+    "signature": "class TargetUniverseReader",
+    "source_file": "policyengine_us_data/build_outputs/target_universe.py"
   },
   "local_h5_traceability": {
     "docstring": "Build traceability bundles and derive deterministic scope fingerprints.\n\nThe service centralizes provenance rules for local H5 publishing. It avoids\nimporting heavy simulation machinery until a fallback record-count inference\nis needed.",
@@ -2217,11 +2352,38 @@
     "signature": "class VariableCloner",
     "source_file": "policyengine_us_data/build_outputs/variables.py"
   },
+  "local_h5_weighted_area_request": {
+    "docstring": "Area build request plus scheduling weight for coordinator partitioning.",
+    "id": "local_h5_weighted_area_request",
+    "kind": "class",
+    "line": 40,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.partitioning.WeightedAreaRequest"
+      ],
+      "description": "Typed local H5 request with coordinator scheduling weight.",
+      "id": "local_h5_weighted_area_request",
+      "label": "WeightedAreaRequest",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/partitioning.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_partitioning.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.partitioning.WeightedAreaRequest",
+    "signature": "class WeightedAreaRequest",
+    "source_file": "policyengine_us_data/build_outputs/partitioning.py"
+  },
   "local_h5_worker_area_result": {
     "docstring": "Structured result for one area handled by a worker.",
     "id": "local_h5_worker_area_result",
     "kind": "class",
-    "line": 113,
+    "line": 117,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_service.WorkerAreaResult"
@@ -2380,7 +2542,7 @@
     "docstring": "Execution policy for one worker chunk.",
     "id": "local_h5_worker_execution_config",
     "kind": "class",
-    "line": 47,
+    "line": 49,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_service.WorkerExecutionConfig"
@@ -2407,7 +2569,7 @@
     "docstring": "Structured worker issue for request, build, write, or validation failures.",
     "id": "local_h5_worker_issue",
     "kind": "class",
-    "line": 78,
+    "line": 80,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_service.WorkerIssue"
@@ -2434,7 +2596,7 @@
     "docstring": "Structured result for a worker chunk.",
     "id": "local_h5_worker_result",
     "kind": "class",
-    "line": 166,
+    "line": 170,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_service.WorkerResult"
@@ -2461,7 +2623,7 @@
     "docstring": "Execute typed local H5 requests for one prepared worker session.",
     "id": "local_h5_worker_service",
     "kind": "class",
-    "line": 226,
+    "line": 230,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.worker_service.LocalH5WorkerService"
@@ -2693,6 +2855,33 @@
     "signature": "def impute_tax_unit_mortgage_balance_hints(data: Dict[str, Dict[int, np.ndarray]], time_period: int) -> Dict[str, Dict[int, np.ndarray]]",
     "source_file": "policyengine_us_data/utils/mortgage_interest.py"
   },
+  "normalize_local_h5_worker_response": {
+    "docstring": "Normalize worker JSON into explicit fatal and nonfatal coordinator issues.",
+    "id": "normalize_local_h5_worker_response",
+    "kind": "function",
+    "line": 148,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_outputs.worker_responses.normalize_worker_response"
+      ],
+      "description": "Normalize legacy worker JSON into explicit coordinator severity classes.",
+      "id": "normalize_local_h5_worker_response",
+      "label": "Normalize Local H5 Worker Response",
+      "node_type": "library",
+      "pathways": [
+        "local_h5"
+      ],
+      "source_file": "policyengine_us_data/build_outputs/worker_responses.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/build_outputs/test_worker_responses.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_outputs.worker_responses.normalize_worker_response",
+    "signature": "def normalize_worker_response(*, worker_index: int, result: object) -> CoordinatorWorkerResult",
+    "source_file": "policyengine_us_data/build_outputs/worker_responses.py"
+  },
   "preprocess_puf": {
     "docstring": "",
     "id": "preprocess_puf",
@@ -2847,7 +3036,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 441,
+    "line": 454,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -2973,7 +3162,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 599,
+    "line": 750,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -2996,7 +3185,7 @@
       ]
     },
     "object_path": "modal_app.local_area.run_phase",
-    "signature": "def run_phase(phase_name: str, work_items: List[Dict], num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None) -> tuple",
+    "signature": "def run_phase(phase_name: str, weighted_requests: Sequence[WeightedAreaRequest] | None, num_workers: int, completed: set, branch: str, run_id: str, calibration_inputs: WorkerCalibrationInputs | Mapping[str, object], run_dir: Path, validate: bool = True, scope_fingerprint: str | None = None, work_items: List[Dict] | None = None) -> tuple",
     "source_file": "modal_app/local_area.py"
   },
   "run_modal_pipeline": {
@@ -3205,7 +3394,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 917,
+    "line": 1099,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -3316,7 +3505,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 841,
+    "line": 1029,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"

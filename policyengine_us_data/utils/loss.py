@@ -76,6 +76,8 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
     ),
 )
 
+BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 5_000.0
+
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
     ("self_employment_income", "self_employment_income"),
@@ -1138,6 +1140,17 @@ def get_target_error_normalisation(target_names, targets_array):
         denominator[mask] = scale
 
     return numerator_shift, denominator
+
+
+def get_target_loss_weights(target_names):
+    target_names = np.asarray(target_names, dtype=str)
+    weights = np.ones(target_names.shape, dtype=np.float32)
+    is_bea_wage_target = (
+        (target_names == "nation/bea/nipa_wages_and_salaries")
+        | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
+    )
+    weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
+    return weights
 
 
 def _should_skip_soi_agi_row(row) -> bool:

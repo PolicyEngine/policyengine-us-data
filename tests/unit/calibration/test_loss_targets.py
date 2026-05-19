@@ -11,6 +11,7 @@ from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
     BEA_NIPA_DIRECT_SUM_TARGETS,
+    BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     TRANSFER_BALANCE_TARGETS,
@@ -33,6 +34,7 @@ from policyengine_us_data.utils.loss import (
     _should_skip_soi_taxability_row,
     build_loss_matrix,
     get_target_error_normalisation,
+    get_target_loss_weights,
 )
 from policyengine_us_data.db import etl_national_targets
 
@@ -61,6 +63,26 @@ def test_bea_nipa_direct_sum_targets_match_targets_db():
             etl_national_targets.BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024
         ),
     }
+
+
+def test_bea_wage_targets_get_higher_loss_weight():
+    target_names = np.array(
+        [
+            "nation/bea/nipa_wages_and_salaries",
+            "state/bea/wages_and_salaries/CA",
+            "nation/bea/nipa_proprietors_income",
+            "state/CA/adjusted_gross_income/amount/1000000_inf",
+        ]
+    )
+
+    weights = get_target_loss_weights(target_names)
+
+    assert weights.tolist() == [
+        BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+        BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+        1.0,
+        1.0,
+    ]
 
 
 def test_aca_targets_roll_forward_to_2025():

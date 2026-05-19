@@ -8,6 +8,7 @@ from policyengine_us_data.utils import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
     build_loss_matrix,
     get_target_error_normalisation,
+    get_target_loss_weights,
     HardConcrete,
     print_reweighting_diagnostics,
     set_seeds,
@@ -506,7 +507,9 @@ def reweight(
     normalisation_factor = np.where(
         is_national, nation_normalisation_factor, state_normalisation_factor
     )
+    target_loss_weights = get_target_loss_weights(target_names)
     normalisation_factor = torch.tensor(normalisation_factor, dtype=torch.float32)
+    target_loss_weights = torch.tensor(target_loss_weights, dtype=torch.float32)
     targets_array = torch.tensor(targets_array, dtype=torch.float32)
     numerator_shift = torch.tensor(numerator_shift_np, dtype=torch.float32)
     error_denominator = torch.tensor(error_denominator_np, dtype=torch.float32)
@@ -525,6 +528,7 @@ def reweight(
             (estimate - targets_array + numerator_shift) / error_denominator
         ) ** 2
         rel_error_normalized = inv_mean_normalisation * rel_error * normalisation_factor
+        rel_error_normalized = rel_error_normalized * target_loss_weights
         if torch.isnan(rel_error_normalized).any():
             raise ValueError("Relative error contains NaNs")
         return rel_error_normalized.mean()

@@ -17,7 +17,8 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.pipeline_discovery_core import (  # noqa: E402
-    JSONDict,
+    DeployedPipelineRunsPayloadDict,
+    ModalAppRecord,
     RawRecord,
     build_deployed_pipeline_runs_payload,
 )
@@ -50,7 +51,7 @@ def _modal_state_name(api_pb2, state: int) -> str:
         return str(state)
 
 
-async def _list_modal_app_records_async(environment_name: str) -> list[JSONDict]:
+async def _list_modal_app_records_async(environment_name: str) -> list[ModalAppRecord]:
     from modal.client import _Client
     from modal_proto import api_pb2
 
@@ -72,7 +73,7 @@ async def _list_modal_app_records_async(environment_name: str) -> list[JSONDict]
     ]
 
 
-def _list_modal_app_records(environment_name: str) -> list[JSONDict]:
+def _list_modal_app_records(environment_name: str) -> list[ModalAppRecord]:
     return asyncio.run(_list_modal_app_records_async(environment_name))
 
 
@@ -98,7 +99,7 @@ def _build_deployed_pipeline_runs(
     branch: str,
     include_unreachable: bool,
     modal_environment: str,
-) -> JSONDict:
+) -> DeployedPipelineRunsPayloadDict:
     environment_name = _modal_environment(modal_environment)
     app_records = _list_modal_app_records(environment_name)
     payload = build_deployed_pipeline_runs_payload(
@@ -124,7 +125,7 @@ def list_deployed_pipeline_runs(
     branch: str = "",
     include_unreachable: bool = True,
     modal_environment: str = "",
-) -> JSONDict:
+) -> DeployedPipelineRunsPayloadDict:
     """Return deployed publication pipeline runs discovered from Modal app names."""
 
     return _build_deployed_pipeline_runs(
@@ -148,7 +149,7 @@ def deployed_pipeline_runs_endpoint(
     branch: str = "",
     include_unreachable: bool = True,
     modal_environment: str = "",
-) -> JSONDict:
+) -> DeployedPipelineRunsPayloadDict:
     """Protected HTTP endpoint for deployed publication pipeline discovery."""
 
     return _build_deployed_pipeline_runs(

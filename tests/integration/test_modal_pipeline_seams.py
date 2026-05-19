@@ -128,6 +128,23 @@ def test_pipeline_status_callable_reports_missing_run():
     assert result["stage_manifests"] == []
 
 
+def test_pipeline_runs_callable_reports_structured_index():
+    _require_modal_tokens()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "list_pipeline_runs",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    result = fn.remote(limit=1)
+
+    assert result["schema_version"] == "1"
+    assert result["limit"] == 1
+    assert result["count"] <= 1
+    assert isinstance(result["runs"], list)
+    assert result["filters"] == {"status": "", "branch": ""}
+
+
 def test_pipeline_status_http_endpoint_reports_missing_run():
     _require_modal_tokens()
     headers = _modal_proxy_auth_headers()
@@ -153,6 +170,34 @@ def test_pipeline_status_http_endpoint_reports_missing_run():
     assert result["run_id"] == "missing-run-for-status-http-seam"
     assert result["stage_manifests"] == []
     assert result["error"] is None
+
+
+def test_pipeline_runs_http_endpoint_reports_structured_index():
+    _require_modal_tokens()
+    headers = _modal_proxy_auth_headers()
+
+    fn = modal.Function.from_name(
+        APP_NAME,
+        "pipeline_runs_endpoint",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    endpoint = fn.get_web_url()
+    assert endpoint
+
+    response = requests.get(
+        endpoint,
+        params={"limit": "1"},
+        headers=headers,
+        timeout=30,
+    )
+
+    assert response.status_code == 200, response.text[:500]
+    result = response.json()
+    assert result["schema_version"] == "1"
+    assert result["limit"] == 1
+    assert result["count"] <= 1
+    assert isinstance(result["runs"], list)
+    assert result["filters"] == {"status": "", "branch": ""}
 
 
 def test_pipeline_status_cli_snippet_reports_missing_run():

@@ -11,7 +11,10 @@ from modal_app.step_manifests.errors import (
     write_pipeline_error_record,
 )
 from modal_app.step_manifests.specs import BUILD_DATASETS, WEIGHT_FITTING_REGIONAL
-from modal_app.step_manifests.status import build_pipeline_status_payload
+from modal_app.step_manifests.status import (
+    build_pipeline_runs_payload,
+    build_pipeline_status_payload,
+)
 from modal_app.step_manifests.store import fail_step_manifest
 from policyengine_us_data.utils.step_manifest import (
     RunManifest,
@@ -24,9 +27,14 @@ from policyengine_us_data.utils.step_manifest import (
 )
 
 
-def _manifest(step_id: str, *, parent_step_id: str | None = None) -> StepManifest:
+def _manifest(
+    step_id: str,
+    *,
+    run_id: str = "run-1",
+    parent_step_id: str | None = None,
+) -> StepManifest:
     return StepManifest(
-        run_id="run-1",
+        run_id=run_id,
         step_id=step_id,
         parent_step_id=parent_step_id,
         status="running",
@@ -369,3 +377,164 @@ def test_status_payload_reports_missing_run(tmp_path):
     assert payload["status"] == "not_found"
     assert payload["stage_manifests"] == []
     assert payload["run_manifest"] is None
+
+
+def test_runs_payload_lists_recent_runs_with_latest_manifest_and_progress(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_1 = runs_dir / "run-1"
+    run_2 = runs_dir / "run-2"
+    write_run_manifest(
+        run_manifest_path(run_1),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            candidate_version="1.0.0-patch",
+            status="running",
+            started_at="2026-05-12T12:00:00+00:00",
+            updated_at="2026-05-12T12:30:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id, WEIGHT_FITTING_REGIONAL.id],
+            run_context={"github_run_url": "https://github.com/org/repo/actions/1"},
+            modal_app_name="us-data-run-1",
+            modal_environment="main",
+            hf_staging_prefix="staging/1.0.0-patch-run-1",
+        ),
+    )
+    write_run_manifest(
+        run_manifest_path(run_2),
+        RunManifest(
+            run_id="run-2",
+            branch="main",
+            sha="def456",
+            version="1.0.0",
+            status="completed",
+            started_at="2026-05-12T13:00:00+00:00",
+            updated_at="2026-05-12T13:30:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+        ),
+    )
+    write_step_manifest(
+        step_manifest_path(run_1, BUILD_DATASETS.id),
+        _manifest(BUILD_DATASETS.id, run_id="run-1").complete(),
+    )
+    write_step_manifest(
+        step_manifest_path(run_1, WEIGHT_FITTING_REGIONAL.id),
+        _manifest(
+            WEIGHT_FITTING_REGIONAL.id,
+            run_id="run-1",
+            parent_step_id=WEIGHT_FITTING_REGIONAL.parent_id,
+        ),
+    )
+
+    payload = build_pipeline_runs_payload(runs_dir=runs_dir)
+
+    assert payload["count"] == 2
+    assert [run["run_id"] for run in payload["runs"]] == ["run-2", "run-1"]
+    run = payload["runs"][1]
+    assert run["status"] == "running"
+    assert run["branch"] == "main"
+    assert run["candidate_version"] == "1.0.0-patch"
+    assert run["modal_app_name"] == "us-data-run-1"
+    assert run["github_run_url"] == "https://github.com/org/repo/actions/1"
+    assert run["latest_manifest"]["step_id"] == WEIGHT_FITTING_REGIONAL.id
+    assert run["latest_manifest"]["stage_id"] == "3_fit_weights"
+    assert run["progress"] == {
+        "expected_manifests": 2,
+        "present_manifests": 2,
+        "missing_manifests": 0,
+    }
+
+
+def test_runs_payload_applies_limit_and_filters(tmp_path):
+    runs_dir = tmp_path / "runs"
+    for run_id, status, branch, updated_at in (
+        ("run-1", "running", "main", "2026-05-12T12:00:00+00:00"),
+        ("run-2", "completed", "main", "2026-05-12T13:00:00+00:00"),
+        ("run-3", "running", "feature", "2026-05-12T14:00:00+00:00"),
+    ):
+        write_run_manifest(
+            run_manifest_path(runs_dir / run_id),
+            RunManifest(
+                run_id=run_id,
+                branch=branch,
+                sha="abc123",
+                version="1.0.0",
+                status=status,
+                started_at=updated_at,
+                updated_at=updated_at,
+                known_step_ids=[BUILD_DATASETS.id],
+            ),
+        )
+
+    payload = build_pipeline_runs_payload(
+        limit=1,
+        status="running",
+        branch="main",
+        runs_dir=runs_dir,
+    )
+
+    assert payload["limit"] == 1
+    assert payload["filters"] == {"status": "running", "branch": "main"}
+    assert payload["count"] == 1
+    assert payload["runs"][0]["run_id"] == "run-1"
+
+
+def test_runs_payload_caps_limit_and_handles_missing_runs_dir(tmp_path):
+    payload = build_pipeline_runs_payload(limit=500, runs_dir=tmp_path / "missing")
+
+    assert payload == {
+        "schema_version": "1",
+        "count": 0,
+        "limit": 100,
+        "filters": {"status": "", "branch": ""},
+        "runs": [],
+    }
+
+
+def test_runs_payload_summarizes_failed_runs_without_traceback(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="failed",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+        ),
+    )
+    record = build_pipeline_error_record(
+        RuntimeError("fit failed"),
+        run_id="run-1",
+        manifest=_manifest(BUILD_DATASETS.id),
+        traceback_text="full traceback",
+        occurred_at="2026-05-12T12:00:01+00:00",
+    )
+    write_pipeline_error_record(record, run_dir=run_dir, volume_root=tmp_path)
+
+    payload = build_pipeline_runs_payload(runs_dir=runs_dir)
+
+    error = payload["runs"][0]["error"]
+    assert error["stage_id"] == BUILD_DATASETS.id
+    assert error["error_type"] == "RuntimeError"
+    assert error["message"] == "fit failed"
+    assert error["traceback_available"] is True
+    assert "traceback" not in error
+
+
+def test_runs_payload_includes_unreadable_run_without_failing_index(tmp_path):
+    runs_dir = tmp_path / "runs"
+    bad_run = runs_dir / "bad-run"
+    bad_run.mkdir(parents=True)
+    run_manifest_path(bad_run).write_text("{not-json")
+
+    payload = build_pipeline_runs_payload(runs_dir=runs_dir)
+
+    assert payload["count"] == 1
+    assert payload["runs"][0]["run_id"] == "bad-run"
+    assert payload["runs"][0]["status"] == "unreadable"
+    assert payload["runs"][0]["error"]["error_type"] == "JSONDecodeError"

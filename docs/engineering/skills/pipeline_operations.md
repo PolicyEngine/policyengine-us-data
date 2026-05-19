@@ -20,12 +20,16 @@ The status system reports:
 ## Status Surfaces
 
 The structured status payload is canonical. The pipeline status sub-app exposes
-three Modal functions:
+run-level and run-index Modal functions:
 
 - `get_pipeline_status`: Python-callable structured JSON for agents, scripts,
   dashboards, and tests. Prefer this for diagnosis and automation.
 - `pipeline_status_endpoint`: protected HTTP endpoint returning the same
   structured JSON for non-Python clients. Use Modal proxy auth headers.
+- `list_pipeline_runs`: Python-callable structured JSON index of recent runs.
+  Use this for dashboards that need to discover candidate run IDs.
+- `pipeline_runs_endpoint`: protected HTTP endpoint returning the same
+  structured recent-run index for non-Python clients.
 - `pipeline_status_snippet`: human-readable text used by
   `modal run modal_app/pipeline.py::main --action status`. This is for quick
   terminal inspection only and must not be treated as a schema.

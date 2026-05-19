@@ -90,3 +90,9 @@ perform Hugging Face writes, GCS uploads, Modal calls, staging cleanup, or
 release-manifest publication. Keep those operations behind explicit adapters or
 services so tests can exercise candidate shape and validation logic without
 credentials or network access.
+
+Use `FullPromotionResult` and its substep result objects when exposing Stage 5
+promotion outcomes to contracts, status APIs, or orchestration summaries. The
+current compatibility wrapper, `promote_full_release_with_result()`, must keep
+calling the existing transaction engine first and only wrap its dictionary
+output afterward so the promotion order remains unchanged.

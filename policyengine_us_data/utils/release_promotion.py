@@ -9,9 +9,13 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.utils.release_completion import release_completion_marker_path
+
+if TYPE_CHECKING:
+    from policyengine_us_data.release_promotion import FullPromotionResult
 
 
 ManifestFile = tuple[Path, str]
@@ -135,9 +139,34 @@ def promote_full_release(
         "hf_promoted": promoted_hf,
         "gcs_uploaded": uploaded_gcs,
         "release_manifest_artifacts": len(release_manifest["artifacts"]),
+        "version_manifest_updated": True,
         "release_completion_marker": completion_marker.get("marker_path"),
         "staging_cleaned": cleaned,
+        "staging_cleanup_attempted": config.cleanup_staging,
     }
+
+
+@pipeline_node(
+    id="typed_full_release_promotion",
+    label="Typed Full Release Promotion",
+    node_type="library",
+    description="Compatibility wrapper that returns typed Stage 5 promotion results from the existing transaction engine.",
+    status="transitional",
+    stability="moving",
+    pathways=["5_validate_and_promote_release"],
+    artifacts_in=["staged release artifacts", "release manifest inputs"],
+    artifacts_out=["FullPromotionResult"],
+    validation_commands=["uv run pytest tests/unit/release_promotion/test_results.py"],
+)
+def promote_full_release_with_result(
+    config: FullReleasePromotionConfig,
+    deps: FullReleasePromotionDependencies,
+) -> "FullPromotionResult":
+    """Run the existing transaction engine and wrap its output in a typed result."""
+
+    from policyengine_us_data.release_promotion import FullPromotionResult
+
+    return FullPromotionResult.from_legacy_dict(promote_full_release(config, deps))
 
 
 def _validated_release_paths(
@@ -229,8 +258,10 @@ def _finish_already_finalized_release(
         "hf_promoted": 0,
         "gcs_uploaded": 0,
         "release_manifest_artifacts": len(finalized_manifest["artifacts"]),
+        "version_manifest_updated": False,
         "release_completion_marker": completion_marker_path,
         "staging_cleaned": cleaned,
+        "staging_cleanup_attempted": config.cleanup_staging,
         "already_finalized": True,
     }
 

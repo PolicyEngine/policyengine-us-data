@@ -78,6 +78,7 @@ class ReleasePromotionContractBuilder:
     package_version: str | None = None
     validation: ValidationReport | None = None
     diagnostics: Sequence[DiagnosticRef] = ()
+    published_artifact_index: ArtifactRef | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -85,6 +86,10 @@ class ReleasePromotionContractBuilder:
             raise ValueError("candidate_bundle must be ReleaseCandidateInputBundle")
         if not isinstance(self.promotion_result, FullPromotionResult):
             raise ValueError("promotion_result must be FullPromotionResult")
+        if self.published_artifact_index is not None and not isinstance(
+            self.published_artifact_index, ArtifactRef
+        ):
+            raise ValueError("published_artifact_index must be ArtifactRef")
         object.__setattr__(
             self,
             "diagnostics",
@@ -100,10 +105,15 @@ class ReleasePromotionContractBuilder:
 
         context = self.candidate_bundle.context
         inputs = _contract_inputs(self.candidate_bundle)
-        outputs = _contract_outputs(context, self.promotion_result)
+        outputs = _contract_outputs(
+            context,
+            self.promotion_result,
+            published_artifact_index=self.published_artifact_index,
+        )
         parameters = _contract_parameters(
             self.candidate_bundle,
             self.promotion_result,
+            published_artifact_index=self.published_artifact_index,
         )
         return StageContract(
             contract_type=RELEASE_PROMOTION_CONTRACT_TYPE,
@@ -122,6 +132,11 @@ class ReleasePromotionContractBuilder:
                     "context": context.to_dict(),
                     "candidate_bundle": self.candidate_bundle.to_dict(),
                     "promotion_result": self.promotion_result.to_dict(),
+                    "published_artifact_index": (
+                        self.published_artifact_index.to_dict()
+                        if self.published_artifact_index is not None
+                        else None
+                    ),
                     "outputs": [output.to_dict() for output in outputs],
                 }
             ),
@@ -152,6 +167,7 @@ def build_release_promotion_contract(
     package_version: str | None = None,
     validation: ValidationReport | None = None,
     diagnostics: Sequence[DiagnosticRef] = (),
+    published_artifact_index: ArtifactRef | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 5 release promotion contract."""
@@ -164,6 +180,7 @@ def build_release_promotion_contract(
         package_version=package_version,
         validation=validation,
         diagnostics=diagnostics,
+        published_artifact_index=published_artifact_index,
         metadata=metadata or {},
     ).build()
 
@@ -178,6 +195,7 @@ def write_release_promotion_contract(
     package_version: str | None = None,
     validation: ValidationReport | None = None,
     diagnostics: Sequence[DiagnosticRef] = (),
+    published_artifact_index: ArtifactRef | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build, write, and return the Stage 5 release promotion contract."""
@@ -190,6 +208,7 @@ def write_release_promotion_contract(
         package_version=package_version,
         validation=validation,
         diagnostics=diagnostics,
+        published_artifact_index=published_artifact_index,
         metadata=metadata,
     )
     write_contract(contract, contract_path)
@@ -266,13 +285,15 @@ def _contract_inputs(
 def _contract_outputs(
     context: ReleasePromotionContext,
     result: FullPromotionResult,
+    *,
+    published_artifact_index: ArtifactRef | None = None,
 ) -> tuple[ArtifactRef, ...]:
     hf_base = f"hf://{context.hf_repo_name}"
     completion_marker_path = (
         result.completion_marker.marker_path
         or f"releases/{context.release_version}/release-complete.json"
     )
-    return (
+    outputs = (
         ArtifactRef(
             logical_name="huggingface_release_artifacts",
             uri=f"{hf_base}/",
@@ -339,11 +360,16 @@ def _contract_outputs(
             metadata={"artifact_family": "release_completion_marker"},
         ),
     )
+    if published_artifact_index is not None:
+        outputs = (*outputs, published_artifact_index)
+    return outputs
 
 
 def _contract_parameters(
     candidate_bundle: ReleaseCandidateInputBundle,
     result: FullPromotionResult,
+    *,
+    published_artifact_index: ArtifactRef | None = None,
 ) -> dict[str, Any]:
     context = candidate_bundle.context
     return {
@@ -363,6 +389,9 @@ def _contract_parameters(
         "source_output_contract_path": candidate_bundle.source_output_contract_path,
         "validation_report_paths": list(candidate_bundle.validation_report_paths),
         "diagnostics_manifest_path": candidate_bundle.diagnostics_manifest_path,
+        "published_artifact_index_path": _artifact_relative_path(
+            published_artifact_index
+        ),
     }
 
 
@@ -374,6 +403,7 @@ def _contract_metadata(
     outputs: Sequence[ArtifactRef],
     extra: Mapping[str, Any],
 ) -> dict[str, Any]:
+    outputs_by_name = {output.logical_name: output for output in outputs}
     return {
         **dict(extra),
         "contract_file": RELEASE_PROMOTION_CONTRACT_FILENAME,
@@ -383,8 +413,20 @@ def _contract_metadata(
         "cleanup": promotion_result.cleanup.to_dict(),
         "already_finalized": promotion_result.already_finalized,
         "promotion_result": promotion_result.to_dict(),
+        "published_artifact_index": (
+            outputs_by_name["published_artifact_index"].to_dict()
+            if "published_artifact_index" in outputs_by_name
+            else None
+        ),
         "public_refs": {output.logical_name: output.uri for output in outputs},
     }
+
+
+def _artifact_relative_path(artifact: ArtifactRef | None) -> str | None:
+    if artifact is None:
+        return None
+    relative_path = artifact.metadata.get("relative_path")
+    return relative_path if isinstance(relative_path, str) and relative_path else None
 
 
 def _execution_record(result: FullPromotionResult) -> ExecutionRecord:
@@ -411,6 +453,16 @@ def _substage_records(
     promotion_result: FullPromotionResult,
 ) -> tuple[SubstageRecord, ...]:
     outputs_by_name = {artifact.logical_name: artifact for artifact in public_outputs}
+    finalization_outputs = [
+        outputs_by_name["release_manifest"],
+        outputs_by_name["versioned_release_manifest"],
+        outputs_by_name["trace_tro"],
+        outputs_by_name["versioned_trace_tro"],
+        outputs_by_name["version_manifest"],
+        outputs_by_name["release_completion_marker"],
+    ]
+    if "published_artifact_index" in outputs_by_name:
+        finalization_outputs.append(outputs_by_name["published_artifact_index"])
     return (
         SubstageRecord(
             substage_id="5a_validate_outputs",
@@ -442,14 +494,7 @@ def _substage_records(
         SubstageRecord(
             substage_id="5d_write_version_manifest",
             status="completed",
-            outputs=(
-                outputs_by_name["release_manifest"],
-                outputs_by_name["versioned_release_manifest"],
-                outputs_by_name["trace_tro"],
-                outputs_by_name["versioned_trace_tro"],
-                outputs_by_name["version_manifest"],
-                outputs_by_name["release_completion_marker"],
-            ),
+            outputs=tuple(finalization_outputs),
             reuse_mode="handoff",
             metadata={
                 "version_manifest_updated": promotion_result.version_manifest.updated,

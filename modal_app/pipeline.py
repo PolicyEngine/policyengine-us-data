@@ -586,19 +586,26 @@ def _write_release_promotion_contract_for_run(
     run_context: RunContext,
     rel_paths: list[str],
     promotion_result,
-) -> ArtifactReference:
-    """Write Stage 5's run-local contract and return its manifest reference."""
+) -> tuple[ArtifactReference, ...]:
+    """Write Stage 5's run-local index/contract and return manifest references."""
 
     from policyengine_us_data.release_promotion import (
         build_legacy_release_candidate_bundle,
+        build_published_artifact_index,
+        published_artifact_index_artifact_ref,
+        published_artifact_index_path,
+        release_promotion_contract_repo_path,
         release_promotion_contract_path,
+        write_published_artifact_index,
         write_release_promotion_contract,
     )
+    from policyengine_us_data.stage_contracts import ArtifactRef
 
     run_dir = _run_dir(run_context.run_id)
+    release_context = _release_promotion_context_from_run_context(run_context)
     contract_path = release_promotion_contract_path(run_dir)
     candidate_bundle = build_legacy_release_candidate_bundle(
-        context=_release_promotion_context_from_run_context(run_context),
+        context=release_context,
         rel_paths=rel_paths,
         artifact_metadata_by_path=_release_artifact_metadata_by_path(
             run_context.run_id,
@@ -608,6 +615,40 @@ def _write_release_promotion_contract_for_run(
             run_context.run_id
         ),
     )
+    contract_artifact = ArtifactRef(
+        logical_name="release_promotion_contract",
+        uri=(
+            f"hf://{release_context.hf_repo_name}/"
+            f"{release_promotion_contract_repo_path(release_context.run_id)}"
+        ),
+        media_type="application/json",
+        metadata={
+            "artifact_family": "stage_contract",
+            "source_stage_id": "5_validate_and_promote_release",
+            "relative_path": release_promotion_contract_repo_path(
+                release_context.run_id
+            ),
+        },
+    )
+    published_index_path = published_artifact_index_path(run_dir)
+    published_index_rows = build_published_artifact_index(
+        candidate_bundle=candidate_bundle,
+        promotion_result=promotion_result,
+        diagnostic_artifacts=(contract_artifact,),
+    )
+    write_published_artifact_index(published_index_rows, published_index_path)
+    published_index_manifest_ref = ArtifactReference.from_path(
+        published_index_path,
+        role="index",
+        base_dir=run_dir,
+        media_type="application/jsonl",
+    )
+    published_index_artifact = published_artifact_index_artifact_ref(
+        release_context,
+        row_count=len(published_index_rows),
+        sha256=f"sha256:{published_index_manifest_ref.sha256}",
+        size_bytes=published_index_manifest_ref.size_bytes,
+    )
     write_release_promotion_contract(
         contract_path=contract_path,
         candidate_bundle=candidate_bundle,
@@ -615,16 +656,20 @@ def _write_release_promotion_contract_for_run(
         created_at=datetime.now(timezone.utc).isoformat(),
         code_sha=meta.sha,
         package_version=meta.version,
+        published_artifact_index=published_index_artifact,
         metadata={
             "writer": "modal_app.pipeline.promote_run",
             "branch": meta.branch,
         },
     )
-    return ArtifactReference.from_path(
-        contract_path,
-        role="contract",
-        base_dir=run_dir,
-        media_type="application/json",
+    return (
+        ArtifactReference.from_path(
+            contract_path,
+            role="contract",
+            base_dir=run_dir,
+            media_type="application/json",
+        ),
+        published_index_manifest_ref,
     )
 
 
@@ -2154,7 +2199,7 @@ def promote_run(
         )
         print(f"  {promotion_stdout}")
         promotion_result = _promotion_result_from_stdout(promotion_stdout)
-        release_promotion_contract_ref = _write_release_promotion_contract_for_run(
+        release_promotion_refs = _write_release_promotion_contract_for_run(
             meta=meta,
             run_context=promotion_context,
             rel_paths=rel_paths,
@@ -2172,7 +2217,7 @@ def promote_run(
                     ArtifactReference.from_dict(artifact)
                     for artifact in promote_inputs["validated_step_outputs"]
                 ],
-                release_promotion_contract_ref,
+                *release_promotion_refs,
             ],
             reuse_decision="computed",
             vol=pipeline_volume,

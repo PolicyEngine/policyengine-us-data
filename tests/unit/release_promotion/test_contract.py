@@ -9,6 +9,7 @@ from policyengine_us_data.release_promotion import (
     ReleasePromotionContext,
     build_legacy_release_candidate_bundle,
     build_release_promotion_contract,
+    published_artifact_index_artifact_ref,
     release_promotion_contract_path,
     release_promotion_contract_repo_path,
     write_release_promotion_contract,
@@ -110,6 +111,12 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
         code_sha="abc123",
         package_version="1.73.0",
         validation=_validation_report(),
+        published_artifact_index=published_artifact_index_artifact_ref(
+            _context(),
+            row_count=9,
+            sha256="sha256:index",
+            size_bytes=123,
+        ),
         metadata={"writer": "test"},
     )
 
@@ -131,6 +138,7 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
         "versioned_trace_tro",
         "version_manifest",
         "release_completion_marker",
+        "published_artifact_index",
     }
     assert contract.execution.status == "completed"
     assert contract.execution.reuse_decision == "computed"
@@ -139,11 +147,18 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
     assert contract.parameters["source_output_contract_path"] == (
         "calibration/runs/run-123/diagnostics/contracts/output_build_contract.json"
     )
+    assert contract.parameters["published_artifact_index_path"] == (
+        "calibration/runs/run-123/diagnostics/published_artifact_index.jsonl"
+    )
     assert contract.metadata["contract_file"] == RELEASE_PROMOTION_CONTRACT_FILENAME
     assert contract.metadata["already_finalized"] is False
     assert contract.metadata["cleanup"]["cleaned_count"] == 3
+    assert contract.metadata["published_artifact_index"]["metadata"]["row_count"] == 9
     assert contract.metadata["public_refs"]["release_manifest"] == (
         "hf://policyengine/policyengine-us-data/release_manifest.json"
+    )
+    assert contract.metadata["public_refs"]["published_artifact_index"].endswith(
+        "published_artifact_index.jsonl"
     )
     assert [substage.substage_id for substage in contract.substages] == [
         "5a_validate_outputs",

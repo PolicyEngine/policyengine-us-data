@@ -171,7 +171,7 @@ include:
     geo_level: national
   - variable: employment_income_before_lsr
     geo_level: national
-  - variable: nipa_proprietors_income
+  - variable: self_employment_income_before_lsr+sstb_self_employment_income_before_lsr+farm_operations_income+partnership_s_corp_income
     geo_level: national
   - variable: interest_income
     geo_level: national

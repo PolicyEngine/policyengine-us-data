@@ -822,8 +822,9 @@ def test_extracts_income_targets_from_primary_concepts(monkeypatch):
             "notes": (
                 "Proprietors' income with IVA and CCAdj for all persons, "
                 "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
-                "Mapped to the PolicyEngine-US NIPA proprietors' income "
-                "aggregate."
+                "Mapped to Schedule C non-SSTB and SSTB self-employment "
+                "income before labor-supply responses, Schedule F farm "
+                "operations income, and active partnership/S-corp income."
             ),
             "year": 2024,
         }

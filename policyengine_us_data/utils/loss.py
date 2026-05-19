@@ -47,7 +47,12 @@ BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
 BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
 BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "self_employment_income_before_lsr"
+    "+sstb_self_employment_income_before_lsr"
+    "+farm_operations_income"
+    "+partnership_s_corp_income"
+)
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
     "taxable_interest_income+non_qualified_dividend_income"

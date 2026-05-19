@@ -39,7 +39,12 @@ BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
 BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
 BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "self_employment_income_before_lsr"
+    "+sstb_self_employment_income_before_lsr"
+    "+farm_operations_income"
+    "+partnership_s_corp_income"
+)
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
     "taxable_interest_income+non_qualified_dividend_income"
@@ -455,8 +460,9 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": (
                 "Proprietors' income with IVA and CCAdj for all persons, "
                 "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
-                "Mapped to the PolicyEngine-US NIPA proprietors' income "
-                "aggregate."
+                "Mapped to Schedule C non-SSTB and SSTB self-employment "
+                "income before labor-supply responses, Schedule F farm "
+                "operations income, and active partnership/S-corp income."
             ),
             "year": 2024,
         },

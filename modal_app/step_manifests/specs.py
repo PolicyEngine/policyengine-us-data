@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeAlias
 
+from policyengine_us_data.build_datasets import (
+    STAGE_1_BUILD_DATASETS,
+    STAGE_1_BUILD_STEP_SPECS,
+)
+
 
 @dataclass(frozen=True)
 class PipelineSubstepSpec:
@@ -32,44 +37,11 @@ def _substep(id: str, title: str, parent_id: str) -> PipelineSubstepSpec:
 
 
 BUILD_DATASETS = PipelineStepSpec(
-    id="1_build_datasets",
+    id=STAGE_1_BUILD_DATASETS,
     title="Build datasets",
-    substeps=(
-        _substep(
-            "1a_raw_data_download",
-            "Raw data download",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1b_base_dataset_construction",
-            "Base dataset construction",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1c_extended_cps_puf_clone",
-            "Extended CPS PUF clone",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1d_enhanced_cps_reweighting",
-            "Enhanced CPS reweighting",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1e_stratified_cps",
-            "Stratified CPS",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1f_source_imputation",
-            "Source imputation",
-            "1_build_datasets",
-        ),
-        _substep(
-            "1g_stage_base_datasets",
-            "Stage base datasets",
-            "1_build_datasets",
-        ),
+    substeps=tuple(
+        _substep(spec.id, spec.title, spec.parent_id)
+        for spec in STAGE_1_BUILD_STEP_SPECS
     ),
 )
 RAW_DATA_DOWNLOAD = BUILD_DATASETS.substeps[0]

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from policyengine_us_data.build_datasets import (
+    STAGE_1_BUILD_STEP_SPECS,
+    stage_1_contract_artifact_specs,
+)
 from policyengine_us_data.utils.step_manifest import sha256_file
 
 from .artifacts import ArtifactRef
@@ -18,131 +21,6 @@ from .substages import SubstageRecord
 
 DATASET_BUILD_OUTPUT_CONTRACT_FILENAME = "dataset_build_output.json"
 DATASET_BUILD_OUTPUT_CONTRACT_TYPE = contract_type_for_stage(STAGE_1_BUILD_DATASETS)
-
-
-@dataclass(frozen=True, kw_only=True)
-class _Stage1ArtifactSpec:
-    filename: str
-    logical_name: str
-    artifact_family: str
-    substage_id: str
-    period: int | None = None
-    required: bool = True
-    required_for_stage_2: bool = False
-    yearless_alias: bool = False
-    skip_when_enhanced_cps_skipped: bool = False
-    skip_when_stage_5_skipped: bool = False
-
-
-_STAGE_1_ARTIFACTS: tuple[_Stage1ArtifactSpec, ...] = (
-    _Stage1ArtifactSpec(
-        filename="acs_2022.h5",
-        logical_name="acs_2022",
-        artifact_family="dataset",
-        period=2022,
-        substage_id="1b_base_dataset_construction",
-    ),
-    _Stage1ArtifactSpec(
-        filename="irs_puf_2015.h5",
-        logical_name="irs_puf_2015",
-        artifact_family="dataset",
-        period=2015,
-        substage_id="1b_base_dataset_construction",
-    ),
-    _Stage1ArtifactSpec(
-        filename="cps_2024.h5",
-        logical_name="cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1b_base_dataset_construction",
-    ),
-    _Stage1ArtifactSpec(
-        filename="puf_2024.h5",
-        logical_name="puf_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1b_base_dataset_construction",
-    ),
-    _Stage1ArtifactSpec(
-        filename="extended_cps_2024.h5",
-        logical_name="extended_cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1c_extended_cps_puf_clone",
-    ),
-    _Stage1ArtifactSpec(
-        filename="enhanced_cps_2024.h5",
-        logical_name="enhanced_cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1d_enhanced_cps_reweighting",
-        skip_when_enhanced_cps_skipped=True,
-    ),
-    _Stage1ArtifactSpec(
-        filename="small_enhanced_cps_2024.h5",
-        logical_name="small_enhanced_cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1d_enhanced_cps_reweighting",
-        skip_when_enhanced_cps_skipped=True,
-        skip_when_stage_5_skipped=True,
-    ),
-    _Stage1ArtifactSpec(
-        filename="stratified_extended_cps_2024.h5",
-        logical_name="stratified_extended_cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1e_stratified_cps",
-    ),
-    _Stage1ArtifactSpec(
-        filename="source_imputed_stratified_extended_cps_2024.h5",
-        logical_name="source_imputed_stratified_extended_cps_2024",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1f_source_imputation",
-        required_for_stage_2=True,
-        skip_when_stage_5_skipped=True,
-    ),
-    _Stage1ArtifactSpec(
-        filename="source_imputed_stratified_extended_cps.h5",
-        logical_name="source_imputed_stratified_extended_cps",
-        artifact_family="dataset",
-        period=2024,
-        substage_id="1f_source_imputation",
-        required_for_stage_2=True,
-        yearless_alias=True,
-        skip_when_stage_5_skipped=True,
-    ),
-    _Stage1ArtifactSpec(
-        filename="policy_data.db",
-        logical_name="policy_data_db",
-        artifact_family="target_database",
-        substage_id="1g_stage_base_datasets",
-        required_for_stage_2=True,
-    ),
-    _Stage1ArtifactSpec(
-        filename="build_log.txt",
-        logical_name="build_log",
-        artifact_family="log",
-        substage_id="1g_stage_base_datasets",
-    ),
-    _Stage1ArtifactSpec(
-        filename="data_build_checkpoint_stats.json",
-        logical_name="data_build_checkpoint_stats",
-        artifact_family="execution_metadata",
-        substage_id="1g_stage_base_datasets",
-    ),
-)
-
-_SUBSTAGE_IDS = (
-    "1a_raw_data_download",
-    "1b_base_dataset_construction",
-    "1c_extended_cps_puf_clone",
-    "1d_enhanced_cps_reweighting",
-    "1e_stratified_cps",
-    "1f_source_imputation",
-    "1g_stage_base_datasets",
-)
 
 
 def build_dataset_build_output_contract(
@@ -219,7 +97,7 @@ def _stage_1_outputs(
 ) -> tuple[ArtifactRef, ...]:
     outputs: list[ArtifactRef] = []
     missing_required: list[str] = []
-    for spec in _STAGE_1_ARTIFACTS:
+    for spec in stage_1_contract_artifact_specs():
         if skip_enhanced_cps and spec.skip_when_enhanced_cps_skipped:
             continue
         if skip_stage_5 and spec.skip_when_stage_5_skipped:
@@ -290,7 +168,7 @@ def _stage_1_substages(
     skip_stage_5: bool,
 ) -> tuple[SubstageRecord, ...]:
     output_by_substage: dict[str, list[ArtifactRef]] = {
-        substage_id: [] for substage_id in _SUBSTAGE_IDS
+        spec.id: [] for spec in STAGE_1_BUILD_STEP_SPECS
     }
     for artifact in outputs:
         substage_id = artifact.metadata.get("substage_id")
@@ -298,29 +176,19 @@ def _stage_1_substages(
             output_by_substage[substage_id].append(artifact)
 
     records: list[SubstageRecord] = []
-    for substage_id in _SUBSTAGE_IDS:
+    for spec in STAGE_1_BUILD_STEP_SPECS:
+        substage_id = spec.id
         status = "completed"
-        if substage_id == "1d_enhanced_cps_reweighting" and skip_enhanced_cps:
+        if spec.skip_when_enhanced_cps_skipped and skip_enhanced_cps:
             status = "skipped"
-        if substage_id == "1f_source_imputation" and skip_stage_5:
+        if spec.skip_when_stage_5_skipped and skip_stage_5:
             status = "skipped"
-        reuse_mode = "checkpointable"
-        if substage_id in {
-            "1a_raw_data_download",
-        }:
-            reuse_mode = "observed_only"
-        elif substage_id in {
-            "1e_stratified_cps",
-            "1f_source_imputation",
-            "1g_stage_base_datasets",
-        }:
-            reuse_mode = "handoff"
         records.append(
             SubstageRecord(
                 substage_id=substage_id,
                 status=status,
                 outputs=tuple(output_by_substage[substage_id]),
-                reuse_mode=reuse_mode,
+                reuse_mode=spec.reuse_mode,
             )
         )
     return tuple(records)

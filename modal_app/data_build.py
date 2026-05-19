@@ -22,6 +22,7 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION  # noqa: E402
+from policyengine_us_data.build_datasets import stage_1_script_outputs  # noqa: E402
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.stage_contracts import (  # noqa: E402
@@ -95,43 +96,9 @@ class CheckpointStats:
             }
 
 
-# Script to output file mapping for checkpointing
-# Values can be a single file path (str) or a list of file paths
-SCRIPT_OUTPUTS = {
-    "policyengine_us_data/utils/uprating.py": (
-        "policyengine_us_data/storage/uprating_factors.csv"
-    ),
-    "policyengine_us_data/datasets/acs/acs.py": (
-        "policyengine_us_data/storage/acs_2022.h5"
-    ),
-    "policyengine_us_data/datasets/puf/irs_puf.py": (
-        "policyengine_us_data/storage/irs_puf_2015.h5"
-    ),
-    "policyengine_us_data/datasets/cps/cps.py": (
-        "policyengine_us_data/storage/cps_2024.h5"
-    ),
-    "policyengine_us_data/datasets/puf/puf.py": (
-        "policyengine_us_data/storage/puf_2024.h5"
-    ),
-    "policyengine_us_data/datasets/cps/extended_cps.py": (
-        "policyengine_us_data/storage/extended_cps_2024.h5"
-    ),
-    # enhanced_cps.py produces both the dataset and calibration log
-    "policyengine_us_data/datasets/cps/enhanced_cps.py": [
-        "policyengine_us_data/storage/enhanced_cps_2024.h5",
-        "policyengine_us_data/storage/enhanced_cps_2024.clone_diagnostics.json",
-        "calibration_log.csv",
-    ],
-    "policyengine_us_data/calibration/create_stratified_cps.py": (
-        "policyengine_us_data/storage/stratified_extended_cps_2024.h5"
-    ),
-    "policyengine_us_data/calibration/create_source_imputed_cps.py": (
-        "policyengine_us_data/storage/source_imputed_stratified_extended_cps_2024.h5"
-    ),
-    "policyengine_us_data/datasets/cps/small_enhanced_cps.py": (
-        "policyengine_us_data/storage/small_enhanced_cps_2024.h5"
-    ),
-}
+# Script to output file mapping for checkpointing.
+# Values can be a single file path (str) or a list of file paths.
+SCRIPT_OUTPUTS = stage_1_script_outputs()
 
 CPS_BUILD_SCRIPT = "policyengine_us_data/datasets/cps/cps.py"
 PUF_BUILD_SCRIPT = "policyengine_us_data/datasets/puf/puf.py"

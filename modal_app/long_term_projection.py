@@ -251,6 +251,45 @@ def _output_files(output_dir: Path) -> list[str]:
     )
 
 
+def _has_resume_artifacts(output_dir: Path) -> bool:
+    """Return whether deleting output_dir would lose resumable long-run work."""
+    if not output_dir.exists():
+        return False
+    progress_patterns = (
+        "*.h5",
+        "*.h5.metadata.json",
+        "calibration_manifest.json",
+        "long_run_production_manifest.json",
+        ".parallel_tmp/*/*.h5",
+        ".parallel_tmp/*/*.h5.metadata.json",
+        ".parallel_tmp/*/calibration_manifest.json",
+        ".parallel_logs/*.log",
+    )
+    return any(
+        next(output_dir.glob(pattern), None) is not None
+        for pattern in progress_patterns
+    )
+
+
+def _prepare_output_dir(
+    output_dir: Path,
+    *,
+    clear_output: bool,
+) -> None:
+    if clear_output and output_dir.exists():
+        if _has_resume_artifacts(output_dir):
+            print(
+                "clear_output requested, but existing long-run artifacts were "
+                f"found in {output_dir}; preserving them for resumable execution. "
+                "Use a separate explicit Modal volume removal command for an "
+                "intentional destructive restart.",
+                flush=True,
+            )
+        else:
+            shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+
 def _commit_output_volume(*, suppress_errors: bool = False) -> None:
     try:
         output_volume.commit()
@@ -286,7 +325,7 @@ def build_long_term_projection(
     upload_to_hf_staging: bool = False,
     allow_validation_failures: bool = False,
     keep_temp: bool = False,
-    clear_output: bool = True,
+    clear_output: bool = False,
     support_augmentation_profile: str = "",
     support_augmentation_target_year: int | None = None,
     support_augmentation_align_to_run_year: bool = False,
@@ -306,9 +345,10 @@ def build_long_term_projection(
 
     run_id = sanitize_run_id(run_id)
     output_dir = _OUTPUT_MOUNT / run_id
-    if clear_output and output_dir.exists():
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    _prepare_output_dir(
+        output_dir,
+        clear_output=clear_output,
+    )
 
     command = _build_command(
         years=years,
@@ -384,7 +424,7 @@ def main(
     upload_to_hf_staging: bool = False,
     allow_validation_failures: bool = False,
     keep_temp: bool = False,
-    clear_output: bool = True,
+    clear_output: bool = False,
     support_augmentation_profile: str = "",
     support_augmentation_target_year: int | None = None,
     support_augmentation_align_to_run_year: bool = False,

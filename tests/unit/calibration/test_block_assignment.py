@@ -6,6 +6,7 @@ single census block GEOID.
 """
 
 import numpy as np
+import requests
 
 
 NY_BLOCK_DISTRIBUTIONS = {
@@ -124,6 +125,36 @@ class TestBlockAssignment:
 
 class TestGeographyLookup:
     """Test looking up geographic variables from block GEOID."""
+
+    def test_county_fips_download_retries_transient_errors(self, monkeypatch):
+        """Verify transient Census download failures are retried."""
+        from policyengine_us_data.calibration import block_assignment
+
+        class FakeResponse:
+            content = b"STATE|STATEFP|COUNTYFP|COUNTYNAME\nNY|36|061|New York County\n"
+
+            def raise_for_status(self):
+                return None
+
+        class FlakySession:
+            def __init__(self):
+                self.calls = 0
+
+            def get(self, url, timeout):
+                self.calls += 1
+                if self.calls == 1:
+                    raise requests.exceptions.SSLError("transient EOF")
+                return FakeResponse()
+
+        session = FlakySession()
+        monkeypatch.setattr(block_assignment.time, "sleep", lambda _: None)
+
+        result = block_assignment._download_county_fips_2020(
+            session=session,
+        )
+
+        assert "New York County" in result
+        assert session.calls == 2
 
     def test_get_county_from_block(self):
         """Verify county FIPS extraction from block GEOID."""

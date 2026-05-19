@@ -23,6 +23,7 @@ from projection_utils import (
     aggregate_household_age_matrix,
     build_age_bins,
     build_household_age_matrix,
+    household_calibration_weights,
 )
 from ssa_data import (
     get_long_term_target_source,
@@ -145,9 +146,9 @@ def assess_years(
     target_matrix = load_ssa_age_projections(start_year=start_year, end_year=end_year)
     n_ages = target_matrix.shape[0]
 
-    sim = Microsimulation(dataset=base_dataset_path)
-    X, _, _ = build_household_age_matrix(sim, n_ages)
-    del sim
+    base_sim = Microsimulation(dataset=base_dataset_path)
+    X, _, _ = build_household_age_matrix(base_sim, n_ages)
+    del base_sim
     gc.collect()
 
     aggregated_age_cache: dict[int, tuple[np.ndarray, np.ndarray]] = {}
@@ -158,8 +159,7 @@ def assess_years(
         year_idx = year - start_year
         sim = Microsimulation(dataset=base_dataset_path)
 
-        household_microseries = sim.calculate("household_id", map_to="household")
-        baseline_weights = household_microseries.weights.values
+        baseline_weights = household_calibration_weights(sim)
 
         ss_values = None
         ss_target = None
@@ -294,7 +294,7 @@ def assess_years(
                     best_case_match.group(2)
                 )
             rows.append(row)
-            del sim
+            sim = None
             gc.collect()
             continue
 
@@ -375,7 +375,7 @@ def assess_years(
 
         rows.append(row)
 
-        del sim
+        sim = None
         gc.collect()
 
     return rows

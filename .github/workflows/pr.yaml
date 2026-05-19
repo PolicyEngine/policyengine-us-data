@@ -165,10 +165,20 @@ jobs:
       MODAL_PROXY_TOKEN_SECRET: ${{ secrets.MODAL_PROXY_TOKEN_SECRET }}
       HUGGING_FACE_TOKEN: ${{ secrets.HUGGING_FACE_TOKEN }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS }}
-      MODAL_ENVIRONMENT: staging-us-data-pr-${{ github.event.pull_request.number }}
-      MODAL_APP_NAME: policyengine-us-data-pipeline
-      MODAL_LOCAL_AREA_APP_NAME: policyengine-us-data-local-area
-      MODAL_H5_TEST_HARNESS_APP_NAME: policyengine-us-data-h5-test-harness
+      # Modal PR environments cannot reliably receive secrets with the CI token.
+      # Deploy isolated PR apps and volumes into main, where required secrets
+      # already exist, then stop/delete the PR resources in cleanup steps.
+      MODAL_ENVIRONMENT: main
+      MODAL_APP_NAME: us-data-pipeline-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      MODAL_LOCAL_AREA_APP_NAME: us-data-local-area-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      MODAL_H5_TEST_HARNESS_APP_NAME: us-data-h5-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_PIPELINE_APP_NAME: us-data-pipeline-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_MODAL_APP_NAME: us-data-pipeline-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_LOCAL_AREA_APP_NAME: us-data-local-area-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_H5_HARNESS_APP_NAME: us-data-h5-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_PIPELINE_VOLUME_NAME: pipeline-artifacts-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_STAGING_VOLUME_NAME: local-area-staging-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+      US_DATA_CHECKPOINT_VOLUME_NAME: data-build-checkpoints-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -178,15 +188,11 @@ jobs:
       - run: uv sync --dev
       - name: Install integration test deps
         run: uv pip install modal pytest numpy pandas
-      - name: Ensure PR Modal environment exists
-        run: uv run python .github/scripts/ensure_modal_environment.py
-      - name: Sync Modal secrets to PR environment
-        run: uv run python .github/scripts/sync_modal_secrets.py
-      - name: Deploy Modal pipeline app to PR staging
+      - name: Deploy PR Modal pipeline app
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/pipeline.py
-      - name: Deploy Modal local-area app to PR staging
+      - name: Deploy PR Modal local-area app
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/local_area.py
-      - name: Deploy Modal H5 test harness to PR staging
+      - name: Deploy PR Modal H5 test harness
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" modal_app/h5_test_harness.py
       - name: Run integration tests
         run: >
@@ -204,9 +210,32 @@ jobs:
           tests/integration/test_tiny_h5_pipeline.py
           tests/integration/test_modal_pipeline_e2e.py
           -v
-      - name: Cleanup PR Modal environment
+      - name: Stop PR Modal apps
         if: always()
-        run: uv run python .github/scripts/delete_modal_environment.py
+        run: |
+          for app_name in \
+            "${MODAL_H5_TEST_HARNESS_APP_NAME}" \
+            "${MODAL_LOCAL_AREA_APP_NAME}" \
+            "${MODAL_APP_NAME}"
+          do
+            yes | uv run modal app stop \
+              --env="${MODAL_ENVIRONMENT}" \
+              "${app_name}" || true
+          done
+      - name: Delete PR Modal volumes
+        if: always()
+        run: |
+          for volume_name in \
+            "${US_DATA_STAGING_VOLUME_NAME}" \
+            "${US_DATA_PIPELINE_VOLUME_NAME}" \
+            "${US_DATA_CHECKPOINT_VOLUME_NAME}"
+          do
+            uv run modal volume delete \
+              --env="${MODAL_ENVIRONMENT}" \
+              --allow-missing \
+              --yes \
+              "${volume_name}" || true
+          done
 
   smoke-test:
     runs-on: ubuntu-latest

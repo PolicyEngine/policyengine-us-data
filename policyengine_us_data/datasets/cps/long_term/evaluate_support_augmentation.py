@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 
 import numpy as np
 from policyengine_us import Microsimulation
@@ -17,6 +16,7 @@ from projection_utils import (
     aggregate_household_age_matrix,
     build_age_bins,
     build_household_age_matrix,
+    household_calibration_weights,
 )
 from ssa_data import (
     get_long_term_target_source,
@@ -60,8 +60,7 @@ def _evaluate_dataset(
         y_target = target_matrix[:, 0]
         age_bucket_size = 1
 
-    household_series = sim.calculate("household_id", period=year, map_to="household")
-    baseline_weights = household_series.weights.values
+    baseline_weights = household_calibration_weights(sim, period=year)
 
     ss_values = None
     ss_target = None

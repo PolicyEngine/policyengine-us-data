@@ -470,6 +470,15 @@ def _period_column(name: str, base_year: int) -> str:
     return f"{name}__{base_year}"
 
 
+def _row_values(series: object) -> np.ndarray:
+    """Return unweighted row values from a MicroSeries-like object."""
+    if hasattr(series, "array"):
+        return np.asarray(series.array)
+    if hasattr(series, "values"):
+        return np.asarray(series.values)
+    return np.asarray(series)
+
+
 def classify_archetype(
     *,
     head_age: float,
@@ -520,37 +529,49 @@ def build_tax_unit_summary(
     reform: object | None = None,
 ) -> pd.DataFrame:
     sim = Microsimulation(dataset=dataset, reform=reform)
-    input_df = sim.to_input_dataframe()
+    # policyengine-core derives all microsimulation weights from household_weight.
+    # Build the person-row donor summary from that source of truth.
+    household_weight_at_person_level = _row_values(
+        sim.calculate("household_weight", period=period, map_to="person")
+    ).astype(float)
 
     person_df = pd.DataFrame(
         {
-            "tax_unit_id": sim.calculate("person_tax_unit_id", period=period).values,
-            "household_id": sim.calculate("person_household_id", period=period).values,
-            "age": sim.calculate("age", period=period).values,
-            "is_head": sim.calculate("is_tax_unit_head", period=period).values,
-            "is_spouse": sim.calculate("is_tax_unit_spouse", period=period).values,
-            "is_dependent": sim.calculate(
-                "is_tax_unit_dependent", period=period
-            ).values,
-            "social_security": sim.calculate("social_security", period=period).values,
-            "payroll": (
-                sim.calculate(
-                    "taxable_earnings_for_social_security", period=period
-                ).values
-                + sim.calculate(
-                    "social_security_taxable_self_employment_income", period=period
-                ).values
+            "tax_unit_id": _row_values(
+                sim.calculate("person_tax_unit_id", period=period)
             ),
-            "dividend_income": sim.calculate(
-                "qualified_dividend_income", period=period
-            ).values,
-            "pension_income": sim.calculate(
-                "taxable_pension_income", period=period
-            ).values,
-            "person_weight": input_df[f"person_weight__{period}"].astype(float).values,
-            "household_weight": input_df[f"household_weight__{period}"]
-            .astype(float)
-            .values,
+            "household_id": _row_values(
+                sim.calculate("person_household_id", period=period)
+            ),
+            "age": _row_values(sim.calculate("age", period=period)),
+            "is_head": _row_values(sim.calculate("is_tax_unit_head", period=period)),
+            "is_spouse": _row_values(
+                sim.calculate("is_tax_unit_spouse", period=period)
+            ),
+            "is_dependent": _row_values(
+                sim.calculate("is_tax_unit_dependent", period=period)
+            ),
+            "social_security": _row_values(
+                sim.calculate("social_security", period=period)
+            ),
+            "payroll": (
+                _row_values(
+                    sim.calculate("taxable_earnings_for_social_security", period=period)
+                )
+                + _row_values(
+                    sim.calculate(
+                        "social_security_taxable_self_employment_income",
+                        period=period,
+                    )
+                )
+            ),
+            "dividend_income": _row_values(
+                sim.calculate("qualified_dividend_income", period=period)
+            ),
+            "pension_income": _row_values(
+                sim.calculate("taxable_pension_income", period=period)
+            ),
+            "household_weight": household_weight_at_person_level,
         }
     )
 
@@ -594,7 +615,6 @@ def build_tax_unit_summary(
             "dividend_income": float(group["dividend_income"].sum()),
             "pension_income": float(group["pension_income"].sum()),
             "support_count_weight": 1.0,
-            "person_weight_proxy": float(group["person_weight"].max()),
             "household_weight_proxy": float(group["household_weight"].max()),
         }
         row["archetype"] = classify_archetype(
@@ -646,11 +666,11 @@ def attach_person_uprating_factors(
         else np.zeros(len(df), dtype=float)
     )
     uprated_payroll = sum(
-        sim.calculate(component, period=target_year).values.astype(float)
+        _row_values(sim.calculate(component, period=target_year)).astype(float)
         for component in PAYROLL_COMPONENTS
     )
     uprated_ss = sum(
-        sim.calculate(component, period=target_year).values.astype(float)
+        _row_values(sim.calculate(component, period=target_year)).astype(float)
         for component in SS_COMPONENTS
     )
     df[PAYROLL_UPRATING_FACTOR_COLUMN] = np.where(
@@ -666,32 +686,80 @@ def attach_person_uprating_factors(
     return df
 
 
+def _person_level_values(
+    sim: Microsimulation,
+    variable: str,
+    *,
+    period: int,
+) -> np.ndarray:
+    try:
+        series = sim.calculate(variable, period=period, map_to="person")
+    except Exception:
+        series = sim.calculate(variable, period=period)
+    return _row_values(series)
+
+
+def ensure_person_level_core_inputs(
+    input_df: pd.DataFrame,
+    sim: Microsimulation,
+    *,
+    base_year: int,
+) -> pd.DataFrame:
+    """Fill aliases that newer policyengine-core omits from input exports.
+
+    policyengine-core#497 made household_weight the source of truth for all
+    microsimulation weights and stopped relying on redundant stored person
+    weights. The support augmentation code still needs person-row IDs so it can
+    clone donors and assign fresh entity identifiers.
+    """
+    df = input_df.copy()
+    person_row_count = len(df)
+    required_person_level_inputs = [
+        PERSON_ID_COLUMN,
+        *(column for columns in ENTITY_ID_COLUMNS.values() for column in columns),
+        "household_weight",
+    ]
+    for variable in required_person_level_inputs:
+        column = _period_column(variable, base_year)
+        if column in df.columns:
+            continue
+        values = _person_level_values(sim, variable, period=base_year)
+        if len(values) != person_row_count:
+            raise ValueError(
+                f"Expected {variable} to map to {person_row_count} person rows; "
+                f"got {len(values)}."
+            )
+        df[column] = values
+    df.drop(
+        columns=[_period_column("person_weight", base_year)],
+        inplace=True,
+        errors="ignore",
+    )
+    return df
+
+
 def load_base_aggregates(
     base_dataset: str,
     *,
     reform: object | None = None,
 ) -> dict[str, float]:
     sim = Microsimulation(dataset=base_dataset, reform=reform)
-    household_series = sim.calculate(
-        "household_id", period=BASE_YEAR, map_to="household"
+    ss = sim.calculate("social_security", period=BASE_YEAR, map_to="household")
+    taxable_wages = sim.calculate(
+        "taxable_earnings_for_social_security",
+        period=BASE_YEAR,
+        map_to="household",
     )
-    weights = household_series.weights.values.astype(float)
-    ss = sim.calculate("social_security", period=BASE_YEAR, map_to="household").values
-    payroll = (
-        sim.calculate(
-            "taxable_earnings_for_social_security",
-            period=BASE_YEAR,
-            map_to="household",
-        ).values
-        + sim.calculate(
-            "social_security_taxable_self_employment_income",
-            period=BASE_YEAR,
-            map_to="household",
-        ).values
+    taxable_self_employment = sim.calculate(
+        "social_security_taxable_self_employment_income",
+        period=BASE_YEAR,
+        map_to="household",
     )
     return {
-        "weighted_ss_total": float(np.sum(ss * weights)),
-        "weighted_payroll_total": float(np.sum(payroll * weights)),
+        "weighted_ss_total": float(ss.sum()),
+        "weighted_payroll_total": float(
+            taxable_wages.sum() + taxable_self_employment.sum()
+        ),
     }
 
 
@@ -1961,7 +2029,6 @@ def _clone_tax_unit_rows_to_target(
 ) -> tuple[pd.DataFrame, dict[str, int]] | tuple[None, dict[str, int]]:
     age_col = _period_column("age", base_year)
     household_weight_col = _period_column("household_weight", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
     person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
 
     adults = donor_rows[donor_rows[age_col] >= 18].sort_values(age_col, ascending=False)
@@ -1975,7 +2042,10 @@ def _clone_tax_unit_rows_to_target(
     ):
         return None, id_counters
 
-    cloned = donor_rows.copy()
+    cloned = donor_rows.drop(
+        columns=[_period_column("person_weight", base_year)],
+        errors="ignore",
+    ).copy()
     household_id = id_counters["household"]
     id_counters["household"] += 1
     for entity_name, columns in ENTITY_ID_COLUMNS.items():
@@ -2003,13 +2073,6 @@ def _clone_tax_unit_rows_to_target(
             * clone_weight_scale
             / max(clone_weight_divisor, 1)
         )
-    if person_weight_col in cloned.columns:
-        cloned[person_weight_col] = (
-            cloned[person_weight_col].astype(float)
-            * clone_weight_scale
-            / max(clone_weight_divisor, 1)
-        )
-
     adult_indices = adults.index.tolist()
     head_idx = adult_indices[0]
     spouse_idx = adult_indices[1] if target_has_spouse else None
@@ -2115,7 +2178,6 @@ def _compose_role_donor_rows_to_target(
 ) -> tuple[pd.DataFrame, dict[str, int]] | tuple[None, dict[str, int]]:
     age_col = _period_column("age", base_year)
     household_weight_col = _period_column("household_weight", base_year)
-    person_weight_col = _period_column("person_weight", base_year)
     person_id_col = _period_column(PERSON_ID_COLUMN, base_year)
 
     def _adult_rows(df: pd.DataFrame | None) -> pd.DataFrame:
@@ -2248,6 +2310,11 @@ def _compose_role_donor_rows_to_target(
     # Reset duplicate donor indices so later row-specific retargeting only touches
     # the intended clone row.
     cloned = pd.DataFrame(selected_rows).reset_index(drop=True).copy()
+    cloned.drop(
+        columns=[_period_column("person_weight", base_year)],
+        inplace=True,
+        errors="ignore",
+    )
     cloned_sources = pd.Series(selected_sources, index=cloned.index)
     household_id = id_counters["household"]
     id_counters["household"] += 1
@@ -2276,13 +2343,6 @@ def _compose_role_donor_rows_to_target(
             * clone_weight_scale
             / max(clone_weight_divisor, 1)
         )
-    if person_weight_col in cloned.columns:
-        cloned[person_weight_col] = (
-            cloned[person_weight_col].astype(float)
-            * clone_weight_scale
-            / max(clone_weight_divisor, 1)
-        )
-
     head_idx = cloned.index[0]
     spouse_idx = cloned.index[1] if target_candidate.spouse_age is not None else None
     dependent_indices = (
@@ -2400,6 +2460,11 @@ def build_donor_backed_augmented_input_dataframe(
         sim,
         base_year=base_year,
         target_year=target_year,
+    )
+    input_df = ensure_person_level_core_inputs(
+        input_df,
+        sim,
+        base_year=base_year,
     )
     actual_summary = build_actual_tax_unit_summary(base_dataset, reform=reform)
     base_aggregates = load_base_aggregates(base_dataset, reform=reform)
@@ -2551,6 +2616,11 @@ def build_role_composite_augmented_input_dataframe(
         sim,
         base_year=base_year,
         target_year=target_year,
+    )
+    input_df = ensure_person_level_core_inputs(
+        input_df,
+        sim,
+        base_year=base_year,
     )
     actual_summary = build_actual_tax_unit_summary(base_dataset, reform=reform)
     base_aggregates = load_base_aggregates(base_dataset, reform=reform)

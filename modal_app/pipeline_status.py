@@ -16,7 +16,10 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.step_manifests.state import PIPELINE_MOUNT, RUNS_DIR  # noqa: E402
-from modal_app.step_manifests.status import build_pipeline_status_payload  # noqa: E402
+from modal_app.step_manifests.status import (  # noqa: E402
+    build_pipeline_runs_payload,
+    build_pipeline_status_payload,
+)
 
 app = modal.App(
     os.environ.get("US_DATA_PIPELINE_STATUS_APP_NAME")
@@ -47,6 +50,22 @@ def get_pipeline_status(
 
 
 @app.function(
+    image=image,
+    timeout=60,
+    volumes={PIPELINE_MOUNT: pipeline_volume},
+)
+def list_pipeline_runs(
+    limit: int = 25,
+    status: str = "",
+    branch: str = "",
+) -> dict:
+    """Get a structured index of recent pipeline runs."""
+
+    pipeline_volume.reload()
+    return build_pipeline_runs_payload(limit=limit, status=status, branch=branch)
+
+
+@app.function(
     image=status_image,
     timeout=60,
     volumes={PIPELINE_MOUNT: pipeline_volume},
@@ -63,6 +82,27 @@ def pipeline_status_endpoint(
 
     pipeline_volume.reload()
     return build_pipeline_status_payload(run_id)
+
+
+@app.function(
+    image=status_image,
+    timeout=60,
+    volumes={PIPELINE_MOUNT: pipeline_volume},
+)
+@modal.fastapi_endpoint(
+    method="GET",
+    docs=False,
+    requires_proxy_auth=True,
+)
+def pipeline_runs_endpoint(
+    limit: int = 25,
+    status: str = "",
+    branch: str = "",
+) -> dict:
+    """Protected HTTP endpoint for a structured pipeline run index."""
+
+    pipeline_volume.reload()
+    return build_pipeline_runs_payload(limit=limit, status=status, branch=branch)
 
 
 @app.function(

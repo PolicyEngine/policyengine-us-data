@@ -176,6 +176,7 @@ def test_main_spawn_resolves_git_sha_sanitizes_run_id_and_reports_volume(
     assert captured_kwargs["run_id"] == "crfb-sentinel"
     assert captured_kwargs["source_sha"] == "abc123"
     assert captured_kwargs["upload_to_hf_staging"] is False
+    assert captured_kwargs["clear_output"] is False
 
 
 def test_main_refuses_dirty_source_by_default(monkeypatch):
@@ -245,3 +246,61 @@ def test_remote_result_reports_hf_staging_prefix(monkeypatch, tmp_path):
     assert result["run_id"] == "run-123"
     assert result["hf_staging_prefix"] == "staging/abc123-run-123/long_term"
     assert Path(result["output_dir"]) == tmp_path / "run-123"
+
+
+def test_remote_preserves_resume_artifacts_when_clear_output_requested(
+    monkeypatch,
+    tmp_path,
+):
+    long_term = _load_long_term_projection_module(monkeypatch)
+    monkeypatch.setattr(long_term, "_OUTPUT_MOUNT", tmp_path)
+
+    output_dir = tmp_path / "run-123"
+    resume_dir = output_dir / ".parallel_tmp" / "2026"
+    resume_dir.mkdir(parents=True)
+    completed_h5 = resume_dir / "2026.h5"
+    completed_h5.write_text("already-complete", encoding="utf-8")
+    (resume_dir / "2026.h5.metadata.json").write_text("{}", encoding="utf-8")
+    (resume_dir / "calibration_manifest.json").write_text("{}", encoding="utf-8")
+
+    def fake_stream_command(command, env):
+        assert completed_h5.exists()
+
+    monkeypatch.setattr(long_term, "_stream_command", fake_stream_command)
+
+    result = long_term.build_long_term_projection(
+        years="2026-2100",
+        run_id="Run 123",
+        source_sha="abc123",
+        clear_output=True,
+    )
+
+    assert completed_h5.read_text(encoding="utf-8") == "already-complete"
+    assert ".parallel_tmp/2026/2026.h5" in result["files"]
+
+
+def test_remote_clear_output_can_remove_non_resumable_scratch(
+    monkeypatch,
+    tmp_path,
+):
+    long_term = _load_long_term_projection_module(monkeypatch)
+    monkeypatch.setattr(long_term, "_OUTPUT_MOUNT", tmp_path)
+
+    output_dir = tmp_path / "run-123"
+    output_dir.mkdir(parents=True)
+    scratch_file = output_dir / "scratch.txt"
+    scratch_file.write_text("scratch", encoding="utf-8")
+
+    def fake_stream_command(command, env):
+        assert not scratch_file.exists()
+
+    monkeypatch.setattr(long_term, "_stream_command", fake_stream_command)
+
+    result = long_term.build_long_term_projection(
+        years="2026-2100",
+        run_id="Run 123",
+        source_sha="abc123",
+        clear_output=True,
+    )
+
+    assert "scratch.txt" not in result["files"]

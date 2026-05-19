@@ -19,6 +19,7 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
     get_medicare_enrollment_target,
 )
+from policyengine_us_data.utils.bea_regional import get_bea_state_wage_targets
 from policyengine_us_data.db.etl_irs_soi import (
     get_national_geography_soi_target,
     get_state_geography_soi_targets,
@@ -74,6 +75,8 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
         BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
     ),
 )
+
+BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 5_000.0
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
@@ -1069,6 +1072,40 @@ def _add_bls_ce_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _add_bea_state_wage_targets(loss_matrix, targets_list, sim, time_period):
+    """Add BEA state wage targets to the legacy eCPS loss matrix."""
+    targets, data_year = get_bea_state_wage_targets(
+        time_period,
+        national_total=BEA_NIPA_WAGES_AND_SALARIES_2024,
+    )
+    wages = _calculate_household_target_values(
+        sim,
+        "employment_income_before_lsr",
+        time_period,
+    )
+    state_code = sim.calculate(
+        "state_code",
+        map_to="household",
+        period=time_period,
+    ).values
+
+    for row in targets.itertuples(index=False):
+        in_state = (state_code == row.state_code).astype(np.float32)
+        label = f"state/bea/wages_and_salaries/{row.state_code}"
+        loss_matrix[label] = wages * in_state
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(float(row.employment_income_before_lsr))
+
+    logging.info(
+        "Loaded %s BEA state wage targets from SAINC4 %s, scaled to NIPA wages",
+        len(targets),
+        data_year,
+    )
+
+    return targets_list, loss_matrix
+
+
 def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
     """Add paid-minus-received accounting targets for private transfers."""
     for label, (paid_variable, received_variable) in TRANSFER_BALANCE_TARGETS.items():
@@ -1103,6 +1140,16 @@ def get_target_error_normalisation(target_names, targets_array):
         denominator[mask] = scale
 
     return numerator_shift, denominator
+
+
+def get_target_loss_weights(target_names):
+    target_names = np.asarray(target_names, dtype=str)
+    weights = np.ones(target_names.shape, dtype=np.float32)
+    is_bea_wage_target = (
+        target_names == "nation/bea/nipa_wages_and_salaries"
+    ) | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
+    weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
+    return weights
 
 
 def _should_skip_soi_agi_row(row) -> bool:
@@ -1281,6 +1328,13 @@ def build_loss_matrix(dataset: type, time_period):
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
+
+    targets_array, loss_matrix = _add_bea_state_wage_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # IRS SOI aggregate capital-gains targets. This adds a long-term gains
     # control on top of the CBO net capital gains aggregate, which is important

@@ -29,8 +29,10 @@ Manually sourced national or local-file calibration targets must be registered
 in every active target path before merging:
 
 1. `policyengine_us_data/utils/loss.py` for the ECPS loss matrix.
-2. `policyengine_us_data/db/etl_national_targets.py` for `policy_data.db` and
-   local H5 validation inputs.
+2. The appropriate `policyengine_us_data/db/etl_*.py` loader for
+   `policy_data.db` and local H5 validation inputs. National targets usually
+   belong in `etl_national_targets.py`; state or local targets should use a
+   state/local ETL module and must still be added to this DB path.
 3. `policyengine_us_data/calibration/target_config.yaml` when the default
    calibration uses an `include:` list; otherwise the target can exist in
    `policy_data.db` but still be omitted from calibration.

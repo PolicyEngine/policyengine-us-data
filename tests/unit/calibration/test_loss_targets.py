@@ -11,9 +11,11 @@ from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
     BEA_NIPA_DIRECT_SUM_TARGETS,
+    BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     TRANSFER_BALANCE_TARGETS,
+    _add_bea_state_wage_targets,
     _add_agi_metric_columns,
     _add_acs_housing_cost_targets,
     _add_aotc_targets,
@@ -32,6 +34,7 @@ from policyengine_us_data.utils.loss import (
     _should_skip_soi_taxability_row,
     build_loss_matrix,
     get_target_error_normalisation,
+    get_target_loss_weights,
 )
 from policyengine_us_data.db import etl_national_targets
 
@@ -60,6 +63,26 @@ def test_bea_nipa_direct_sum_targets_match_targets_db():
             etl_national_targets.BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024
         ),
     }
+
+
+def test_bea_wage_targets_get_higher_loss_weight():
+    target_names = np.array(
+        [
+            "nation/bea/nipa_wages_and_salaries",
+            "state/bea/wages_and_salaries/CA",
+            "nation/bea/nipa_proprietors_income",
+            "state/CA/adjusted_gross_income/amount/1000000_inf",
+        ]
+    )
+
+    weights = get_target_loss_weights(target_names)
+
+    assert weights.tolist() == [
+        BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+        BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+        1.0,
+        1.0,
+    ]
 
 
 def test_aca_targets_roll_forward_to_2025():
@@ -474,6 +497,59 @@ class _FakeAcsHousingCostSimulation:
         if key not in values:
             raise AssertionError(f"Unexpected calculate call {key!r}")
         return _FakeArrayResult(values[key])
+
+
+class _FakeBeaStateWageSimulation:
+    tax_benefit_system = SimpleNamespace(
+        variables={
+            "employment_income_before_lsr": SimpleNamespace(
+                entity=SimpleNamespace(key="person")
+            )
+        }
+    )
+
+    def calculate(self, variable, map_to=None, period=None):
+        values = {
+            ("state_code", "household"): ["CA", "NY", "CA"],
+            ("employment_income_before_lsr", "household"): [10.0, 20.0, 30.0],
+        }
+        key = (variable, map_to)
+        if key not in values:
+            raise AssertionError(f"Unexpected calculate call {key!r}")
+        assert period == 2024
+        return _FakeArrayResult(values[key])
+
+
+def test_add_bea_state_wage_targets(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_bea_state_wage_targets",
+        lambda year, *, national_total: (
+            pd.DataFrame(
+                {
+                    "state_code": ["CA", "NY"],
+                    "employment_income_before_lsr": [100.0, 200.0],
+                }
+            ),
+            2024,
+        ),
+    )
+
+    targets, loss_matrix = _add_bea_state_wage_targets(
+        pd.DataFrame(),
+        [],
+        _FakeBeaStateWageSimulation(),
+        2024,
+    )
+
+    assert targets == [100.0, 200.0]
+    np.testing.assert_array_equal(
+        loss_matrix["state/bea/wages_and_salaries/CA"],
+        np.array([10.0, 0.0, 30.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["state/bea/wages_and_salaries/NY"],
+        np.array([0.0, 20.0, 0.0], dtype=np.float32),
+    )
 
 
 def test_add_acs_housing_cost_targets(monkeypatch):

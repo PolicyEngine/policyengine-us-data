@@ -13,6 +13,7 @@ __all__ = [
     "HardConcrete",
     "build_loss_matrix",
     "get_target_error_normalisation",
+    "get_target_loss_weights",
     "print_reweighting_diagnostics",
     "set_seeds",
 ]

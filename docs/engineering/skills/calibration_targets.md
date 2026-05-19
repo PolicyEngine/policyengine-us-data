@@ -8,8 +8,10 @@ calibration targets.
 New targets must be registered in both active target systems:
 
 - `policyengine_us_data/utils/loss.py` for the ECPS `build_loss_matrix()` path.
-- `policyengine_us_data/db/etl_national_targets.py` for `policy_data.db`, local
-  H5 outputs, and validation inputs.
+- The appropriate `policyengine_us_data/db/etl_*.py` loader for
+  `policy_data.db`, local H5 outputs, and validation inputs. National targets
+  usually belong in `etl_national_targets.py`; state and local targets should
+  use a state/local ETL module and must still be present in this DB path.
 
 If the default calibration path uses `policyengine_us_data/calibration/target_config.yaml`
 with an `include:` list, also add the matching include rule there. A target can
@@ -19,10 +21,10 @@ from `target_config.yaml`.
 ## Tests
 
 Every target change should add or update tests that prove the target is wired
-through every active path. For manually sourced national targets, cover:
+through every active path. For manually sourced targets, cover:
 
 - the ECPS loss matrix registration in `tests/unit/calibration/test_loss_targets.py`;
-- the DB ETL row in `tests/unit/test_etl_national_targets.py`;
+- the DB ETL row in the matching `tests/unit/test_etl_*.py` file;
 - the default calibration include rule in
   `tests/unit/calibration/test_target_config.py`;
 - any publication guard in `tests/unit/test_upload_completed_datasets.py` when

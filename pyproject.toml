@@ -54,7 +54,7 @@ calibration = [
     "samplics",
 ]
 l0 = [
-    "l0-python",
+    "l0-python @ git+https://github.com/PolicyEngine/L0.git@codex/epsilon-insensitive-calibration-loss",
 ]
 
 [dependency-groups]

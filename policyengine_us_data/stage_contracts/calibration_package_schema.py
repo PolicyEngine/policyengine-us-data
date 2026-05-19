@@ -39,6 +39,7 @@ CALIBRATION_PACKAGE_PARAMETER_KEYS = frozenset(
         "skip_source_impute",
         "skip_takeup_rerandomize",
         "target_config",
+        "target_policy",
         "workers",
     }
 )
@@ -65,6 +66,11 @@ CALIBRATION_PACKAGE_SUMMARY_KEYS = frozenset(
         "seed",
         "target_config_path",
         "target_config_sha256",
+        "target_policy_path",
+        "target_policy_sha256",
+        "target_policy_schema_version",
+        "target_policy_row_count",
+        "has_target_policy",
         "target_name_count",
     }
 )
@@ -207,6 +213,7 @@ class CalibrationPackageParameters:
     workers: int | None
     n_clones: int
     target_config: str | None
+    target_policy: str | None
     skip_county: bool
     skip_source_impute: bool
     skip_takeup_rerandomize: bool
@@ -230,6 +237,8 @@ class CalibrationPackageParameters:
         _validate_bool(self.parallel_matrix, "parallel_matrix")
         if self.target_config is not None and not isinstance(self.target_config, str):
             raise ValueError("target_config must be a string or None")
+        if self.target_policy is not None and not isinstance(self.target_policy, str):
+            raise ValueError("target_policy must be a string or None")
         if self.chunked_matrix:
             if self.workers is not None:
                 raise ValueError("workers must be None when chunked_matrix is true")
@@ -258,6 +267,7 @@ class CalibrationPackageParameters:
         workers: int,
         n_clones: int,
         target_config_path: str | None,
+        target_policy_path: str | None,
         skip_county: bool,
         skip_source_impute: bool,
         skip_takeup_rerandomize: bool,
@@ -273,6 +283,7 @@ class CalibrationPackageParameters:
             workers=workers if not chunked_matrix else None,
             n_clones=n_clones,
             target_config=target_config_path,
+            target_policy=target_policy_path,
             skip_county=skip_county,
             skip_source_impute=skip_source_impute,
             skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -300,6 +311,7 @@ class CalibrationPackageParameters:
             workers=_optional_int_field(data, "workers"),
             n_clones=_required_int_field(data, "n_clones"),
             target_config=_optional_string_field(data, "target_config"),
+            target_policy=_optional_string_field(data, "target_policy"),
             skip_county=_required_bool_field(data, "skip_county"),
             skip_source_impute=_required_bool_field(data, "skip_source_impute"),
             skip_takeup_rerandomize=_required_bool_field(
@@ -325,6 +337,7 @@ class CalibrationPackageParameters:
             "skip_source_impute": self.skip_source_impute,
             "skip_takeup_rerandomize": self.skip_takeup_rerandomize,
             "target_config": self.target_config,
+            "target_policy": self.target_policy,
             "workers": self.workers,
         }
 
@@ -343,6 +356,11 @@ class CalibrationPackageSummary:
     db_sha256: str | None
     target_config_path: str | None
     target_config_sha256: str | None
+    target_policy_path: str | None
+    target_policy_sha256: str | None
+    target_policy_schema_version: str | None
+    target_policy_row_count: int | None
+    has_target_policy: bool
     n_clones: int | None
     seed: int | None
     base_n_records: int | None
@@ -369,6 +387,10 @@ class CalibrationPackageSummary:
         _validate_optional_non_negative_int(self.n_clones, "n_clones")
         _validate_optional_non_negative_int(self.seed, "seed")
         _validate_optional_non_negative_int(self.base_n_records, "base_n_records")
+        _validate_optional_non_negative_int(
+            self.target_policy_row_count,
+            "target_policy_row_count",
+        )
         _validate_optional_non_negative_int(self.chunk_size, "chunk_size")
         _validate_optional_non_negative_int(self.cd_geoid_length, "cd_geoid_length")
         _validate_optional_non_negative_int(
@@ -376,6 +398,7 @@ class CalibrationPackageSummary:
             "block_geoid_length",
         )
         _validate_bool(self.has_initial_weights, "has_initial_weights")
+        _validate_bool(self.has_target_policy, "has_target_policy")
         _validate_bool(self.has_cd_geoid, "has_cd_geoid")
         _validate_bool(self.has_block_geoid, "has_block_geoid")
         for key in (
@@ -383,6 +406,9 @@ class CalibrationPackageSummary:
             "db_sha256",
             "target_config_path",
             "target_config_sha256",
+            "target_policy_path",
+            "target_policy_sha256",
+            "target_policy_schema_version",
             "package_scope",
             "matrix_builder",
             "chunk_dir",
@@ -416,6 +442,20 @@ class CalibrationPackageSummary:
                 data,
                 "target_config_sha256",
             ),
+            target_policy_path=_optional_string_field(data, "target_policy_path"),
+            target_policy_sha256=_optional_string_field(
+                data,
+                "target_policy_sha256",
+            ),
+            target_policy_schema_version=_optional_string_field(
+                data,
+                "target_policy_schema_version",
+            ),
+            target_policy_row_count=_optional_int_field(
+                data,
+                "target_policy_row_count",
+            ),
+            has_target_policy=_required_bool_field(data, "has_target_policy"),
             n_clones=_optional_int_field(data, "n_clones"),
             seed=_optional_int_field(data, "seed"),
             base_n_records=_optional_int_field(data, "base_n_records"),
@@ -455,6 +495,11 @@ class CalibrationPackageSummary:
             "seed": self.seed,
             "target_config_path": self.target_config_path,
             "target_config_sha256": self.target_config_sha256,
+            "target_policy_path": self.target_policy_path,
+            "target_policy_sha256": self.target_policy_sha256,
+            "target_policy_schema_version": self.target_policy_schema_version,
+            "target_policy_row_count": self.target_policy_row_count,
+            "has_target_policy": self.has_target_policy,
             "target_name_count": self.target_name_count,
         }
 

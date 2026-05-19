@@ -99,6 +99,8 @@ def _collect_outputs(cal_lines):
     log_path = None
     cal_log_path = None
     config_path = None
+    target_policy_path = None
+    target_policy_summary_path = None
     for line in cal_lines:
         if "OUTPUT_PATH:" in line:
             output_path = line.split("OUTPUT_PATH:")[1].strip()
@@ -110,6 +112,12 @@ def _collect_outputs(cal_lines):
             cal_log_path = line.split("CAL_LOG_PATH:")[1].strip()
         elif "LOG_PATH:" in line:
             log_path = line.split("LOG_PATH:")[1].strip()
+        elif "TARGET_POLICY_PATH:" in line:
+            target_policy_path = line.split("TARGET_POLICY_PATH:")[1].strip()
+        elif "TARGET_POLICY_SUMMARY_PATH:" in line:
+            target_policy_summary_path = line.split("TARGET_POLICY_SUMMARY_PATH:")[
+                1
+            ].strip()
 
     with open(output_path, "rb") as f:
         weights_bytes = f.read()
@@ -134,12 +142,24 @@ def _collect_outputs(cal_lines):
         with open(config_path, "rb") as f:
             config_bytes = f.read()
 
+    target_policy_bytes = None
+    if target_policy_path:
+        with open(target_policy_path, "rb") as f:
+            target_policy_bytes = f.read()
+
+    target_policy_summary_bytes = None
+    if target_policy_summary_path:
+        with open(target_policy_summary_path, "rb") as f:
+            target_policy_summary_bytes = f.read()
+
     return {
         "weights": weights_bytes,
         "geography": geography_bytes,
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
+        "target_policy": target_policy_bytes,
+        "target_policy_summary": target_policy_summary_bytes,
     }
 
 

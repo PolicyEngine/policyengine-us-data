@@ -22,6 +22,7 @@ CALIBRATION_STARTED_AT = "2026-05-08T12:00:00Z"
 CALIBRATION_COMPLETED_AT = "2026-05-08T12:02:00Z"
 CALIBRATION_DURATION_S = 120.0
 TARGET_CONFIG_PATH = "policyengine_us_data/calibration/target_config.yaml"
+TARGET_POLICY_PATH = "policyengine_us_data/calibration/target_policy.yaml"
 
 CALIBRATION_BLOCK_GEOIDS = ("010010001", "010010002", "020010001")
 CALIBRATION_CD_GEOIDS = ("0101", "0102", "0201")
@@ -67,6 +68,9 @@ def calibration_package_payload() -> dict[str, Any]:
             "db_sha256": "sha256:db",
             "target_config_path": TARGET_CONFIG_PATH,
             "target_config_sha256": "sha256:target-config",
+            "target_policy_path": TARGET_POLICY_PATH,
+            "target_policy_sha256": "sha256:target-policy",
+            "target_policy_schema_version": "1",
             "n_clones": 3,
             "seed": 42,
             "base_n_records": 1,
@@ -80,6 +84,21 @@ def calibration_package_payload() -> dict[str, Any]:
         "initial_weights": np.array([1.0, 1.0, 1.0]),
         "cd_geoid": np.array(CALIBRATION_CD_GEOIDS),
         "block_geoid": np.array(CALIBRATION_BLOCK_GEOIDS),
+        "target_policy_df": pd.DataFrame(
+            {
+                "target_index": [0, 1],
+                "enforcement": ["fail", "warn"],
+                "priority": ["P0", "P2"],
+                "tolerance_pct": [1.0, 5.0],
+                "tolerance": [0.01, 0.05],
+                "scale_floor": [1_000.0, 25_000_000.0],
+                "loss_weight": [40.0, 6.0],
+                "policy_rule_id": ["default", "default"],
+                "policy_group_key": ["P0|fail", "P2|warn"],
+                "loss_enabled": [True, True],
+                "schema_version": ["1", "1"],
+            }
+        ),
     }
 
 
@@ -148,6 +167,7 @@ def calibration_package_parameters() -> dict[str, Any]:
         "workers": None,
         "n_clones": 3,
         "target_config": TARGET_CONFIG_PATH,
+        "target_policy": TARGET_POLICY_PATH,
         "skip_county": True,
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,

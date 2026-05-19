@@ -108,6 +108,10 @@ def build_checkpoint_signature(
     lambda_l2: float,
     learning_rate: float,
     target_groups: np.ndarray | None = None,
+    target_weights: np.ndarray | None = None,
+    target_tolerances: np.ndarray | None = None,
+    target_scales: np.ndarray | None = None,
+    calibration_loss_type: str = "relative",
 ) -> dict:
     """Build a compact signature to validate calibration checkpoint resume."""
     targets_arr = np.asarray(targets, dtype=np.float64)
@@ -116,6 +120,9 @@ def build_checkpoint_signature(
         if target_groups is None
         else np.asarray(target_groups, dtype=np.int64)
     )
+    target_weights_arr = _optional_float_signature_array(target_weights)
+    target_tolerances_arr = _optional_float_signature_array(target_tolerances)
+    target_scales_arr = _optional_float_signature_array(target_scales)
     return {
         "n_features": int(X_sparse.shape[1]),
         "n_targets": int(len(targets_arr)),
@@ -123,11 +130,21 @@ def build_checkpoint_signature(
         "target_names_sha256": hash_string_list(target_names),
         "targets_sha256": hashlib.sha256(targets_arr.tobytes()).hexdigest(),
         "target_groups_sha256": hash_numpy_array(target_groups_arr),
+        "target_weights_sha256": hash_numpy_array(target_weights_arr),
+        "target_tolerances_sha256": hash_numpy_array(target_tolerances_arr),
+        "target_scales_sha256": hash_numpy_array(target_scales_arr),
+        "calibration_loss_type": str(calibration_loss_type),
         "lambda_l0": float(lambda_l0),
         "beta": float(beta),
         "lambda_l2": float(lambda_l2),
         "learning_rate": float(learning_rate),
     }
+
+
+def _optional_float_signature_array(values: np.ndarray | None) -> np.ndarray:
+    if values is None:
+        return np.array([], dtype=np.float64)
+    return np.asarray(values, dtype=np.float64)
 
 
 def checkpoint_signature_mismatches(

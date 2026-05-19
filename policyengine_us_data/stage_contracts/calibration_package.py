@@ -161,6 +161,20 @@ def summarize_calibration_package(
             metadata,
             "target_config_sha256",
         ),
+        target_policy_path=_optional_metadata_string(
+            metadata,
+            "target_policy_path",
+        ),
+        target_policy_sha256=_optional_metadata_string(
+            metadata,
+            "target_policy_sha256",
+        ),
+        target_policy_schema_version=_optional_metadata_string(
+            metadata,
+            "target_policy_schema_version",
+        ),
+        target_policy_row_count=_optional_len(package.get("target_policy_df")),
+        has_target_policy=package.get("target_policy_df") is not None,
         n_clones=_optional_metadata_int(metadata, "n_clones"),
         seed=_optional_metadata_int(metadata, "seed"),
         base_n_records=_optional_metadata_int(metadata, "base_n_records"),

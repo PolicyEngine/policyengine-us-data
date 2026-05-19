@@ -35,6 +35,7 @@ def test_calibration_package_parameters_track_matrix_mode():
         workers=50,
         n_clones=430,
         target_config=None,
+        target_policy="policyengine_us_data/calibration/target_policy.yaml",
         skip_county=True,
         chunked_matrix=True,
         chunk_size=10_000,
@@ -45,6 +46,9 @@ def test_calibration_package_parameters_track_matrix_mode():
     assert params["chunked_matrix"] is True
     assert "workers" not in params
     assert params["chunk_size"] == 10_000
+    assert (
+        params["target_policy"] == "policyengine_us_data/calibration/target_policy.yaml"
+    )
     assert params["parallel_matrix"] is True
     assert params["num_matrix_workers"] == 25
 
@@ -54,6 +58,7 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
         workers=50,
         n_clones=430,
         target_config=None,
+        target_policy="policyengine_us_data/calibration/target_policy.yaml",
         skip_county=True,
         chunked_matrix=False,
         chunk_size=10_000,

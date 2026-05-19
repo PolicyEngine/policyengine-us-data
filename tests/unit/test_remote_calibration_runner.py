@@ -58,6 +58,8 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
     log_path = tmp_path / "diag.csv"
     cal_log = tmp_path / "calibration.csv"
     config = tmp_path / "config.json"
+    target_policy = tmp_path / "target_policy.jsonl"
+    target_policy_summary = tmp_path / "target_policy_summary.json"
 
     paths_and_bytes = {
         weights: b"weights",
@@ -65,6 +67,8 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
         log_path: b"log",
         cal_log: b"cal-log",
         config: b"config",
+        target_policy: b"policy",
+        target_policy_summary: b"policy-summary",
     }
     for path, content in paths_and_bytes.items():
         path.write_bytes(content)
@@ -76,6 +80,8 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
             f"LOG_PATH:{log_path}",
             f"CAL_LOG_PATH:{cal_log}",
             f"CONFIG_PATH:{config}",
+            f"TARGET_POLICY_PATH:{target_policy}",
+            f"TARGET_POLICY_SUMMARY_PATH:{target_policy_summary}",
         ]
     )
 
@@ -85,6 +91,8 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
         "log": b"log",
         "cal_log": b"cal-log",
         "config": b"config",
+        "target_policy": b"policy",
+        "target_policy_summary": b"policy-summary",
     }
 
 

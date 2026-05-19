@@ -41,6 +41,18 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
+from policyengine_us_data.calibration.target_policy import (
+    DEFAULT_TARGET_POLICY_PATH,
+    TARGET_POLICY_ARTIFACT,
+    TARGET_POLICY_SUMMARY_ARTIFACT,
+    annotate_diagnostics_with_policy,
+    build_target_policy,
+    enforce_target_tolerances,
+    load_target_policy_config,
+    summarize_target_policy,
+    target_policy_arrays,
+    write_target_policy_artifacts,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.stage_contracts.calibration_package import (
     CalibrationPackageParameters,
@@ -83,6 +95,7 @@ def _calibration_package_contract_parameters(
     workers: int,
     n_clones: int,
     target_config_path: str | None,
+    target_policy_path: str | None,
     skip_county: bool,
     skip_source_impute: bool,
     skip_takeup_rerandomize: bool,
@@ -97,6 +110,7 @@ def _calibration_package_contract_parameters(
         workers=workers,
         n_clones=n_clones,
         target_config_path=target_config_path,
+        target_policy_path=target_policy_path,
         skip_county=skip_county,
         skip_source_impute=skip_source_impute,
         skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -319,6 +333,14 @@ def parse_args(argv=None):
             "Path to target include/exclude YAML config. "
             "Defaults to calibration/target_config.yaml unless "
             "--all-active-targets is set."
+        ),
+    )
+    parser.add_argument(
+        "--target-policy",
+        default=None,
+        help=(
+            "Path to calibration target tolerance policy YAML. "
+            "Defaults to calibration/target_policy.yaml."
         ),
     )
     parser.add_argument(
@@ -553,6 +575,80 @@ def apply_target_config_to_targets(
     return filtered_df
 
 
+def add_derived_population_anchor_targets(
+    targets_df: "pd.DataFrame",
+    X_sparse,
+    target_names: list,
+) -> tuple["pd.DataFrame", object, list]:
+    """Append total person-count anchors derived from age-bin rows.
+
+    District/state/national person counts are sometimes represented only as
+    age-bin person_count rows. The calibration policy needs an explicit total
+    person-count row so population undercounts are hard-fail targets.
+    """
+
+    if X_sparse is None or len(targets_df) == 0:
+        return targets_df, X_sparse, target_names
+    required = {"variable", "domain_variable", "geo_level", "geographic_id", "value"}
+    if not required.issubset(targets_df.columns):
+        return targets_df, X_sparse, target_names
+
+    age_mask = (targets_df["variable"] == "person_count") & (
+        targets_df["domain_variable"].fillna("") == "age"
+    )
+    age_rows = targets_df[age_mask]
+    if age_rows.empty:
+        return targets_df, X_sparse, target_names
+
+    import scipy.sparse as sparse
+
+    existing_totals = targets_df[
+        (targets_df["variable"] == "person_count")
+        & (targets_df["domain_variable"].fillna("") == "")
+    ]
+    existing_keys = set(
+        zip(
+            existing_totals["geo_level"].astype(str),
+            existing_totals["geographic_id"].astype(str),
+            strict=False,
+        )
+    )
+    new_rows = []
+    new_matrix_rows = []
+    new_names = list(target_names)
+    for (geo_level, geographic_id), group in age_rows.groupby(
+        ["geo_level", "geographic_id"],
+        sort=False,
+    ):
+        key = (str(geo_level), str(geographic_id))
+        if key in existing_keys:
+            continue
+        source = group.iloc[0].copy()
+        source["domain_variable"] = ""
+        source["value"] = float(group["value"].sum())
+        if "target_id" in source.index:
+            source["target_id"] = f"derived:person_count:{geo_level}:{geographic_id}"
+        if "target_name" in source.index:
+            source["target_name"] = f"derived_person_count_{geo_level}_{geographic_id}"
+        source["derived_target"] = True
+        source["derived_from"] = "person_count_age"
+        new_rows.append(source)
+        row_indices = group.index.to_numpy(dtype=np.int64)
+        new_matrix_rows.append(sparse.csr_matrix(X_sparse[row_indices, :].sum(axis=0)))
+        new_names.append(f"derived_person_count_{geo_level}_{geographic_id}")
+
+    if not new_rows:
+        return targets_df, X_sparse, target_names
+
+    expanded_targets = pd.concat(
+        [targets_df.reset_index(drop=True), pd.DataFrame(new_rows)],
+        ignore_index=True,
+    )
+    expanded_X = sparse.vstack([X_sparse, *new_matrix_rows], format="csr")
+    logger.info("Added %d derived total person-count target(s)", len(new_rows))
+    return expanded_targets, expanded_X, new_names
+
+
 def save_calibration_package(
     path: str,
     X_sparse,
@@ -562,6 +658,7 @@ def save_calibration_package(
     initial_weights: np.ndarray = None,
     cd_geoid: np.ndarray = None,
     block_geoid: np.ndarray = None,
+    target_policy_df: "pd.DataFrame" = None,
 ) -> None:
     """Save calibration package to pickle.
 
@@ -574,6 +671,7 @@ def save_calibration_package(
         initial_weights: Pre-computed initial weight array.
         cd_geoid: CD GEOID array from geography assignment.
         block_geoid: Block GEOID array from geography assignment.
+        target_policy_df: Resolved per-target tolerance policy.
     """
     import pickle
 
@@ -585,6 +683,7 @@ def save_calibration_package(
         "initial_weights": initial_weights,
         "cd_geoid": cd_geoid,
         "block_geoid": block_geoid,
+        "target_policy_df": target_policy_df,
     }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
@@ -768,6 +867,64 @@ def compute_initial_weights(
     return initial_weights
 
 
+def _relative_errors_for_reporting(
+    *,
+    y_pred: np.ndarray,
+    targets: np.ndarray,
+    target_scales: np.ndarray | None,
+) -> np.ndarray:
+    """Return relative errors using explicit scales when provided."""
+
+    if target_scales is not None:
+        return (y_pred - targets) / target_scales
+    return np.where(
+        np.abs(targets) > 0,
+        (y_pred - targets) / np.abs(targets),
+        0.0,
+    )
+
+
+def _target_loss_for_reporting(
+    *,
+    rel_err: float,
+    target_weight: float,
+    target_tolerance: float,
+    loss_type: str,
+) -> float:
+    """Return the scalar data-loss contribution used in progress logs."""
+
+    if loss_type == "relative_epsilon":
+        excess = max(abs(float(rel_err)) - float(target_tolerance), 0.0)
+        return float(target_weight) * excess**2
+    return float(target_weight) * float(rel_err) ** 2
+
+
+def _calibration_data_loss_for_reporting(
+    *,
+    rel_errs: np.ndarray,
+    target_weights: np.ndarray | None,
+    target_tolerances: np.ndarray | None,
+    loss_type: str,
+) -> float:
+    """Return the total data loss shown in epoch progress logs."""
+
+    weights = (
+        np.ones(len(rel_errs), dtype=np.float64)
+        if target_weights is None
+        else np.asarray(target_weights, dtype=np.float64)
+    )
+    if loss_type == "relative_epsilon":
+        tolerances = (
+            np.zeros(len(rel_errs), dtype=np.float64)
+            if target_tolerances is None
+            else np.asarray(target_tolerances, dtype=np.float64)
+        )
+        rel_terms = np.maximum(np.abs(rel_errs) - tolerances, 0.0)
+    else:
+        rel_terms = rel_errs
+    return float(np.sum(weights * rel_terms**2))
+
+
 @pipeline_node(
     PipelineNode(
         id="fit_model",
@@ -802,6 +959,10 @@ def fit_l0_weights(
     targets_df: "pd.DataFrame" = None,
     achievable: np.ndarray = None,
     target_groups: Optional[np.ndarray] = None,
+    target_weights: Optional[np.ndarray] = None,
+    target_tolerances: Optional[np.ndarray] = None,
+    target_scales: Optional[np.ndarray] = None,
+    calibration_loss_type: str = "relative",
     resume_from: str = None,
     checkpoint_path: str = None,
 ) -> np.ndarray:
@@ -826,6 +987,10 @@ def fit_l0_weights(
         targets_df: Targets DataFrame, used to compute
             initial_weights when not provided.
         target_groups: Optional group ID per target row for balanced loss.
+        target_weights: Optional per-target loss weights.
+        target_tolerances: Optional relative-error tolerance per target.
+        target_scales: Optional relative-error scale per target.
+        calibration_loss_type: L0 data loss type.
         resume_from: Path to a `.checkpoint.pt` file or `.npy`
             weights file to continue fitting from.
         checkpoint_path: Where to save resumable fit checkpoints.
@@ -857,6 +1022,10 @@ def fit_l0_weights(
         lambda_l2=lambda_l2,
         learning_rate=learning_rate,
         target_groups=target_groups,
+        target_weights=target_weights,
+        target_tolerances=target_tolerances,
+        target_scales=target_scales,
+        calibration_loss_type=calibration_loss_type,
     )
     checkpoint_state_dict = None
     start_epoch = 0
@@ -987,11 +1156,14 @@ def fit_l0_weights(
                     M=X_sparse,
                     y=targets,
                     target_groups=target_groups,
+                    target_weights=target_weights,
+                    target_tolerances=target_tolerances,
+                    target_scales=target_scales,
                     lambda_l0=lambda_l0,
                     lambda_l2=lambda_l2,
                     lr=learning_rate,
                     epochs=chunk,
-                    loss_type="relative",
+                    loss_type=calibration_loss_type,
                     verbose=False,
                 )
                 model.log_weight_jitter_sd = 0.0
@@ -1015,14 +1187,19 @@ def fit_l0_weights(
                 nz = len(active_w)
                 sparsity = (1 - nz / n_total) * 100
 
-                rel_errs = np.where(
-                    np.abs(targets) > 0,
-                    (y_pred - targets) / np.abs(targets),
-                    0.0,
+                rel_errs = _relative_errors_for_reporting(
+                    y_pred=y_pred,
+                    targets=targets,
+                    target_scales=target_scales,
                 )
                 mean_err = np.mean(np.abs(rel_errs))
                 max_err = np.max(np.abs(rel_errs))
-                total_loss = np.sum(rel_errs**2)
+                total_loss = _calibration_data_loss_for_reporting(
+                    rel_errs=rel_errs,
+                    target_weights=target_weights,
+                    target_tolerances=target_tolerances,
+                    loss_type=calibration_loss_type,
+                )
 
                 if nz > 0:
                     w_tiny = (active_w < 0.01).sum()
@@ -1061,10 +1238,24 @@ def fit_l0_weights(
                         est = y_pred[i]
                         tgt = targets[i]
                         err = est - tgt
-                        rel_err = err / tgt if tgt != 0 else 0
+                        if target_scales is not None:
+                            rel_err = err / target_scales[i]
+                        else:
+                            rel_err = err / tgt if tgt != 0 else 0
                         abs_err = abs(err)
                         rel_abs = abs(rel_err)
-                        loss = rel_err**2
+                        loss = _target_loss_for_reporting(
+                            rel_err=rel_err,
+                            target_weight=(
+                                target_weights[i] if target_weights is not None else 1.0
+                            ),
+                            target_tolerance=(
+                                target_tolerances[i]
+                                if target_tolerances is not None
+                                else 0.0
+                            ),
+                            loss_type=calibration_loss_type,
+                        )
                         f.write(
                             f'"{target_names[i]}",'
                             f"{est},{tgt},{absolute_epoch},"
@@ -1086,11 +1277,14 @@ def fit_l0_weights(
                 M=X_sparse,
                 y=targets,
                 target_groups=target_groups,
+                target_weights=target_weights,
+                target_tolerances=target_tolerances,
+                target_scales=target_scales,
                 lambda_l0=lambda_l0,
                 lambda_l2=lambda_l2,
                 lr=learning_rate,
                 epochs=epochs,
-                loss_type="relative",
+                loss_type=calibration_loss_type,
                 verbose=True,
                 verbose_freq=verbose_freq,
             )
@@ -1146,6 +1340,7 @@ def compute_diagnostics(
     X_sparse,
     targets_df,
     target_names: list,
+    target_policy_df: "pd.DataFrame" = None,
 ) -> "pd.DataFrame":
     import pandas as pd
 
@@ -1158,7 +1353,7 @@ def compute_diagnostics(
         (estimates - true_values) / np.abs(true_values),
         0.0,
     )
-    return pd.DataFrame(
+    diagnostics = pd.DataFrame(
         {
             "target": target_names,
             "true_value": true_values,
@@ -1168,6 +1363,7 @@ def compute_diagnostics(
             "achievable": row_sums > 0,
         }
     )
+    return annotate_diagnostics_with_policy(diagnostics, target_policy_df)
 
 
 def _raw_time_period_array(
@@ -1261,6 +1457,8 @@ def _extract_forbes_state_fips_overrides(
             "calibration_weights.npy",
             "unified_diagnostics.csv",
             "unified_run_config.json",
+            TARGET_POLICY_ARTIFACT,
+            TARGET_POLICY_SUMMARY_ARTIFACT,
         ],
         validation_commands=[
             "uv run pytest tests/unit/calibration/test_unified_calibration.py"
@@ -1282,6 +1480,9 @@ def run_calibration(
     skip_county: bool = True,
     target_config: dict = None,
     target_config_path: str = None,
+    target_policy_config: dict = None,
+    target_policy_path: str = None,
+    target_policy_output_dir: str = None,
     build_only: bool = False,
     package_path: str = None,
     package_output_path: str = None,
@@ -1319,6 +1520,9 @@ def run_calibration(
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
         target_config: Parsed target config dict.
         target_config_path: Path to target config, for provenance.
+        target_policy_config: Parsed target tolerance policy config.
+        target_policy_path: Path to target policy YAML, for provenance.
+        target_policy_output_dir: Directory for target policy artifacts.
         build_only: If True, save package and skip fitting.
         package_path: Load pre-built package (skip build).
         package_output_path: Where to save calibration package.
@@ -1357,14 +1561,29 @@ def run_calibration(
             targets_df, X_sparse, target_names = apply_target_config(
                 targets_df, X_sparse, target_names, target_config
             )
+        targets_df, X_sparse, target_names = add_derived_population_anchor_targets(
+            targets_df,
+            X_sparse,
+            target_names,
+        )
 
         initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
+        row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+        pkg_achievable = row_sums > 0
+        target_policy_df = build_target_policy(
+            targets_df,
+            target_names=target_names,
+            config=target_policy_config,
+            row_sums=row_sums,
+        )
+        target_weights, target_tolerances, target_scales = target_policy_arrays(
+            target_policy_df,
+            targets,
+        )
         # Temporarily disable grouped target loss until target precedence
         # and tolerance handling can make grouped fitting safe.
         target_groups = None
-        row_sums = np.array(X_sparse.sum(axis=1)).flatten()
-        pkg_achievable = row_sums > 0
         weights = fit_l0_weights(
             X_sparse=X_sparse,
             targets=targets,
@@ -1381,6 +1600,10 @@ def run_calibration(
             targets_df=targets_df,
             achievable=pkg_achievable,
             target_groups=target_groups,
+            target_weights=target_weights,
+            target_tolerances=target_tolerances,
+            target_scales=target_scales,
+            calibration_loss_type="relative_epsilon",
             resume_from=resume_from,
             checkpoint_path=checkpoint_path,
         )
@@ -1392,6 +1615,7 @@ def run_calibration(
             "cd_geoid": package.get("cd_geoid"),
             "block_geoid": package.get("block_geoid"),
             "base_n_records": package["metadata"].get("base_n_records"),
+            "target_policy_df": target_policy_df,
         }
         return (
             weights,
@@ -1586,6 +1810,30 @@ def run_calibration(
         X_sparse.shape,
         X_sparse.nnz,
     )
+    targets_df, X_sparse, target_names = add_derived_population_anchor_targets(
+        targets_df,
+        X_sparse,
+        target_names,
+    )
+    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
+    target_policy_df = build_target_policy(
+        targets_df,
+        target_names=target_names,
+        config=target_policy_config,
+        row_sums=row_sums,
+    )
+    target_policy_summary = summarize_target_policy(target_policy_df)
+    target_policy_artifacts: tuple[Path, Path] | None = None
+    if target_policy_output_dir is not None:
+        target_policy_artifacts = write_target_policy_artifacts(
+            target_policy_df,
+            target_policy_output_dir,
+        )
+        logger.info(
+            "Target policy artifacts saved to %s and %s",
+            target_policy_artifacts[0],
+            target_policy_artifacts[1],
+        )
 
     # Step 6b: Save the calibration package. By default this is the
     # minimal package selected by target_config.yaml; use
@@ -1599,6 +1847,9 @@ def run_calibration(
         "seed": seed,
         "created_at": _utc_now_isoformat(),
         "target_config_path": target_config_path,
+        "target_policy_path": target_policy_path,
+        "target_policy_schema_version": target_policy_summary["schema_version"],
+        "target_policy_summary": target_policy_summary,
         "package_scope": "minimal" if target_config else "all_active_targets",
         "matrix_builder": "chunked" if chunked_matrix else "precompute",
         "chunk_size": chunk_size if chunked_matrix else None,
@@ -1613,6 +1864,10 @@ def run_calibration(
         metadata["target_config_sha256"] = compute_file_checksum(
             Path(target_config_path)
         )
+    if target_policy_path:
+        metadata["target_policy_sha256"] = compute_file_checksum(
+            Path(target_policy_path)
+        )
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
     if package_output_path:
@@ -1624,6 +1879,7 @@ def run_calibration(
             "initial_weights": initial_weights,
             "cd_geoid": geography.cd_geoid,
             "block_geoid": geography.block_geoid,
+            "target_policy_df": target_policy_df,
         }
         save_calibration_package(
             package_output_path,
@@ -1634,6 +1890,7 @@ def run_calibration(
             initial_weights=initial_weights,
             cd_geoid=geography.cd_geoid,
             block_geoid=geography.block_geoid,
+            target_policy_df=target_policy_df,
         )
         from policyengine_us_data.stage_contracts.calibration_package import (
             validate_calibration_package_contract,
@@ -1650,6 +1907,7 @@ def run_calibration(
                 workers=workers,
                 n_clones=n_clones,
                 target_config_path=target_config_path,
+                target_policy_path=target_policy_path,
                 skip_county=skip_county,
                 skip_source_impute=skip_source_impute,
                 skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -1684,6 +1942,7 @@ def run_calibration(
             "target_names": target_names,
             "metadata": metadata,
             "initial_weights": initial_weights,
+            "target_policy_df": target_policy_df,
         }
         result = validate_package(package)
         print(format_report(result))
@@ -1692,6 +1951,8 @@ def run_calibration(
             "block_geoid": geography.block_geoid,
             "base_n_records": n_records,
             "dataset_for_matrix": dataset_for_matrix,
+            "target_policy_df": target_policy_df,
+            "target_policy_artifacts": target_policy_artifacts,
         }
         return (
             None,
@@ -1703,11 +1964,14 @@ def run_calibration(
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
+    target_weights, target_tolerances, target_scales = target_policy_arrays(
+        target_policy_df,
+        targets,
+    )
     # Temporarily disable grouped target loss until target precedence
     # and tolerance handling can make grouped fitting safe.
     target_groups = None
 
-    row_sums = np.array(X_sparse.sum(axis=1)).flatten()
     achievable = row_sums > 0
     logger.info(
         "Achievable: %d / %d targets",
@@ -1731,6 +1995,10 @@ def run_calibration(
         targets_df=targets_df,
         achievable=achievable,
         target_groups=target_groups,
+        target_weights=target_weights,
+        target_tolerances=target_tolerances,
+        target_scales=target_scales,
+        calibration_loss_type="relative_epsilon",
         resume_from=resume_from,
         checkpoint_path=checkpoint_path,
     )
@@ -1748,6 +2016,8 @@ def run_calibration(
         "household_ids": getattr(builder, "household_ids", None),
         "precomputed_rates": getattr(builder, "precomputed_rates", None),
         "affected_target_info": getattr(builder, "affected_target_info", None),
+        "target_policy_df": target_policy_df,
+        "target_policy_artifacts": target_policy_artifacts,
     }
     return (
         weights,
@@ -1816,6 +2086,8 @@ def main(argv=None):
     if not args.all_active_targets:
         target_config_path = args.target_config or str(DEFAULT_TARGET_CONFIG_PATH)
         target_config = load_target_config(target_config_path)
+    target_policy_path = args.target_policy or str(DEFAULT_TARGET_POLICY_PATH)
+    target_policy_config = load_target_policy_config(target_policy_path)
 
     package_output_path = args.package_output
     if args.build_only and not package_output_path:
@@ -1824,6 +2096,11 @@ def main(argv=None):
         )
 
     output_dir = Path(output_path).parent
+    target_policy_output_dir = (
+        str(Path(package_output_path).parent)
+        if args.build_only and package_output_path
+        else str(output_dir)
+    )
     cal_log_path = None
     if args.log_freq is not None:
         cal_log_path = str(output_dir / "calibration_log.csv")
@@ -1851,6 +2128,9 @@ def main(argv=None):
         skip_county=not args.county_level,
         target_config=target_config,
         target_config_path=target_config_path,
+        target_policy_config=target_policy_config,
+        target_policy_path=target_policy_path,
+        target_policy_output_dir=target_policy_output_dir,
         build_only=args.build_only,
         package_path=args.package_path,
         package_output_path=package_output_path,
@@ -1876,15 +2156,33 @@ def main(argv=None):
     if source_imputed and source_imputed != dataset_path:
         print(f"SOURCE_IMPUTED_PATH:{source_imputed}")
 
+    target_policy_df = geography_info.get("target_policy_df")
+    target_policy_artifacts = geography_info.get("target_policy_artifacts")
+    if target_policy_df is not None and target_policy_artifacts is None:
+        target_policy_artifacts = write_target_policy_artifacts(
+            target_policy_df,
+            target_policy_output_dir,
+        )
+    if target_policy_artifacts is not None:
+        print(f"TARGET_POLICY_PATH:{target_policy_artifacts[0]}")
+        print(f"TARGET_POLICY_SUMMARY_PATH:{target_policy_artifacts[1]}")
+
     if weights is None:
         logger.info("Build-only complete. Package saved.")
         return
 
     # Diagnostics (raw weights match X_sparse column layout)
     output_dir = Path(output_path).parent
-    diag_df = compute_diagnostics(weights, X_sparse, targets_df, target_names)
+    diag_df = compute_diagnostics(
+        weights,
+        X_sparse,
+        targets_df,
+        target_names,
+        target_policy_df=target_policy_df,
+    )
     diag_path = output_dir / "unified_diagnostics.csv"
     diag_df.to_csv(diag_path, index=False)
+    enforce_target_tolerances(diag_df)
 
     ach = diag_df[diag_df.achievable]
     err_pct = ach.abs_rel_error * 100
@@ -1988,6 +2286,15 @@ def main(argv=None):
         "domain_variables": domain_variables,
         "hierarchical_domains": hierarchical_domains,
         "target_config": args.target_config,
+        "target_policy": target_policy_path,
+        "target_policy_artifacts": {
+            TARGET_POLICY_ARTIFACT: _sha256(target_policy_artifacts[0])
+            if target_policy_artifacts is not None
+            else None,
+            TARGET_POLICY_SUMMARY_ARTIFACT: _sha256(target_policy_artifacts[1])
+            if target_policy_artifacts is not None
+            else None,
+        },
         "n_targets": len(targets_df),
         "n_records": X_sparse.shape[1],
         "weight_format": weight_format,

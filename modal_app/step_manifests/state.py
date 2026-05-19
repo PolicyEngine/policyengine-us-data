@@ -215,7 +215,7 @@ def artifact_identities(paths: dict[str, str | Path]) -> dict:
 def collect_diagnostics(run_id: str) -> list[ArtifactReference]:
     return collect_directory_artifacts(
         run_dir(run_id) / "diagnostics",
-        patterns=("*.csv", "*.json", "*.txt"),
+        patterns=("*.csv", "*.json", "*.jsonl", "*.txt"),
         role="diagnostic",
     )
 

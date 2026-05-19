@@ -1,5 +1,6 @@
 from tests.unit.fixtures.calibration_package_stage_contract import (
     TARGET_CONFIG_PATH,
+    TARGET_POLICY_PATH,
     calibration_package_contract,
     calibration_package_parameters,
     calibration_package_payload,
@@ -60,6 +61,7 @@ def test_calibration_package_parameters_parse_runtime_args():
         workers=8,
         n_clones=430,
         target_config_path=TARGET_CONFIG_PATH,
+        target_policy_path=TARGET_POLICY_PATH,
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -79,6 +81,7 @@ def test_calibration_package_parameters_parse_runtime_args():
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,
         "target_config": TARGET_CONFIG_PATH,
+        "target_policy": TARGET_POLICY_PATH,
         "workers": None,
     }
 
@@ -89,6 +92,7 @@ def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
             workers=8,
             n_clones=430,
             target_config=None,
+            target_policy=None,
             skip_county=True,
             skip_source_impute=True,
             skip_takeup_rerandomize=False,
@@ -204,6 +208,13 @@ def test_calibration_package_contract_records_matrix_summary(tmp_path):
     assert summary["n_targets"] == 2
     assert summary["target_name_count"] == 2
     assert summary["target_config_sha256"] == "sha256:target-config"
+    assert summary["target_policy_path"] == (
+        "policyengine_us_data/calibration/target_policy.yaml"
+    )
+    assert summary["target_policy_sha256"] == "sha256:target-policy"
+    assert summary["target_policy_schema_version"] == "1"
+    assert summary["target_policy_row_count"] == 2
+    assert summary["has_target_policy"] is True
     assert summary["n_clones"] == 3
     assert summary["seed"] == 42
     assert summary["matrix_builder"] == "chunked"
@@ -308,6 +319,7 @@ def test_calibration_package_summary_omits_bulky_payloads():
     assert "initial_weights" not in summary
     assert "cd_geoid" not in summary
     assert "block_geoid" not in summary
+    assert "target_policy_df" not in summary
 
 
 def test_calibration_package_geography_summary_rejects_mismatched_arrays():

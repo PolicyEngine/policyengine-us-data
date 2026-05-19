@@ -713,6 +713,14 @@ class TestParseArgsNewFlags:
         args = parse_args(["--target-config", "config.yaml"])
         assert args.target_config == "config.yaml"
 
+    def test_target_policy_flag(self):
+        from policyengine_us_data.calibration.unified_calibration import (
+            parse_args,
+        )
+
+        args = parse_args(["--target-policy", "policy.yaml"])
+        assert args.target_policy == "policy.yaml"
+
     def test_all_active_targets_flag(self):
         from policyengine_us_data.calibration.unified_calibration import (
             parse_args,
@@ -800,6 +808,79 @@ class TestParseArgsNewFlags:
         assert args_default.checkpoint_output is None
 
 
+class TestDerivedPopulationAnchors:
+    def test_adds_total_person_count_from_age_bins(self):
+        import pandas as pd
+        from policyengine_us_data.calibration.unified_calibration import (
+            add_derived_population_anchor_targets,
+        )
+
+        targets_df = pd.DataFrame(
+            {
+                "variable": ["person_count", "person_count", "household_count"],
+                "domain_variable": ["age", "age", ""],
+                "geo_level": ["district", "district", "district"],
+                "geographic_id": ["0101", "0101", "0101"],
+                "value": [100.0, 150.0, 90.0],
+            }
+        )
+        X_sparse = sp.csr_matrix(
+            np.array(
+                [
+                    [1.0, 0.0, 2.0],
+                    [0.0, 3.0, 0.0],
+                    [1.0, 1.0, 1.0],
+                ],
+                dtype=np.float32,
+            )
+        )
+
+        expanded_df, expanded_X, names = add_derived_population_anchor_targets(
+            targets_df,
+            X_sparse,
+            ["age_a", "age_b", "hh"],
+        )
+
+        assert len(expanded_df) == 4
+        anchor = expanded_df.iloc[-1]
+        assert anchor["variable"] == "person_count"
+        assert anchor["domain_variable"] == ""
+        assert anchor["value"] == 250.0
+        assert bool(anchor["derived_target"])
+        np.testing.assert_array_equal(
+            expanded_X[-1].toarray(),
+            np.array([[1.0, 3.0, 2.0]]),
+        )
+        assert names[-1] == "derived_person_count_district_0101"
+
+    def test_does_not_duplicate_existing_total_person_count(self):
+        import pandas as pd
+        from policyengine_us_data.calibration.unified_calibration import (
+            add_derived_population_anchor_targets,
+        )
+
+        targets_df = pd.DataFrame(
+            {
+                "variable": ["person_count", "person_count"],
+                "domain_variable": ["age", ""],
+                "geo_level": ["district", "district"],
+                "geographic_id": ["0101", "0101"],
+                "value": [100.0, 100.0],
+            }
+        )
+        X_sparse = sp.csr_matrix(np.eye(2, dtype=np.float32))
+
+        expanded_df, expanded_X, names = add_derived_population_anchor_targets(
+            targets_df,
+            X_sparse,
+            ["age", "total"],
+        )
+
+        assert len(expanded_df) == 2
+        assert expanded_X.shape == (2, 2)
+        assert names == ["age", "total"]
+
+
 class FakeSparseCalibrationWeights:
     fit_calls = []
 
@@ -840,8 +921,19 @@ class FakeSparseCalibrationWeights:
         verbose=False,
         verbose_freq=1,
         target_groups=None,
+        target_weights=None,
+        target_tolerances=None,
+        target_scales=None,
     ):
-        type(self).fit_calls.append({"target_groups": target_groups})
+        type(self).fit_calls.append(
+            {
+                "target_groups": target_groups,
+                "target_weights": target_weights,
+                "target_tolerances": target_tolerances,
+                "target_scales": target_scales,
+                "loss_type": loss_type,
+            }
+        )
         increment = float(epochs) + (self.alpha / 10.0)
         self.weights = self.weights + increment
         self.alpha = self.alpha + (10.0 * float(epochs))
@@ -930,6 +1022,44 @@ class TestFitTargetGroups:
                 fit_call["target_groups"],
                 target_groups,
             )
+
+    def test_passes_epsilon_policy_arrays_to_l0_model(self, tmp_path):
+        from policyengine_us_data.calibration.unified_calibration import (
+            fit_l0_weights,
+        )
+
+        target_weights = np.array([40.0, 6.0], dtype=np.float64)
+        target_tolerances = np.array([0.01, 0.075], dtype=np.float64)
+        target_scales = np.array([1_000.0, 10_000.0], dtype=np.float64)
+        FakeSparseCalibrationWeights.fit_calls = []
+
+        with patch(
+            "l0.calibration.SparseCalibrationWeights",
+            FakeSparseCalibrationWeights,
+        ):
+            fit_l0_weights(
+                X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+                targets=np.array([1.0, 2.0], dtype=np.float64),
+                lambda_l0=1e-4,
+                epochs=1,
+                device="cpu",
+                target_names=["target_a", "target_b"],
+                initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+                log_path=str(tmp_path / "calibration_log.csv"),
+                target_weights=target_weights,
+                target_tolerances=target_tolerances,
+                target_scales=target_scales,
+                calibration_loss_type="relative_epsilon",
+            )
+
+        fit_call = FakeSparseCalibrationWeights.fit_calls[-1]
+        assert fit_call["loss_type"] == "relative_epsilon"
+        np.testing.assert_array_equal(fit_call["target_weights"], target_weights)
+        np.testing.assert_array_equal(
+            fit_call["target_tolerances"],
+            target_tolerances,
+        )
+        np.testing.assert_array_equal(fit_call["target_scales"], target_scales)
 
 
 class TestFitResume:

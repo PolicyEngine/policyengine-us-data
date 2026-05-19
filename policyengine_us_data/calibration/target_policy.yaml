@@ -1,0 +1,31 @@
+schema_version: "1"
+
+defaults:
+  count_scale_floor_district: 1000
+  count_scale_floor_state: 10000
+  count_scale_floor_national: 100000
+  dollar_scale_floor_district: 1000000
+  dollar_scale_floor_state: 25000000
+  dollar_scale_floor_national: 250000000
+  net_worth_scale_floor: 1000000000
+
+rules:
+  - id: aca_warning_targets
+    match:
+      domain_variable_contains_any:
+        - aca
+        - marketplace
+        - selected_marketplace_plan
+    priority: P2
+    enforcement: warn
+    tolerance_pct: 7.5
+    loss_weight: 6.0
+
+  - id: aca_variable_warning_targets
+    match:
+      variable:
+        - aca_ptc
+    priority: P2
+    enforcement: warn
+    tolerance_pct: 7.5
+    loss_weight: 6.0

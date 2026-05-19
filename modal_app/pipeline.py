@@ -162,6 +162,7 @@ def _calibration_package_parameters(
     workers: int,
     n_clones: int,
     target_config: str | None,
+    target_policy: str | None,
     skip_county: bool,
     chunked_matrix: bool,
     chunk_size: int,
@@ -174,6 +175,7 @@ def _calibration_package_parameters(
         "workers": workers if not chunked_matrix else None,
         "n_clones": n_clones,
         "target_config": target_config,
+        "target_policy": target_policy,
         "skip_county": skip_county,
         "chunked_matrix": bool(chunked_matrix),
         "chunk_size": chunk_size if chunked_matrix else None,
@@ -281,6 +283,8 @@ def archive_diagnostics(
         "log": f"{prefix}unified_diagnostics.csv",
         "cal_log": f"{prefix}calibration_log.csv",
         "config": f"{prefix}unified_run_config.json",
+        "target_policy": f"{prefix}calibration_target_policy.jsonl",
+        "target_policy_summary": (f"{prefix}calibration_target_policy_summary.json"),
     }
 
     for key, filename in file_map.items():
@@ -1242,6 +1246,7 @@ def run_pipeline(
             workers=num_workers,
             n_clones=n_clones,
             target_config=None,
+            target_policy="policyengine_us_data/calibration/target_policy.yaml",
             skip_county=True,
             chunked_matrix=chunked_matrix,
             chunk_size=chunk_size,
@@ -1302,7 +1307,12 @@ def run_pipeline(
             completed_package_manifest = _complete_step_manifest(
                 active_step_manifest,
                 outputs=collect_artifacts(
-                    [_artifacts_dir(run_id) / "calibration_package.pkl"],
+                    [
+                        _artifacts_dir(run_id) / "calibration_package.pkl",
+                        _artifacts_dir(run_id) / "calibration_target_policy.jsonl",
+                        _artifacts_dir(run_id)
+                        / "calibration_target_policy_summary.json",
+                    ],
                     missing_ok=True,
                 ),
                 vol=pipeline_volume,
@@ -1321,19 +1331,23 @@ def run_pipeline(
             "gpu": gpu,
             "epochs": epochs,
             "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "target_policy": "policyengine_us_data/calibration/target_policy.yaml",
             "beta": 0.65,
             "lambda_l0": 1e-7,
             "lambda_l2": 1e-8,
             "log_freq": 100,
+            "loss_type": "relative_epsilon",
         }
         national_fit_parameters = {
             "gpu": national_gpu,
             "epochs": national_epochs,
             "target_config": "policyengine_us_data/calibration/target_config.yaml",
+            "target_policy": "policyengine_us_data/calibration/target_policy.yaml",
             "beta": 0.65,
             "lambda_l0": NATIONAL_FIT_LAMBDA_L0,
             "lambda_l2": 1e-12,
             "log_freq": 100,
+            "loss_type": "relative_epsilon",
             "skip_national": skip_national,
         }
         regional_fit_reuse = _step_reusable(

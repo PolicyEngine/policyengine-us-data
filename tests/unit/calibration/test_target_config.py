@@ -365,6 +365,21 @@ class TestLoadTargetConfig:
         ]:
             assert {"variable": variable, "geo_level": "national"} in include_rules
 
+    def test_training_config_includes_bea_state_wage_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "employment_income_before_lsr",
+            "geo_level": "state",
+        } in config["include"]
+
     def test_training_config_includes_soi_ltcg_target(self):
         config = load_target_config(
             str(

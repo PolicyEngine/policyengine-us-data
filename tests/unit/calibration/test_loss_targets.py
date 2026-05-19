@@ -14,6 +14,7 @@ from policyengine_us_data.utils.loss import (
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     TRANSFER_BALANCE_TARGETS,
+    _add_bea_state_wage_targets,
     _add_agi_metric_columns,
     _add_acs_housing_cost_targets,
     _add_aotc_targets,
@@ -474,6 +475,59 @@ class _FakeAcsHousingCostSimulation:
         if key not in values:
             raise AssertionError(f"Unexpected calculate call {key!r}")
         return _FakeArrayResult(values[key])
+
+
+class _FakeBeaStateWageSimulation:
+    tax_benefit_system = SimpleNamespace(
+        variables={
+            "employment_income_before_lsr": SimpleNamespace(
+                entity=SimpleNamespace(key="person")
+            )
+        }
+    )
+
+    def calculate(self, variable, map_to=None, period=None):
+        values = {
+            ("state_code", "household"): ["CA", "NY", "CA"],
+            ("employment_income_before_lsr", "household"): [10.0, 20.0, 30.0],
+        }
+        key = (variable, map_to)
+        if key not in values:
+            raise AssertionError(f"Unexpected calculate call {key!r}")
+        assert period == 2024
+        return _FakeArrayResult(values[key])
+
+
+def test_add_bea_state_wage_targets(monkeypatch):
+    monkeypatch.setattr(
+        "policyengine_us_data.utils.loss.get_bea_state_wage_targets",
+        lambda year, *, national_total: (
+            pd.DataFrame(
+                {
+                    "state_code": ["CA", "NY"],
+                    "employment_income_before_lsr": [100.0, 200.0],
+                }
+            ),
+            2024,
+        ),
+    )
+
+    targets, loss_matrix = _add_bea_state_wage_targets(
+        pd.DataFrame(),
+        [],
+        _FakeBeaStateWageSimulation(),
+        2024,
+    )
+
+    assert targets == [100.0, 200.0]
+    np.testing.assert_array_equal(
+        loss_matrix["state/bea/wages_and_salaries/CA"],
+        np.array([10.0, 0.0, 30.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["state/bea/wages_and_salaries/NY"],
+        np.array([0.0, 20.0, 0.0], dtype=np.float32),
+    )
 
 
 def test_add_acs_housing_cost_targets(monkeypatch):

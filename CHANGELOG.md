@@ -1,3 +1,10 @@
+## [1.115.4] - 2026-05-19
+
+### Changed
+
+- Ensure publication candidates fail before launch when the package version lags the latest finalized data release.
+
+
 ## [1.115.3] - 2026-05-14
 
 ### Changed

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import filecmp
+import json
 import os
 import shutil
 import sys
@@ -11,6 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ROOT_CHANGELOG_DIR = REPO_ROOT / "changelog.d"
+PUBLICATION_SCOPE_PATH = REPO_ROOT / ".github" / "publication_scope.json"
 PUBLICATION_CANDIDATES_DIR = REPO_ROOT / ".github" / "publication_candidates"
 CHANGELOG_KEEP_FILE = ".gitkeep"
 
@@ -53,16 +55,61 @@ def _validate_root_fragments_match_snapshot(
         )
 
 
+def _publication_scope() -> dict[str, str]:
+    if not PUBLICATION_SCOPE_PATH.exists():
+        return {}
+    return json.loads(PUBLICATION_SCOPE_PATH.read_text())
+
+
+def _scope_matches_environment(scope: dict[str, str]) -> bool:
+    expected = {
+        "candidate_scope": os.environ.get("US_DATA_CANDIDATE_VERSION")
+        or os.environ.get("CANDIDATE_VERSION"),
+        "base_release_version": os.environ.get("US_DATA_BASE_RELEASE_VERSION")
+        or os.environ.get("BASE_RELEASE_VERSION"),
+        "release_bump": os.environ.get("US_DATA_RELEASE_BUMP")
+        or os.environ.get("RELEASE_BUMP"),
+    }
+    return all(
+        not value or not scope.get(key) or scope[key] == value
+        for key, value in expected.items()
+    )
+
+
+def _snapshot_dir(run_id: str) -> Path:
+    return PUBLICATION_CANDIDATES_DIR / run_id / "changelog.d"
+
+
+def _resolve_snapshot_dir(run_id: str) -> Path:
+    requested_dir = _snapshot_dir(run_id)
+    if _fragments(requested_dir):
+        return requested_dir
+
+    scope = _publication_scope()
+    scope_run_id = scope.get("run_id", "")
+    if scope_run_id and scope_run_id != run_id and _scope_matches_environment(scope):
+        scope_dir = _snapshot_dir(scope_run_id)
+        if _fragments(scope_dir):
+            print(
+                "No changelog snapshot found for promotion run "
+                f"{run_id}; using publication scope snapshot {scope_run_id}.",
+            )
+            return scope_dir
+
+    details = (
+        f"No candidate changelog fragments found for run {run_id}: {requested_dir}"
+    )
+    if scope_run_id and scope_run_id != run_id:
+        details += f"; publication scope points to {scope_run_id}: {_snapshot_dir(scope_run_id)}"
+    raise RuntimeError(details)
+
+
 def restore_candidate_changelog(run_id: str) -> Path:
     if not run_id:
         raise RuntimeError("US_DATA_RUN_ID is required to restore changelog fragments.")
 
-    snapshot_dir = PUBLICATION_CANDIDATES_DIR / run_id / "changelog.d"
+    snapshot_dir = _resolve_snapshot_dir(run_id)
     snapshot_fragments = _fragments(snapshot_dir)
-    if not snapshot_fragments:
-        raise RuntimeError(
-            f"No candidate changelog fragments found for run {run_id}: {snapshot_dir}"
-        )
 
     ROOT_CHANGELOG_DIR.mkdir(parents=True, exist_ok=True)
     root_fragments = _fragments(ROOT_CHANGELOG_DIR)

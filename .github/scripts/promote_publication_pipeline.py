@@ -59,16 +59,19 @@ def _promotion_context_from_status(context: RunContext, status: dict) -> RunCont
         raise RuntimeError("Run manifest is missing candidate_version.")
     if not release_bump:
         raise RuntimeError("Run manifest is missing release_bump.")
+    release_version = _manifest_field(manifest, "release_version")
+    if not release_version:
+        release_version = release_version_from_bump(
+            _current_package_version(),
+            release_bump,
+        )
     return RunContext.from_mapping(
         manifest.get("run_context"),
         run_id=context.run_id,
         modal_app_name=context.modal_app_name,
         modal_environment=context.modal_environment,
         candidate_version=candidate_version,
-        release_version=release_version_from_bump(
-            _current_package_version(),
-            release_bump,
-        ),
+        release_version=release_version,
         base_release_version=base_release_version,
         release_bump=release_bump,
     )

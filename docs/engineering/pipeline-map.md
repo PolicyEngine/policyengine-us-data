@@ -882,6 +882,14 @@ def fitted_weights_spec_for_scope(scope: FitScope | str) -> FittedWeightsSpec
 
 Return the current fitted-weight spec for a regional or national scope.
 
+### `policyengine_us_data.release_promotion.results.full.FullPromotionResult`
+
+```python
+class FullPromotionResult
+```
+
+Typed result for a full Stage 5 release promotion transaction.
+
 ### `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation`
 
 ```python
@@ -1449,6 +1457,14 @@ def stage_1_step_specs() -> tuple[DatasetBuildStepSpec, ...]
 ```
 
 Return the canonical Stage 1 dataset-build substage specs.
+
+### `policyengine_us_data.utils.release_promotion.promote_full_release_with_result`
+
+```python
+def promote_full_release_with_result(config: FullReleasePromotionConfig, deps: FullReleasePromotionDependencies) -> 'FullPromotionResult'
+```
+
+Run the existing transaction engine and wrap its output in a typed result.
 
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder`
 

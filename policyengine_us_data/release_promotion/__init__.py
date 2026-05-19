@@ -24,6 +24,15 @@ from .stage4_reader import (
     build_release_candidate_bundle_from_stage4_contract,
     read_stage4_release_candidate_bundle,
 )
+from .results import (
+    CleanupPromotionResult,
+    CompletionMarkerPromotionResult,
+    FullPromotionResult,
+    GcsPromotionResult,
+    HuggingFacePromotionResult,
+    ReleaseManifestPromotionResult,
+    VersionManifestPromotionResult,
+)
 from .validation import build_release_candidate_shape_report
 from .validation import (
     DEFAULT_REQUIRED_RELEASE_ARTIFACT_FAMILIES,
@@ -39,11 +48,18 @@ __all__ = [
     "BASE_RELEASE_ARTIFACT_PATHS",
     "DEFAULT_REQUIRED_RELEASE_ARTIFACT_FAMILIES",
     "RELEASE_VALIDATION_SUBSTAGE_ID",
+    "CleanupPromotionResult",
+    "CompletionMarkerPromotionResult",
+    "FullPromotionResult",
+    "GcsPromotionResult",
+    "HuggingFacePromotionResult",
     "ReleaseArtifactSpec",
     "ReleaseCandidateInputBundle",
     "ReleasePromotionContext",
     "ReleaseCandidateValidationDependencies",
     "ReleaseCandidateValidator",
+    "ReleaseManifestPromotionResult",
+    "VersionManifestPromotionResult",
     "VALIDATION_REPORT_POLICY_PRESENCE_ONLY",
     "VALIDATION_REPORT_POLICY_REQUIRE_PASSING",
     "build_legacy_release_candidate_bundle",

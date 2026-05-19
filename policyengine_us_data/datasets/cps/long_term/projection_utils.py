@@ -8,6 +8,62 @@ from policyengine_us import Microsimulation
 from policyengine_core.data.dataset import Dataset
 
 
+PERSON_LEVEL_IDENTITY_INPUTS = (
+    "person_id",
+    "household_id",
+    "person_household_id",
+    "family_id",
+    "person_family_id",
+    "tax_unit_id",
+    "person_tax_unit_id",
+    "spm_unit_id",
+    "person_spm_unit_id",
+    "marital_unit_id",
+    "person_marital_unit_id",
+)
+
+
+def _row_values(series):
+    """Return unweighted row values from a MicroSeries-like object."""
+    if hasattr(series, "array"):
+        return np.asarray(series.array)
+    if hasattr(series, "values"):
+        return np.asarray(series.values)
+    return np.asarray(series)
+
+
+def _person_level_values(sim, variable, *, period):
+    try:
+        series = sim.calculate(variable, period=period, map_to="person")
+    except Exception:
+        series = sim.calculate(variable, period=period)
+    return _row_values(series)
+
+
+def ensure_person_level_identity_inputs(df, sim, *, base_period):
+    """
+    Rehydrate identity columns omitted by newer policyengine-core input exports.
+
+    policyengine-core derives relationships and weights from household-level
+    inputs. The H5 materialization path still needs explicit person-row identity
+    columns so ``Dataset.from_dataframe`` can rebuild a runtime dataset.
+    """
+    output = df.copy()
+    person_row_count = len(output)
+    for variable in PERSON_LEVEL_IDENTITY_INPUTS:
+        column = f"{variable}__{base_period}"
+        if column in output.columns:
+            continue
+        values = _person_level_values(sim, variable, period=base_period)
+        if len(values) != person_row_count:
+            raise ValueError(
+                f"Expected {variable} to map to {person_row_count} person rows; "
+                f"got {len(values)}."
+            )
+        output[column] = values
+    return output
+
+
 def validate_projected_social_security_cap(
     parameter_accessor,
     year: int,
@@ -256,6 +312,7 @@ def create_household_year_h5(
     base_period = int(sim.default_calculation_period)
 
     df = sim.to_input_dataframe()
+    df = ensure_person_level_identity_inputs(df, sim, base_period=base_period)
 
     # Remove pseudo-input variables (aggregates of calculated values)
     pseudo_inputs = get_pseudo_input_variables(sim)
@@ -271,9 +328,9 @@ def create_household_year_h5(
     person_household_id = df[f"person_household_id__{base_period}"]
 
     hh_to_weight = dict(zip(household_ids, household_weights))
-    person_weights = person_household_id.map(hh_to_weight)
+    person_level_household_weights = person_household_id.map(hh_to_weight)
 
-    df[f"household_weight__{year}"] = person_weights
+    df[f"household_weight__{year}"] = person_level_household_weights
     df.drop(
         columns=[
             f"household_weight__{base_period}",
@@ -370,6 +427,8 @@ def calculate_year_statistics(
     income_tax_values = income_tax_hh.values
 
     household_microseries = sim.calculate("household_id", map_to="household")
+    # Explicit weight access is reserved for the household-level calibration
+    # decision vector; ordinary aggregates should use MicroSeries methods.
     baseline_weights_actual = household_microseries.weights.values
 
     ss_values = None

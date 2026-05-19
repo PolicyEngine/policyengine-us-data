@@ -1115,6 +1115,8 @@ for year_idx in range(n_years):
     income_tax_values = income_tax_hh.values
 
     household_microseries = sim.calculate("household_id", map_to="household")
+    # This is the calibrated household-weight decision vector. All ordinary
+    # baseline aggregates should continue to use MicroSeries methods directly.
     baseline_weights = household_microseries.weights.values
     household_ids_hh = household_microseries.values
 

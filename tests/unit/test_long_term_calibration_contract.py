@@ -47,6 +47,8 @@ from policyengine_us_data.datasets.cps.long_term.projection_utils import (
     aggregate_age_targets,
     aggregate_household_age_matrix,
     build_age_bins,
+    create_household_year_h5,
+    ensure_person_level_identity_inputs,
     project_input_variable_values_to_person_rows,
     validate_projected_social_security_cap,
 )
@@ -65,6 +67,7 @@ from policyengine_us_data.datasets.cps.long_term.support_augmentation import (
     SinglePersonSyntheticGridRule,
     SupportAugmentationProfile,
     augment_input_dataframe,
+    build_augmented_dataset,
     build_targeted_donor_augmented_dataset,
     household_support_summary,
     is_targeted_donor_support_augmentation_profile,
@@ -165,6 +168,111 @@ def test_named_profile_lookup():
     assert profile.min_effective_sample_size == 75.0
     assert profile.max_top_10_weight_share_pct == 25.0
     assert profile.max_top_100_weight_share_pct == 95.0
+
+
+def test_identity_inputs_fill_missing_person_id_for_h5_materialization():
+    import pandas as pd
+
+    data = _toy_support_dataframe()
+    data.pop("person_id__2024")
+    df = pd.DataFrame(data)
+
+    class FakeSim:
+        def calculate(self, variable, *, period=None, map_to=None):
+            assert variable == "person_id"
+            assert period == 2024
+            assert map_to == "person"
+            return SimpleNamespace(values=np.array([501, 502, 503, 504, 505]))
+
+    enriched = ensure_person_level_identity_inputs(
+        df,
+        FakeSim(),
+        base_period=2024,
+    )
+
+    assert enriched["person_id__2024"].tolist() == [501, 502, 503, 504, 505]
+
+
+def test_rule_based_support_builder_rehydrates_missing_person_id(monkeypatch):
+    import pandas as pd
+    from policyengine_us import Microsimulation
+
+    dataset = Dataset.from_dataframe(pd.DataFrame(_toy_support_dataframe()), 2024)
+    original_to_input_dataframe = Microsimulation.to_input_dataframe
+
+    def without_redundant_core_columns(self, *args, **kwargs):
+        return original_to_input_dataframe(self, *args, **kwargs).drop(
+            columns=["person_id__2024", "person_weight__2024"],
+            errors="ignore",
+        )
+
+    monkeypatch.setattr(
+        Microsimulation,
+        "to_input_dataframe",
+        without_redundant_core_columns,
+    )
+    profile = SupportAugmentationProfile(
+        name="test-profile",
+        description="Toy support augmentation profile.",
+        rules=(
+            AgeShiftCloneRule(
+                name="older_ss_pay",
+                min_max_age=65,
+                max_max_age=74,
+                age_shift=10,
+                ss_state="positive",
+                payroll_state="positive",
+                clone_weight_scale=0.5,
+            ),
+        ),
+    )
+
+    _, report = build_augmented_dataset(
+        base_dataset=dataset,
+        base_year=2024,
+        profile=profile,
+    )
+
+    assert report["base_household_count"] == 3
+    assert report["augmented_household_count"] == 4
+
+
+def test_create_household_year_h5_rehydrates_identity_without_person_weight(
+    tmp_path,
+    monkeypatch,
+):
+    import h5py
+    import pandas as pd
+    from policyengine_us import Microsimulation
+
+    dataset = Dataset.from_dataframe(pd.DataFrame(_toy_support_dataframe()), 2024)
+    original_to_input_dataframe = Microsimulation.to_input_dataframe
+
+    def without_redundant_core_columns(self, *args, **kwargs):
+        return original_to_input_dataframe(self, *args, **kwargs).drop(
+            columns=["person_id__2024", "person_weight__2024"],
+            errors="ignore",
+        )
+
+    monkeypatch.setattr(
+        Microsimulation,
+        "to_input_dataframe",
+        without_redundant_core_columns,
+    )
+
+    h5_path = create_household_year_h5(
+        2025,
+        np.array([10.0, 8.0, 5.0]),
+        dataset,
+        tmp_path,
+    )
+
+    with h5py.File(h5_path) as h5_file:
+        assert h5_file["person_id"]["2025"].shape == (5,)
+        assert h5_file["person_household_id"]["2025"].shape == (5,)
+        assert h5_file["household_id"]["2025"].shape == (3,)
+        assert h5_file["household_weight"]["2025"].shape == (3,)
+        assert "person_weight" not in h5_file
 
 
 def test_project_input_variable_values_aligns_tax_unit_outputs_to_person_rows():
@@ -312,6 +420,49 @@ def test_support_augmentation_profile_registry_includes_runner_profiles():
     assert not is_targeted_donor_support_augmentation_profile("late-clone-v1")
 
 
+def test_tax_unit_summary_uses_household_weight_without_person_weight_input():
+    import pandas as pd
+
+    data = _toy_support_dataframe()
+    data.pop("person_weight__2024")
+    dataset = Dataset.from_dataframe(pd.DataFrame(data), 2024)
+
+    summary = synthetic_support_module.build_tax_unit_summary(
+        dataset,
+        period=2024,
+    )
+
+    by_tax_unit = summary.set_index("tax_unit_id")
+    assert by_tax_unit.loc[101, "household_weight_proxy"] == pytest.approx(10.0)
+    assert by_tax_unit.loc[201, "household_weight_proxy"] == pytest.approx(8.0)
+    assert by_tax_unit.loc[301, "household_weight_proxy"] == pytest.approx(5.0)
+    assert "person_weight_proxy" not in summary.columns
+
+
+def test_support_inputs_fill_missing_person_ids_without_person_weight():
+    import pandas as pd
+
+    data = _toy_support_dataframe()
+    data.pop("person_id__2024")
+    data.pop("person_weight__2024")
+    df = pd.DataFrame(data)
+
+    class FakeSim:
+        def calculate(self, variable, *, period=None, map_to=None):
+            assert period == 2024
+            assert variable == "person_id"
+            return SimpleNamespace(values=np.array([501, 502, 503, 504, 505]))
+
+    enriched = synthetic_support_module.ensure_person_level_core_inputs(
+        df,
+        FakeSim(),
+        base_year=2024,
+    )
+
+    assert enriched["person_id__2024"].tolist() == [501, 502, 503, 504, 505]
+    assert "person_weight__2024" not in enriched.columns
+
+
 def test_targeted_donor_support_builder_rejects_unknown_profile():
     with pytest.raises(ValueError, match="Unknown targeted donor support profile"):
         build_targeted_donor_augmented_dataset(
@@ -428,6 +579,7 @@ def test_support_augmentation_clones_households_with_new_ids():
     assert cloned_rows["age__2024"].max() == pytest.approx(80.0)
     assert cloned_rows["household_weight__2024"].iloc[0] == pytest.approx(5.0)
     assert cloned_rows["person_id__2024"].min() > df["person_id__2024"].max()
+    assert "person_weight__2024" not in augmented_df.columns
 
 
 def test_support_augmentation_synthesizes_composite_payroll_household():
@@ -633,7 +785,6 @@ def test_role_donor_composites_build_structural_candidate_from_role_donors():
                 "dividend_income": 2_000.0,
                 "pension_income": 8_000.0,
                 "support_count_weight": 1.0,
-                "person_weight_proxy": 1.0,
                 "archetype": "older_beneficiary_single",
             },
             {
@@ -652,7 +803,6 @@ def test_role_donor_composites_build_structural_candidate_from_role_donors():
                 "dividend_income": 0.0,
                 "pension_income": 0.0,
                 "support_count_weight": 1.0,
-                "person_weight_proxy": 1.0,
                 "archetype": "prime_worker_family",
             },
         ]
@@ -713,7 +863,6 @@ def test_role_donor_composites_preserve_taxable_payroll_under_cap():
                 "dividend_income": 0.0,
                 "pension_income": 0.0,
                 "support_count_weight": 1.0,
-                "person_weight_proxy": 1.0,
                 "archetype": "prime_worker_couple",
             },
         ]

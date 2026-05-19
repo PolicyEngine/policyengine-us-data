@@ -41,9 +41,6 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
-from policyengine_us_data.calibration.calibration_utils import (
-    create_target_groups,
-)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.stage_contracts.calibration_package import (
     CalibrationPackageParameters,
@@ -1363,7 +1360,9 @@ def run_calibration(
 
         initial_weights = package.get("initial_weights")
         targets = targets_df["value"].values
-        target_groups, _ = create_target_groups(targets_df)
+        # Temporarily disable grouped target loss until target precedence
+        # and tolerance handling can make grouped fitting safe.
+        target_groups = None
         row_sums = np.array(X_sparse.sum(axis=1)).flatten()
         pkg_achievable = row_sums > 0
         weights = fit_l0_weights(
@@ -1704,7 +1703,9 @@ def run_calibration(
 
     # Step 7: L0 calibration
     targets = targets_df["value"].values
-    target_groups, _ = create_target_groups(targets_df)
+    # Temporarily disable grouped target loss until target precedence
+    # and tolerance handling can make grouped fitting safe.
+    target_groups = None
 
     row_sums = np.array(X_sparse.sum(axis=1)).flatten()
     achievable = row_sums > 0

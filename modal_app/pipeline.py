@@ -94,6 +94,10 @@ from policyengine_us_data.build_datasets.commands import (  # noqa: E402
     DatasetCommandError,
 )
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
+from policyengine_us_data.calibration_package.specs import (  # noqa: E402
+    calibration_package_artifact_paths,
+    resolve_target_config_identity,
+)
 from policyengine_us_data.utils.error_redaction import (  # noqa: E402
     redacted_bounded_error_text,
     redact_error_text,
@@ -172,6 +176,7 @@ def _calibration_package_parameters(
     workers: int,
     n_clones: int,
     target_config: str | None,
+    all_active_targets: bool = False,
     skip_county: bool,
     chunked_matrix: bool,
     chunk_size: int,
@@ -179,11 +184,17 @@ def _calibration_package_parameters(
     num_matrix_workers: int,
 ) -> dict:
     """Return manifest parameters that affect package construction."""
+    target_config_identity = resolve_target_config_identity(
+        target_config,
+        all_active_targets=all_active_targets,
+    )
     effective_parallel = bool(chunked_matrix and parallel_matrix)
     params = {
         "workers": workers if not chunked_matrix else None,
         "n_clones": n_clones,
-        "target_config": target_config,
+        "target_config": target_config_identity.path,
+        "target_config_sha256": target_config_identity.sha256,
+        "target_config_mode": target_config_identity.mode,
         "skip_county": skip_county,
         "chunked_matrix": bool(chunked_matrix),
         "chunk_size": chunk_size if chunked_matrix else None,
@@ -573,6 +584,7 @@ def verify_runtime_seams() -> dict:
         "modal_app/step_manifests/errors.py",
         "modal_app/step_manifests/status.py",
         "modal_app/fixtures/h5_cases.py",
+        "policyengine_us_data/calibration_package/specs.py",
         "tests/integration/test_fixture_50hh.h5",
         "policyengine_us_data/calibration/target_config.yaml",
         "policyengine_us_data/calibration/target_config_full.yaml",
@@ -1264,6 +1276,7 @@ def run_pipeline(
                 "database": _artifacts_dir(run_id) / "policy_data.db",
             }
         )
+        package_artifacts = calibration_package_artifact_paths(_artifacts_dir(run_id))
         package_parameters = _calibration_package_parameters(
             workers=num_workers,
             n_clones=n_clones,
@@ -1328,8 +1341,7 @@ def run_pipeline(
             completed_package_manifest = _complete_step_manifest(
                 active_step_manifest,
                 outputs=collect_artifacts(
-                    [_artifacts_dir(run_id) / "calibration_package.pkl"],
-                    missing_ok=True,
+                    package_artifacts.manifest_outputs,
                 ),
                 vol=pipeline_volume,
             )

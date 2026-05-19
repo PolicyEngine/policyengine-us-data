@@ -60,6 +60,8 @@ def test_calibration_package_parameters_parse_runtime_args():
         workers=8,
         n_clones=430,
         target_config_path=TARGET_CONFIG_PATH,
+        target_config_sha256="sha256:target-config",
+        target_config_mode="explicit",
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -79,6 +81,8 @@ def test_calibration_package_parameters_parse_runtime_args():
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,
         "target_config": TARGET_CONFIG_PATH,
+        "target_config_mode": "explicit",
+        "target_config_sha256": "sha256:target-config",
         "workers": None,
     }
 
@@ -89,6 +93,8 @@ def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
             workers=8,
             n_clones=430,
             target_config=None,
+            target_config_sha256=None,
+            target_config_mode="all_active_targets",
             skip_county=True,
             skip_source_impute=True,
             skip_takeup_rerandomize=False,

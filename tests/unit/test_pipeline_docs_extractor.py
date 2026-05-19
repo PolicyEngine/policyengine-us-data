@@ -122,3 +122,18 @@ def test_pipeline_map_manifest_validates():
     assert bundle["metadata"]["mapped_decorated_node_count"] >= 45
     assert sum(len(stage["nodes"]) for stage in bundle["stages"]) >= 160
     assert sum(len(stage["edges"]) for stage in bundle["stages"]) >= 170
+    stage2 = next(
+        stage
+        for stage in bundle["stages"]
+        if stage["id"] == "2a_matrix_build_calibration_target_construction"
+    )
+    stage2_node_ids = {node["id"] for node in stage2["nodes"]}
+    assert {
+        "stage2_target_config_identity",
+        "stage2_target_catalog_load",
+        "build_matrix",
+        "build_matrix_chunked",
+        "stage2_calibration_package_writer",
+        "stage2_calibration_package_contract_writer",
+        "stage2_calibration_package_contract_validator",
+    } <= stage2_node_ids

@@ -9,6 +9,10 @@ import pytest
 
 modal = pytest.importorskip("modal")
 
+from policyengine_us_data.calibration_package.specs import (  # noqa: E402
+    DEFAULT_TARGET_CONFIG_PATH,
+)
+from policyengine_us_data.utils.manifest import compute_file_checksum  # noqa: E402
 from modal_app.pipeline import (  # noqa: E402
     NATIONAL_FIT_LAMBDA_L0,
     _build_diagnostics_upload_script,
@@ -44,6 +48,11 @@ def test_calibration_package_parameters_track_matrix_mode():
 
     assert params["chunked_matrix"] is True
     assert "workers" not in params
+    assert params["target_config"] == DEFAULT_TARGET_CONFIG_PATH
+    assert params["target_config_sha256"] == compute_file_checksum(
+        DEFAULT_TARGET_CONFIG_PATH
+    )
+    assert params["target_config_mode"] == "default"
     assert params["chunk_size"] == 10_000
     assert params["parallel_matrix"] is True
     assert params["num_matrix_workers"] == 25
@@ -63,6 +72,11 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
 
     assert params["chunked_matrix"] is False
     assert params["workers"] == 50
+    assert params["target_config"] == DEFAULT_TARGET_CONFIG_PATH
+    assert params["target_config_sha256"] == compute_file_checksum(
+        DEFAULT_TARGET_CONFIG_PATH
+    )
+    assert params["target_config_mode"] == "default"
     assert "chunk_size" not in params
     assert params["parallel_matrix"] is False
     assert "num_matrix_workers" not in params

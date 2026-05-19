@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import Any
 
+from policyengine_us_data.calibration_package.specs import (
+    TARGET_CONFIG_IDENTITY_MODES,
+)
+
 GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS = frozenset(
     {
         "calibration_package",
@@ -39,6 +43,8 @@ CALIBRATION_PACKAGE_PARAMETER_KEYS = frozenset(
         "skip_source_impute",
         "skip_takeup_rerandomize",
         "target_config",
+        "target_config_mode",
+        "target_config_sha256",
         "workers",
     }
 )
@@ -207,6 +213,8 @@ class CalibrationPackageParameters:
     workers: int | None
     n_clones: int
     target_config: str | None
+    target_config_sha256: str | None
+    target_config_mode: str | None
     skip_county: bool
     skip_source_impute: bool
     skip_takeup_rerandomize: bool
@@ -230,6 +238,25 @@ class CalibrationPackageParameters:
         _validate_bool(self.parallel_matrix, "parallel_matrix")
         if self.target_config is not None and not isinstance(self.target_config, str):
             raise ValueError("target_config must be a string or None")
+        if self.target_config_sha256 is not None and not isinstance(
+            self.target_config_sha256,
+            str,
+        ):
+            raise ValueError("target_config_sha256 must be a string or None")
+        if self.target_config_mode is not None:
+            if not isinstance(self.target_config_mode, str):
+                raise ValueError("target_config_mode must be a string or None")
+            if self.target_config_mode not in TARGET_CONFIG_IDENTITY_MODES:
+                raise ValueError(
+                    "target_config_mode must be one of "
+                    f"{sorted(TARGET_CONFIG_IDENTITY_MODES)}"
+                )
+        if self.target_config_mode == "all_active_targets":
+            if self.target_config is not None or self.target_config_sha256 is not None:
+                raise ValueError(
+                    "all_active_targets target config parameters cannot include "
+                    "a path or checksum"
+                )
         if self.chunked_matrix:
             if self.workers is not None:
                 raise ValueError("workers must be None when chunked_matrix is true")
@@ -265,14 +292,21 @@ class CalibrationPackageParameters:
         chunk_size: int,
         parallel: bool,
         num_matrix_workers: int,
+        target_config_sha256: str | None = None,
+        target_config_mode: str | None = None,
     ) -> "CalibrationPackageParameters":
         """Build canonical Stage 2 parameters from runtime CLI arguments."""
 
         parallel_matrix = bool(chunked_matrix and parallel)
+        resolved_mode = target_config_mode or (
+            "all_active_targets" if target_config_path is None else "explicit"
+        )
         return cls(
             workers=workers if not chunked_matrix else None,
             n_clones=n_clones,
             target_config=target_config_path,
+            target_config_sha256=target_config_sha256,
+            target_config_mode=resolved_mode,
             skip_county=skip_county,
             skip_source_impute=skip_source_impute,
             skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -291,15 +325,26 @@ class CalibrationPackageParameters:
 
         if not isinstance(data, Mapping):
             raise ValueError("calibration package parameters must be a mapping")
-        _require_exact_keys(
+        _require_compatible_keys(
             data,
             "calibration package parameters",
             CALIBRATION_PACKAGE_PARAMETER_KEYS,
+            legacy_optional_keys=frozenset(
+                {"target_config_mode", "target_config_sha256"}
+            ),
         )
+        target_config = _optional_string_field(data, "target_config")
+        target_config_mode = _optional_string_field(data, "target_config_mode")
         return cls(
             workers=_optional_int_field(data, "workers"),
             n_clones=_required_int_field(data, "n_clones"),
-            target_config=_optional_string_field(data, "target_config"),
+            target_config=target_config,
+            target_config_sha256=_optional_string_field(
+                data,
+                "target_config_sha256",
+            ),
+            target_config_mode=target_config_mode
+            or ("all_active_targets" if target_config is None else "explicit"),
             skip_county=_required_bool_field(data, "skip_county"),
             skip_source_impute=_required_bool_field(data, "skip_source_impute"),
             skip_takeup_rerandomize=_required_bool_field(
@@ -325,6 +370,8 @@ class CalibrationPackageParameters:
             "skip_source_impute": self.skip_source_impute,
             "skip_takeup_rerandomize": self.skip_takeup_rerandomize,
             "target_config": self.target_config,
+            "target_config_mode": self.target_config_mode,
+            "target_config_sha256": self.target_config_sha256,
             "workers": self.workers,
         }
 
@@ -464,8 +511,23 @@ def _require_exact_keys(
     label: str,
     expected_keys: frozenset[str],
 ) -> None:
+    _require_compatible_keys(
+        data,
+        label,
+        expected_keys,
+        legacy_optional_keys=frozenset(),
+    )
+
+
+def _require_compatible_keys(
+    data: Mapping[str, Any],
+    label: str,
+    expected_keys: frozenset[str],
+    *,
+    legacy_optional_keys: frozenset[str],
+) -> None:
     keys = {str(key) for key in data}
-    missing = sorted(expected_keys - keys)
+    missing = sorted((expected_keys - legacy_optional_keys) - keys)
     unexpected = sorted(keys - expected_keys)
     if missing:
         raise ValueError(f"{label} missing required key: {missing[0]}")

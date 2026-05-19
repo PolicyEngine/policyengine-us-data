@@ -12,6 +12,9 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import gpu_image as image  # noqa: E402
+from policyengine_us_data.calibration_package.specs import (  # noqa: E402
+    calibration_package_artifact_paths,
+)
 
 app = modal.App(
     os.environ.get("US_DATA_FIT_WEIGHTS_APP_NAME") or "policyengine-us-data-fit-weights"
@@ -379,7 +382,8 @@ def _build_package_impl(
                 f"Missing {label} on pipeline volume: {p}. Run data_build first."
             )
 
-    pkg_path = f"{artifacts}/calibration_package.pkl"
+    package_artifacts = calibration_package_artifact_paths(artifacts)
+    pkg_path = str(package_artifacts.package)
     cmd = [
         *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration"),
         "--device",
@@ -404,7 +408,7 @@ def _build_package_impl(
     if chunked_matrix:
         cmd.extend(["--chunked-matrix", "--chunk-size", str(chunk_size)])
         if parallel_matrix:
-            chunk_dir = f"{artifacts}/matrix_build"
+            chunk_dir = str(package_artifacts.matrix_build_dir)
             cmd.extend(
                 [
                     "--parallel",
@@ -439,14 +443,12 @@ def _build_package_impl(
         raise RuntimeError(f"Package build failed with code {build_rc}")
 
     from policyengine_us_data.stage_contracts.calibration_package import (
-        CALIBRATION_PACKAGE_CONTRACT_FILENAME,
         validate_persisted_calibration_package_contract,
     )
 
-    contract_path = f"{artifacts}/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}"
     validate_persisted_calibration_package_contract(
-        package_path=Path(pkg_path),
-        contract_path=Path(contract_path),
+        package_path=package_artifacts.package,
+        contract_path=package_artifacts.contract,
         dataset_path=Path(dataset_path),
         db_path=Path(db_path),
     )
@@ -525,8 +527,9 @@ def check_volume_package(artifacts_dir: str = "") -> dict:
     import json
 
     base = artifacts_dir if artifacts_dir else f"{PIPELINE_MOUNT}/artifacts"
-    pkg_path = f"{base}/calibration_package.pkl"
-    sidecar_path = f"{base}/calibration_package_meta.json"
+    package_artifacts = calibration_package_artifact_paths(base)
+    pkg_path = str(package_artifacts.package)
+    sidecar_path = str(package_artifacts.metadata)
     if not os.path.exists(pkg_path):
         return {"exists": False}
 

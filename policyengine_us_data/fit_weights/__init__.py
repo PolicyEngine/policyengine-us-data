@@ -7,6 +7,13 @@ from policyengine_us_data.fit_weights.artifacts import (
     ScopedFitArtifacts,
     fit_artifacts_for_scope,
 )
+from policyengine_us_data.fit_weights.bundles import (
+    FitResultBytes,
+    FitWeightsBuildContext,
+    FittedWeightsInputBundle,
+    FittedWeightsOutputBundle,
+    MissingFitWeightsOutputError,
+)
 from policyengine_us_data.fit_weights.specs import (
     FIT_BETA,
     FIT_LOG_FREQ,
@@ -35,8 +42,13 @@ __all__ = [
     "FitArtifactRole",
     "FitArtifactSpec",
     "FitHyperparameters",
+    "FitResultBytes",
     "FitScope",
+    "FitWeightsBuildContext",
+    "FittedWeightsInputBundle",
+    "FittedWeightsOutputBundle",
     "FittedWeightsSpec",
+    "MissingFitWeightsOutputError",
     "ScopedFitArtifacts",
     "fit_artifacts_for_scope",
     "fitted_weights_spec_for_scope",

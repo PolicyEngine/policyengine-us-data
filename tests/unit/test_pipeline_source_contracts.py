@@ -125,9 +125,28 @@ def test_run_pipeline_uses_stage_3_fit_specs_for_reuse_and_paths() -> None:
     assert "national_fit_spec.manifest_parameters(" in source
     assert "regional_fit_spec.runtime_kwargs()" in source
     assert "national_fit_spec.runtime_kwargs()" in source
-    assert "regional_fit_artifacts.artifact_paths(_artifacts_dir(run_id))" in source
-    assert "national_fit_artifacts.artifact_paths(_artifacts_dir(run_id))" in source
+    assert "regional_output.artifact_paths(_artifacts_dir(run_id))" in source
+    assert "national_output.artifact_paths(_artifacts_dir(run_id))" in source
     assert "diagnostic_result_filenames()" in archive_source
+
+
+def test_run_pipeline_converts_fit_results_to_scoped_output_bundles() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    archive_diagnostics = _function_def(tree, "archive_diagnostics")
+    source = ast.get_source_segment(source_text, run_pipeline)
+    archive_source = ast.get_source_segment(source_text, archive_diagnostics)
+
+    assert "FittedWeightsInputBundle(" in source
+    assert "FittedWeightsOutputBundle.from_result_bytes(" in source
+    assert "regional_output.write_artifacts(batch, artifacts_rel)" in source
+    assert "national_output.write_artifacts(batch, artifacts_rel)" in source
+    assert "regional_output.diagnostic_result_bytes()" in source
+    assert "national_output.diagnostic_result_bytes()" in source
+    assert "diagnostics=regional_diagnostics" in source
+    assert "diagnostics=national_diagnostics" in source
+    assert 'role="diagnostic"' in archive_source
 
 
 def test_local_area_consumes_centralized_stage_3_artifact_specs() -> None:

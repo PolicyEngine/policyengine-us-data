@@ -18,8 +18,12 @@ def test_fit_weights_identity_nodes_are_in_generated_pipeline_docs() -> None:
 
     assert "fitted_weights_spec" in decorated
     assert "fitted_weights_artifacts" in decorated
+    assert "fitted_weights_output_bundle" in decorated
     assert "fit_weights" in decorated["fitted_weights_spec"].metadata["pathways"]
     assert "fit_weights" in decorated["fitted_weights_artifacts"].metadata["pathways"]
+    assert (
+        "fit_weights" in decorated["fitted_weights_output_bundle"].metadata["pathways"]
+    )
 
 
 def test_stage_3_pipeline_map_labels_match_scoped_artifacts() -> None:

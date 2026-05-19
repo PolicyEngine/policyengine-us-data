@@ -643,6 +643,13 @@ def test_loads_gross_wage_and_filer_tax_wage_targets(tmp_path, monkeypatch):
                     "notes": "Proprietors' income",
                     "year": 2024,
                 },
+                {
+                    "variable": "dividend_income",
+                    "value": 2_218_700_000_000,
+                    "source": "BEA NIPA Table 2.1",
+                    "notes": "Personal dividend income",
+                    "year": 2024,
+                },
             ]
         ),
         tax_filer_df=pd.DataFrame(
@@ -678,6 +685,9 @@ def test_loads_gross_wage_and_filer_tax_wage_targets(tmp_path, monkeypatch):
                 Target.variable == etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE
             )
         ).one()
+        dividend_target = session.exec(
+            select(Target).where(Target.variable == "dividend_income")
+        ).one()
         filer_constraints = session.exec(
             select(StratumConstraint).where(
                 StratumConstraint.stratum_id == tax_wage_target.stratum_id
@@ -688,6 +698,7 @@ def test_loads_gross_wage_and_filer_tax_wage_targets(tmp_path, monkeypatch):
     assert tax_wage_target.value == 10_832_700_000_000
     assert interest_target.value == 1_926_644_000_000
     assert proprietors_target.value == 2_023_080_000_000
+    assert dividend_target.value == 2_218_700_000_000
     assert gross_wage_target.stratum_id != tax_wage_target.stratum_id
     assert [
         (
@@ -757,6 +768,17 @@ def test_extracts_income_targets_from_primary_concepts(monkeypatch):
         for target in raw_targets["direct_sum_targets"]
         if target["variable"] == etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE
     ]
+    interest_targets = [
+        target
+        for target in raw_targets["direct_sum_targets"]
+        if target["variable"]
+        == etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE
+    ]
+    dividend_targets = [
+        target
+        for target in raw_targets["direct_sum_targets"]
+        if target["variable"] == "dividend_income"
+    ]
     tax_wage_targets = [
         target
         for target in raw_targets["tax_filer_targets"]
@@ -800,9 +822,37 @@ def test_extracts_income_targets_from_primary_concepts(monkeypatch):
             "notes": (
                 "Proprietors' income with IVA and CCAdj for all persons, "
                 "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
-                "Mapped to the closest additive PolicyEngine aggregate: "
-                "total self-employment, farm operations, and "
-                "partnership/S-corp income."
+                "Mapped to the PolicyEngine-US NIPA proprietors' income "
+                "aggregate."
+            ),
+            "year": 2024,
+        }
+    ]
+    assert interest_targets == [
+        {
+            "variable": etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
+            "value": etl_national_targets.BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Personal interest income for all persons, including "
+                "nonfilers; FRED/BEA series A064RC1A027NBEA. NIPA also "
+                "includes imputed interest, so this is a macro benchmark "
+                "rather than a pure tax concept."
+            ),
+            "year": 2024,
+        }
+    ]
+    assert dividend_targets == [
+        {
+            "variable": "dividend_income",
+            "value": (etl_national_targets.BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024),
+            "source": "BEA NIPA Table 2.1",
+            "notes": (
+                "Personal dividend income for all persons, including "
+                "nonfilers; FRED/BEA series B703RC1A027NBEA. NIPA "
+                "includes dividends received through pension funds and "
+                "private trusts, so this is a macro benchmark rather than "
+                "a pure tax concept."
             ),
             "year": 2024,
         }

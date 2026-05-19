@@ -8,6 +8,9 @@ from huggingface_hub import HfApi, hf_hub_download
 from policyengine_core.data import Dataset
 
 from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION
+from policyengine_us_data.db.etl_national_targets import (
+    BEA_NIPA_WAGES_AND_SALARIES_2024,
+)
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
 from policyengine_us_data.datasets.cps.enhanced_cps import clone_diagnostics_path
@@ -125,7 +128,14 @@ INCOME_GROUPS = [
 ]
 
 # Aggregate thresholds for broad sanity checks (year 2024).
-MIN_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
+MIN_PLAUSIBLE_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
+NIPA_EMPLOYMENT_INCOME_TOLERANCE = 0.10
+MIN_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM = BEA_NIPA_WAGES_AND_SALARIES_2024 * (
+    1 - NIPA_EMPLOYMENT_INCOME_TOLERANCE
+)
+MAX_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM = BEA_NIPA_WAGES_AND_SALARIES_2024 * (
+    1 + NIPA_EMPLOYMENT_INCOME_TOLERANCE
+)
 MIN_HOUSEHOLD_WEIGHT_SUM = 100e6  # 100 million
 MAX_HOUSEHOLD_WEIGHT_SUM = 200e6  # 200 million
 
@@ -152,9 +162,10 @@ MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME = {
     "enhanced_cps_2024.h5": (
         MicrosimulationAggregateCheck(
             variable="employment_income",
-            label="employment_income sum",
+            label="employment_income sum vs NIPA wages target",
             statistic="sum",
-            min_value=MIN_EMPLOYMENT_INCOME_SUM,
+            min_value=MIN_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM,
+            max_value=MAX_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM,
         ),
         MicrosimulationAggregateCheck(
             variable="social_security_retirement",
@@ -188,7 +199,7 @@ MICROSIMULATION_AGGREGATE_CHECKS_BY_FILENAME = {
             variable="employment_income",
             label="employment_income sum",
             statistic="sum",
-            min_value=MIN_EMPLOYMENT_INCOME_SUM,
+            min_value=MIN_PLAUSIBLE_EMPLOYMENT_INCOME_SUM,
         ),
     ),
 }

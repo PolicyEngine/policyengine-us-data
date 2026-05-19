@@ -30,14 +30,16 @@ from policyengine_us_data.utils.target_variables import (
     target_variable_components,
 )
 
+# Manually sourced national targets must be registered in both active target
+# systems: policyengine_us_data/utils/loss.py for ECPS calibration and this
+# file for policy_data.db/local H5 targets. If the default calibration include
+# list should train on the target, add it to calibration/target_config.yaml too.
 BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
 BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
 BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
 BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = (
-    "total_self_employment_income+farm_operations_income+partnership_s_corp_income"
-)
+NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
     "taxable_interest_income+dividend_income"
@@ -453,9 +455,8 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": (
                 "Proprietors' income with IVA and CCAdj for all persons, "
                 "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
-                "Mapped to the closest additive PolicyEngine aggregate: "
-                "total self-employment, farm operations, and "
-                "partnership/S-corp income."
+                "Mapped to the PolicyEngine-US NIPA proprietors' income "
+                "aggregate."
             ),
             "year": 2024,
         },

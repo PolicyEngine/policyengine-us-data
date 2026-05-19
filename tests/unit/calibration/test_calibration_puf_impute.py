@@ -267,6 +267,40 @@ class TestPufCloneDataset:
         for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
             assert var not in result
 
+    def test_puf_only_variables_are_imputed_onto_cps_half(self, monkeypatch):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        assert "partnership_s_corp_income" not in data
+
+        predictions = np.arange(20, dtype=np.float32) + 100
+        y_full = {var: np.ones(20, dtype=np.float32) for var in IMPUTED_VARIABLES}
+        y_full["partnership_s_corp_income"] = predictions
+        y_full["employment_income"] = np.full(20, 999_999, dtype=np.float32)
+
+        def fake_run_qrf_imputation(*args, **kwargs):
+            return y_full, {}
+
+        monkeypatch.setattr(
+            puf_impute_module,
+            "_run_qrf_imputation",
+            fake_run_qrf_imputation,
+        )
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=np.array([1, 2, 36, 6, 48]),
+            time_period=2024,
+            puf_dataset=object(),
+            skip_qrf=False,
+        )
+
+        partnership = result["partnership_s_corp_income"][2024]
+        np.testing.assert_array_equal(partnership[:20], predictions)
+        np.testing.assert_array_equal(partnership[20:], predictions)
+
+        employment = result["employment_income"][2024]
+        np.testing.assert_array_equal(employment[:20], data["employment_income"][2024])
+        np.testing.assert_array_equal(employment[20:], y_full["employment_income"])
+
     def test_sstb_qbi_split_variables_imputed(self):
         expected = {
             "sstb_self_employment_income",

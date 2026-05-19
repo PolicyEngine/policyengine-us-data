@@ -50,7 +50,7 @@ BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
-    "taxable_interest_income+dividend_income"
+    "taxable_interest_income+non_qualified_dividend_income"
 )
 
 BEA_NIPA_DIRECT_SUM_TARGETS = (

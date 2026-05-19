@@ -88,6 +88,32 @@ def test_classify_known_legacy_target_gets_named_reason():
     }
 
 
+def test_classify_cbo_income_by_source_filer_target_matches_structured_row():
+    index = NationalTargetIndex(
+        [
+            _record(
+                3101,
+                variable="taxable_interest_income+non_qualified_dividend_income",
+                period=2024,
+                constraints=[Constraint("tax_unit_is_filer", "==", "1")],
+            )
+        ]
+    )
+
+    row = classify_national_target(
+        (
+            "nation/cbo/income_by_source/"
+            "taxable_interest_income+non_qualified_dividend_income/filers"
+        ),
+        index,
+        period=2024,
+    )
+
+    assert row["status"] == "matched"
+    assert row["target_id"] == 3101
+    assert row["reason"] == "structured_cbo_income_by_source_filer_target"
+
+
 def test_classify_soi_taxable_agi_filing_status_target_matches_structured_row():
     index = NationalTargetIndex(
         [

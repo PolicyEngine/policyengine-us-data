@@ -42,7 +42,7 @@ BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
 NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
-    "taxable_interest_income+dividend_income"
+    "taxable_interest_income+non_qualified_dividend_income"
 )
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
@@ -99,8 +99,8 @@ CBO_INCOME_BY_SOURCE_TARGETS = [
         "parameter": "taxable_interest_and_ordinary_dividends",
         "notes": (
             "CBO detailed AGI-by-source taxable interest plus ordinary "
-            "dividends; restricted to tax filers because this is an AGI "
-            "tax-return concept"
+            "dividends excluding qualified dividends; restricted to tax "
+            "filers because this is an AGI tax-return concept"
         ),
     },
 ]

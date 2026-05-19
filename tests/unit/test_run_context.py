@@ -58,6 +58,17 @@ def test_modal_app_name_scopes_by_candidate_version_and_run_id() -> None:
     )
 
 
+def test_modal_app_name_preserves_run_id_suffix_when_truncated() -> None:
+    run_id = "usdata-gha123456789012345-a2"
+    name = build_modal_app_name(
+        run_id,
+        candidate_version="1.73.0-minor-with-an-extremely-long-candidate-label",
+    )
+
+    assert name.endswith(f"-{run_id}")
+    assert len(name) <= 64
+
+
 def test_candidate_scope_uses_base_release_and_bump() -> None:
     assert build_candidate_scope("1.73.0", "minor") == "1.73.0-minor"
     assert release_version_from_bump("1.73.0", "minor") == "1.74.0"

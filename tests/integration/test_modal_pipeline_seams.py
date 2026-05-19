@@ -55,6 +55,8 @@ def test_pipeline_image_runtime_seams():
         "uv.lock": True,
         "modal_app/worker_script.py": True,
         "modal_app/local_area.py": True,
+        "modal_app/pipeline_discovery.py": True,
+        "modal_app/pipeline_discovery_core.py": True,
         "modal_app/pipeline_status.py": True,
         "modal_app/h5_test_harness.py": True,
         "modal_app/step_manifests/specs.py": True,
@@ -83,6 +85,8 @@ def test_pipeline_image_runtime_seams():
         "modal_app.fixtures.h5_cases",
         "modal_app.h5_test_harness",
         "modal_app.local_area",
+        "modal_app.pipeline_discovery",
+        "modal_app.pipeline_discovery_core",
         "modal_app.pipeline_status",
         "modal_app.remote_calibration_runner",
         "modal_app.step_manifests.specs",
@@ -146,6 +150,29 @@ def test_pipeline_runs_callable_reports_structured_index():
     assert result["filters"] == {"status": "", "branch": ""}
 
 
+def test_pipeline_discovery_callable_reports_structured_index():
+    _require_modal_tokens()
+
+    fn = modal.Function.from_name(
+        "policyengine-us-data-pipeline-status",
+        "list_deployed_pipeline_runs",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    result = fn.remote(limit=1, modal_environment=MODAL_ENVIRONMENT)
+
+    assert result["schema_version"] == "1"
+    assert result["source"] == "modal_app_names"
+    assert result["modal_environment"] == MODAL_ENVIRONMENT
+    assert result["limit"] == 1
+    assert result["count"] <= 1
+    assert isinstance(result["runs"], list)
+    assert result["filters"] == {
+        "status": "",
+        "branch": "",
+        "include_unreachable": True,
+    }
+
+
 def test_pipeline_status_http_endpoint_reports_missing_run():
     _require_modal_tokens()
     headers = _modal_proxy_auth_headers()
@@ -199,6 +226,35 @@ def test_pipeline_runs_http_endpoint_reports_structured_index():
     assert result["count"] <= 1
     assert isinstance(result["runs"], list)
     assert result["filters"] == {"status": "", "branch": ""}
+
+
+def test_pipeline_discovery_http_endpoint_reports_structured_index():
+    _require_modal_tokens()
+    headers = _modal_proxy_auth_headers()
+
+    fn = modal.Function.from_name(
+        "policyengine-us-data-pipeline-status",
+        "deployed_pipeline_runs_endpoint",
+        environment_name=MODAL_ENVIRONMENT,
+    )
+    endpoint = fn.get_web_url()
+    assert endpoint
+
+    response = requests.get(
+        endpoint,
+        params={"limit": "1", "modal_environment": MODAL_ENVIRONMENT},
+        headers=headers,
+        timeout=30,
+    )
+
+    assert response.status_code == 200, response.text[:500]
+    result = response.json()
+    assert result["schema_version"] == "1"
+    assert result["source"] == "modal_app_names"
+    assert result["modal_environment"] == MODAL_ENVIRONMENT
+    assert result["limit"] == 1
+    assert result["count"] <= 1
+    assert isinstance(result["runs"], list)
 
 
 def test_pipeline_status_cli_snippet_reports_missing_run():

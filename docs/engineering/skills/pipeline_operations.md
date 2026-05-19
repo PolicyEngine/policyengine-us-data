@@ -19,20 +19,32 @@ The status system reports:
 
 ## Status Surfaces
 
-The structured status payload is canonical. The pipeline status sub-app exposes
-run-level and run-index Modal functions:
+The structured status payload is canonical. Run-scoped pipeline apps expose
+status for their own mounted pipeline volume:
 
 - `get_pipeline_status`: Python-callable structured JSON for agents, scripts,
   dashboards, and tests. Prefer this for diagnosis and automation.
 - `pipeline_status_endpoint`: protected HTTP endpoint returning the same
   structured JSON for non-Python clients. Use Modal proxy auth headers.
 - `list_pipeline_runs`: Python-callable structured JSON index of recent runs.
-  Use this for dashboards that need to discover candidate run IDs.
+  This is volume-local and only lists runs visible to that app's mounted
+  `US_DATA_PIPELINE_VOLUME_NAME`.
 - `pipeline_runs_endpoint`: protected HTTP endpoint returning the same
-  structured recent-run index for non-Python clients.
+  volume-local recent-run index for non-Python clients.
 - `pipeline_status_snippet`: human-readable text used by
   `modal run modal_app/pipeline.py::main --action status`. This is for quick
   terminal inspection only and must not be treated as a schema.
+
+Cross-run discovery lives in the stable `policyengine-us-data-pipeline-status`
+app, not in a run-scoped pipeline app:
+
+- `list_deployed_pipeline_runs`: Python-callable structured JSON index of
+  deployed publication pipeline apps. It discovers runs from Modal app names
+  matching `usdata-gha<github_run_id>-a<attempt>`, then calls each app's
+  `get_pipeline_status`.
+- `deployed_pipeline_runs_endpoint`: protected HTTP endpoint returning the same
+  cross-app discovery payload. Use this for dashboards that need to discover all
+  deployed publication runs.
 
 ## Fetch Status
 
@@ -73,6 +85,23 @@ redacted and bounded by keeping the newest text if they are very long.
 If the local environment cannot sync the full project environment, use the same
 snippet with a Modal-only temporary environment by replacing `uv run python`
 with `uv run --no-sync --with modal python`.
+
+To discover deployed publication runs before choosing a run ID, call the stable
+status app:
+
+```bash
+uv run --no-sync --with modal python - <<'PY'
+import json
+import modal
+
+fn = modal.Function.from_name(
+    "policyengine-us-data-pipeline-status",
+    "list_deployed_pipeline_runs",
+    environment_name="main",
+)
+print(json.dumps(fn.remote(limit=25), indent=2))
+PY
+```
 
 If using the HTTP endpoint, authenticate with Modal proxy auth headers. Do not
 publish or paste proxy auth values into PRs, issues, logs, or docs.

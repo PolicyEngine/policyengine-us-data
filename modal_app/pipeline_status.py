@@ -1,4 +1,8 @@
-"""Modal status functions for deployed pipeline runs."""
+"""Run-scoped Modal status functions for deployed pipeline runs.
+
+These functions read only the pipeline volume mounted into their app. Cross-app
+discovery lives in ``modal_app.pipeline_discovery``.
+"""
 
 from __future__ import annotations
 

@@ -153,12 +153,29 @@ def build_modal_app_name(
     prefix: str = DEFAULT_MODAL_APP_PREFIX,
     max_length: int = DEFAULT_MAX_RESOURCE_NAME_LENGTH,
 ) -> str:
-    """Build a safe Modal app name from candidate scope and run ID."""
-    return build_modal_resource_name(
-        candidate_run_segment(run_id, candidate_version),
-        prefix=prefix,
-        max_length=max_length,
+    """Build a safe Modal app name while preserving the run ID suffix."""
+    resolved_run_id = sanitize_run_id(run_id)
+    resolved_candidate_version = (
+        sanitize_staging_version(candidate_version) if (candidate_version) else ""
     )
+    name_prefix = _slugify(
+        "-".join(
+            part
+            for part in (
+                prefix,
+                resolved_candidate_version,
+            )
+            if part
+        )
+    )
+    candidate = _slugify(f"{name_prefix}-{resolved_run_id}")
+    if len(candidate) <= max_length:
+        return candidate
+    suffix = resolved_run_id
+    if len(suffix) >= max_length:
+        return _truncate_with_digest(suffix, max_length)
+    prefix_length = max_length - len(suffix) - 1
+    return f"{_truncate_with_digest(name_prefix, prefix_length)}-{suffix}"
 
 
 def staging_prefix(

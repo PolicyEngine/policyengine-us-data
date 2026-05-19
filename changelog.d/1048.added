@@ -1,0 +1,1 @@
+Added a Stage 1 dataset-build context, artifact stager, and diagnostic artifact writers for the pipeline handoff.

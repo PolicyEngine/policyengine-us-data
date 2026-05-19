@@ -1,5 +1,4 @@
 import functools
-import json
 import os
 import shutil
 import subprocess
@@ -22,14 +21,17 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION  # noqa: E402
-from policyengine_us_data.build_datasets import stage_1_script_outputs  # noqa: E402
+from policyengine_us_data.build_datasets import (  # noqa: E402
+    DatasetBuildContext,
+    DatasetBuildOutputContractBuilder,
+    PipelineArtifactStager,
+    stage_1_script_outputs,
+    write_stage_1_diagnostics,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.stage_contracts import (  # noqa: E402
-    DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
     StageContract,
-    build_dataset_build_output_contract,
-    write_contract,
 )
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     CANDIDATE_VERSION_ENV,
@@ -484,13 +486,18 @@ def write_dataset_build_contract(
     skip_enhanced_cps: bool,
     skip_stage_5: bool = False,
     package_version: str = DATA_PACKAGE_VERSION,
+    branch: str = "unknown",
+    diagnostics: tuple = (),
 ) -> StageContract:
     """Write the Stage 1 semantic handoff contract next to copied artifacts."""
-    contract = build_dataset_build_output_contract(
-        artifacts_dir=artifacts_dir,
+    context = DatasetBuildContext(
         run_id=run_id,
+        branch=branch,
         code_sha=code_sha,
         package_version=package_version,
+        artifacts_dir=artifacts_dir,
+    )
+    return DatasetBuildOutputContractBuilder(context=context).write(
         checkpoint_stats=checkpoint_stats,
         started_at=started_at,
         completed_at=completed_at,
@@ -499,12 +506,8 @@ def write_dataset_build_contract(
         stage_only=stage_only,
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
+        diagnostics=diagnostics,
     )
-    write_contract(
-        contract,
-        artifacts_dir / DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
-    )
-    return contract
 
 
 @app.function(
@@ -529,7 +532,15 @@ def write_dataset_build_contract(
         status="current",
         stability="moving",
         pathways=["data_build", "orchestration"],
-        artifacts_out=["source_imputed_*.h5", "policy_data.db"],
+        artifacts_out=[
+            "dataset_build_output.json",
+            "dataset_inventory.json",
+            "source_dataset_schema_summary.json",
+            "target_database_schema_summary.json",
+            "source_imputed_stratified_extended_cps_2024.h5",
+            "source_imputed_stratified_extended_cps.h5",
+            "policy_data.db",
+        ],
         validation_commands=["uv run pytest tests/unit/test_modal_data_build.py"],
     )
 )
@@ -810,41 +821,32 @@ def build_datasets(
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     if run_id:
         artifacts_dir = artifacts_dir / run_id
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    # Copy all intermediate H5 datasets for lineage tracing
-    for output in SCRIPT_OUTPUTS.values():
-        paths = output if isinstance(output, list) else [output]
-        for p in paths:
-            src = Path(p)
-            if src.suffix == ".h5" and src.exists():
-                shutil.copy2(src, artifacts_dir / src.name)
-                print(
-                    f"  Copied {src.name} ({src.stat().st_size / 1024 / 1024:.1f} MB)"
-                )
-
-    # Yearless alias for pipeline consumers (remote_calibration_runner, local_area)
-    si = artifacts_dir / "source_imputed_stratified_extended_cps_2024.h5"
-    if si.exists():
-        shutil.copy2(si, artifacts_dir / "source_imputed_stratified_extended_cps.h5")
-
-    shutil.copy2(
-        "policyengine_us_data/storage/calibration/policy_data.db",
-        artifacts_dir / "policy_data.db",
+    build_context = DatasetBuildContext(
+        run_id=run_id,
+        branch=branch,
+        code_sha=commit,
+        package_version=version,
+        artifacts_dir=artifacts_dir,
     )
-    cal_weights = Path("policyengine_us_data/storage/calibration_weights.npy")
-    if cal_weights.exists():
-        shutil.copy2(
-            cal_weights,
-            artifacts_dir / "calibration_weights.npy",
+    stager = PipelineArtifactStager(context=build_context)
+    staged_paths = stager.stage_declared_artifacts(
+        skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
+    )
+    for staged_path in staged_paths:
+        print(
+            f"  Copied {staged_path.name} "
+            f"({staged_path.stat().st_size / 1024 / 1024:.1f} MB)"
         )
-        print("  Copied calibration_weights.npy")
-    shutil.copy2(log_path, artifacts_dir / "build_log.txt")
     checkpoint_snapshot = checkpoint_stats.snapshot()
-    with open(artifacts_dir / "data_build_checkpoint_stats.json", "w") as f:
-        json.dump(checkpoint_snapshot, f, indent=2, sort_keys=True)
+    stager.write_checkpoint_stats(checkpoint_snapshot)
     log_file.close()
     completed_at_dt = datetime.now(timezone.utc)
+    diagnostics = write_stage_1_diagnostics(
+        context=build_context,
+        skip_enhanced_cps=skip_enhanced_cps,
+        skip_stage_5=skip_stage_5,
+    )
     write_dataset_build_contract(
         artifacts_dir=artifacts_dir,
         run_id=run_id,
@@ -858,6 +860,8 @@ def build_datasets(
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
         package_version=version,
+        branch=branch,
+        diagnostics=diagnostics,
     )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")

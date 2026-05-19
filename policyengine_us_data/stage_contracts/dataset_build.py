@@ -14,6 +14,7 @@ from policyengine_us_data.utils.step_manifest import sha256_file
 
 from .artifacts import ArtifactRef
 from .contracts import StageContract
+from .diagnostics import DiagnosticRef
 from .execution import ExecutionRecord, ReuseSummary
 from .fingerprints import fingerprint_material
 from .stages import STAGE_1_BUILD_DATASETS, contract_type_for_stage
@@ -37,6 +38,7 @@ def build_dataset_build_output_contract(
     stage_only: bool = False,
     skip_enhanced_cps: bool = False,
     skip_stage_5: bool = False,
+    diagnostics: tuple[DiagnosticRef, ...] = (),
 ) -> StageContract:
     """Build the Stage 1 handoff contract from copied pipeline artifacts."""
 
@@ -80,11 +82,13 @@ def build_dataset_build_output_contract(
             skip_enhanced_cps=skip_enhanced_cps,
             skip_stage_5=skip_stage_5,
         ),
+        diagnostics=diagnostics,
         execution=execution,
         metadata={
             "artifact_count": len(outputs),
             "artifact_directory": str(artifacts_dir),
             "contract_file": DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
+            "diagnostic_count": len(diagnostics),
         },
     )
 

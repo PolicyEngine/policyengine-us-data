@@ -4,6 +4,8 @@ from policyengine_us_data.build_datasets import (
     STAGE_1_BUILD_DATASETS,
     STAGE_1_BUILD_STEP_SPECS,
     stage_1_contract_artifact_specs,
+    stage_1_diagnostic_artifact_specs,
+    stage_1_pipeline_artifact_specs,
     stage_1_script_outputs,
 )
 from policyengine_us_data.stage_contracts import (
@@ -99,6 +101,16 @@ def test_stage_1_contract_outputs_are_explicit_subset():
     assert all(spec.contract_output for spec in contract_specs)
 
 
+def test_stage_1_diagnostics_are_not_storage_staging_specs():
+    diagnostic_specs = stage_1_diagnostic_artifact_specs()
+
+    assert diagnostic_specs == tuple(
+        spec for spec in STAGE_1_ARTIFACT_SPECS if spec.diagnostic_output
+    )
+    assert all(not spec.pipeline_output for spec in diagnostic_specs)
+    assert not any(spec.diagnostic_output for spec in stage_1_pipeline_artifact_specs())
+
+
 def test_step_manifest_stage_1_substeps_match_dataset_build_specs():
     assert tuple(substep.id for substep in BUILD_DATASETS.substeps) == tuple(
         spec.id for spec in STAGE_1_BUILD_STEP_SPECS
@@ -131,6 +143,7 @@ def test_stage_1_skip_flags_identify_expected_artifacts():
     } <= enhanced_cps_skipped
     assert {
         "small_enhanced_cps_2024.h5",
+        "source_dataset_schema_summary.json",
         "source_imputed_stratified_extended_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
     } == stage_5_skipped

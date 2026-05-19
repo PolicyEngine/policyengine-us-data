@@ -270,6 +270,9 @@ class TestVariableListConsistency:
             "pre_subsidy_rent": {2024: np.array([1_000.0])},
             "spm_unit_capped_work_childcare_expenses": {2024: np.array([500.0])},
             "spm_unit_pre_subsidy_childcare_expenses": {2024: np.array([600.0])},
+            "spm_unit_spm_threshold": {2024: np.array([25_000.0])},
+            "spm_unit_geographic_adjustment": {2024: np.array([1.1])},
+            "person_in_poverty": {2024: np.array([False])},
             "has_tin": {2024: np.array([True])},
             "has_itin": {2024: np.array([True])},
             "in_nyc": {2024: np.array([False])},
@@ -282,6 +285,9 @@ class TestVariableListConsistency:
             "dividend_income",
             "rent",
             "spm_unit_capped_work_childcare_expenses",
+            "spm_unit_spm_threshold",
+            "spm_unit_geographic_adjustment",
+            "person_in_poverty",
         ):
             assert variable not in result
         for variable in (

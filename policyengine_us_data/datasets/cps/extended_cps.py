@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
+from policyengine_us_data.calibration.formulaic_inputs import (
+    FORMULAIC_SPM_INPUTS_TO_DROP,
+)
 from policyengine_us_data.datasets.cps.cps import (
     CPS,
     CPS_2024,
@@ -684,6 +687,7 @@ _HOUSING_ASSISTANCE_FORMULA_OUTPUTS = {
     "spm_unit_capped_housing_subsidy",
 }
 _FINAL_COMPUTED_OUTPUTS_TO_DROP = {
+    *FORMULAIC_SPM_INPUTS_TO_DROP,
     "dividend_income",
     "interest_income",
     "rent",

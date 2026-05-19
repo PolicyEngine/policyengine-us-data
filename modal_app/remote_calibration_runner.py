@@ -12,6 +12,11 @@ for _p in (_baked, _local):
         sys.path.insert(0, _p)
 
 from modal_app.images import gpu_image as image  # noqa: E402
+from policyengine_us_data.fit_weights import (  # noqa: E402
+    FitScope,
+    NATIONAL_FIT_LAMBDA_L0,
+    fit_artifacts_for_scope,
+)
 
 app = modal.App(
     os.environ.get("US_DATA_FIT_WEIGHTS_APP_NAME") or "policyengine-us-data-fit-weights"
@@ -140,6 +145,42 @@ def _collect_outputs(cal_lines):
         "log": log_bytes,
         "cal_log": cal_log_bytes,
         "config": config_bytes,
+    }
+
+
+def _fit_output_filenames(
+    *,
+    scope: FitScope | str,
+    output: str | None,
+    log_output: str | None,
+) -> dict[str, str]:
+    """Return local and pipeline-volume filenames for one fit scope."""
+
+    scope = FitScope.parse(scope)
+    scoped = fit_artifacts_for_scope(scope)
+    regional = fit_artifacts_for_scope(FitScope.REGIONAL)
+    output = output or regional.weights.filename
+    log_output = log_output or regional.diagnostics.filename
+    if scope == FitScope.NATIONAL:
+        output = (
+            scoped.weights.filename
+            if output == regional.weights.filename
+            else f"national_{output}"
+        )
+        log_output = (
+            scoped.diagnostics.filename
+            if log_output == regional.diagnostics.filename
+            else f"national_{log_output}"
+        )
+    return {
+        "output": output,
+        "log_output": log_output,
+        "geography": scoped.geography.filename,
+        "calibration_log": scoped.epoch_log.filename,
+        "run_config": scoped.run_config.filename,
+        "pipeline_weights": scoped.weights.filename,
+        "pipeline_geography": scoped.geography.filename,
+        "pipeline_run_config": scoped.run_config.filename,
     }
 
 
@@ -947,12 +988,18 @@ def main(
     trigger_publish: bool = False,
     national: bool = False,
 ):
+    scope = FitScope.NATIONAL if national else FitScope.REGIONAL
     prefix = "national_" if national else ""
+    output_filenames = _fit_output_filenames(
+        scope=scope,
+        output=output,
+        log_output=log_output,
+    )
+    output = output_filenames["output"]
+    log_output = output_filenames["log_output"]
     if national:
         if lambda_l0 is None:
-            lambda_l0 = 1e-4
-        output = f"{prefix}{output}"
-        log_output = f"{prefix}{log_output}"
+            lambda_l0 = NATIONAL_FIT_LAMBDA_L0
 
     if gpu not in GPU_FUNCTIONS:
         raise ValueError(
@@ -1060,11 +1107,11 @@ def main(
                 flush=True,
             )
             print(
-                f"  - calibration/{prefix}calibration_weights.npy",
+                f"  - calibration/{output_filenames['pipeline_weights']}",
                 flush=True,
             )
             print(
-                f"  - calibration/{prefix}geography_assignment.npz",
+                f"  - calibration/{output_filenames['pipeline_geography']}",
                 flush=True,
             )
             print(
@@ -1098,19 +1145,19 @@ def main(
             f.write(result["log"])
         print(f"Diagnostics log saved to: {log_output}")
 
-    geography_output = f"{prefix}geography_assignment.npz"
+    geography_output = output_filenames["geography"]
     if result.get("geography"):
         with open(geography_output, "wb") as f:
             f.write(result["geography"])
         print(f"Geography saved to: {geography_output}")
 
-    cal_log_output = f"{prefix}calibration_log.csv"
+    cal_log_output = output_filenames["calibration_log"]
     if result.get("cal_log"):
         with open(cal_log_output, "wb") as f:
             f.write(result["cal_log"])
         print(f"Calibration log saved to: {cal_log_output}")
 
-    config_output = f"{prefix}unified_run_config.json"
+    config_output = output_filenames["run_config"]
     if result.get("config"):
         with open(config_output, "wb") as f:
             f.write(result["config"])
@@ -1123,17 +1170,17 @@ def main(
     with pipeline_vol.batch_upload(force=True) as batch:
         batch.put_file(
             BytesIO(result["weights"]),
-            f"artifacts/{prefix}calibration_weights.npy",
+            f"artifacts/{output_filenames['pipeline_weights']}",
         )
         if result.get("geography"):
             batch.put_file(
                 BytesIO(result["geography"]),
-                f"artifacts/{prefix}geography_assignment.npz",
+                f"artifacts/{output_filenames['pipeline_geography']}",
             )
         if result.get("config"):
             batch.put_file(
                 BytesIO(result["config"]),
-                f"artifacts/{prefix}unified_run_config.json",
+                f"artifacts/{output_filenames['pipeline_run_config']}",
             )
     pipeline_vol.commit()
     print("Weights committed to pipeline volume", flush=True)

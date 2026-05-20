@@ -190,6 +190,14 @@ jobs:
       - run: uv sync --dev
       - name: Install integration test deps
         run: uv pip install modal pytest numpy pandas
+      - name: Ensure PR Modal control-plane secret
+        run: >
+          uv run modal secret create
+          --env="${MODAL_ENVIRONMENT}"
+          --force
+          modal-token
+          MODAL_TOKEN_ID="${MODAL_TOKEN_ID}"
+          MODAL_TOKEN_SECRET="${MODAL_TOKEN_SECRET}"
       - name: Deploy PR Modal pipeline discovery app
         run: uv run modal deploy --env="${MODAL_ENVIRONMENT}" --name="${MODAL_PIPELINE_DISCOVERY_APP_NAME}" modal_app/pipeline_discovery.py
       - name: Deploy PR Modal pipeline app

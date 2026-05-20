@@ -35,8 +35,13 @@ status for their own mounted pipeline volume:
   `modal run modal_app/pipeline.py::main --action status`. This is for quick
   terminal inspection only and must not be treated as a schema.
 
-Cross-run discovery lives in the stable `policyengine-us-data-pipeline-status`
-app, not in a run-scoped pipeline app:
+Cross-run discovery normally lives in the stable
+`policyengine-us-data-pipeline-status` app, not in a run-scoped pipeline app.
+PR integration jobs deploy an isolated discovery app into `main` and export its
+name as `MODAL_PIPELINE_DISCOVERY_APP_NAME` and
+`US_DATA_PIPELINE_DISCOVERY_APP_NAME`; tests and scripts running inside PR CI
+must use those environment values instead of hardcoding the stable production
+app name:
 
 - `list_deployed_pipeline_runs`: Python-callable structured JSON index of
   deployed publication pipeline apps. It discovers runs from Modal app names

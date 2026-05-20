@@ -14,6 +14,13 @@ import requests
 modal = pytest.importorskip("modal")
 
 APP_NAME = os.environ.get("MODAL_APP_NAME", "policyengine-us-data-pipeline")
+DISCOVERY_APP_NAME = os.environ.get(
+    "MODAL_PIPELINE_DISCOVERY_APP_NAME",
+    os.environ.get(
+        "US_DATA_PIPELINE_DISCOVERY_APP_NAME",
+        "policyengine-us-data-pipeline-status",
+    ),
+)
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
 HTTP_SEAM_TIMEOUT_SECONDS = 90
 
@@ -156,7 +163,7 @@ def test_pipeline_discovery_callable_reports_structured_index():
     _require_modal_tokens()
 
     fn = modal.Function.from_name(
-        "policyengine-us-data-pipeline-status",
+        DISCOVERY_APP_NAME,
         "list_deployed_pipeline_runs",
         environment_name=MODAL_ENVIRONMENT,
     )
@@ -237,7 +244,7 @@ def test_pipeline_discovery_http_endpoint_reports_structured_index():
     headers = _modal_proxy_auth_headers()
 
     fn = modal.Function.from_name(
-        "policyengine-us-data-pipeline-status",
+        DISCOVERY_APP_NAME,
         "deployed_pipeline_runs_endpoint",
         environment_name=MODAL_ENVIRONMENT,
     )

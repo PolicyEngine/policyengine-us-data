@@ -6,10 +6,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from policyengine_us_data.build_datasets import (
-    STAGE_1_BUILD_STEP_SPECS,
+from policyengine_us_data.build_datasets.artifacts import (
     stage_1_contract_artifact_specs,
 )
+from policyengine_us_data.build_datasets.specs import STAGE_1_BUILD_STEP_SPECS
 from policyengine_us_data.utils.step_manifest import sha256_file
 
 from .artifacts import ArtifactRef

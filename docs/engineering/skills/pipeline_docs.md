@@ -16,10 +16,10 @@ those flows.
   - `docs/engineering/pipeline-map.md`
 
 The generated JSON and Markdown files are published artifacts, not hand-authored
-source. PRs should update decorators, docstrings, and `docs/pipeline_map.yaml`;
-CI checks that the generated artifacts build. On pushes to `main`, automation
-regenerates and commits the published artifacts with the version/changelog
-commit.
+source. PRs should update decorators, docstrings, and `docs/pipeline_map.yaml`,
+then regenerate the checked-in artifacts in the same change so reviewers see the
+pipeline docs that will ship. On pushes to `main`, automation may refresh those
+artifacts again with the version/changelog commit.
 
 ## Annotation Rules
 
@@ -50,10 +50,15 @@ waypoint is being migrated, set `status="transitional"` and use
 
 ## Update Workflow
 
-After adding or changing annotations or `docs/pipeline_map.yaml`, rely on the PR
-`Pipeline docs build` check to prove the generated artifacts can be produced. To
-inspect the generated outputs locally without touching tracked files, write them
-to a temporary directory:
+After adding or changing annotations or `docs/pipeline_map.yaml`, regenerate the
+tracked pipeline docs:
+
+```bash
+uv run --no-sync --with pyyaml python scripts/extract_pipeline_docs.py
+```
+
+If you only need to inspect the generated outputs locally without touching
+tracked files, write them to a temporary directory:
 
 ```bash
 out_dir="$(mktemp -d)"

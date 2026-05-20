@@ -44,9 +44,9 @@ Check that changed pipeline behavior has a durable documentation surface:
 - Edges describe real data, artifact, validation, or orchestration relationships.
 - `status` and `stability` values are honest for transitional code.
 - `validation_commands` are focused and point to existing tests or scripts.
-- Generated docs build when decorator, Pydoc, or map source changes. PRs do not
-  need to refresh checked-in generated artifacts manually; the push workflow
-  publishes those artifacts from automation.
+- Generated docs build when decorator, Pydoc, or map source changes. PRs that
+  change decorator metadata, Pydoc-facing source, or `docs/pipeline_map.yaml`
+  should refresh the checked-in generated artifacts in the same change.
 - Stale architecture names, folder names, and artifact names are not preserved in
   durable documentation sources or generated output.
 

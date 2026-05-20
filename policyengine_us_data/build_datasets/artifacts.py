@@ -198,23 +198,6 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
     ),
 )
 
-_STAGE_1_CONTRACT_OUTPUT_FILENAMES = (
-    "acs_2022.h5",
-    "irs_puf_2015.h5",
-    "cps_2024.h5",
-    "puf_2024.h5",
-    "extended_cps_2024.h5",
-    "enhanced_cps_2024.h5",
-    "small_enhanced_cps_2024.h5",
-    "stratified_extended_cps_2024.h5",
-    "source_imputed_stratified_extended_cps_2024.h5",
-    "source_imputed_stratified_extended_cps.h5",
-    "policy_data.db",
-    "build_log.txt",
-    "data_build_checkpoint_stats.json",
-)
-
-
 @pipeline_node(
     id="stage_1_dataset_artifact_specs",
     label="Stage 1 Dataset Artifact Specs",
@@ -225,16 +208,22 @@ _STAGE_1_CONTRACT_OUTPUT_FILENAMES = (
     stability="stable",
     pathways=["data_build", "stage_contracts", "pipeline_docs"],
     artifacts_out=[
+        "uprating_factors.csv",
         "acs_2022.h5",
         "irs_puf_2015.h5",
         "cps_2024.h5",
         "puf_2024.h5",
         "extended_cps_2024.h5",
         "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
+        "calibration_log.csv",
         "stratified_extended_cps_2024.h5",
         "source_imputed_stratified_extended_cps_2024.h5",
+        "small_enhanced_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
         "policy_data.db",
+        "build_log.txt",
+        "data_build_checkpoint_stats.json",
     ],
     validation_commands=["uv run pytest tests/unit/test_build_dataset_specs.py"],
 )
@@ -247,10 +236,7 @@ def stage_1_artifact_specs() -> tuple[DatasetArtifactSpec, ...]:
 def stage_1_contract_artifact_specs() -> tuple[DatasetArtifactSpec, ...]:
     """Return artifact specs emitted in the Stage 1 handoff contract."""
 
-    specs_by_filename = {spec.filename: spec for spec in STAGE_1_ARTIFACT_SPECS}
-    return tuple(
-        specs_by_filename[filename] for filename in _STAGE_1_CONTRACT_OUTPUT_FILENAMES
-    )
+    return tuple(spec for spec in STAGE_1_ARTIFACT_SPECS if spec.contract_output)
 
 
 def stage_1_script_outputs() -> Mapping[str, ScriptOutput]:

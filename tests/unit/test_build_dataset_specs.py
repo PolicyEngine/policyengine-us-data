@@ -89,6 +89,9 @@ def test_stage_1_contract_outputs_are_explicit_subset():
     contract_specs = stage_1_contract_artifact_specs()
     contract_names = {spec.logical_name for spec in contract_specs}
 
+    assert contract_specs == tuple(
+        spec for spec in STAGE_1_ARTIFACT_SPECS if spec.contract_output
+    )
     assert "uprating_factors" not in contract_names
     assert "enhanced_cps_2024_clone_diagnostics" not in contract_names
     assert "enhanced_cps_calibration_log" not in contract_names

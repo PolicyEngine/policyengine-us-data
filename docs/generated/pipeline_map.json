@@ -261,6 +261,61 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope"
+      ],
+      "artifacts_in": [
+        "remote fit result bytes"
+      ],
+      "artifacts_out": [
+        "calibration_weights.npy",
+        "geography_assignment.npz",
+        "unified_run_config.json",
+        "national_calibration_weights.npy",
+        "national_geography_assignment.npz",
+        "national_unified_run_config.json"
+      ],
+      "description": "Canonical regional and national fitted-weight artifact filenames.",
+      "id": "fitted_weights_artifacts",
+      "label": "Fitted Weights Artifacts",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "artifact_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/artifacts.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_artifacts.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope"
+      ],
+      "artifacts_in": [
+        "calibration_package.pkl"
+      ],
+      "artifacts_out": [
+        "fit_parameter_identity"
+      ],
+      "description": "Scoped Stage 3 fit parameters and deterministic reuse identity.",
+      "id": "fitted_weights_spec",
+      "label": "Fitted Weights Spec",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "reuse_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_specs.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation"
       ],
       "artifacts_in": [
@@ -1668,9 +1723,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 82,
+    "api_node_count": 84,
     "canonical_stage_count": 5,
-    "decorated_object_count": 131,
+    "decorated_object_count": 133,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17
@@ -3768,6 +3823,31 @@
           "target": "init_weights"
         },
         {
+          "edge_type": "uses_library",
+          "source": "fit_spec_regional",
+          "target": "fit_model"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_regional",
+          "target": "out_weights"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_regional",
+          "target": "out_geo_s6"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_regional",
+          "target": "out_diag"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_regional",
+          "target": "out_config_s6"
+        },
+        {
           "edge_type": "data_flow",
           "source": "init_weights",
           "target": "create_model"
@@ -3825,6 +3905,8 @@
           "id": "run_calibration_fit",
           "label": "run_calibration()",
           "node_ids": [
+            "fit_spec_regional",
+            "fit_artifacts_regional",
             "init_weights",
             "create_model",
             "fit_model",
@@ -3856,6 +3938,18 @@
           "node_type": "external"
         },
         {
+          "description": "Regional Stage 3 fit hyperparameters and deterministic reuse identity",
+          "id": "fit_spec_regional",
+          "label": "FittedWeightsSpec regional",
+          "node_type": "library"
+        },
+        {
+          "description": "Regional fitted-weight artifact filenames and remote result mapping",
+          "id": "fit_artifacts_regional",
+          "label": "ScopedFitArtifacts regional",
+          "node_type": "library"
+        },
+        {
           "description": "n_features = 5.16M, init_keep_prob = 0.999",
           "id": "create_model",
           "label": "Create SparseCalibrationWeights",
@@ -3876,7 +3970,7 @@
         {
           "description": "block_geoid, cd_geoid, county_fips, state_fips",
           "id": "out_geo_s6",
-          "label": "geography.npz",
+          "label": "geography_assignment.npz",
           "node_type": "artifact"
         },
         {
@@ -3965,6 +4059,31 @@
           "target": "init_weights"
         },
         {
+          "edge_type": "uses_library",
+          "source": "fit_spec_national",
+          "target": "fit_model"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_national",
+          "target": "out_national_weights"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_national",
+          "target": "out_national_geo_s6"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_national",
+          "target": "out_national_diag"
+        },
+        {
+          "edge_type": "documents",
+          "source": "fit_artifacts_national",
+          "target": "out_national_config_s6"
+        },
+        {
           "edge_type": "data_flow",
           "source": "init_weights",
           "target": "create_model_national"
@@ -4022,6 +4141,8 @@
           "id": "run_calibration_fit_national",
           "label": "run_calibration() national",
           "node_ids": [
+            "fit_spec_national",
+            "fit_artifacts_national",
             "init_weights",
             "create_model_national",
             "fit_model",
@@ -4051,6 +4172,18 @@
           "id": "modal_gpu_national",
           "label": "Modal GPU Container",
           "node_type": "external"
+        },
+        {
+          "description": "National Stage 3 fit hyperparameters and deterministic reuse identity",
+          "id": "fit_spec_national",
+          "label": "FittedWeightsSpec national",
+          "node_type": "library"
+        },
+        {
+          "description": "National fitted-weight artifact filenames and remote result mapping",
+          "id": "fit_artifacts_national",
+          "label": "ScopedFitArtifacts national",
+          "node_type": "library"
         },
         {
           "description": "National target scope with L0 HardConcrete gates",

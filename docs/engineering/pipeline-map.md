@@ -424,10 +424,12 @@ Fit regional log-weights using L0 HardConcrete gates on GPU
 | --- | --- | --- | --- | --- |
 | `in_pkg_s6` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
 | `modal_gpu` Modal GPU Container | `external` | `unknown` | `unknown` |  |
+| `fit_spec_regional` FittedWeightsSpec regional | `library` | `unknown` | `unknown` |  |
+| `fit_artifacts_regional` ScopedFitArtifacts regional | `library` | `unknown` | `unknown` |  |
 | `create_model` Create SparseCalibrationWeights | `process` | `unknown` | `unknown` |  |
 | `extract_weights` Extract Weights | `process` | `unknown` | `unknown` |  |
 | `out_weights` calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
-| `out_geo_s6` geography.npz | `artifact` | `unknown` | `unknown` |  |
+| `out_geo_s6` geography_assignment.npz | `artifact` | `unknown` | `unknown` |  |
 | `out_diag` unified_diagnostics.csv | `artifact` | `unknown` | `unknown` |  |
 | `out_config_s6` unified_run_config.json | `artifact` | `unknown` | `unknown` |  |
 | `util_l0` l0-python | `utility` | `unknown` | `unknown` |  |
@@ -438,6 +440,11 @@ Fit regional log-weights using L0 HardConcrete gates on GPU
 #### Edges
 
 - `in_pkg_s6` -> `init_weights` `data_flow`
+- `fit_spec_regional` -> `fit_model` `uses_library`
+- `fit_artifacts_regional` -> `out_weights` `documents`
+- `fit_artifacts_regional` -> `out_geo_s6` `documents`
+- `fit_artifacts_regional` -> `out_diag` `documents`
+- `fit_artifacts_regional` -> `out_config_s6` `documents`
 - `init_weights` -> `create_model` `data_flow`
 - `create_model` -> `fit_model` `data_flow`
 - `modal_gpu` -> `fit_model` `runs_on_infra` (runs on)
@@ -464,6 +471,8 @@ Fit national log-weights for the national H5 output using the same L0 calibratio
 | --- | --- | --- | --- | --- |
 | `in_pkg_national_s6` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
 | `modal_gpu_national` Modal GPU Container | `external` | `unknown` | `unknown` |  |
+| `fit_spec_national` FittedWeightsSpec national | `library` | `unknown` | `unknown` |  |
+| `fit_artifacts_national` ScopedFitArtifacts national | `library` | `unknown` | `unknown` |  |
 | `create_model_national` Create National SparseCalibrationWeights | `process` | `unknown` | `unknown` |  |
 | `extract_national_weights` Extract National Weights | `process` | `unknown` | `unknown` |  |
 | `out_national_weights` national_calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
@@ -478,6 +487,11 @@ Fit national log-weights for the national H5 output using the same L0 calibratio
 #### Edges
 
 - `in_pkg_national_s6` -> `init_weights` `data_flow`
+- `fit_spec_national` -> `fit_model` `uses_library`
+- `fit_artifacts_national` -> `out_national_weights` `documents`
+- `fit_artifacts_national` -> `out_national_geo_s6` `documents`
+- `fit_artifacts_national` -> `out_national_diag` `documents`
+- `fit_artifacts_national` -> `out_national_config_s6` `documents`
 - `init_weights` -> `create_model_national` `data_flow`
 - `create_model_national` -> `fit_model` `data_flow`
 - `modal_gpu_national` -> `fit_model` `runs_on_infra` (runs on)
@@ -843,6 +857,22 @@ def create_stratified_cps_dataset(target_households = 30000, oversample_poor = F
 ```
 
 Create a stratified sample of CPS data preserving high-income households
+
+### `policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope`
+
+```python
+def fit_artifacts_for_scope(scope: FitScope | str) -> ScopedFitArtifacts
+```
+
+Return canonical fitted-weight artifacts for a regional or national scope.
+
+### `policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope`
+
+```python
+def fitted_weights_spec_for_scope(scope: FitScope | str) -> FittedWeightsSpec
+```
+
+Return the current fitted-weight spec for a regional or national scope.
 
 ### `policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation`
 

@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 908,
+    "line": 912,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 407,
+    "line": 411,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
     "id": "build_worker_bootstrap",
     "kind": "function",
-    "line": 500,
+    "line": 504,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
@@ -904,7 +904,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 1271,
+    "line": 1275,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -939,7 +939,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 682,
+    "line": 686,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -1115,6 +1115,79 @@
     "object_path": "policyengine_us_data.calibration.unified_calibration.fit_l0_weights",
     "signature": "def fit_l0_weights(X_sparse, targets: np.ndarray, lambda_l0: float, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', verbose_freq: Optional[int] = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, target_names: list = None, initial_weights: np.ndarray = None, targets_df: 'pd.DataFrame' = None, achievable: np.ndarray = None, target_groups: Optional[np.ndarray] = None, resume_from: str = None, checkpoint_path: str = None) -> np.ndarray",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+  },
+  "fitted_weights_artifacts": {
+    "docstring": "Return canonical fitted-weight artifacts for a regional or national scope.",
+    "id": "fitted_weights_artifacts",
+    "kind": "function",
+    "line": 184,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope"
+      ],
+      "artifacts_in": [
+        "remote fit result bytes"
+      ],
+      "artifacts_out": [
+        "calibration_weights.npy",
+        "geography_assignment.npz",
+        "unified_run_config.json",
+        "national_calibration_weights.npy",
+        "national_geography_assignment.npz",
+        "national_unified_run_config.json"
+      ],
+      "description": "Canonical regional and national fitted-weight artifact filenames.",
+      "id": "fitted_weights_artifacts",
+      "label": "Fitted Weights Artifacts",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "artifact_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/artifacts.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_artifacts.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope",
+    "signature": "def fit_artifacts_for_scope(scope: FitScope | str) -> ScopedFitArtifacts",
+    "source_file": "policyengine_us_data/fit_weights/artifacts.py"
+  },
+  "fitted_weights_spec": {
+    "docstring": "Return the current fitted-weight spec for a regional or national scope.",
+    "id": "fitted_weights_spec",
+    "kind": "function",
+    "line": 178,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope"
+      ],
+      "artifacts_in": [
+        "calibration_package.pkl"
+      ],
+      "artifacts_out": [
+        "fit_parameter_identity"
+      ],
+      "description": "Scoped Stage 3 fit parameters and deterministic reuse identity.",
+      "id": "fitted_weights_spec",
+      "label": "Fitted Weights Spec",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "reuse_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope",
+    "signature": "def fitted_weights_spec_for_scope(scope: FitScope | str) -> FittedWeightsSpec",
+    "source_file": "policyengine_us_data/fit_weights/specs.py"
   },
   "geo_assign": {
     "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n    fixed_state_fips: Optional state FIPS per base record. Positive\n        values constrain every clone of that record to blocks in the\n        requested state; zero or missing values remain unrestricted.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
@@ -2913,7 +2986,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1908,
+    "line": 1893,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3036,7 +3109,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 454,
+    "line": 458,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -3162,7 +3235,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 750,
+    "line": 754,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -3192,7 +3265,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 905,
+    "line": 909,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3394,7 +3467,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 1099,
+    "line": 1103,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -3505,7 +3578,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 1029,
+    "line": 1033,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"
@@ -3704,7 +3777,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 532,
+    "line": 536,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

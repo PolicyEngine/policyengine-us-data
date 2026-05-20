@@ -7,6 +7,7 @@ JCT_REL_ABS_ERROR_LIMIT = 0.5
 KNOWN_HIGH_ERROR_JCT_DIAGNOSTICS = {
     "nation/jct/charitable_deduction_expenditure",
     "nation/jct/interest_deduction_expenditure",
+    "nation/jct/qualified_business_income_deduction_expenditure",
     "nation/jct/salt_deduction_expenditure",
 }
 

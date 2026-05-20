@@ -222,6 +222,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
         env=None,
         log_file=None,
         checkpoint_stats=None,
+        command_results=None,
     ):
         calls.append(
             (
@@ -233,6 +234,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
                 env,
                 log_file,
                 checkpoint_stats,
+                command_results,
             )
         )
         return script_path
@@ -261,6 +263,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
             env,
             log_file,
             None,
+            [],
         ),
         (
             data_build.PUF_BUILD_SCRIPT,
@@ -271,6 +274,7 @@ def test_run_cps_then_puf_phase_uses_sequential_checkpointed_builds(
             env,
             log_file,
             None,
+            [],
         ),
     ]
 

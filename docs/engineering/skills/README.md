@@ -29,6 +29,8 @@ pipeline path.
 
 Current stage guides:
 
+- `build_datasets.md`: Stage 1 build-dataset identity, checkpoint reuse,
+  conditional running, and contract metadata guidance.
 - `build_outputs.md`: Stage 4 output-build library boundaries and test
   expectations.
 - `release_promotion.md`: Stage 5 release candidate identity, validation-report

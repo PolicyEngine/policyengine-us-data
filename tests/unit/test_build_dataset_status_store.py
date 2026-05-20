@@ -24,11 +24,24 @@ def test_stage_1_status_recorder_persists_events_results_and_current(tmp_path):
     result = DatasetSubstepResult(
         substep_id="1c_extended_cps_puf_clone",
         title="Extended CPS PUF clone",
-        status="completed",
+        status="reused",
         started_at="2026-05-22T12:00:00Z",
         completed_at="2026-05-22T12:05:00Z",
         duration_s=300.0,
         command_names=("extended-cps",),
+        reuse_decision={
+            "identity_key": "1c_extended_cps_puf_clone:extended-cps",
+            "action": "reuse",
+            "reason": "identity_match",
+        },
+        checkpoint_decisions=(
+            {
+                "output_file": "extended_cps_2024.h5",
+                "action": "reuse",
+                "reason": "valid",
+                "size_bytes": 10,
+            },
+        ),
     )
 
     recorder.record_event(event)
@@ -49,7 +62,20 @@ def test_stage_1_status_recorder_persists_events_results_and_current(tmp_path):
     }
     assert snapshot.events == (snapshot.current,)
     assert snapshot.results[0].substep_id == "1c_extended_cps_puf_clone"
-    assert snapshot.results[0].status == "completed"
+    assert snapshot.results[0].status == "reused"
+    assert snapshot.results[0].reuse_decision == {
+        "identity_key": "1c_extended_cps_puf_clone:extended-cps",
+        "action": "reuse",
+        "reason": "identity_match",
+    }
+    assert snapshot.results[0].checkpoint_decisions == (
+        {
+            "output_file": "extended_cps_2024.h5",
+            "action": "reuse",
+            "reason": "valid",
+            "size_bytes": 10,
+        },
+    )
 
 
 def test_stage_1_status_recorder_is_best_effort_by_default(tmp_path):
@@ -123,6 +149,47 @@ def test_stage_1_coordinator_writes_to_status_recorder(tmp_path):
     assert snapshot.current is not None
     assert snapshot.current.status == "completed"
     assert snapshot.results[0].substep_id == "1b_base_dataset_construction"
+
+
+def test_stage_1_coordinator_writes_reuse_metadata_to_status_recorder(tmp_path):
+    recorder = Stage1StatusRecorder(tmp_path / "runs" / "run-1")
+    coordinator = Stage1Coordinator(status_recorder=recorder)
+
+    coordinator.run_substep(
+        "1a_raw_data_download",
+        "Raw data download",
+        lambda: None,
+        reuse_decision={
+            "identity_key": "1a_raw_data_download:raw-data",
+            "action": "reuse",
+            "reason": "identity_match",
+        },
+        checkpoint_decisions=(
+            {
+                "output_file": "policy_data.db",
+                "action": "reuse",
+                "reason": "valid",
+                "size_bytes": 3,
+            },
+        ),
+    )
+
+    snapshot = read_stage_1_status_snapshot(tmp_path / "runs" / "run-1")
+
+    assert snapshot.current is not None
+    assert snapshot.current.status == "reused"
+    assert snapshot.current.metadata["reuse_decision"]["identity_key"] == (
+        "1a_raw_data_download:raw-data"
+    )
+    assert snapshot.current.metadata["checkpoint_decisions"] == [
+        {
+            "output_file": "policy_data.db",
+            "action": "reuse",
+            "reason": "valid",
+            "size_bytes": 3,
+        }
+    ]
+    assert snapshot.results[0].status == "reused"
 
 
 def test_stage_1_coordinator_writes_aggregated_status_on_finalize(tmp_path):

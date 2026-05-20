@@ -59,6 +59,8 @@ class _SubstepAggregate:
     command_names: list[str] = field(default_factory=list)
     command_results: list[DatasetCommandResult] = field(default_factory=list)
     artifact_paths: list[str | Path] = field(default_factory=list)
+    reuse_decisions: list[Mapping[str, Any]] = field(default_factory=list)
+    checkpoint_decisions: list[Mapping[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     skip_reasons: list[str] = field(default_factory=list)
     skipped: bool = False
@@ -89,6 +91,8 @@ class Stage1Coordinator:
         command_names: Sequence[str] = (),
         command_results: Sequence[DatasetCommandResult] = (),
         artifact_paths: Sequence[str | Path] = (),
+        reuse_decision: Mapping[str, Any] | None = None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]] = (),
         skip: bool = False,
         skip_reason: str | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -107,6 +111,8 @@ class Stage1Coordinator:
                 command_names=command_names,
                 command_results=command_results,
                 artifact_paths=artifact_paths,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 skip=skip,
                 skip_reason=skip_reason,
                 metadata=metadata,
@@ -116,6 +122,8 @@ class Stage1Coordinator:
                 runner=runner,
                 command_names=command_names,
                 command_results=command_results,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 skip_reason=skip_reason,
                 metadata=metadata,
             )
@@ -154,6 +162,8 @@ class Stage1Coordinator:
                 command_names=command_names,
                 command_results=captured_command_results,
                 artifact_paths=artifact_paths,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 error=error,
                 metadata=metadata,
             )
@@ -162,11 +172,17 @@ class Stage1Coordinator:
 
         result = self._result(
             runner=runner,
-            status="completed",
+            status=_successful_status(
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
+                command_results=command_results,
+            ),
             started_dt=started_dt,
             command_names=command_names,
             command_results=tuple(command_results),
             artifact_paths=artifact_paths,
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=checkpoint_decisions,
             metadata=metadata,
         )
         self._record(result)
@@ -195,6 +211,8 @@ class Stage1Coordinator:
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
         artifact_paths: Sequence[str | Path],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         skip: bool,
         skip_reason: str | None,
         metadata: Mapping[str, Any] | None,
@@ -204,6 +222,8 @@ class Stage1Coordinator:
                 runner=runner,
                 command_names=command_names,
                 command_results=command_results,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 skip_reason=skip_reason,
                 metadata=metadata,
             )
@@ -232,6 +252,8 @@ class Stage1Coordinator:
                 command_names=command_names,
                 command_results=captured_command_results,
                 artifact_paths=artifact_paths,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 error=error,
                 metadata=metadata,
             )
@@ -244,6 +266,8 @@ class Stage1Coordinator:
             command_names=command_names,
             command_results=tuple(command_results),
             artifact_paths=artifact_paths,
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=checkpoint_decisions,
             metadata=metadata,
         )
         return value
@@ -280,6 +304,8 @@ class Stage1Coordinator:
         runner: CommandBackedSubstepRunner,
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         skip_reason: str | None,
         metadata: Mapping[str, Any] | None,
     ) -> None:
@@ -287,6 +313,8 @@ class Stage1Coordinator:
             state = self._aggregate_state(runner)
             _extend_unique(state.command_names, command_names)
             state.command_results.extend(command_results)
+            _append_reuse_decision(state, reuse_decision)
+            state.checkpoint_decisions.extend(checkpoint_decisions)
             state.metadata.update(dict(metadata or {}))
             state.skipped = True
             if skip_reason is not None and skip_reason not in state.skip_reasons:
@@ -300,6 +328,8 @@ class Stage1Coordinator:
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
         artifact_paths: Sequence[str | Path],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         metadata: Mapping[str, Any] | None,
     ) -> None:
         with self._lock:
@@ -309,6 +339,8 @@ class Stage1Coordinator:
             _extend_unique(state.command_names, command_names)
             state.command_results.extend(command_results)
             state.artifact_paths.extend(artifact_paths)
+            _append_reuse_decision(state, reuse_decision)
+            state.checkpoint_decisions.extend(checkpoint_decisions)
             state.metadata.update(dict(metadata or {}))
 
     def _finish_aggregate_failure(
@@ -319,6 +351,8 @@ class Stage1Coordinator:
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
         artifact_paths: Sequence[str | Path],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         error: Stage1ErrorRecord,
         metadata: Mapping[str, Any] | None,
     ) -> _SubstepAggregate:
@@ -329,6 +363,8 @@ class Stage1Coordinator:
             _extend_unique(state.command_names, command_names)
             state.command_results.extend(command_results)
             state.artifact_paths.extend(artifact_paths)
+            _append_reuse_decision(state, reuse_decision)
+            state.checkpoint_decisions.extend(checkpoint_decisions)
             state.metadata.update(dict(metadata or {}))
             state.error = error
             return state
@@ -353,6 +389,8 @@ class Stage1Coordinator:
         completed_dt = state.completed_dt or datetime.now(timezone.utc)
         if state.error is not None:
             status = "failed"
+        elif _aggregate_was_reused(state):
+            status = "reused"
         elif state.started_dt is None and state.skipped:
             status = "skipped"
         else:
@@ -362,6 +400,10 @@ class Stage1Coordinator:
             metadata["skip_reasons"] = list(state.skip_reasons)
             if len(state.skip_reasons) == 1:
                 metadata["skip_reason"] = state.skip_reasons[0]
+        if state.reuse_decisions:
+            metadata["reuse_decisions"] = list(state.reuse_decisions)
+        if state.checkpoint_decisions:
+            metadata["checkpoint_decisions"] = list(state.checkpoint_decisions)
         duration_s = (
             (completed_dt - state.started_dt).total_seconds()
             if state.started_dt is not None
@@ -377,6 +419,8 @@ class Stage1Coordinator:
             command_names=tuple(state.command_names),
             command_results=tuple(state.command_results),
             artifact_paths=_existing_artifact_paths(state.artifact_paths),
+            reuse_decision=_aggregate_reuse_decision(state),
+            checkpoint_decisions=tuple(state.checkpoint_decisions),
             error=state.error,
             metadata=metadata,
         )
@@ -387,6 +431,8 @@ class Stage1Coordinator:
         runner: CommandBackedSubstepRunner,
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         skip_reason: str | None,
         metadata: Mapping[str, Any] | None,
     ) -> DatasetSubstepResult:
@@ -400,6 +446,8 @@ class Stage1Coordinator:
             duration_s=None,
             command_names=tuple(command_names),
             command_results=tuple(command_results),
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=tuple(checkpoint_decisions),
             metadata={**dict(metadata or {}), "skip_reason": skip_reason},
         )
 
@@ -412,6 +460,8 @@ class Stage1Coordinator:
         command_names: Sequence[str],
         command_results: Sequence[DatasetCommandResult],
         artifact_paths: Sequence[str | Path],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         error: Stage1ErrorRecord | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> DatasetSubstepResult:
@@ -426,6 +476,8 @@ class Stage1Coordinator:
             command_names=tuple(command_names),
             command_results=tuple(command_results),
             artifact_paths=_existing_artifact_paths(artifact_paths),
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=tuple(checkpoint_decisions),
             error=error,
             metadata=dict(metadata or {}),
         )
@@ -436,7 +488,7 @@ class Stage1Coordinator:
             status=result.status,
             created_at=result.completed_at,
             message=f"{result.title}: {result.status}",
-            metadata=dict(result.metadata),
+            metadata=_result_event_metadata(result),
         )
         with self._lock:
             self.results.append(result)
@@ -480,6 +532,89 @@ def _extend_unique(target: list[str], values: Sequence[str]) -> None:
     for value in values:
         if value not in target:
             target.append(value)
+
+
+def _append_reuse_decision(
+    state: _SubstepAggregate,
+    reuse_decision: Mapping[str, Any] | None,
+) -> None:
+    if reuse_decision is None:
+        return
+    decision = dict(reuse_decision)
+    if decision not in state.reuse_decisions:
+        state.reuse_decisions.append(decision)
+
+
+def _result_event_metadata(result: DatasetSubstepResult) -> dict[str, Any]:
+    metadata = dict(result.metadata)
+    if result.reuse_decision is not None:
+        metadata["reuse_decision"] = dict(result.reuse_decision)
+    if result.checkpoint_decisions:
+        metadata["checkpoint_decisions"] = [
+            dict(decision) for decision in result.checkpoint_decisions
+        ]
+    return metadata
+
+
+def _aggregate_reuse_decision(
+    state: _SubstepAggregate,
+) -> Mapping[str, Any] | None:
+    if not state.reuse_decisions:
+        return None
+    if len(state.reuse_decisions) == 1:
+        return state.reuse_decisions[0]
+    return {
+        "substep_id": state.substep_id,
+        "decisions": list(state.reuse_decisions),
+    }
+
+
+def _successful_status(
+    *,
+    reuse_decision: Mapping[str, Any] | None,
+    checkpoint_decisions: Sequence[Mapping[str, Any]],
+    command_results: Sequence[DatasetCommandResult],
+) -> str:
+    if command_results:
+        return "completed"
+    if _reuse_action(reuse_decision) != "reuse":
+        return "completed"
+    if not checkpoint_decisions:
+        return "completed"
+    if all(
+        dict(decision).get("action") == "reuse" for decision in checkpoint_decisions
+    ):
+        return "reused"
+    return "completed"
+
+
+def _aggregate_was_reused(state: _SubstepAggregate) -> bool:
+    return (
+        _successful_status(
+            reuse_decision=_aggregate_reuse_decision(state),
+            checkpoint_decisions=state.checkpoint_decisions,
+            command_results=state.command_results,
+        )
+        == "reused"
+    )
+
+
+def _reuse_action(reuse_decision: Mapping[str, Any] | None) -> object:
+    if reuse_decision is None:
+        return None
+    decision = dict(reuse_decision)
+    if "action" in decision:
+        return decision["action"]
+    nested = decision.get("decisions")
+    if isinstance(nested, list) and nested:
+        actions = {
+            item.get("action")
+            for item in nested
+            if isinstance(item, Mapping) and "action" in item
+        }
+        if actions == {"reuse"}:
+            return "reuse"
+    return None
 
 
 def _command_results_with_exception(

@@ -75,6 +75,8 @@ class DatasetSubstepResult:
     command_names: tuple[str, ...] = ()
     command_results: tuple[DatasetCommandResult, ...] = ()
     artifact_paths: tuple[str, ...] = ()
+    reuse_decision: Mapping[str, Any] | None = None
+    checkpoint_decisions: tuple[Mapping[str, Any], ...] = ()
     error: Stage1ErrorRecord | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -100,6 +102,8 @@ class DatasetSubstepResult:
                 for result in command_results
             ),
             artifact_paths=_string_tuple(data.get("artifact_paths", ())),
+            reuse_decision=_optional_mapping(data.get("reuse_decision")),
+            checkpoint_decisions=_mapping_tuple(data.get("checkpoint_decisions", ())),
             error=_error_record_from_payload(data.get("error")),
             metadata=_metadata_mapping(data.get("metadata", {})),
         )
@@ -117,6 +121,12 @@ class DatasetSubstepResult:
             "command_names": list(self.command_names),
             "command_results": [result.to_dict() for result in self.command_results],
             "artifact_paths": list(self.artifact_paths),
+            "reuse_decision": (
+                dict(self.reuse_decision) if self.reuse_decision is not None else None
+            ),
+            "checkpoint_decisions": [
+                dict(decision) for decision in self.checkpoint_decisions
+            ],
             "error": self.error.to_dict() if self.error else None,
             "metadata": dict(self.metadata),
         }
@@ -129,7 +139,7 @@ def _command_execution_status(value: Any) -> CommandExecutionStatus:
 
 
 def _stage_1_substep_status(value: Any) -> Stage1SubstepStatus:
-    if value in ("started", "completed", "skipped", "failed"):
+    if value in ("started", "completed", "reused", "skipped", "failed"):
         return cast(Stage1SubstepStatus, value)
     raise ValueError(f"Invalid Stage 1 substep status: {value!r}")
 
@@ -144,6 +154,20 @@ def _mapping_payload(value: Any) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise TypeError("Expected a mapping")
     return value
+
+
+def _optional_mapping(value: Any) -> Mapping[str, Any] | None:
+    if value is None:
+        return None
+    return dict(_mapping_payload(value))
+
+
+def _mapping_tuple(value: Any) -> tuple[Mapping[str, Any], ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, Sequence) or isinstance(value, str):
+        raise TypeError("Expected a sequence")
+    return tuple(dict(_mapping_payload(item)) for item in value)
 
 
 def _metadata_mapping(value: Any) -> Mapping[str, Any]:

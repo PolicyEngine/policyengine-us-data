@@ -1,9 +1,15 @@
 import importlib
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
-from policyengine_us_data.build_datasets import stage_1_script_outputs
+from policyengine_us_data.build_datasets import (
+    CheckpointStore,
+    Stage1ReuseDecision,
+    Stage1ReuseManifestRecord,
+    stage_1_script_outputs,
+)
 from policyengine_us_data.stage_contracts import read_contract
 
 
@@ -69,6 +75,29 @@ def test_script_outputs_are_generated_from_stage_1_artifact_specs():
     data_build = _load_data_build_module()
 
     assert data_build.SCRIPT_OUTPUTS == stage_1_script_outputs()
+
+
+def test_script_identity_material_distinguishes_same_substep_units():
+    data_build = _load_data_build_module()
+
+    cps = data_build._script_identity_material(
+        script_path=data_build.CPS_BUILD_SCRIPT,
+        output_files=["cps_2024.h5"],
+        branch="branch",
+    )
+    puf = data_build._script_identity_material(
+        script_path=data_build.PUF_BUILD_SCRIPT,
+        output_files=["puf_2024.h5"],
+        branch="branch",
+    )
+
+    assert cps.substep_id == "1b_base_dataset_construction"
+    assert puf.substep_id == "1b_base_dataset_construction"
+    assert cps.identity_key != puf.identity_key
+    assert data_build.CPS_BUILD_SCRIPT in cps.identity_key
+    assert "cps_2024.h5" in cps.identity_key
+    assert data_build.PUF_BUILD_SCRIPT in puf.identity_key
+    assert "puf_2024.h5" in puf.identity_key
 
 
 def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch):
@@ -165,6 +194,10 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
         "1g_stage_base_datasets",
     ]
     assert created_coordinators[0].status_recorder is not None
+    raw_data_kwargs = calls[1][1]
+    assert raw_data_kwargs["reuse_decision"]["substep_id"] == "1a_raw_data_download"
+    assert raw_data_kwargs["reuse_decision"]["reason"] == "no_previous_identity"
+    assert raw_data_kwargs["checkpoint_decisions"] == ()
     stage_base_kwargs = calls[-1][1]
     assert stage_base_kwargs["command_names"] == ("stage_base_datasets",)
     assert any(
@@ -431,6 +464,342 @@ def test_write_dataset_build_contract_writes_stage_1_handoff(tmp_path):
     assert read_contract(contract_path) == contract
     assert contract.stage_id == "1_build_datasets"
     assert contract.parameters["stage_only"] is True
+
+
+def test_run_script_with_checkpoint_rejects_blocked_reuse_decision(
+    tmp_path,
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+
+    def fail_run_script(*args, **kwargs):
+        raise AssertionError("blocked decisions must not run commands")
+
+    monkeypatch.setattr(data_build, "run_script", fail_run_script)
+    decision = Stage1ReuseDecision(
+        run_id="run-a",
+        rerun_id="attempt-2",
+        artifact_namespace="run-a",
+        substep_id="1b_base_dataset_construction",
+        identity_key=(
+            "1b_base_dataset_construction:"
+            "script:policyengine_us_data/datasets/cps/cps.py:cps_2024.h5"
+        ),
+        action="blocked",
+        reason="identity_mismatch",
+        identity_fingerprint="sha256:abc",
+    )
+
+    try:
+        data_build.run_script_with_checkpoint(
+            "policyengine_us_data/datasets/cps/cps.py",
+            "cps_2024.h5",
+            "branch",
+            object(),
+            checkpoint_store=CheckpointStore(
+                root=tmp_path,
+                branch="branch",
+                commit_sha="abc123",
+            ),
+            reuse_decision=decision,
+        )
+    except RuntimeError as exc:
+        assert "identity_mismatch" in str(exc)
+    else:
+        raise AssertionError("blocked reuse decision should fail")
+
+
+def test_command_group_with_checkpoint_recomputes_without_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+    output_file = "policyengine_us_data/storage/calibration/policy_data.db"
+    store = CheckpointStore(
+        root=tmp_path / "checkpoints", branch="branch", commit_sha="abc"
+    )
+    checkpoint = store.checkpoint_path(output_file)
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"old-db")
+    stats = data_build.CheckpointStats()
+    identity_material = data_build._raw_data_identity_material(branch="branch")
+
+    def build_raw_data():
+        Path(output_file).parent.mkdir(parents=True)
+        Path(output_file).write_bytes(b"new-db")
+
+    monkeypatch.chdir(tmp_path)
+
+    data_build.run_command_group_with_checkpoint(
+        substep_id="1a_raw_data_download",
+        output_files=(output_file,),
+        branch="branch",
+        volume=object(),
+        action=build_raw_data,
+        checkpoint_stats=stats,
+        checkpoint_store=store,
+        identity_material=identity_material,
+    )
+
+    assert (tmp_path / output_file).read_bytes() == b"new-db"
+    assert stats.snapshot() == {
+        "expected_outputs": 1,
+        "valid_reused_outputs": 0,
+        "recomputed_outputs": 1,
+        "invalid_outputs": 0,
+    }
+    assert store.load_reuse_manifest().previous_identities() == {
+        identity_material.identity_key: identity_material.fingerprint()
+    }
+
+
+def test_command_group_with_checkpoint_restores_manifest_matched_outputs(
+    tmp_path,
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+    output_file = "policyengine_us_data/storage/calibration/policy_data.db"
+    store = CheckpointStore(
+        root=tmp_path / "checkpoints", branch="branch", commit_sha="abc"
+    )
+    checkpoint = store.checkpoint_path(output_file)
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"db")
+    stats = data_build.CheckpointStats()
+    identity_material = data_build._raw_data_identity_material(branch="branch")
+    store.record_reuse_manifest(
+        Stage1ReuseManifestRecord(
+            substep_id=identity_material.substep_id,
+            identity_key=identity_material.identity_key,
+            identity_fingerprint=identity_material.fingerprint(),
+            identity_material=identity_material.to_dict(),
+        )
+    )
+
+    def fail_action():
+        raise AssertionError("reused command groups must not run commands")
+
+    monkeypatch.chdir(tmp_path)
+
+    data_build.run_command_group_with_checkpoint(
+        substep_id="1a_raw_data_download",
+        output_files=(output_file,),
+        branch="branch",
+        volume=object(),
+        action=fail_action,
+        checkpoint_stats=stats,
+        checkpoint_store=store,
+        identity_material=identity_material,
+    )
+
+    assert (tmp_path / output_file).read_bytes() == b"db"
+    assert stats.snapshot() == {
+        "expected_outputs": 1,
+        "valid_reused_outputs": 1,
+        "recomputed_outputs": 0,
+        "invalid_outputs": 0,
+    }
+
+
+def test_command_group_with_checkpoint_recomputes_missing_physical_checkpoint(
+    tmp_path,
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+    output_file = "policyengine_us_data/storage/calibration/policy_data.db"
+    store = CheckpointStore(
+        root=tmp_path / "checkpoints", branch="branch", commit_sha="abc"
+    )
+    stats = data_build.CheckpointStats()
+    identity_material = data_build._raw_data_identity_material(branch="branch")
+    store.record_reuse_manifest(
+        Stage1ReuseManifestRecord(
+            substep_id=identity_material.substep_id,
+            identity_key=identity_material.identity_key,
+            identity_fingerprint=identity_material.fingerprint(),
+            identity_material=identity_material.to_dict(),
+        )
+    )
+
+    def build_raw_data():
+        Path(output_file).parent.mkdir(parents=True)
+        Path(output_file).write_bytes(b"new-db")
+
+    monkeypatch.chdir(tmp_path)
+
+    data_build.run_command_group_with_checkpoint(
+        substep_id="1a_raw_data_download",
+        output_files=(output_file,),
+        branch="branch",
+        volume=object(),
+        action=build_raw_data,
+        checkpoint_stats=stats,
+        checkpoint_store=store,
+        identity_material=identity_material,
+    )
+
+    assert (tmp_path / output_file).read_bytes() == b"new-db"
+    assert stats.snapshot() == {
+        "expected_outputs": 1,
+        "valid_reused_outputs": 0,
+        "recomputed_outputs": 1,
+        "invalid_outputs": 1,
+    }
+
+
+def test_stage_1_status_metadata_publishes_reuse_reasoning():
+    data_build = _load_data_build_module()
+
+    class Record:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def to_dict(self):
+            return self.payload
+
+    coordinator = SimpleNamespace(
+        results=[
+            Record(
+                {
+                    "substep_id": "1a_raw_data_download",
+                    "title": "Raw Data Download",
+                    "status": "reused",
+                    "reuse_decision": {
+                        "action": "reuse",
+                        "reason": "identity_match",
+                    },
+                    "checkpoint_decisions": [
+                        {
+                            "action": "reuse",
+                            "reason": "valid",
+                        }
+                    ],
+                }
+            ),
+            Record(
+                {
+                    "substep_id": "1b_base_dataset_construction",
+                    "title": "Base Dataset Construction",
+                    "status": "completed",
+                    "reuse_decision": {
+                        "action": "recompute",
+                        "reason": "no_previous_identity",
+                    },
+                    "checkpoint_decisions": [],
+                }
+            ),
+            Record(
+                {
+                    "substep_id": "1c_extended_cps_puf_clone",
+                    "title": "Extended CPS And PUF Clone",
+                    "status": "completed",
+                    "reuse_decision": {
+                        "action": "reuse",
+                        "reason": "identity_match",
+                    },
+                    "checkpoint_decisions": [
+                        {
+                            "action": "recompute",
+                            "reason": "missing",
+                        }
+                    ],
+                }
+            ),
+            Record(
+                {
+                    "substep_id": "1d_enhanced_cps_reweighting",
+                    "title": "Enhanced CPS Reweighting",
+                    "status": "completed",
+                    "reuse_decision": {
+                        "action": "recompute",
+                        "reason": "identity_mismatch",
+                    },
+                    "checkpoint_decisions": [],
+                }
+            ),
+            Record(
+                {
+                    "substep_id": "1e_stratified_cps",
+                    "title": "Stratified CPS",
+                    "status": "completed",
+                    "reuse_decision": {
+                        "substep_id": "1e_stratified_cps",
+                        "decisions": [
+                            {
+                                "substep_id": "1e_stratified_cps",
+                                "identity_key": (
+                                    "1e_stratified_cps:enhanced:enhanced_cps_2024.h5"
+                                ),
+                                "action": "reuse",
+                                "reason": "identity_match",
+                                "identity_fingerprint": "sha256:enhanced",
+                            },
+                            {
+                                "substep_id": "1e_stratified_cps",
+                                "identity_key": (
+                                    "1e_stratified_cps:stratified:stratified_cps_2024.h5"
+                                ),
+                                "action": "recompute",
+                                "reason": "no_previous_identity",
+                                "identity_fingerprint": "sha256:stratified",
+                            },
+                        ],
+                    },
+                    "checkpoint_decisions": [],
+                }
+            ),
+        ],
+        status_events=[],
+        error_records=[],
+    )
+
+    metadata = data_build._stage_1_status_metadata(coordinator)
+    reasons = {
+        item["substep_id"]: item["outcome_reason"]
+        for item in metadata["reuse_reasoning"]
+    }
+
+    assert reasons["1a_raw_data_download"] == (
+        "Prior semantic identity matched and every expected checkpoint output "
+        "was present and non-empty."
+    )
+    assert reasons["1b_base_dataset_construction"] == (
+        "Recomputed because no prior semantic identity manifest record existed "
+        "for this Stage 1 execution unit."
+    )
+    assert reasons["1c_extended_cps_puf_clone"] == (
+        "Recomputed because at least one expected checkpoint output was missing "
+        "or empty."
+    )
+    assert reasons["1d_enhanced_cps_reweighting"] == (
+        "Recomputed because persisted semantic identity did not match the "
+        "current Stage 1 execution-unit identity."
+    )
+    mixed = next(
+        item
+        for item in metadata["reuse_reasoning"]
+        if item["substep_id"] == "1e_stratified_cps"
+    )
+    assert mixed["outcome_reason"] == (
+        "Recomputed with per-identity semantic reuse reasons: "
+        "identity_match=1, no_previous_identity=1."
+    )
+    assert mixed["identity_decisions"] == [
+        {
+            "substep_id": "1e_stratified_cps",
+            "identity_key": "1e_stratified_cps:enhanced:enhanced_cps_2024.h5",
+            "action": "reuse",
+            "reason": "identity_match",
+            "identity_fingerprint": "sha256:enhanced",
+        },
+        {
+            "substep_id": "1e_stratified_cps",
+            "identity_key": "1e_stratified_cps:stratified:stratified_cps_2024.h5",
+            "action": "recompute",
+            "reason": "no_previous_identity",
+            "identity_fingerprint": "sha256:stratified",
+        },
+    ]
 
 
 def test_utc_timestamp_renders_zulu_time_for_build_log():

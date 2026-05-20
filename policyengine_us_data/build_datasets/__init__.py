@@ -1,5 +1,8 @@
 """Canonical Stage 1 dataset-build specifications."""
 
+from importlib import import_module
+from typing import Any
+
 from .artifacts import (
     DatasetArtifactSpec,
     STAGE_1_ARTIFACT_SPECS,
@@ -52,6 +55,9 @@ from .status_store import (
 
 __all__ = [
     "ARTIFACT_SCHEMA_VERSION",
+    "CheckpointDecision",
+    "CheckpointReuseSummary",
+    "CheckpointStore",
     "CommandBackedSubstepRunner",
     "CommandRunner",
     "DatasetArtifactSpec",
@@ -70,6 +76,11 @@ __all__ = [
     "SourceDatasetSchemaSummaryWriter",
     "Stage1Coordinator",
     "Stage1ErrorRecord",
+    "Stage1IdentityMaterial",
+    "Stage1RerunPlanner",
+    "Stage1ReuseDecision",
+    "Stage1ReuseManifest",
+    "Stage1ReuseManifestRecord",
     "Stage1StatusRecorder",
     "Stage1StatusReadError",
     "Stage1StatusEvent",
@@ -91,3 +102,25 @@ __all__ = [
     "stage_1_step_specs",
     "write_stage_1_diagnostics",
 ]
+
+_LAZY_EXPORTS = {
+    "CheckpointDecision": (".checkpoints", "CheckpointDecision"),
+    "CheckpointReuseSummary": (".checkpoints", "CheckpointReuseSummary"),
+    "CheckpointStore": (".checkpoints", "CheckpointStore"),
+    "Stage1IdentityMaterial": (".rerun", "Stage1IdentityMaterial"),
+    "Stage1RerunPlanner": (".rerun", "Stage1RerunPlanner"),
+    "Stage1ReuseDecision": (".rerun", "Stage1ReuseDecision"),
+    "Stage1ReuseManifest": (".rerun", "Stage1ReuseManifest"),
+    "Stage1ReuseManifestRecord": (".rerun", "Stage1ReuseManifestRecord"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load checkpoint and rerun exports without package-import cycles."""
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute = _LAZY_EXPORTS[name]
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value

@@ -39,6 +39,7 @@ def build_dataset_build_output_contract(
     skip_enhanced_cps: bool = False,
     skip_stage_5: bool = False,
     diagnostics: tuple[DiagnosticRef, ...] = (),
+    stage_1_status_metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 1 handoff contract from copied pipeline artifacts."""
 
@@ -89,6 +90,7 @@ def build_dataset_build_output_contract(
             "artifact_directory": str(artifacts_dir),
             "contract_file": DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
             "diagnostic_count": len(diagnostics),
+            "stage_1_status": stage_1_status_metadata or {},
         },
     )
 

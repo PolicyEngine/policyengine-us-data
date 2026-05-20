@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from modal_app.step_manifests.errors import PipelineErrorRecord
 
 
-Stage1SubstepStatus = Literal["started", "completed", "skipped", "failed"]
+Stage1SubstepStatus = Literal["started", "completed", "reused", "skipped", "failed"]
 
 
 def utc_timestamp(value: datetime | None = None) -> str:
@@ -187,7 +187,7 @@ def _pipeline_traceback_text(error: Stage1ErrorRecord) -> str:
 
 
 def _stage_1_substep_status(value: Any) -> Stage1SubstepStatus:
-    if value in ("started", "completed", "skipped", "failed"):
+    if value in ("started", "completed", "reused", "skipped", "failed"):
         return cast(Stage1SubstepStatus, value)
     raise ValueError(f"Invalid Stage 1 substep status: {value!r}")
 

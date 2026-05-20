@@ -423,10 +423,10 @@ def test_enhanced_cps_employment_income_gate_rejects_missing_nipa_target(
     target = upload_module.BEA_NIPA_WAGES_AND_SALARIES_2024
 
     assert upload_module.MIN_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM == pytest.approx(
-        target * 0.9
+        target * 0.99
     )
     assert upload_module.MAX_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM == pytest.approx(
-        target * 1.1
+        target * 1.01
     )
 
     monkeypatch.setattr(
@@ -457,7 +457,7 @@ def test_enhanced_cps_employment_income_gate_rejects_missing_nipa_target(
     assert errors == [
         (
             "employment_income sum vs NIPA wages target = "
-            "8,805,350,912,425, expected >= 11,149,136,100,000."
+            "8,805,350,912,425, expected >= 12,264,049,710,000."
         )
     ]
 

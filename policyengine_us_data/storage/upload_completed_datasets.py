@@ -129,7 +129,10 @@ INCOME_GROUPS = [
 
 # Aggregate thresholds for broad sanity checks (year 2024).
 MIN_PLAUSIBLE_EMPLOYMENT_INCOME_SUM = 5e12  # $5 trillion
-NIPA_EMPLOYMENT_INCOME_TOLERANCE = 0.10
+# This is a publication gate, not a broad plausibility check: enhanced CPS
+# calibration should hit the BEA NIPA wages target closely enough that missing
+# target wiring fails before local-area outputs are built.
+NIPA_EMPLOYMENT_INCOME_TOLERANCE = 0.01
 MIN_ENHANCED_CPS_EMPLOYMENT_INCOME_SUM = BEA_NIPA_WAGES_AND_SALARIES_2024 * (
     1 - NIPA_EMPLOYMENT_INCOME_TOLERANCE
 )

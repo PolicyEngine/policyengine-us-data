@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.stage_contracts import (
     ArtifactRef,
+    DiagnosticRef,
     StageContract,
     read_contract,
 )
@@ -80,6 +81,7 @@ class ReleaseCandidateInputBundle:
     source_output_contract_path: str | None = None
     release_candidate_fingerprint: str | None = None
     validation_report_paths: tuple[str, ...] = ()
+    validation_report_refs: tuple[DiagnosticRef, ...] = ()
     diagnostics_manifest_path: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     bundle_type: str = RELEASE_CANDIDATE_BUNDLE_TYPE
@@ -131,6 +133,18 @@ class ReleaseCandidateInputBundle:
                 for path in self.validation_report_paths
             ),
         )
+        validation_report_refs = freeze_sequence(
+            self.validation_report_refs,
+            "validation_report_refs",
+            DiagnosticRef,
+        )
+        for ref in validation_report_refs:
+            _validation_report_ref_path(ref, self.context)
+        object.__setattr__(
+            self,
+            "validation_report_refs",
+            validation_report_refs,
+        )
         object.__setattr__(
             self,
             "diagnostics_manifest_path",
@@ -161,6 +175,9 @@ class ReleaseCandidateInputBundle:
             "release_candidate_fingerprint": self.release_candidate_fingerprint,
             "artifacts": [artifact.to_dict() for artifact in self.artifacts],
             "validation_report_paths": list(self.validation_report_paths),
+            "validation_report_refs": [
+                ref.to_dict() for ref in self.validation_report_refs
+            ],
             "diagnostics_manifest_path": self.diagnostics_manifest_path,
             "metadata": jsonable_value(self.metadata),
         }
@@ -186,6 +203,10 @@ class ReleaseCandidateInputBundle:
             validation_report_paths=tuple(
                 required_string({"path": item}, "path")
                 for item in data.get("validation_report_paths", ())
+            ),
+            validation_report_refs=tuple(
+                DiagnosticRef.from_dict(item)
+                for item in data.get("validation_report_refs", ())
             ),
             diagnostics_manifest_path=optional_string(
                 data,
@@ -216,6 +237,7 @@ def build_legacy_release_candidate_bundle(
     rel_paths: Sequence[str],
     artifact_metadata_by_path: Mapping[str, Mapping[str, Any]] | None = None,
     validation_report_paths: Sequence[str] = (),
+    validation_report_refs: Sequence[DiagnosticRef] = (),
     source_output_contract_path: str | None = None,
     diagnostics_manifest_path: str | None = None,
 ) -> ReleaseCandidateInputBundle:
@@ -240,6 +262,7 @@ def build_legacy_release_candidate_bundle(
         artifacts=artifacts,
         source_output_contract_path=source_output_contract_path,
         validation_report_paths=validation_report_paths,
+        validation_report_refs=validation_report_refs,
         diagnostics_manifest_path=diagnostics_manifest_path,
         reader="legacy_staged_paths",
     )
@@ -264,6 +287,7 @@ def build_release_candidate_bundle_from_stage4_contract(
     inventory_records: Iterable[Mapping[str, Any]] = (),
     source_output_contract_path: str | None = None,
     validation_report_paths: Sequence[str] = (),
+    validation_report_refs: Sequence[DiagnosticRef] = (),
     diagnostics_manifest_path: str | None = None,
 ) -> ReleaseCandidateInputBundle:
     """Build a candidate bundle from a Stage 4 output contract shape."""
@@ -317,6 +341,7 @@ def build_release_candidate_bundle_from_stage4_contract(
         artifacts=tuple(sorted(artifacts, key=lambda item: item.relative_path)),
         source_output_contract_path=source_output_contract_path,
         validation_report_paths=validation_report_paths,
+        validation_report_refs=validation_report_refs,
         diagnostics_manifest_path=derived_diagnostics_manifest_path,
         reader="stage4_contract",
         extra_fingerprint_material=extra_fingerprint_material,
@@ -342,6 +367,7 @@ def read_stage4_release_candidate_bundle(
     output_inventory_path: str | Path | None = None,
     source_output_contract_path: str | None = None,
     validation_report_paths: Sequence[str] = (),
+    validation_report_refs: Sequence[DiagnosticRef] = (),
     diagnostics_manifest_path: str | None = None,
 ) -> ReleaseCandidateInputBundle:
     """Read a candidate bundle from Stage 4 contract and optional inventory files."""
@@ -356,6 +382,7 @@ def read_stage4_release_candidate_bundle(
         inventory_records=inventory_records,
         source_output_contract_path=source_output_contract_path,
         validation_report_paths=validation_report_paths,
+        validation_report_refs=validation_report_refs,
         diagnostics_manifest_path=diagnostics_manifest_path,
     )
 
@@ -366,6 +393,7 @@ def _candidate_bundle_with_fingerprint(
     artifacts: tuple[ReleaseArtifactSpec, ...],
     source_output_contract_path: str | None,
     validation_report_paths: Sequence[str],
+    validation_report_refs: Sequence[DiagnosticRef],
     diagnostics_manifest_path: str | None,
     reader: str,
     extra_fingerprint_material: Mapping[str, Any] | None = None,
@@ -380,14 +408,35 @@ def _candidate_bundle_with_fingerprint(
         _normalize_run_diagnostic_path(path, context)
         for path in validation_report_paths
     )
+    normalized_validation_report_refs = freeze_sequence(
+        validation_report_refs,
+        "validation_report_refs",
+        DiagnosticRef,
+    )
+    normalized_validation_report_ref_paths = tuple(
+        _validation_report_ref_path(ref, context)
+        for ref in normalized_validation_report_refs
+    )
     normalized_diagnostics_manifest_path = (
         _normalize_run_diagnostic_path(diagnostics_manifest_path, context)
         if diagnostics_manifest_path is not None
         else None
     )
-    fingerprint_status, missing_identity_paths = _fingerprint_identity_status(
-        sorted_artifacts
+    fingerprint_status, missing_artifact_identity_paths = (
+        _release_artifact_identity_status(sorted_artifacts)
     )
+    missing_validation_report_identity_paths = (
+        _validation_report_identity_missing_paths(
+            normalized_validation_report_refs,
+            context=context,
+        )
+    )
+    if missing_validation_report_identity_paths:
+        fingerprint_status = (
+            "path_only_missing_identity"
+            if missing_artifact_identity_paths
+            else "path_only_missing_validation_report_identity"
+        )
     fingerprint = None
     if fingerprint_status == "complete":
         fingerprint = fingerprint_material(
@@ -400,6 +449,17 @@ def _candidate_bundle_with_fingerprint(
                 ],
                 "source_output_contract_path": normalized_source_output_contract_path,
                 "validation_report_paths": sorted(normalized_validation_report_paths),
+                "validation_report_refs": sorted(
+                    (
+                        _validation_report_ref_fingerprint_material(ref, context)
+                        for ref in normalized_validation_report_refs
+                    ),
+                    key=lambda item: (
+                        item["path"],
+                        item["name"],
+                        item["kind"],
+                    ),
+                ),
                 "diagnostics_manifest_path": normalized_diagnostics_manifest_path,
                 **(extra_fingerprint_material or {}),
             }
@@ -410,11 +470,16 @@ def _candidate_bundle_with_fingerprint(
         source_output_contract_path=normalized_source_output_contract_path,
         release_candidate_fingerprint=fingerprint,
         validation_report_paths=normalized_validation_report_paths,
+        validation_report_refs=normalized_validation_report_refs,
         diagnostics_manifest_path=normalized_diagnostics_manifest_path,
         metadata={
             "reader": reader,
             "fingerprint_status": fingerprint_status,
-            "missing_fingerprint_identity_paths": missing_identity_paths,
+            "missing_fingerprint_identity_paths": missing_artifact_identity_paths,
+            "missing_validation_report_identity_paths": (
+                missing_validation_report_identity_paths
+            ),
+            "validation_report_ref_paths": normalized_validation_report_ref_paths,
         },
     )
 
@@ -540,7 +605,7 @@ def _merge_duplicate_artifact_spec(
     )
 
 
-def _fingerprint_identity_status(
+def _release_artifact_identity_status(
     artifacts: Sequence[ReleaseArtifactSpec],
 ) -> tuple[str, tuple[str, ...]]:
     missing_identity_paths = tuple(
@@ -552,6 +617,20 @@ def _fingerprint_identity_status(
     if missing_identity_paths:
         return "path_only_missing_artifact_identity", missing_identity_paths
     return "complete", ()
+
+
+def _validation_report_identity_missing_paths(
+    refs: Sequence[DiagnosticRef],
+    *,
+    context: ReleasePromotionContext,
+) -> tuple[str, ...]:
+    missing_paths: list[str] = []
+    for ref in refs:
+        path = _validation_report_ref_path(ref, context)
+        artifact = ref.artifact
+        if artifact is None or artifact.sha256 is None or artifact.size_bytes is None:
+            missing_paths.append(path)
+    return tuple(missing_paths)
 
 
 def _artifact_spec_from_inventory_record(
@@ -720,6 +799,39 @@ def _diagnostic_artifact_identity(
         "path": path,
         "logical_name": artifact.logical_name,
         "uri": artifact.uri,
+        "sha256": artifact.sha256,
+        "size_bytes": artifact.size_bytes,
+    }
+
+
+def _validation_report_ref_path(
+    ref: DiagnosticRef,
+    context: ReleasePromotionContext,
+) -> str:
+    artifact = ref.artifact
+    if artifact is None:
+        raise ValueError("validation_report_refs entries must include artifacts")
+    path = _diagnostic_artifact_path(artifact, context)
+    if path is None:
+        raise ValueError(
+            "validation_report_refs artifacts must live under run diagnostics"
+        )
+    return path
+
+
+def _validation_report_ref_fingerprint_material(
+    ref: DiagnosticRef,
+    context: ReleasePromotionContext,
+) -> dict[str, Any]:
+    artifact = ref.artifact
+    path = _validation_report_ref_path(ref, context)
+    if artifact is None:
+        raise ValueError("validation_report_refs entries must include artifacts")
+    return {
+        "name": ref.name,
+        "kind": ref.kind,
+        "path": path,
+        "logical_name": artifact.logical_name,
         "sha256": artifact.sha256,
         "size_bytes": artifact.size_bytes,
     }

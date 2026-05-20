@@ -134,6 +134,25 @@ def _legacy_identity_metadata() -> dict[str, dict]:
     }
 
 
+def _validation_report_ref(
+    *,
+    path: str = "calibration/runs/run-123/diagnostics/validation_report.json",
+    sha256: str | None = "sha256:validation-report",
+    size_bytes: int | None = 128,
+) -> DiagnosticRef:
+    return DiagnosticRef(
+        name="stage4_validation_report",
+        kind="validation_report",
+        artifact=ArtifactRef(
+            logical_name="stage4_validation_report",
+            uri=f"hf://policyengine/policyengine-us-data/{path}",
+            sha256=sha256,
+            size_bytes=size_bytes,
+            metadata={"relative_path": path},
+        ),
+    )
+
+
 def test_release_path_normalization_rejects_parent_paths() -> None:
     assert normalize_release_path("./states//AL.h5") == "states/AL.h5"
 
@@ -387,6 +406,74 @@ def test_candidate_fingerprint_uses_normalized_paths() -> None:
     assert (
         base.release_candidate_fingerprint == equivalent.release_candidate_fingerprint
     )
+
+
+def test_candidate_fingerprint_tracks_validation_report_ref_identity() -> None:
+    first = build_legacy_release_candidate_bundle(
+        context=_context(),
+        rel_paths=["states/AL.h5"],
+        artifact_metadata_by_path={
+            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+        },
+        validation_report_paths=[
+            "calibration/runs/run-123/diagnostics/validation_report.json"
+        ],
+        validation_report_refs=[
+            _validation_report_ref(sha256="sha256:first", size_bytes=128)
+        ],
+    )
+    overwritten = build_legacy_release_candidate_bundle(
+        context=_context(),
+        rel_paths=["states/AL.h5"],
+        artifact_metadata_by_path={
+            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+        },
+        validation_report_paths=[
+            "calibration/runs/run-123/diagnostics/validation_report.json"
+        ],
+        validation_report_refs=[
+            _validation_report_ref(sha256="sha256:second", size_bytes=128)
+        ],
+    )
+
+    assert first.release_candidate_fingerprint != (
+        overwritten.release_candidate_fingerprint
+    )
+    assert first.metadata["validation_report_ref_paths"] == (
+        "calibration/runs/run-123/diagnostics/validation_report.json",
+    )
+
+
+def test_candidate_fingerprint_requires_validation_report_ref_identity() -> None:
+    bundle = build_legacy_release_candidate_bundle(
+        context=_context(),
+        rel_paths=["states/AL.h5"],
+        artifact_metadata_by_path={
+            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+        },
+        validation_report_refs=[_validation_report_ref(sha256=None, size_bytes=128)],
+    )
+
+    assert bundle.release_candidate_fingerprint is None
+    assert bundle.metadata["fingerprint_status"] == (
+        "path_only_missing_validation_report_identity"
+    )
+    assert bundle.metadata["missing_validation_report_identity_paths"] == (
+        "calibration/runs/run-123/diagnostics/validation_report.json",
+    )
+
+
+def test_candidate_validation_report_refs_are_run_scoped() -> None:
+    with pytest.raises(ValueError, match="context.run_id"):
+        build_legacy_release_candidate_bundle(
+            context=_context(),
+            rel_paths=["states/AL.h5"],
+            validation_report_refs=[
+                _validation_report_ref(
+                    path="calibration/runs/other-run/diagnostics/validation_report.json"
+                )
+            ],
+        )
 
 
 def test_stage4_candidate_reader_accepts_inventory_records() -> None:
@@ -1015,6 +1102,7 @@ def test_release_candidate_bundle_round_trips_through_dict_and_json() -> None:
         validation_report_paths=(
             "calibration/runs/run-123/diagnostics/validation_report.json",
         ),
+        validation_report_refs=(_validation_report_ref(),),
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/manifest.json",
         metadata={"reader": "fixture"},
     )
@@ -1025,6 +1113,7 @@ def test_release_candidate_bundle_round_trips_through_dict_and_json() -> None:
     assert payload["bundle_type"] == "release_candidate_input_bundle"
     assert payload["stage_id"] == "5_validate_and_promote_release"
     assert payload["schema_version"]
+    assert len(payload["validation_report_refs"]) == 1
     assert ReleaseArtifactSpec.from_dict(artifact.to_dict()) == artifact
     assert restored.to_dict() == payload
 

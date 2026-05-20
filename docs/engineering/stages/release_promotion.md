@@ -41,6 +41,12 @@ Production Stage 5 code should not depend on Stage 4 contracts until the
 contract and inventory are canonical, complete, and populated with semantic
 artifact identity plus checksum/size material.
 
+Candidate bundles may record validation reports as path-only
+`validation_report_paths` for compatibility. When Stage 4 or another upstream
+producer can provide report checksums, prefer `validation_report_refs` with
+canonical `DiagnosticRef` / `ArtifactRef` identity so rerun comparison can
+distinguish an overwritten report at the same diagnostics path.
+
 ## Validation Reports
 
 Stage 5 must use the shared validation schema for durable validation output:
@@ -64,7 +70,8 @@ comparison material should include:
 - run ID, candidate version, release version, HF repository, and GCS bucket;
 - Stage 4 output contract fingerprint when available;
 - output inventory paths/checksums when available;
-- validation report paths and their identities when available;
+- validation report paths and `DiagnosticRef` checksum identities when
+  available;
 - expected production-relative artifact paths;
 - the Stage 5 candidate bundle fingerprint.
 

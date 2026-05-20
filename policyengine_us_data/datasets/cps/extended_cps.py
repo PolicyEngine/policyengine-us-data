@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
+from policyengine_us_data.calibration.formulaic_inputs import (
+    FORMULAIC_SPM_INPUTS_TO_DROP,
+)
 from policyengine_us_data.datasets.cps.cps import (
     CPS,
     CPS_2024,
@@ -684,12 +687,13 @@ _HOUSING_ASSISTANCE_FORMULA_OUTPUTS = {
     "spm_unit_capped_housing_subsidy",
 }
 _FINAL_COMPUTED_OUTPUTS_TO_DROP = {
+    *FORMULAIC_SPM_INPUTS_TO_DROP,
     "dividend_income",
     "interest_income",
     "rent",
     "spm_unit_capped_work_childcare_expenses",
 }
-_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.60
+_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.55
 
 
 class _InMemoryTimePeriodDataset(Dataset):
@@ -1553,6 +1557,7 @@ class ExtendedCPS(Dataset):
     # but we must store them under leaf input names. The engine then
     # recomputes the formula var from its adds.
     _IMPUTED_TO_INPUT = {
+        "medicare_enrolled": "takes_up_medicare_if_eligible",
         "taxable_pension_income": "taxable_private_pension_income",
         "tax_exempt_pension_income": "tax_exempt_private_pension_income",
     }

@@ -1998,8 +1998,8 @@
   "metadata": {
     "api_node_count": 96,
     "canonical_stage_count": 5,
-    "decorated_object_count": 154,
-    "mapped_decorated_node_count": 58,
+    "decorated_object_count": 156,
+    "mapped_decorated_node_count": 60,
     "stage_count": 17,
     "substage_count": 17
   },
@@ -3837,8 +3837,45 @@
       "edges": [
         {
           "edge_type": "data_flow",
+          "label": "preferred input contract",
+          "source": "in_stage1_contract_s2",
+          "target": "stage2_input_bundle"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "compatibility fallback",
           "source": "in_cps_s5",
+          "target": "stage2_input_bundle"
+        },
+        {
+          "edge_type": "external_source",
+          "label": "compatibility fallback",
+          "source": "in_db_s5",
+          "target": "stage2_input_bundle"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "validated inputs",
+          "source": "stage2_input_bundle",
+          "target": "stage2_build_context"
+        },
+        {
+          "edge_type": "uses_utility",
+          "label": "output bundle paths",
+          "source": "stage2_artifact_specs",
+          "target": "stage2_build_context"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "dataset and database paths",
+          "source": "stage2_build_context",
           "target": "target_resolve"
+        },
+        {
+          "edge_type": "uses_utility",
+          "label": "package output bundle",
+          "source": "stage2_build_context",
+          "target": "stage2_calibration_package_writer"
         },
         {
           "edge_type": "external_source",
@@ -4014,6 +4051,8 @@
           "id": "run_calibration_build",
           "label": "run_calibration()",
           "node_ids": [
+            "stage2_input_bundle",
+            "stage2_build_context",
             "stage2_target_config_identity",
             "stage2_target_config_load",
             "target_resolve",
@@ -4043,6 +4082,12 @@
         "02_build_package"
       ],
       "nodes": [
+        {
+          "description": "Stage 1 handoff contract preferred for Stage 2 input resolution",
+          "id": "in_stage1_contract_s2",
+          "label": "dataset_build_output.json",
+          "node_type": "artifact"
+        },
         {
           "description": "From Stage 4 (~12K HH)",
           "id": "in_cps_s5",
@@ -4138,6 +4183,86 @@
           "id": "util_scipy",
           "label": "scipy.sparse",
           "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration_package.specs.stage2_input_bundle_from_artifacts_dir"
+          ],
+          "artifacts_in": "[DATASET_BUILD_OUTPUT_CONTRACT_FILENAME, SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+          "description": "Resolve the source-imputed dataset and policy target database from a Stage 1 contract or compatibility filename fallback.",
+          "id": "stage2_input_bundle",
+          "label": "Stage 2 Input Bundle",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration_package/specs.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration_package/test_specs.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration_package.specs.stage2_build_context_for_run"
+          ],
+          "artifacts_in": "[DATASET_BUILD_OUTPUT_CONTRACT_FILENAME, SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+          "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+          "description": "Bind one run_id to canonical Stage 2 input and output bundles before remote package construction starts.",
+          "id": "stage2_build_context",
+          "label": "Stage 2 Build Context",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration_package/specs.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration_package/test_specs.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths"
+          ],
+          "artifacts_in": "[SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+          "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_METADATA_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+          "description": "Centralize Stage 2 input, package, contract, metadata, report, and matrix-build artifact names.",
+          "id": "stage2_artifact_specs",
+          "label": "Stage 2 Artifact Specs",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration_package/specs.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration_package/test_specs.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.save_calibration_package"
+          ],
+          "artifacts_out": [
+            "calibration_package.pkl"
+          ],
+          "description": "Persist the Stage 2 sparse matrix, target rows, target names, geography arrays, and provenance metadata.",
+          "id": "stage2_calibration_package_writer",
+          "label": "Stage 2 Package Writer",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
         },
         {
           "api_refs": [
@@ -4278,46 +4403,6 @@
           "status": "current",
           "validation_commands": [
             "uv run pytest tests/integration/test_chunked_matrix_builder.py"
-          ]
-        },
-        {
-          "api_refs": [
-            "policyengine_us_data.calibration.unified_calibration.save_calibration_package"
-          ],
-          "artifacts_out": [
-            "calibration_package.pkl"
-          ],
-          "description": "Persist the Stage 2 sparse matrix, target rows, target names, geography arrays, and provenance metadata.",
-          "id": "stage2_calibration_package_writer",
-          "label": "Stage 2 Package Writer",
-          "node_type": "library",
-          "pathways": [
-            "calibration_package"
-          ],
-          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
-          "stability": "moving",
-          "status": "current",
-          "validation_commands": [
-            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
-          ]
-        },
-        {
-          "api_refs": [
-            "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths"
-          ],
-          "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
-          "description": "Centralize calibration package, contract, metadata, and matrix-build artifact paths.",
-          "id": "stage2_artifact_specs",
-          "label": "Stage 2 Artifact Specs",
-          "node_type": "library",
-          "pathways": [
-            "calibration_package"
-          ],
-          "source_file": "policyengine_us_data/calibration_package/specs.py",
-          "stability": "moving",
-          "status": "current",
-          "validation_commands": [
-            "uv run pytest tests/unit/calibration_package/test_specs.py"
           ]
         },
         {

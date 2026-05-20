@@ -95,8 +95,9 @@ from policyengine_us_data.build_datasets.commands import (  # noqa: E402
 )
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
 from policyengine_us_data.calibration_package.specs import (  # noqa: E402
-    calibration_package_artifact_paths,
+    Stage2InputBundleError,
     resolve_target_config_identity,
+    stage2_build_context_for_run,
 )
 from policyengine_us_data.utils.error_redaction import (  # noqa: E402
     redacted_bounded_error_text,
@@ -1438,14 +1439,13 @@ def run_pipeline(
             print(f"  Completed in {completed_build_manifest.duration_s}s")
 
         # ── Step 2: Build calibration package ──
+        package_context = stage2_build_context_for_run(PIPELINE_MOUNT, run_id)
+        package_input_validation = package_context.input_bundle.validation_report()
         package_inputs = _artifact_identities(
-            {
-                "dataset": _artifacts_dir(run_id)
-                / "source_imputed_stratified_extended_cps.h5",
-                "database": _artifacts_dir(run_id) / "policy_data.db",
-            }
+            package_context.input_bundle.manifest_inputs
         )
-        package_artifacts = calibration_package_artifact_paths(_artifacts_dir(run_id))
+        package_inputs["input_validation"] = package_input_validation.to_dict()
+        package_artifacts = package_context.output_bundle
         package_parameters = _calibration_package_parameters(
             workers=num_workers,
             n_clones=n_clones,
@@ -1456,6 +1456,18 @@ def run_pipeline(
             parallel_matrix=parallel_matrix,
             num_matrix_workers=num_matrix_workers,
         )
+        if package_input_validation.status != "pass":
+            active_step_manifest = _start_step_manifest(
+                meta,
+                BUILD_CALIBRATION_PACKAGE,
+                parameters=package_parameters,
+                input_identities=package_inputs,
+                vol=pipeline_volume,
+            )
+            raise Stage2InputBundleError(
+                package_context.input_bundle,
+                package_input_validation,
+            )
         package_reuse = _step_reusable(
             meta,
             BUILD_CALIBRATION_PACKAGE,

@@ -592,10 +592,15 @@ def _write_release_promotion_contract_for_run(
     from policyengine_us_data.release_promotion import (
         build_legacy_release_candidate_bundle,
         build_published_artifact_index,
+        build_promoted_run_index_entry,
         published_artifact_index_artifact_ref,
         published_artifact_index_path,
+        published_artifact_index_repo_path,
+        promoted_runs_index_artifact_ref,
+        promoted_runs_index_path,
         release_promotion_contract_repo_path,
         release_promotion_contract_path,
+        update_promoted_runs_index,
         write_published_artifact_index,
         write_release_promotion_contract,
     )
@@ -603,6 +608,7 @@ def _write_release_promotion_contract_for_run(
 
     run_dir = _run_dir(run_context.run_id)
     release_context = _release_promotion_context_from_run_context(run_context)
+    created_at = datetime.now(timezone.utc).isoformat()
     contract_path = release_promotion_contract_path(run_dir)
     candidate_bundle = build_legacy_release_candidate_bundle(
         context=release_context,
@@ -649,14 +655,56 @@ def _write_release_promotion_contract_for_run(
         sha256=f"sha256:{published_index_manifest_ref.sha256}",
         size_bytes=published_index_manifest_ref.size_bytes,
     )
+    promoted_index_path = promoted_runs_index_path(Path(RUNS_DIR))
+    promoted_run_entry = build_promoted_run_index_entry(
+        context=release_context,
+        promotion_result=promotion_result,
+        promoted_at=created_at,
+        release_promotion_contract_path=release_promotion_contract_repo_path(
+            release_context.run_id
+        ),
+        published_artifact_index_path=published_artifact_index_repo_path(
+            release_context.run_id
+        ),
+        run_manifest_path=f"calibration/runs/{release_context.run_id}/run_manifest.json",
+        step_manifest_path=(
+            f"calibration/runs/{release_context.run_id}/steps/"
+            f"{VALIDATE_AND_PROMOTE_RELEASE.id}.json"
+        ),
+        metadata={
+            "writer": "modal_app.pipeline.promote_run",
+            "branch": meta.branch,
+            "code_sha": meta.sha,
+            "package_version": meta.version,
+        },
+    )
+    _, promoted_index_update = update_promoted_runs_index(
+        path=promoted_index_path,
+        entry=promoted_run_entry,
+        updated_at=created_at,
+    )
+    promoted_index_manifest_ref = ArtifactReference.from_path(
+        promoted_index_path,
+        role="index",
+        manifest_path=f"../{promoted_index_path.name}",
+        media_type="application/json",
+    )
+    promoted_index_artifact = promoted_runs_index_artifact_ref(
+        release_context,
+        promoted_index_update,
+        sha256=f"sha256:{promoted_index_manifest_ref.sha256}",
+        size_bytes=promoted_index_manifest_ref.size_bytes,
+    )
     write_release_promotion_contract(
         contract_path=contract_path,
         candidate_bundle=candidate_bundle,
         promotion_result=promotion_result,
-        created_at=datetime.now(timezone.utc).isoformat(),
+        created_at=created_at,
         code_sha=meta.sha,
         package_version=meta.version,
         published_artifact_index=published_index_artifact,
+        promoted_runs_index=promoted_index_artifact,
+        promoted_runs_index_update=promoted_index_update.to_dict(),
         metadata={
             "writer": "modal_app.pipeline.promote_run",
             "branch": meta.branch,
@@ -670,6 +718,7 @@ def _write_release_promotion_contract_for_run(
             media_type="application/json",
         ),
         published_index_manifest_ref,
+        promoted_index_manifest_ref,
     )
 
 

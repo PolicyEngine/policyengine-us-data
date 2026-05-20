@@ -137,3 +137,20 @@ revision, and kind fields for promoted data artifacts; the index should leave
 the release manifest schema unchanged. The release promotion contract must
 reference the index as a `published_artifact_index` output so dashboards and AI
 systems can discover the per-artifact rows from the Stage 5 contract.
+
+## Promoted Runs Index
+
+Stage 5 writes `calibration/runs/index.json` as the run-oriented discovery
+index for promoted releases. Keep this separate from `version_manifest.json`:
+the version manifest remains the package-version registry, while the promoted
+runs index is keyed by canonical `run_id` and points dashboards, status
+surfaces, and AI agents to run diagnostics such as `run_manifest.json`,
+`release_promotion_contract.json`, and `published_artifact_index.jsonl`.
+
+Update the promoted runs index only after release completion succeeds. For an
+already-finalized promotion rerun, completion must first be verified by the
+existing release completion marker check, then the same `run_id` entry may be
+updated idempotently. Repeated promotions must not duplicate run entries or
+release-version run lists. The release promotion contract should reference the
+index as `promoted_runs_index` and include the update status so readers can see
+whether the current promotion created or updated the run discovery record.

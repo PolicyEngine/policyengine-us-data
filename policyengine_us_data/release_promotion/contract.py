@@ -19,7 +19,10 @@ from policyengine_us_data.stage_contracts import (
     contract_type_for_stage,
     write_contract,
 )
-from policyengine_us_data.stage_contracts._coercion import freeze_sequence
+from policyengine_us_data.stage_contracts._coercion import (
+    freeze_mapping,
+    freeze_sequence,
+)
 from policyengine_us_data.stage_contracts.fingerprints import fingerprint_material
 from policyengine_us_data.stage_contracts.stages import (
     STAGE_5_VALIDATE_AND_PROMOTE_RELEASE,
@@ -79,6 +82,8 @@ class ReleasePromotionContractBuilder:
     validation: ValidationReport | None = None
     diagnostics: Sequence[DiagnosticRef] = ()
     published_artifact_index: ArtifactRef | None = None
+    promoted_runs_index: ArtifactRef | None = None
+    promoted_runs_index_update: Mapping[str, Any] | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -90,6 +95,19 @@ class ReleasePromotionContractBuilder:
             self.published_artifact_index, ArtifactRef
         ):
             raise ValueError("published_artifact_index must be ArtifactRef")
+        if self.promoted_runs_index is not None and not isinstance(
+            self.promoted_runs_index, ArtifactRef
+        ):
+            raise ValueError("promoted_runs_index must be ArtifactRef")
+        if self.promoted_runs_index_update is not None:
+            object.__setattr__(
+                self,
+                "promoted_runs_index_update",
+                freeze_mapping(
+                    self.promoted_runs_index_update,
+                    "promoted_runs_index_update",
+                ),
+            )
         object.__setattr__(
             self,
             "diagnostics",
@@ -109,11 +127,13 @@ class ReleasePromotionContractBuilder:
             context,
             self.promotion_result,
             published_artifact_index=self.published_artifact_index,
+            promoted_runs_index=self.promoted_runs_index,
         )
         parameters = _contract_parameters(
             self.candidate_bundle,
             self.promotion_result,
             published_artifact_index=self.published_artifact_index,
+            promoted_runs_index=self.promoted_runs_index,
         )
         return StageContract(
             contract_type=RELEASE_PROMOTION_CONTRACT_TYPE,
@@ -137,6 +157,16 @@ class ReleasePromotionContractBuilder:
                         if self.published_artifact_index is not None
                         else None
                     ),
+                    "promoted_runs_index": (
+                        self.promoted_runs_index.to_dict()
+                        if self.promoted_runs_index is not None
+                        else None
+                    ),
+                    "promoted_runs_index_update": (
+                        dict(self.promoted_runs_index_update)
+                        if self.promoted_runs_index_update is not None
+                        else None
+                    ),
                     "outputs": [output.to_dict() for output in outputs],
                 }
             ),
@@ -153,6 +183,7 @@ class ReleasePromotionContractBuilder:
                 candidate_bundle=self.candidate_bundle,
                 promotion_result=self.promotion_result,
                 outputs=outputs,
+                promoted_runs_index_update=self.promoted_runs_index_update,
                 extra=self.metadata,
             ),
         )
@@ -168,6 +199,8 @@ def build_release_promotion_contract(
     validation: ValidationReport | None = None,
     diagnostics: Sequence[DiagnosticRef] = (),
     published_artifact_index: ArtifactRef | None = None,
+    promoted_runs_index: ArtifactRef | None = None,
+    promoted_runs_index_update: Mapping[str, Any] | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 5 release promotion contract."""
@@ -181,6 +214,8 @@ def build_release_promotion_contract(
         validation=validation,
         diagnostics=diagnostics,
         published_artifact_index=published_artifact_index,
+        promoted_runs_index=promoted_runs_index,
+        promoted_runs_index_update=promoted_runs_index_update,
         metadata=metadata or {},
     ).build()
 
@@ -196,6 +231,8 @@ def write_release_promotion_contract(
     validation: ValidationReport | None = None,
     diagnostics: Sequence[DiagnosticRef] = (),
     published_artifact_index: ArtifactRef | None = None,
+    promoted_runs_index: ArtifactRef | None = None,
+    promoted_runs_index_update: Mapping[str, Any] | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build, write, and return the Stage 5 release promotion contract."""
@@ -209,6 +246,8 @@ def write_release_promotion_contract(
         validation=validation,
         diagnostics=diagnostics,
         published_artifact_index=published_artifact_index,
+        promoted_runs_index=promoted_runs_index,
+        promoted_runs_index_update=promoted_runs_index_update,
         metadata=metadata,
     )
     write_contract(contract, contract_path)
@@ -287,6 +326,7 @@ def _contract_outputs(
     result: FullPromotionResult,
     *,
     published_artifact_index: ArtifactRef | None = None,
+    promoted_runs_index: ArtifactRef | None = None,
 ) -> tuple[ArtifactRef, ...]:
     hf_base = f"hf://{context.hf_repo_name}"
     completion_marker_path = (
@@ -362,6 +402,8 @@ def _contract_outputs(
     )
     if published_artifact_index is not None:
         outputs = (*outputs, published_artifact_index)
+    if promoted_runs_index is not None:
+        outputs = (*outputs, promoted_runs_index)
     return outputs
 
 
@@ -370,6 +412,7 @@ def _contract_parameters(
     result: FullPromotionResult,
     *,
     published_artifact_index: ArtifactRef | None = None,
+    promoted_runs_index: ArtifactRef | None = None,
 ) -> dict[str, Any]:
     context = candidate_bundle.context
     return {
@@ -392,6 +435,7 @@ def _contract_parameters(
         "published_artifact_index_path": _artifact_relative_path(
             published_artifact_index
         ),
+        "promoted_runs_index_path": _artifact_relative_path(promoted_runs_index),
     }
 
 
@@ -401,6 +445,7 @@ def _contract_metadata(
     candidate_bundle: ReleaseCandidateInputBundle,
     promotion_result: FullPromotionResult,
     outputs: Sequence[ArtifactRef],
+    promoted_runs_index_update: Mapping[str, Any] | None,
     extra: Mapping[str, Any],
 ) -> dict[str, Any]:
     outputs_by_name = {output.logical_name: output for output in outputs}
@@ -416,6 +461,16 @@ def _contract_metadata(
         "published_artifact_index": (
             outputs_by_name["published_artifact_index"].to_dict()
             if "published_artifact_index" in outputs_by_name
+            else None
+        ),
+        "promoted_runs_index": (
+            outputs_by_name["promoted_runs_index"].to_dict()
+            if "promoted_runs_index" in outputs_by_name
+            else None
+        ),
+        "promoted_runs_index_update": (
+            dict(promoted_runs_index_update)
+            if promoted_runs_index_update is not None
             else None
         ),
         "public_refs": {output.logical_name: output.uri for output in outputs},
@@ -463,6 +518,8 @@ def _substage_records(
     ]
     if "published_artifact_index" in outputs_by_name:
         finalization_outputs.append(outputs_by_name["published_artifact_index"])
+    if "promoted_runs_index" in outputs_by_name:
+        finalization_outputs.append(outputs_by_name["promoted_runs_index"])
     return (
         SubstageRecord(
             substage_id="5a_validate_outputs",

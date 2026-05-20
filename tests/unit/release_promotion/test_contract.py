@@ -10,6 +10,8 @@ from policyengine_us_data.release_promotion import (
     build_legacy_release_candidate_bundle,
     build_release_promotion_contract,
     published_artifact_index_artifact_ref,
+    promoted_runs_index_artifact_ref,
+    PromotedRunsIndexUpdate,
     release_promotion_contract_path,
     release_promotion_contract_repo_path,
     write_release_promotion_contract,
@@ -103,7 +105,20 @@ def _validation_report() -> ValidationReport:
     )
 
 
+def _promoted_runs_index_update() -> PromotedRunsIndexUpdate:
+    return PromotedRunsIndexUpdate(
+        status="created",
+        run_id="run-123",
+        release_version="1.73.0",
+        run_count=1,
+        release_version_run_count=1,
+        already_finalized=False,
+        updated_at="2026-05-18T12:00:00+00:00",
+    )
+
+
 def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
+    promoted_runs_update = _promoted_runs_index_update()
     contract = build_release_promotion_contract(
         candidate_bundle=_candidate_bundle(),
         promotion_result=_promotion_result(),
@@ -117,6 +132,13 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
             sha256="sha256:index",
             size_bytes=123,
         ),
+        promoted_runs_index=promoted_runs_index_artifact_ref(
+            _context(),
+            promoted_runs_update,
+            sha256="sha256:runs-index",
+            size_bytes=456,
+        ),
+        promoted_runs_index_update=promoted_runs_update.to_dict(),
         metadata={"writer": "test"},
     )
 
@@ -139,6 +161,7 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
         "version_manifest",
         "release_completion_marker",
         "published_artifact_index",
+        "promoted_runs_index",
     }
     assert contract.execution.status == "completed"
     assert contract.execution.reuse_decision == "computed"
@@ -150,15 +173,26 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
     assert contract.parameters["published_artifact_index_path"] == (
         "calibration/runs/run-123/diagnostics/published_artifact_index.jsonl"
     )
+    assert contract.parameters["promoted_runs_index_path"] == (
+        "calibration/runs/index.json"
+    )
     assert contract.metadata["contract_file"] == RELEASE_PROMOTION_CONTRACT_FILENAME
     assert contract.metadata["already_finalized"] is False
     assert contract.metadata["cleanup"]["cleaned_count"] == 3
     assert contract.metadata["published_artifact_index"]["metadata"]["row_count"] == 9
+    assert (
+        contract.metadata["promoted_runs_index"]["metadata"]["update_status"]
+        == "created"
+    )
+    assert contract.metadata["promoted_runs_index_update"]["run_count"] == 1
     assert contract.metadata["public_refs"]["release_manifest"] == (
         "hf://policyengine/policyengine-us-data/release_manifest.json"
     )
     assert contract.metadata["public_refs"]["published_artifact_index"].endswith(
         "published_artifact_index.jsonl"
+    )
+    assert contract.metadata["public_refs"]["promoted_runs_index"].endswith(
+        "calibration/runs/index.json"
     )
     assert [substage.substage_id for substage in contract.substages] == [
         "5a_validate_outputs",

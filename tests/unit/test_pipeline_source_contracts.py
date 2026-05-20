@@ -116,17 +116,24 @@ def test_promote_run_writes_release_promotion_contract_output() -> None:
     assert "release_promotion_contract_path(run_dir)" in helper_source
     assert "build_legacy_release_candidate_bundle(" in helper_source
     assert "build_published_artifact_index(" in helper_source
+    assert "build_promoted_run_index_entry(" in helper_source
     assert "write_published_artifact_index(" in helper_source
+    assert "update_promoted_runs_index(" in helper_source
     assert "write_release_promotion_contract(" in helper_source
     assert 'role="contract"' in helper_source
     assert 'role="index"' in helper_source
     assert 'media_type="application/json"' in helper_source
     assert 'media_type="application/jsonl"' in helper_source
+    assert 'manifest_path=f"../{promoted_index_path.name}"' in helper_source
     assert (
         "source_output_contract_path=_stage4_output_contract_repo_path_if_available"
         in (helper_source)
     )
     assert "published_artifact_index=published_index_artifact" in helper_source
+    assert "promoted_runs_index=promoted_index_artifact" in helper_source
+    assert "promoted_runs_index_update=promoted_index_update.to_dict()" in (
+        helper_source
+    )
     assert 'diagnostics" / "contracts" / "output_build_contract.json"' in stage4_source
     assert "calibration/runs/{run_id}/" in stage4_source
 

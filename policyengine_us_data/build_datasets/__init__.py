@@ -21,6 +21,7 @@ from .coordinator import (
     CommandBackedSubstepRunner,
     Stage1Coordinator,
     Stage1SubstepRunner,
+    Stage1ValidationAdapter,
     stage_1_substep_id_for_script,
     stage_1_substep_title,
 )
@@ -45,6 +46,18 @@ from .rerun import (
 )
 from .staging import PipelineArtifactStager
 from .status import Stage1ErrorRecord, Stage1StatusEvent
+from .validation import (
+    Stage1ValidationContext,
+    Stage1ValidationError,
+    Stage1ValidationRunner,
+    Stage1Validator,
+    Stage1ValidatorSpec,
+    iter_stage_1_validators,
+    run_stage_1_validators,
+    validators_for_substage,
+)
+from .validation_results import Stage1ValidationResultWriter, Stage1ValidationSummary
+from .validation_targets import ValidationTarget, ValidationTargetCatalog
 
 __all__ = [
     "ARTIFACT_SCHEMA_VERSION",
@@ -74,7 +87,19 @@ __all__ = [
     "Stage1ReuseDecision",
     "Stage1StatusEvent",
     "Stage1SubstepRunner",
+    "Stage1ValidationAdapter",
+    "Stage1ValidationContext",
+    "Stage1ValidationError",
+    "Stage1ValidationResultWriter",
+    "Stage1ValidationRunner",
+    "Stage1ValidationSummary",
+    "Stage1Validator",
+    "Stage1ValidatorSpec",
     "TargetDatabaseSchemaSummaryWriter",
+    "ValidationTarget",
+    "ValidationTargetCatalog",
+    "iter_stage_1_validators",
+    "run_stage_1_validators",
     "stage_1_artifact_specs",
     "stage_1_contract_artifact_specs",
     "stage_1_diagnostic_artifact_specs",
@@ -83,5 +108,6 @@ __all__ = [
     "stage_1_substep_id_for_script",
     "stage_1_substep_title",
     "stage_1_step_specs",
+    "validators_for_substage",
     "write_stage_1_diagnostics",
 ]

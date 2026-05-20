@@ -58,6 +58,7 @@ class DatasetSubstepResult:
     artifact_paths: tuple[str, ...] = ()
     reuse_decision: Mapping[str, Any] | None = None
     checkpoint_decisions: tuple[Mapping[str, Any], ...] = ()
+    validation_report: Mapping[str, Any] | None = None
     error: Stage1ErrorRecord | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -79,6 +80,11 @@ class DatasetSubstepResult:
             "checkpoint_decisions": [
                 dict(decision) for decision in self.checkpoint_decisions
             ],
+            "validation_report": (
+                dict(self.validation_report)
+                if self.validation_report is not None
+                else None
+            ),
             "error": self.error.to_dict() if self.error else None,
             "metadata": dict(self.metadata),
         }

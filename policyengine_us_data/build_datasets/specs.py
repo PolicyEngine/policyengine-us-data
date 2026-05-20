@@ -22,6 +22,7 @@ class DatasetBuildStepSpec:
     reuse_mode: str = "checkpointable"
     skip_when_enhanced_cps_skipped: bool = False
     skip_when_stage_5_skipped: bool = False
+    validation_ids: tuple[str, ...] = ()
 
 
 STAGE_1_BUILD_STEP_SPECS: tuple[DatasetBuildStepSpec, ...] = (
@@ -30,28 +31,33 @@ STAGE_1_BUILD_STEP_SPECS: tuple[DatasetBuildStepSpec, ...] = (
         title="Raw data download",
         legacy_stage_id="0",
         reuse_mode="observed_only",
+        validation_ids=("stage_1.1a_raw_data_download.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1b_base_dataset_construction",
         title="Base dataset construction",
         legacy_stage_id="1",
+        validation_ids=("stage_1.1b_base_dataset_construction.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1c_extended_cps_puf_clone",
         title="Extended CPS PUF clone",
         legacy_stage_id="2",
+        validation_ids=("stage_1.1c_extended_cps_puf_clone.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1d_enhanced_cps_reweighting",
         title="Enhanced CPS reweighting",
         legacy_stage_id="3a",
         skip_when_enhanced_cps_skipped=True,
+        validation_ids=("stage_1.1d_enhanced_cps_reweighting.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1e_stratified_cps",
         title="Stratified CPS",
         legacy_stage_id="3b",
         reuse_mode="handoff",
+        validation_ids=("stage_1.1e_stratified_cps.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1f_source_imputation",
@@ -59,6 +65,7 @@ STAGE_1_BUILD_STEP_SPECS: tuple[DatasetBuildStepSpec, ...] = (
         legacy_stage_id="4",
         reuse_mode="handoff",
         skip_when_stage_5_skipped=True,
+        validation_ids=("stage_1.1f_source_imputation.artifact_contract",),
     ),
     DatasetBuildStepSpec(
         id="1g_stage_base_datasets",
@@ -66,6 +73,7 @@ STAGE_1_BUILD_STEP_SPECS: tuple[DatasetBuildStepSpec, ...] = (
         legacy_stage_id="7",
         manifest_step_ids=("04_stage_base_datasets",),
         reuse_mode="handoff",
+        validation_ids=("stage_1.1g_stage_base_datasets.artifact_contract",),
     ),
 )
 

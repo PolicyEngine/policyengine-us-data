@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
+
+from policyengine_us_data.stage_contracts import ValidationReport
 
 from .artifacts import stage_1_artifact_specs
 from .results import DatasetSubstepResult
@@ -23,6 +25,19 @@ class Stage1SubstepRunner(Protocol):
 
     def run(self) -> Any:
         """Run the substep action."""
+
+
+class Stage1ValidationAdapter(Protocol):
+    """Adapter that validates a completed Stage 1 substep result."""
+
+    def run_for_substep_result(
+        self,
+        result: DatasetSubstepResult,
+    ) -> ValidationReport:
+        """Run validation for one substep result."""
+
+    def should_stop(self, report: ValidationReport) -> bool:
+        """Return whether validation failure should stop downstream work."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -43,6 +58,7 @@ class CommandBackedSubstepRunner:
 class Stage1Coordinator:
     """Collect Stage 1 substep status events, errors, and results."""
 
+    validation_runner: Stage1ValidationAdapter | None = None
     results: list[DatasetSubstepResult] = field(default_factory=list)
     status_events: list[Stage1StatusEvent] = field(default_factory=list)
     error_records: list[Stage1ErrorRecord] = field(default_factory=list)
@@ -125,6 +141,7 @@ class Stage1Coordinator:
             checkpoint_decisions=checkpoint_decisions,
             metadata=metadata,
         )
+        result = self._validated_result(result)
         self._record(result)
         return value
 
@@ -174,12 +191,29 @@ class Stage1Coordinator:
             completed_at=utc_timestamp(completed_dt),
             duration_s=(completed_dt - started_dt).total_seconds(),
             command_names=tuple(command_names),
-            artifact_paths=_existing_artifact_paths(artifact_paths),
+            artifact_paths=_artifact_paths(artifact_paths),
             reuse_decision=reuse_decision,
             checkpoint_decisions=tuple(checkpoint_decisions),
             error=error,
             metadata=dict(metadata or {}),
         )
+
+    def _validated_result(self, result: DatasetSubstepResult) -> DatasetSubstepResult:
+        if self.validation_runner is None:
+            return result
+
+        report = self.validation_runner.run_for_substep_result(result)
+        result = replace(result, validation_report=report.to_dict())
+        if self.validation_runner.should_stop(report):
+            exc = RuntimeError(f"Stage 1 validation failed for {result.substep_id}")
+            error = Stage1ErrorRecord.from_exception(
+                exc,
+                substep_id=result.substep_id,
+                command_name=result.command_names[0] if result.command_names else None,
+                metadata={"validation_report": report.to_dict()},
+            )
+            return replace(result, status="failed", error=error)
+        return result
 
     def _record(self, result: DatasetSubstepResult) -> None:
         with self._lock:
@@ -196,11 +230,20 @@ class Stage1Coordinator:
                         "checkpoint_decisions": [
                             dict(decision) for decision in result.checkpoint_decisions
                         ],
+                        "validation_report": (
+                            dict(result.validation_report)
+                            if result.validation_report is not None
+                            else None
+                        ),
                     },
                 )
             )
             if result.error is not None:
                 self.error_records.append(result.error)
+                if result.validation_report is not None:
+                    raise RuntimeError(
+                        f"Stage 1 validation failed for {result.substep_id}"
+                    )
 
     def _record_event(self, event: Stage1StatusEvent) -> None:
         with self._lock:
@@ -225,14 +268,15 @@ def stage_1_substep_title(substep_id: str) -> str:
     return substep_id
 
 
-def _existing_artifact_paths(paths: Sequence[str | Path]) -> tuple[str, ...]:
-    return tuple(str(Path(path)) for path in paths if Path(path).exists())
+def _artifact_paths(paths: Sequence[str | Path]) -> tuple[str, ...]:
+    return tuple(str(Path(path)) for path in paths)
 
 
 __all__ = [
     "CommandBackedSubstepRunner",
     "Stage1Coordinator",
     "Stage1SubstepRunner",
+    "Stage1ValidationAdapter",
     "stage_1_substep_id_for_script",
     "stage_1_substep_title",
 ]

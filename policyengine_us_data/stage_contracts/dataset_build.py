@@ -6,10 +6,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from policyengine_us_data.build_datasets import (
-    STAGE_1_BUILD_STEP_SPECS,
+from policyengine_us_data.build_datasets.artifacts import (
     stage_1_contract_artifact_specs,
 )
+from policyengine_us_data.build_datasets.specs import STAGE_1_BUILD_STEP_SPECS
 from policyengine_us_data.utils.step_manifest import sha256_file
 
 from .artifacts import ArtifactRef
@@ -19,6 +19,7 @@ from .execution import ExecutionRecord, ReuseSummary
 from .fingerprints import fingerprint_material
 from .stages import STAGE_1_BUILD_DATASETS, contract_type_for_stage
 from .substages import SubstageRecord
+from .validation import ValidationReport
 
 DATASET_BUILD_OUTPUT_CONTRACT_FILENAME = "dataset_build_output.json"
 DATASET_BUILD_OUTPUT_CONTRACT_TYPE = contract_type_for_stage(STAGE_1_BUILD_DATASETS)
@@ -39,6 +40,8 @@ def build_dataset_build_output_contract(
     skip_enhanced_cps: bool = False,
     skip_stage_5: bool = False,
     diagnostics: tuple[DiagnosticRef, ...] = (),
+    validation: ValidationReport | None = None,
+    substage_validation: Mapping[str, ValidationReport] | None = None,
     stage_1_status_metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 1 handoff contract from copied pipeline artifacts."""
@@ -82,7 +85,9 @@ def build_dataset_build_output_contract(
             outputs=outputs,
             skip_enhanced_cps=skip_enhanced_cps,
             skip_stage_5=skip_stage_5,
+            substage_validation=substage_validation or {},
         ),
+        validation=validation,
         diagnostics=diagnostics,
         execution=execution,
         metadata={
@@ -172,6 +177,7 @@ def _stage_1_substages(
     outputs: tuple[ArtifactRef, ...],
     skip_enhanced_cps: bool,
     skip_stage_5: bool,
+    substage_validation: Mapping[str, ValidationReport],
 ) -> tuple[SubstageRecord, ...]:
     output_by_substage: dict[str, list[ArtifactRef]] = {
         spec.id: [] for spec in STAGE_1_BUILD_STEP_SPECS
@@ -195,6 +201,7 @@ def _stage_1_substages(
                 status=status,
                 outputs=tuple(output_by_substage[substage_id]),
                 reuse_mode=spec.reuse_mode,
+                validation=substage_validation.get(substage_id),
             )
         )
     return tuple(records)

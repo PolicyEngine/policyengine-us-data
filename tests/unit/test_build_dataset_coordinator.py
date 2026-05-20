@@ -7,6 +7,7 @@ from policyengine_us_data.build_datasets import (
     stage_1_substep_id_for_script,
     stage_1_substep_title,
 )
+from policyengine_us_data.stage_contracts import ValidationFinding, ValidationReport
 
 
 def test_stage_1_substep_mapping_uses_artifact_specs():
@@ -109,3 +110,74 @@ def test_fake_substep_runner_collects_tiny_artifacts(tmp_path: Path):
     [result] = coordinator.results
     assert result.status == "completed"
     assert result.artifact_paths == tuple(str(path) for path in outputs)
+
+
+class _PassValidationRunner:
+    def run_for_substep_result(self, result):
+        return ValidationReport(
+            status="pass",
+            metadata={"substage_id": result.substep_id, "check_ids": ["check.pass"]},
+        )
+
+    def should_stop(self, report):
+        return report.status == "fail"
+
+
+class _FailValidationRunner:
+    def run_for_substep_result(self, result):
+        return ValidationReport(
+            status="fail",
+            findings=(
+                ValidationFinding(
+                    check_id="check.fail",
+                    status="fail",
+                    message="validator failed",
+                ),
+            ),
+            metadata={"substage_id": result.substep_id, "check_ids": ["check.fail"]},
+        )
+
+    def should_stop(self, report):
+        return report.status == "fail"
+
+
+def test_coordinator_attaches_validation_report(tmp_path: Path):
+    coordinator = Stage1Coordinator(validation_runner=_PassValidationRunner())
+    artifact = tmp_path / "artifact.h5"
+
+    def action():
+        artifact.write_text("ok")
+
+    coordinator.run_substep(
+        "1b_base_dataset_construction",
+        "Base dataset construction",
+        action,
+        artifact_paths=(artifact,),
+    )
+
+    [result] = coordinator.results
+    assert result.validation_report["status"] == "pass"
+    assert coordinator.status_events[-1].metadata["validation_report"]["status"] == (
+        "pass"
+    )
+
+
+def test_coordinator_stops_after_error_level_validation_failure(tmp_path: Path):
+    coordinator = Stage1Coordinator(validation_runner=_FailValidationRunner())
+    artifact = tmp_path / "artifact.h5"
+
+    def action():
+        artifact.write_text("ok")
+
+    with pytest.raises(RuntimeError, match="Stage 1 validation failed"):
+        coordinator.run_substep(
+            "1b_base_dataset_construction",
+            "Base dataset construction",
+            action,
+            artifact_paths=(artifact,),
+        )
+
+    [result] = coordinator.results
+    assert result.status == "failed"
+    assert result.validation_report["status"] == "fail"
+    assert coordinator.error_records == [result.error]

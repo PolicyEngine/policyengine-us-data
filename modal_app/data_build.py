@@ -34,6 +34,9 @@ from policyengine_us_data.build_datasets import (  # noqa: E402
     Stage1IdentityMaterial,
     Stage1RerunPlanner,
     Stage1ReuseDecision,
+    Stage1ValidationResultWriter,
+    Stage1ValidationRunner,
+    ValidationTargetCatalog,
     stage_1_artifact_specs,
     stage_1_script_outputs,
     stage_1_substep_id_for_script,
@@ -44,6 +47,7 @@ from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.stage_contracts import (  # noqa: E402
     StageContract,
+    ValidationReport,
 )
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     CANDIDATE_VERSION_ENV,
@@ -116,16 +120,6 @@ SCRIPT_OUTPUTS = stage_1_script_outputs()
 
 CPS_BUILD_SCRIPT = "policyengine_us_data/datasets/cps/cps.py"
 PUF_BUILD_SCRIPT = "policyengine_us_data/datasets/puf/puf.py"
-
-# Post-build validation modules to run individually for checkpoint tracking.
-VALIDATION_MODULES = [
-    "validation/stage_1/",
-]
-
-
-def _python_cmd(*args: str) -> list[str]:
-    """Build a command that uses the current interpreter."""
-    return [sys.executable, *args]
 
 
 def _utc_timestamp(value: datetime | None = None) -> str:
@@ -552,54 +546,6 @@ def run_cps_then_puf_phase(
         )
 
 
-def run_tests_with_checkpoints(
-    branch: str,
-    volume: modal.Volume,
-    env: dict,
-) -> None:
-    """Run post-build validators module-by-module, checkpointing progress.
-
-    Args:
-        branch: Git branch name for checkpoint scoping.
-        volume: Modal volume for checkpointing.
-        env: Environment variables dict.
-
-    Raises:
-        RuntimeError: If any validation module fails.
-    """
-    commit = get_current_commit()
-    checkpoint_dir = Path(VOLUME_MOUNT) / branch / commit / "tests"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-    for module in VALIDATION_MODULES:
-        # Use stem for files, or last component for directories
-        module_path = Path(module)
-        if module_path.suffix:
-            module_name = module_path.stem
-        else:
-            module_name = module_path.name.rstrip("/")
-
-        marker_file = checkpoint_dir / f"{module_name}.passed"
-
-        if marker_file.exists():
-            print(f"Skipping {module} (already passed)")
-            continue
-
-        print(f"Running validation: {module}")
-        result = subprocess.run(
-            _python_cmd("-u", "-m", "pytest", module, "-v"),
-            env=env,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"Validation failed: {module}")
-
-        # Mark as passed
-        marker_file.touch()
-        volume.commit()
-        print(f"Checkpointed: {module} passed")
-
-
 def write_dataset_build_contract(
     *,
     artifacts_dir: Path,
@@ -616,6 +562,8 @@ def write_dataset_build_contract(
     package_version: str = DATA_PACKAGE_VERSION,
     branch: str = "unknown",
     diagnostics: tuple = (),
+    validation: ValidationReport | None = None,
+    substage_validation: Mapping[str, ValidationReport] | None = None,
     stage_1_status_metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Write the Stage 1 semantic handoff contract next to copied artifacts."""
@@ -636,6 +584,8 @@ def write_dataset_build_contract(
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
         diagnostics=diagnostics,
+        validation=validation,
+        substage_validation=substage_validation,
         stage_1_status_metadata=stage_1_status_metadata,
     )
 
@@ -743,7 +693,17 @@ def build_datasets(
         f"{'=' * 40}\n"
     )
     log_file.flush()
-    coordinator = Stage1Coordinator()
+    validation_runner = None
+    if not skip_tests:
+        validation_runner = Stage1ValidationRunner(
+            run_id=run_id,
+            catalog=ValidationTargetCatalog.from_stage_1_specs(
+                skip_enhanced_cps=skip_enhanced_cps,
+                skip_stage_5=skip_stage_5,
+            ),
+            metadata={"branch": branch, "code_sha": commit},
+        )
+    coordinator = Stage1Coordinator(validation_runner=validation_runner)
     recorded_skips: set[tuple[str, str]] = set()
 
     def record_skipped_script(script: str, reason: str) -> None:
@@ -1025,6 +985,32 @@ def build_datasets(
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
     )
+    validation_report: ValidationReport | None = None
+    validation_diagnostics: tuple = ()
+    substage_validation: Mapping[str, ValidationReport] = {}
+    if skip_tests:
+        print("Skipping Stage 1 validation (--skip-tests)")
+        validation_report = ValidationReport(
+            status="not_run",
+            metadata={
+                "stage_id": "1_build_datasets",
+                "run_id": run_id,
+                "skip_reason": "--skip-tests",
+            },
+        )
+    else:
+        print("Writing Stage 1 validation artifacts...")
+        validation_reports = [
+            ValidationReport.from_dict(result.validation_report)
+            for result in coordinator.results
+            if result.validation_report is not None
+        ]
+        validation_summary = Stage1ValidationResultWriter(
+            output_dir=Path(PIPELINE_MOUNT) / "runs" / run_id / "validation"
+        ).write(validation_reports)
+        validation_report = validation_summary.report
+        validation_diagnostics = validation_summary.diagnostics
+        substage_validation = validation_summary.substage_reports
     stage_1_status_metadata = {
         "substep_results": [result.to_dict() for result in coordinator.results],
         "status_events": [event.to_dict() for event in coordinator.status_events],
@@ -1044,18 +1030,13 @@ def build_datasets(
         skip_stage_5=skip_stage_5,
         package_version=version,
         branch=branch,
-        diagnostics=diagnostics,
+        diagnostics=(*diagnostics, *validation_diagnostics),
+        validation=validation_report,
+        substage_validation=substage_validation,
         stage_1_status_metadata=stage_1_status_metadata,
     )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")
-
-    # Run post-build validators with checkpointing.
-    if skip_tests:
-        print("Skipping tests (--skip-tests)")
-    else:
-        print("=== Running post-build validation with checkpointing ===")
-        run_tests_with_checkpoints(branch, checkpoint_volume, env)
 
     validate_and_maybe_upload_datasets(
         upload=upload,

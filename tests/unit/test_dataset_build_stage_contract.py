@@ -3,6 +3,8 @@ from pathlib import Path
 from policyengine_us_data.stage_contracts import (
     DiagnosticRef,
     StageContract,
+    ValidationFinding,
+    ValidationReport,
     contract_from_json,
     contract_to_json,
 )
@@ -255,3 +257,41 @@ def test_dataset_build_contract_records_stage_1_status_metadata(tmp_path):
     assert contract.metadata["stage_1_status"]["substep_results"][0][
         "reuse_decision"
     ] == {"action": "reuse"}
+
+
+def test_dataset_build_contract_records_validation_reports(tmp_path):
+    _write_artifacts(tmp_path)
+    substage_report = ValidationReport(
+        status="fail",
+        findings=(
+            ValidationFinding(
+                check_id="stage_1.1b_base_dataset_construction.artifact_contract",
+                status="fail",
+                message="missing CPS",
+            ),
+        ),
+        metadata={"substage_id": "1b_base_dataset_construction"},
+    )
+    aggregate_report = ValidationReport(
+        status="fail",
+        findings=substage_report.findings,
+        metadata={"stage_id": "1_build_datasets"},
+    )
+
+    contract = build_dataset_build_output_contract(
+        artifacts_dir=tmp_path,
+        run_id="run-a",
+        code_sha="abc123",
+        package_version="1.98.2",
+        checkpoint_stats={"expected_outputs": 4},
+        started_at="2026-05-08T12:00:00Z",
+        completed_at="2026-05-08T12:01:00Z",
+        validation=aggregate_report,
+        substage_validation={
+            "1b_base_dataset_construction": substage_report,
+        },
+    )
+
+    assert contract.validation == aggregate_report
+    records = {record.substage_id: record for record in contract.substages}
+    assert records["1b_base_dataset_construction"].validation == substage_report

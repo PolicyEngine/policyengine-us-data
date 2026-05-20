@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-import pickle
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from policyengine_us_data.calibration_package.payload import (
+    CalibrationPackagePayload,
+    CalibrationPackageReader,
+)
 from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     CALIBRATION_PACKAGE_SUBSTAGE_ID,
@@ -14,10 +17,6 @@ from policyengine_us_data.calibration_package.specs import (
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.step_manifest import sha256_file
-from policyengine_us_data.utils.geography_checksum import (
-    canonical_geography_checksum,
-    hash_string_array,
-)
 
 from .artifacts import ArtifactRef
 from .calibration_package_schema import (
@@ -38,146 +37,19 @@ CALIBRATION_PACKAGE_CONTRACT_TYPE = contract_type_for_stage(
 
 
 def summarize_geography_assignment(
-    package: Mapping[str, Any],
+    package: CalibrationPackagePayload | Mapping[str, Any],
 ) -> GeographyAssignmentSummary:
     """Return a contract-safe summary of package-backed geography assignment."""
 
-    metadata = _package_metadata(package)
-    n_records = _optional_metadata_int(metadata, "base_n_records")
-    n_clones = _optional_metadata_int(metadata, "n_clones")
-    raw_blocks = package.get("block_geoid")
-    raw_cds = package.get("cd_geoid")
-    has_blocks = raw_blocks is not None
-    has_cds = raw_cds is not None
-
-    if not has_blocks and not has_cds:
-        return _unavailable_geography_assignment_summary(
-            n_records=n_records,
-            n_clones=n_clones,
-        )
-    if not has_blocks or not has_cds:
-        raise ValueError(
-            "Calibration package geography requires both block_geoid and cd_geoid"
-        )
-    if n_records is None or n_clones is None:
-        raise ValueError(
-            "Calibration package geography requires metadata base_n_records and n_clones"
-        )
-    if n_records <= 0 or n_clones <= 0:
-        raise ValueError(
-            "Calibration package geography requires positive base_n_records and n_clones"
-        )
-
-    block_geoids = _one_dimensional_string_array(raw_blocks, "block_geoid")
-    cd_geoids = _one_dimensional_string_array(raw_cds, "cd_geoid")
-    n_rows = int(len(block_geoids))
-    if n_rows == 0:
-        raise ValueError("Calibration package geography arrays must be non-empty")
-    if len(cd_geoids) != n_rows:
-        raise ValueError(
-            "Calibration package geography has mismatched block_geoid and cd_geoid "
-            f"lengths: {n_rows} != {len(cd_geoids)}"
-        )
-    if n_records * n_clones != n_rows:
-        raise ValueError(
-            "Calibration package geography length does not match metadata: "
-            f"{n_rows} rows for {n_records} records x {n_clones} clones"
-        )
-
-    return GeographyAssignmentSummary(
-        source_kind="calibration_package",
-        n_records=n_records,
-        n_clones=n_clones,
-        n_rows=n_rows,
-        has_block_geoid=True,
-        has_cd_geoid=True,
-        block_geoid_length=n_rows,
-        cd_geoid_length=int(len(cd_geoids)),
-        block_geoid_sha256=hash_string_array(block_geoids),
-        cd_geoid_sha256=hash_string_array(cd_geoids),
-        canonical_geography_sha256=canonical_geography_checksum(
-            block_geoid=block_geoids,
-            cd_geoid=cd_geoids,
-            n_records=n_records,
-            n_clones=n_clones,
-        ),
-    )
-
-
-def _unavailable_geography_assignment_summary(
-    *,
-    n_records: int | None,
-    n_clones: int | None,
-) -> GeographyAssignmentSummary:
-    """Create a summary for legacy packages without geography assignment arrays."""
-
-    return GeographyAssignmentSummary(
-        source_kind="unavailable",
-        n_records=n_records,
-        n_clones=n_clones,
-        n_rows=None,
-        has_block_geoid=False,
-        has_cd_geoid=False,
-        block_geoid_length=None,
-        cd_geoid_length=None,
-        block_geoid_sha256=None,
-        cd_geoid_sha256=None,
-        canonical_geography_sha256=None,
-    )
+    return _calibration_package_payload(package, require_core=False).geography_summary()
 
 
 def summarize_calibration_package(
-    package: Mapping[str, Any],
+    package: CalibrationPackagePayload | Mapping[str, Any],
 ) -> CalibrationPackageSummary:
     """Return a contract-safe summary of a calibration package pickle payload."""
 
-    matrix = _required_package_value(package, "X_sparse")
-    targets_df = _required_package_value(package, "targets_df")
-    target_names = _required_package_value(package, "target_names")
-    metadata = _package_metadata(package)
-
-    try:
-        n_targets, n_columns = matrix.shape
-    except (AttributeError, ValueError) as exc:
-        raise ValueError("X_sparse must expose a two-dimensional shape") from exc
-    if not hasattr(matrix, "nnz"):
-        raise ValueError("X_sparse must expose nnz")
-
-    n_targets = int(n_targets)
-    n_columns = int(n_columns)
-    nnz = int(matrix.nnz)
-    density = nnz / (n_targets * n_columns) if n_targets * n_columns else 0.0
-
-    return CalibrationPackageSummary(
-        matrix_shape=(n_targets, n_columns),
-        matrix_nnz=nnz,
-        matrix_density=float(density),
-        n_targets=int(len(targets_df)),
-        n_columns=n_columns,
-        target_name_count=int(len(target_names)),
-        dataset_sha256=_optional_metadata_string(metadata, "dataset_sha256"),
-        db_sha256=_optional_metadata_string(metadata, "db_sha256"),
-        target_config_path=_optional_metadata_string(
-            metadata,
-            "target_config_path",
-        ),
-        target_config_sha256=_optional_metadata_string(
-            metadata,
-            "target_config_sha256",
-        ),
-        n_clones=_optional_metadata_int(metadata, "n_clones"),
-        seed=_optional_metadata_int(metadata, "seed"),
-        base_n_records=_optional_metadata_int(metadata, "base_n_records"),
-        package_scope=_optional_metadata_string(metadata, "package_scope"),
-        matrix_builder=_optional_metadata_string(metadata, "matrix_builder"),
-        chunk_size=_optional_metadata_int(metadata, "chunk_size"),
-        chunk_dir=_optional_metadata_string(metadata, "chunk_dir"),
-        has_initial_weights=package.get("initial_weights") is not None,
-        has_cd_geoid=package.get("cd_geoid") is not None,
-        has_block_geoid=package.get("block_geoid") is not None,
-        cd_geoid_length=_optional_len(package.get("cd_geoid")),
-        block_geoid_length=_optional_len(package.get("block_geoid")),
-    )
+    return _calibration_package_payload(package).summary()
 
 
 def build_calibration_package_contract(
@@ -185,7 +57,7 @@ def build_calibration_package_contract(
     package_path: Path,
     dataset_path: Path,
     db_path: Path,
-    package: Mapping[str, Any],
+    package: CalibrationPackagePayload | Mapping[str, Any],
     parameters: CalibrationPackageParameters | Mapping[str, Any],
     run_id: str | None,
     completed_at: str,
@@ -204,13 +76,14 @@ def build_calibration_package_contract(
     _require_existing_file(db_path, "target database")
 
     parameter_schema = _calibration_package_parameters(parameters)
-    metadata = _package_metadata(package)
+    payload = _calibration_package_payload(package)
+    metadata = payload.metadata
     parameter_payload = _parameters_with_package_identity(
         parameter_schema.to_dict(),
         metadata,
     )
-    package_summary = summarize_calibration_package(package).to_dict()
-    geography_summary = summarize_geography_assignment(package).to_dict()
+    package_summary = payload.summary().to_dict()
+    geography_summary = payload.geography_summary().to_dict()
     inputs = (
         _artifact_ref_from_path(
             logical_name="source_imputed_stratified_extended_cps",
@@ -324,7 +197,7 @@ def write_calibration_package_contract(
     package_path: Path,
     dataset_path: Path,
     db_path: Path,
-    package: Mapping[str, Any],
+    package: CalibrationPackagePayload | Mapping[str, Any],
     parameters: CalibrationPackageParameters | Mapping[str, Any],
     run_id: str | None,
     completed_at: str,
@@ -380,7 +253,7 @@ def validate_calibration_package_contract(
     *,
     package_path: Path,
     contract_path: Path | None = None,
-    package: Mapping[str, Any] | None = None,
+    package: CalibrationPackagePayload | Mapping[str, Any] | None = None,
     dataset_path: Path | None = None,
     db_path: Path | None = None,
 ) -> StageContract:
@@ -462,29 +335,29 @@ def validate_persisted_calibration_package_contract(
     )
 
 
-def load_calibration_package_payload(package_path: Path) -> Mapping[str, Any]:
-    """Load a calibration package pickle for sidecar validation."""
+def load_calibration_package_payload(package_path: Path) -> CalibrationPackagePayload:
+    """Load a typed calibration package payload for sidecar validation."""
 
-    with Path(package_path).open("rb") as handle:
-        package = pickle.load(handle)
-    if not isinstance(package, Mapping):
-        raise ValueError("Calibration package pickle must contain a mapping")
-    return package
+    return CalibrationPackageReader(package_path=Path(package_path)).read()
 
 
-def _required_package_value(package: Mapping[str, Any], key: str) -> Any:
-    if key not in package:
-        raise ValueError(f"Calibration package missing required key: {key}")
-    return package[key]
+def _calibration_package_payload(
+    package: CalibrationPackagePayload | Mapping[str, Any],
+    *,
+    require_core: bool = True,
+) -> CalibrationPackagePayload:
+    if isinstance(package, CalibrationPackagePayload):
+        return package
+    return CalibrationPackagePayload.from_mapping(
+        package,
+        require_required_keys=require_core,
+    )
 
 
-def _package_metadata(package: Mapping[str, Any]) -> Mapping[str, Any]:
-    metadata = package.get("metadata", {})
-    if metadata is None:
-        return {}
-    if not isinstance(metadata, Mapping):
-        raise ValueError("Calibration package metadata must be a mapping")
-    return metadata
+def _package_metadata(
+    package: CalibrationPackagePayload | Mapping[str, Any],
+) -> Mapping[str, Any]:
+    return _calibration_package_payload(package).metadata
 
 
 def _optional_metadata_string(
@@ -504,23 +377,6 @@ def _optional_metadata_int(metadata: Mapping[str, Any], key: str) -> int | None:
     if isinstance(value, bool):
         raise ValueError(f"Calibration package metadata {key!r} must be an integer")
     return int(value)
-
-
-def _optional_len(value: Any) -> int | None:
-    if value is None:
-        return None
-    return int(len(value))
-
-
-def _one_dimensional_string_array(value: Any, key: str) -> Any:
-    import numpy as np
-
-    array = np.asarray(value, dtype=str)
-    if array.ndim != 1:
-        raise ValueError(f"Calibration package geography {key} must be one-dimensional")
-    if np.any(array == ""):
-        raise ValueError(f"Calibration package geography {key} contains empty values")
-    return array
 
 
 def _calibration_package_parameters(

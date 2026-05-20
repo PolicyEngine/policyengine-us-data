@@ -26,6 +26,13 @@ from .specs import (
     stage2_input_bundle_from_stage1_contract,
     stage2_input_bundle_from_stage1_contract_path,
 )
+from .payload import (
+    LEGACY_MISSING_GEOGRAPHY_WARNING,
+    REQUIRED_PACKAGE_KEYS,
+    CalibrationPackagePayload,
+    CalibrationPackageReader,
+    CalibrationPackageWriter,
+)
 
 __all__ = [
     "CALIBRATION_PACKAGE_CONTRACT_FILENAME",
@@ -41,10 +48,15 @@ __all__ = [
     "TARGET_DATABASE_FILENAME",
     "CalibrationPackageArtifactPaths",
     "CalibrationPackageOutputBundle",
+    "CalibrationPackagePayload",
+    "CalibrationPackageReader",
+    "CalibrationPackageWriter",
+    "LEGACY_MISSING_GEOGRAPHY_WARNING",
     "Stage2BuildContext",
     "Stage2InputBundle",
     "Stage2InputBundleError",
     "Stage2InputSource",
+    "REQUIRED_PACKAGE_KEYS",
     "TargetConfigIdentity",
     "calibration_package_artifact_paths",
     "resolve_target_config_identity",

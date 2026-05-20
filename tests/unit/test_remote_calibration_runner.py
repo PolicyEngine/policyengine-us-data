@@ -1,3 +1,4 @@
+import json
 import inspect
 import importlib
 import sys
@@ -243,3 +244,32 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     ensure_prereqs.assert_called_once()
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()
+
+
+def test_write_package_sidecar_reads_payload_and_contract(tmp_path):
+    remote_runner = _load_remote_calibration_runner_module()
+    from tests.unit.fixtures.calibration_package_stage_contract import (
+        calibration_package_contract,
+    )
+
+    from policyengine_us_data.calibration_package.specs import (
+        CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        CALIBRATION_PACKAGE_METADATA_FILENAME,
+    )
+    from policyengine_us_data.stage_contracts.io import write_contract
+
+    package_path = tmp_path / "calibration_package.pkl"
+    contract = calibration_package_contract(tmp_path)
+    write_contract(contract, tmp_path / CALIBRATION_PACKAGE_CONTRACT_FILENAME)
+
+    assert remote_runner._write_package_sidecar(str(package_path)) is True
+
+    sidecar = json.loads(
+        (tmp_path / CALIBRATION_PACKAGE_METADATA_FILENAME).read_text(
+            encoding="utf-8",
+        )
+    )
+    assert sidecar["package_sha256"].startswith("sha256:")
+    assert sidecar["package_summary"]["matrix_shape"] == [2, 3]
+    assert sidecar["geography_assignment"]["source_kind"] == "calibration_package"
+    assert sidecar["contract"]["stage_id"] == "2_build_calibration_package"

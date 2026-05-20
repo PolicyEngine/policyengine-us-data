@@ -821,8 +821,12 @@ stages:
     - build_matrix
     - build_matrix_chunked
     - stage2_artifact_specs
+    - stage2_payload_boundary
+    - stage2_payload_writer
+    - stage2_payload_reader
     - stage2_calibration_package_writer
     - out_pkg
+    - out_metadata
     - stage2_calibration_package_contract_writer
     - out_contract
     - stage2_calibration_package_contract_validator
@@ -875,6 +879,10 @@ stages:
     label: calibration_package.pkl
     node_type: artifact
     description: X_sparse CSR matrix, targets_df, initial_weights, metadata
+  - id: out_metadata
+    label: calibration_package_meta.json
+    node_type: artifact
+    description: Metadata sidecar generated from the typed package payload and Stage 2 contract
   - id: out_contract
     label: calibration_package_contract.json
     node_type: artifact
@@ -983,11 +991,19 @@ stages:
     edge_type: uses_library
     label: chunked path
   - source: build_matrix
-    target: stage2_calibration_package_writer
+    target: stage2_payload_boundary
     edge_type: data_flow
   - source: build_matrix_chunked
-    target: stage2_calibration_package_writer
+    target: stage2_payload_boundary
     edge_type: data_flow
+  - source: stage2_payload_boundary
+    target: stage2_payload_writer
+    edge_type: data_flow
+    label: typed pickle payload
+  - source: stage2_payload_writer
+    target: stage2_calibration_package_writer
+    edge_type: uses_library
+    label: pickle write
   - source: stage2_artifact_specs
     target: stage2_calibration_package_writer
     edge_type: uses_utility
@@ -995,9 +1011,20 @@ stages:
   - source: stage2_calibration_package_writer
     target: out_pkg
     edge_type: produces_artifact
+  - source: stage2_payload_writer
+    target: out_metadata
+    edge_type: produces_artifact
+    label: sidecar metadata
+  - source: out_pkg
+    target: stage2_payload_reader
+    edge_type: data_flow
   - source: out_pkg
     target: stage2_calibration_package_contract_writer
     edge_type: data_flow
+  - source: stage2_payload_reader
+    target: stage2_calibration_package_contract_writer
+    edge_type: uses_library
+    label: summary and checksum
   - source: stage2_artifact_specs
     target: stage2_calibration_package_contract_writer
     edge_type: uses_utility

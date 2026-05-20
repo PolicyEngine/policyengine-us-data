@@ -1151,7 +1151,7 @@
     "docstring": "Derive all geography from pre-assigned block GEOIDs.\n\nGiven an array of block GEOIDs (already assigned by\ncalibration), derives county, tract, state, CBSA, SLDU,\nSLDL, place, VTD, PUMA, ZCTA, and county enum index.\n\nArgs:\n    block_geoids: Array of 15-char block GEOID strings.\n\nReturns:\n    Dict with same keys as assign_geography_for_cd.",
     "id": "geo_derive",
     "kind": "function",
-    "line": 555,
+    "line": 582,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks"

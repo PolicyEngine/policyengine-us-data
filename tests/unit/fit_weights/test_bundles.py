@@ -10,93 +10,72 @@ from policyengine_us_data.fit_weights import (
 )
 
 
-class FakeBatch:
-    def __init__(self) -> None:
-        self.files: dict[str, bytes] = {}
-
-    def put_file(self, file_obj, destination: str) -> None:
-        self.files[destination] = file_obj.read()
-
-
-def test_input_bundle_exposes_calibration_package_identity_path() -> None:
+def test_input_bundle_exposes_calibration_package_identity_path(
+    calibration_package_path: Path,
+) -> None:
     bundle = FittedWeightsInputBundle(
         scope="regional",
-        calibration_package_path=Path(
-            "/pipeline/artifacts/run/calibration_package.pkl"
-        ),
+        calibration_package_path=calibration_package_path,
     )
 
     assert bundle.scope == FitScope.REGIONAL
     assert bundle.artifact_identity_paths() == {
-        "calibration_package": Path("/pipeline/artifacts/run/calibration_package.pkl")
+        "calibration_package": calibration_package_path
     }
 
 
-def test_regional_output_bundle_writes_expected_paths() -> None:
-    bundle = FittedWeightsOutputBundle.from_result_bytes(
-        scope=FitScope.REGIONAL,
-        result_bytes={
-            "weights": b"weights",
-            "geography": b"geo",
-            "config": b"config",
-            "log": b"log",
-            "cal_log": b"epoch",
-        },
-        run_id="run-1",
-    )
-    batch = FakeBatch()
-
-    written = bundle.write_artifacts(batch, "artifacts/run-1")
+def test_regional_output_bundle_writes_expected_paths(
+    artifacts_rel: str,
+    fake_batch,
+    regional_output_bundle: FittedWeightsOutputBundle,
+) -> None:
+    written = regional_output_bundle.write_artifacts(fake_batch, artifacts_rel)
 
     assert written == [
         "artifacts/run-1/calibration_weights.npy",
         "artifacts/run-1/geography_assignment.npz",
         "artifacts/run-1/unified_run_config.json",
     ]
-    assert batch.files["artifacts/run-1/calibration_weights.npy"] == b"weights"
-    assert bundle.artifact_paths("/pipeline/artifacts/run-1") == [
+    assert fake_batch.files["artifacts/run-1/calibration_weights.npy"] == b"weights"
+    assert regional_output_bundle.artifact_paths("/pipeline/artifacts/run-1") == [
         Path("/pipeline/artifacts/run-1/calibration_weights.npy"),
         Path("/pipeline/artifacts/run-1/geography_assignment.npz"),
         Path("/pipeline/artifacts/run-1/unified_run_config.json"),
     ]
 
 
-def test_national_output_bundle_writes_expected_paths() -> None:
-    bundle = FittedWeightsOutputBundle.from_result_bytes(
-        scope="national",
-        result_bytes={
-            "weights": b"weights",
-            "geography": b"geo",
-            "config": b"config",
-        },
-    )
-    batch = FakeBatch()
-
-    written = bundle.write_artifacts(batch, "artifacts/run-1")
+def test_national_output_bundle_writes_expected_paths(
+    artifacts_rel: str,
+    fake_batch,
+    national_output_bundle: FittedWeightsOutputBundle,
+) -> None:
+    written = national_output_bundle.write_artifacts(fake_batch, artifacts_rel)
 
     assert written == [
         "artifacts/run-1/national_calibration_weights.npy",
         "artifacts/run-1/national_geography_assignment.npz",
         "artifacts/run-1/national_unified_run_config.json",
     ]
-    assert batch.files["artifacts/run-1/national_calibration_weights.npy"] == b"weights"
+    assert (
+        fake_batch.files["artifacts/run-1/national_calibration_weights.npy"]
+        == b"weights"
+    )
 
 
-def test_missing_optional_epoch_log_is_allowed() -> None:
+def test_missing_optional_epoch_log_is_allowed(
+    regional_result_bytes: dict[str, bytes],
+) -> None:
+    result_bytes = dict(regional_result_bytes)
+    result_bytes.pop("cal_log")
     bundle = FittedWeightsOutputBundle.from_result_bytes(
         scope=FitScope.REGIONAL,
-        result_bytes={
-            "weights": b"weights",
-            "geography": b"geo",
-            "config": b"config",
-            "log": b"log",
-        },
+        result_bytes=result_bytes,
     )
 
     assert bundle.diagnostic_result_bytes() == {
-        "log": b"log",
+        "log": b"regional-log",
         "cal_log": None,
-        "config": b"config",
+        "config": b"regional-config",
     }
 
 
@@ -118,12 +97,11 @@ def test_missing_weights_is_a_hard_failure() -> None:
 def test_missing_required_primary_artifacts_fail_before_writes(
     missing_key: str,
     expected_role: str,
+    artifacts_rel: str,
+    fake_batch,
+    regional_result_bytes: dict[str, bytes],
 ) -> None:
-    result_bytes = {
-        "weights": b"weights",
-        "geography": b"geo",
-        "config": b"config",
-    }
+    result_bytes = dict(regional_result_bytes)
     result_bytes.pop(missing_key)
     bundle = FittedWeightsOutputBundle.from_result_bytes(
         scope=FitScope.REGIONAL,
@@ -131,32 +109,20 @@ def test_missing_required_primary_artifacts_fail_before_writes(
     )
 
     with pytest.raises(MissingFitWeightsOutputError, match=expected_role):
-        bundle.write_artifacts(FakeBatch(), "artifacts/run-1")
+        bundle.write_artifacts(fake_batch, artifacts_rel)
 
 
-def test_diagnostics_are_scoped_to_the_output_bundle() -> None:
-    regional = FittedWeightsOutputBundle.from_result_bytes(
-        scope=FitScope.REGIONAL,
-        result_bytes={
-            "weights": b"weights",
-            "geography": b"regional-geo",
-            "config": b"regional-config",
-            "log": b"regional-log",
-            "cal_log": b"regional-epoch",
-        },
+def test_diagnostics_are_scoped_to_the_output_bundle(
+    regional_output_bundle: FittedWeightsOutputBundle,
+    national_output_bundle: FittedWeightsOutputBundle,
+) -> None:
+    assert (
+        regional_output_bundle.artifacts.diagnostics.filename
+        == "unified_diagnostics.csv"
     )
-    national = FittedWeightsOutputBundle.from_result_bytes(
-        scope=FitScope.NATIONAL,
-        result_bytes={
-            "weights": b"weights",
-            "geography": b"national-geo",
-            "config": b"national-config",
-            "log": b"national-log",
-            "cal_log": b"national-epoch",
-        },
+    assert (
+        national_output_bundle.artifacts.diagnostics.filename
+        == "national_unified_diagnostics.csv"
     )
-
-    assert regional.artifacts.diagnostics.filename == "unified_diagnostics.csv"
-    assert national.artifacts.diagnostics.filename == "national_unified_diagnostics.csv"
-    assert regional.diagnostic_result_bytes()["log"] == b"regional-log"
-    assert national.diagnostic_result_bytes()["log"] == b"national-log"
+    assert regional_output_bundle.diagnostic_result_bytes()["log"] == b"regional-log"
+    assert national_output_bundle.diagnostic_result_bytes()["log"] == b"national-log"

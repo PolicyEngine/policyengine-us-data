@@ -1,16 +1,5 @@
-from pathlib import Path
-
-import yaml
-
 from policyengine_us_data.fit_weights import FitScope, fit_artifacts_for_scope
 from scripts.extract_pipeline_docs import scan_decorated_objects
-
-
-def _substage(substage_id: str) -> dict:
-    data = yaml.safe_load(Path("docs/pipeline_map.yaml").read_text())
-    return next(
-        substage for substage in data["stages"] if substage["id"] == substage_id
-    )
 
 
 def test_fit_weights_identity_nodes_are_in_generated_pipeline_docs() -> None:
@@ -26,11 +15,11 @@ def test_fit_weights_identity_nodes_are_in_generated_pipeline_docs() -> None:
     )
 
 
-def test_stage_3_pipeline_map_labels_match_scoped_artifacts() -> None:
+def test_stage_3_pipeline_map_labels_match_scoped_artifacts(stage_3_substage) -> None:
     regional_artifacts = fit_artifacts_for_scope(FitScope.REGIONAL)
     national_artifacts = fit_artifacts_for_scope(FitScope.NATIONAL)
-    regional = _substage("3a_weight_fitting_regional")
-    national = _substage("3b_weight_fitting_national")
+    regional = stage_3_substage("3a_weight_fitting_regional")
+    national = stage_3_substage("3b_weight_fitting_national")
 
     regional_nodes = {node["id"]: node for node in regional["extra_nodes"]}
     national_nodes = {node["id"]: node for node in national["extra_nodes"]}

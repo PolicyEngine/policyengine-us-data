@@ -46,7 +46,6 @@ def main() -> None:
             f"MODAL_TOKEN_ID={os.environ['MODAL_TOKEN_ID']}",
             f"MODAL_TOKEN_SECRET={os.environ['MODAL_TOKEN_SECRET']}",
         ],
-        check=True,
     )
     subprocess.run(
         [

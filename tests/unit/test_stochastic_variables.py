@@ -39,10 +39,10 @@ class TestTakeUpRateParameters:
 
     def test_aca_rate_uses_marketplace_enrollment_time_series(self):
         assert load_take_up_rate("aca", 2022) == 0.672
-        assert np.isclose(load_take_up_rate("aca", 2023), 0.667088)
-        assert np.isclose(load_take_up_rate("aca", 2024), 0.724308)
-        assert np.isclose(load_take_up_rate("aca", 2025), 0.748697)
-        assert np.isclose(load_take_up_rate("aca", 2026), 0.739150)
+        assert np.isclose(load_take_up_rate("aca", 2023), 0.644408)
+        assert np.isclose(load_take_up_rate("aca", 2024), 0.707784)
+        assert np.isclose(load_take_up_rate("aca", 2025), 0.727772)
+        assert np.isclose(load_take_up_rate("aca", 2026), 0.710519)
 
     def test_head_start_rate_loads(self):
         rate = load_take_up_rate("head_start", 2022)

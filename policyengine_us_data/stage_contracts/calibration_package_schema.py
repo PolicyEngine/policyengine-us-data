@@ -17,19 +17,41 @@ GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS = frozenset(
         "unavailable",
     }
 )
+GEOGRAPHY_ASSIGNMENT_STATUSES = frozenset(
+    {
+        "completed",
+        "failed",
+        "unavailable",
+    }
+)
 GEOGRAPHY_ASSIGNMENT_SUMMARY_KEYS = frozenset(
     {
         "block_geoid_length",
         "block_geoid_sha256",
+        "block_geoid_unique_count",
         "canonical_geography_sha256",
         "cd_geoid_length",
         "cd_geoid_sha256",
+        "cd_geoid_unique_count",
+        "county_fips_length",
+        "county_fips_sha256",
+        "county_fips_unique_count",
         "has_block_geoid",
         "has_cd_geoid",
+        "has_county_fips",
+        "has_state_fips",
         "n_clones",
         "n_records",
         "n_rows",
+        "ordering",
+        "schema_version",
         "source_kind",
+        "spec",
+        "state_fips_length",
+        "state_fips_sha256",
+        "state_fips_unique_count",
+        "status",
+        "validation_errors",
     }
 )
 CALIBRATION_PACKAGE_PARAMETER_KEYS = frozenset(
@@ -80,24 +102,52 @@ CALIBRATION_PACKAGE_SUMMARY_KEYS = frozenset(
 class GeographyAssignmentSummary:
     """Canonical summary of package-backed Stage 2 geography assignment."""
 
+    schema_version: int
     source_kind: str
+    status: str
+    ordering: str | None
     n_records: int | None
     n_clones: int | None
     n_rows: int | None
     has_block_geoid: bool
     has_cd_geoid: bool
+    has_county_fips: bool
+    has_state_fips: bool
     block_geoid_length: int | None
     cd_geoid_length: int | None
+    county_fips_length: int | None
+    state_fips_length: int | None
+    block_geoid_unique_count: int | None
+    cd_geoid_unique_count: int | None
+    county_fips_unique_count: int | None
+    state_fips_unique_count: int | None
     block_geoid_sha256: str | None
     cd_geoid_sha256: str | None
+    county_fips_sha256: str | None
+    state_fips_sha256: str | None
     canonical_geography_sha256: str | None
+    spec: Mapping[str, Any]
+    validation_errors: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
         if self.source_kind not in GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS:
             raise ValueError(
                 "source_kind must be one of "
                 f"{sorted(GEOGRAPHY_ASSIGNMENT_SOURCE_KINDS)}"
             )
+        if self.status not in GEOGRAPHY_ASSIGNMENT_STATUSES:
+            raise ValueError(
+                f"status must be one of {sorted(GEOGRAPHY_ASSIGNMENT_STATUSES)}"
+            )
+        if self.ordering is not None and not isinstance(self.ordering, str):
+            raise ValueError("ordering must be a string or None")
+        if not isinstance(self.spec, Mapping):
+            raise ValueError("spec must be a mapping")
+        if not isinstance(self.validation_errors, tuple) or not all(
+            isinstance(item, str) for item in self.validation_errors
+        ):
+            raise ValueError("validation_errors must be a tuple of strings")
         _validate_optional_non_negative_int(self.n_records, "n_records")
         _validate_optional_non_negative_int(self.n_clones, "n_clones")
         _validate_optional_non_negative_int(self.n_rows, "n_rows")
@@ -109,10 +159,29 @@ class GeographyAssignmentSummary:
             self.cd_geoid_length,
             "cd_geoid_length",
         )
+        _validate_optional_non_negative_int(
+            self.county_fips_length,
+            "county_fips_length",
+        )
+        _validate_optional_non_negative_int(
+            self.state_fips_length,
+            "state_fips_length",
+        )
+        for key in (
+            "block_geoid_unique_count",
+            "cd_geoid_unique_count",
+            "county_fips_unique_count",
+            "state_fips_unique_count",
+        ):
+            _validate_optional_non_negative_int(getattr(self, key), key)
         _validate_bool(self.has_block_geoid, "has_block_geoid")
         _validate_bool(self.has_cd_geoid, "has_cd_geoid")
+        _validate_bool(self.has_county_fips, "has_county_fips")
+        _validate_bool(self.has_state_fips, "has_state_fips")
         _validate_optional_sha256(self.block_geoid_sha256, "block_geoid_sha256")
         _validate_optional_sha256(self.cd_geoid_sha256, "cd_geoid_sha256")
+        _validate_optional_sha256(self.county_fips_sha256, "county_fips_sha256")
+        _validate_optional_sha256(self.state_fips_sha256, "state_fips_sha256")
         _validate_optional_sha256(
             self.canonical_geography_sha256,
             "canonical_geography_sha256",
@@ -124,17 +193,30 @@ class GeographyAssignmentSummary:
                 "n_rows",
                 "block_geoid_length",
                 "cd_geoid_length",
+                "county_fips_length",
+                "state_fips_length",
+                "block_geoid_unique_count",
+                "cd_geoid_unique_count",
+                "county_fips_unique_count",
+                "state_fips_unique_count",
                 "block_geoid_sha256",
                 "cd_geoid_sha256",
+                "county_fips_sha256",
+                "state_fips_sha256",
                 "canonical_geography_sha256",
             ):
                 if getattr(self, key) is None:
                     raise ValueError(
                         f"{key} is required for calibration_package geography"
                     )
-            if not self.has_block_geoid or not self.has_cd_geoid:
+            if not (
+                self.has_block_geoid
+                and self.has_cd_geoid
+                and self.has_county_fips
+                and self.has_state_fips
+            ):
                 raise ValueError(
-                    "calibration_package geography requires block and CD arrays"
+                    "calibration_package geography requires all geography arrays"
                 )
             if self.n_records * self.n_clones != self.n_rows:
                 raise ValueError(
@@ -144,21 +226,40 @@ class GeographyAssignmentSummary:
                 raise ValueError("block_geoid_length must equal n_rows")
             if self.cd_geoid_length != self.n_rows:
                 raise ValueError("cd_geoid_length must equal n_rows")
+            if self.county_fips_length != self.n_rows:
+                raise ValueError("county_fips_length must equal n_rows")
+            if self.state_fips_length != self.n_rows:
+                raise ValueError("state_fips_length must equal n_rows")
         else:
-            if self.has_block_geoid or self.has_cd_geoid:
+            if (
+                self.has_block_geoid
+                or self.has_cd_geoid
+                or self.has_county_fips
+                or self.has_state_fips
+            ):
                 raise ValueError("unavailable geography cannot report present arrays")
             for key in (
                 "n_rows",
                 "block_geoid_length",
                 "cd_geoid_length",
+                "county_fips_length",
+                "state_fips_length",
+                "block_geoid_unique_count",
+                "cd_geoid_unique_count",
+                "county_fips_unique_count",
+                "state_fips_unique_count",
                 "block_geoid_sha256",
                 "cd_geoid_sha256",
+                "county_fips_sha256",
+                "state_fips_sha256",
                 "canonical_geography_sha256",
             ):
                 if getattr(self, key) is not None:
                     raise ValueError(
                         f"{key} must be None when geography is unavailable"
                     )
+            if self.status != "unavailable":
+                raise ValueError("unavailable geography must have unavailable status")
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "GeographyAssignmentSummary":
@@ -172,20 +273,47 @@ class GeographyAssignmentSummary:
             GEOGRAPHY_ASSIGNMENT_SUMMARY_KEYS,
         )
         return cls(
+            schema_version=_required_int_field(data, "schema_version"),
             source_kind=_required_string_field(data, "source_kind"),
+            status=_required_string_field(data, "status"),
+            ordering=_optional_string_field(data, "ordering"),
             n_records=_optional_int_field(data, "n_records"),
             n_clones=_optional_int_field(data, "n_clones"),
             n_rows=_optional_int_field(data, "n_rows"),
             has_block_geoid=_required_bool_field(data, "has_block_geoid"),
             has_cd_geoid=_required_bool_field(data, "has_cd_geoid"),
+            has_county_fips=_required_bool_field(data, "has_county_fips"),
+            has_state_fips=_required_bool_field(data, "has_state_fips"),
             block_geoid_length=_optional_int_field(data, "block_geoid_length"),
             cd_geoid_length=_optional_int_field(data, "cd_geoid_length"),
+            county_fips_length=_optional_int_field(data, "county_fips_length"),
+            state_fips_length=_optional_int_field(data, "state_fips_length"),
+            block_geoid_unique_count=_optional_int_field(
+                data,
+                "block_geoid_unique_count",
+            ),
+            cd_geoid_unique_count=_optional_int_field(
+                data,
+                "cd_geoid_unique_count",
+            ),
+            county_fips_unique_count=_optional_int_field(
+                data,
+                "county_fips_unique_count",
+            ),
+            state_fips_unique_count=_optional_int_field(
+                data,
+                "state_fips_unique_count",
+            ),
             block_geoid_sha256=_optional_string_field(data, "block_geoid_sha256"),
             cd_geoid_sha256=_optional_string_field(data, "cd_geoid_sha256"),
+            county_fips_sha256=_optional_string_field(data, "county_fips_sha256"),
+            state_fips_sha256=_optional_string_field(data, "state_fips_sha256"),
             canonical_geography_sha256=_optional_string_field(
                 data,
                 "canonical_geography_sha256",
             ),
+            spec=_mapping_field(data, "spec"),
+            validation_errors=_string_tuple_field(data, "validation_errors"),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -194,15 +322,30 @@ class GeographyAssignmentSummary:
         return {
             "block_geoid_length": self.block_geoid_length,
             "block_geoid_sha256": self.block_geoid_sha256,
+            "block_geoid_unique_count": self.block_geoid_unique_count,
             "canonical_geography_sha256": self.canonical_geography_sha256,
             "cd_geoid_length": self.cd_geoid_length,
             "cd_geoid_sha256": self.cd_geoid_sha256,
+            "cd_geoid_unique_count": self.cd_geoid_unique_count,
+            "county_fips_length": self.county_fips_length,
+            "county_fips_sha256": self.county_fips_sha256,
+            "county_fips_unique_count": self.county_fips_unique_count,
             "has_block_geoid": self.has_block_geoid,
             "has_cd_geoid": self.has_cd_geoid,
+            "has_county_fips": self.has_county_fips,
+            "has_state_fips": self.has_state_fips,
             "n_clones": self.n_clones,
             "n_records": self.n_records,
             "n_rows": self.n_rows,
+            "ordering": self.ordering,
+            "schema_version": self.schema_version,
             "source_kind": self.source_kind,
+            "spec": dict(self.spec),
+            "state_fips_length": self.state_fips_length,
+            "state_fips_sha256": self.state_fips_sha256,
+            "state_fips_unique_count": self.state_fips_unique_count,
+            "status": self.status,
+            "validation_errors": list(self.validation_errors),
         }
 
 
@@ -569,6 +712,22 @@ def _required_string_field(data: Mapping[str, Any], key: str) -> str:
             f"Calibration package field {key!r} must be a non-empty string"
         )
     return value
+
+
+def _mapping_field(data: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    value = data[key]
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Calibration package field {key!r} must be a mapping")
+    return dict(value)
+
+
+def _string_tuple_field(data: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    value = data[key]
+    if not isinstance(value, tuple | list) or not all(
+        isinstance(item, str) for item in value
+    ):
+        raise ValueError(f"Calibration package field {key!r} must be a list of strings")
+    return tuple(value)
 
 
 def _required_float_field(data: Mapping[str, Any], key: str) -> float:

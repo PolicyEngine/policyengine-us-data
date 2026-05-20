@@ -11,12 +11,9 @@ from typing import TYPE_CHECKING, Any
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
-from policyengine_us_data.utils.geography_checksum import (
-    canonical_geography_checksum,
-    hash_string_array,
-)
 from policyengine_us_data.utils.step_manifest import sha256_file
 
+from .geography import geography_summary_from_package
 from .specs import CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_METADATA_FILENAME
 
 if TYPE_CHECKING:
@@ -157,75 +154,10 @@ class CalibrationPackagePayload:
     def geography_summary(self) -> GeographyAssignmentSummary:
         """Return the contract-safe geography assignment summary."""
 
-        from policyengine_us_data.stage_contracts.calibration_package_schema import (
-            GeographyAssignmentSummary,
-        )
-
-        n_records = self.metadata_int("base_n_records")
-        n_clones = self.metadata_int("n_clones")
-        has_blocks = self.block_geoid is not None
-        has_cds = self.cd_geoid is not None
-
-        if not has_blocks and not has_cds:
-            return GeographyAssignmentSummary(
-                source_kind="unavailable",
-                n_records=n_records,
-                n_clones=n_clones,
-                n_rows=None,
-                has_block_geoid=False,
-                has_cd_geoid=False,
-                block_geoid_length=None,
-                cd_geoid_length=None,
-                block_geoid_sha256=None,
-                cd_geoid_sha256=None,
-                canonical_geography_sha256=None,
-            )
-        if not has_blocks or not has_cds:
-            raise ValueError(
-                "Calibration package geography requires both block_geoid and cd_geoid"
-            )
-        if n_records is None or n_clones is None:
-            raise ValueError(
-                "Calibration package geography requires metadata base_n_records and n_clones"
-            )
-        if n_records <= 0 or n_clones <= 0:
-            raise ValueError(
-                "Calibration package geography requires positive base_n_records and n_clones"
-            )
-
-        block_geoids = _one_dimensional_string_array(self.block_geoid, "block_geoid")
-        cd_geoids = _one_dimensional_string_array(self.cd_geoid, "cd_geoid")
-        n_rows = int(len(block_geoids))
-        if n_rows == 0:
-            raise ValueError("Calibration package geography arrays must be non-empty")
-        if len(cd_geoids) != n_rows:
-            raise ValueError(
-                "Calibration package geography has mismatched block_geoid and cd_geoid "
-                f"lengths: {n_rows} != {len(cd_geoids)}"
-            )
-        if n_records * n_clones != n_rows:
-            raise ValueError(
-                "Calibration package geography length does not match metadata: "
-                f"{n_rows} rows for {n_records} records x {n_clones} clones"
-            )
-
-        return GeographyAssignmentSummary(
-            source_kind="calibration_package",
-            n_records=n_records,
-            n_clones=n_clones,
-            n_rows=n_rows,
-            has_block_geoid=True,
-            has_cd_geoid=True,
-            block_geoid_length=n_rows,
-            cd_geoid_length=int(len(cd_geoids)),
-            block_geoid_sha256=hash_string_array(block_geoids),
-            cd_geoid_sha256=hash_string_array(cd_geoids),
-            canonical_geography_sha256=canonical_geography_checksum(
-                block_geoid=block_geoids,
-                cd_geoid=cd_geoids,
-                n_records=n_records,
-                n_clones=n_clones,
-            ),
+        return geography_summary_from_package(
+            metadata=self.metadata,
+            block_geoid=self.block_geoid,
+            cd_geoid=self.cd_geoid,
         )
 
     def metadata_string(self, key: str) -> str | None:
@@ -365,17 +297,6 @@ def _optional_len(value: Any) -> int | None:
     if value is None:
         return None
     return int(len(value))
-
-
-def _one_dimensional_string_array(value: Any, key: str) -> Any:
-    import numpy as np
-
-    array = np.asarray(value, dtype=str)
-    if array.ndim != 1:
-        raise ValueError(f"Calibration package geography {key} must be one-dimensional")
-    if np.any(array == ""):
-        raise ValueError(f"Calibration package geography {key} contains empty values")
-    return array
 
 
 __all__ = [

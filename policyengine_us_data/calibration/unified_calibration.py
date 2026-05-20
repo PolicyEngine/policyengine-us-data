@@ -49,10 +49,12 @@ from policyengine_us_data.calibration_package.payload import (
     CalibrationPackageReader,
     CalibrationPackageWriter,
 )
+from policyengine_us_data.calibration_package.geography import GeographyAssignmentSpec
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
     CALIBRATION_TARGET_FACETS_FILENAME,
     CALIBRATION_TARGETS_FILENAME,
+    GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
     TargetConfigIdentity,
     resolve_target_config_identity,
 )
@@ -1505,9 +1507,6 @@ def run_calibration(
 
     from policyengine_us import Microsimulation
 
-    from policyengine_us_data.calibration.clone_and_assign import (
-        assign_random_geography,
-    )
     from policyengine_us_data.calibration.unified_matrix_builder import (
         UnifiedMatrixBuilder,
     )
@@ -1555,6 +1554,14 @@ def run_calibration(
         time_period=time_period,
         n_records=n_records,
     )
+    geography_spec = GeographyAssignmentSpec.from_runtime_inputs(
+        n_records=n_records,
+        n_clones=n_clones,
+        seed=seed,
+        household_agi=base_agi,
+        cd_agi_targets=cd_agi_targets,
+        fixed_state_fips=fixed_state_fips,
+    )
 
     # Step 2: Clone and assign geography
     logger.info(
@@ -1563,13 +1570,20 @@ def run_calibration(
         n_clones,
         n_records * n_clones,
     )
-    geography = assign_random_geography(
-        n_records=n_records,
-        n_clones=n_clones,
-        seed=seed,
+    geography_result = geography_spec.assign(
         household_agi=base_agi,
         cd_agi_targets=cd_agi_targets,
         fixed_state_fips=fixed_state_fips,
+    )
+    from policyengine_us_data.calibration.clone_and_assign import GeographyAssignment
+
+    geography = GeographyAssignment(
+        block_geoid=geography_result.block_geoid,
+        cd_geoid=geography_result.cd_geoid,
+        county_fips=geography_result.county_fips,
+        state_fips=geography_result.state_fips,
+        n_records=n_records,
+        n_clones=n_clones,
     )
 
     # Step 3: Source imputation (if requested)
@@ -1722,6 +1736,9 @@ def run_calibration(
         "matrix_builder": "chunked" if chunked_matrix else "precompute",
         "chunk_size": chunk_size if chunked_matrix else None,
         "chunk_dir": chunk_dir if chunked_matrix else None,
+        "geography_assignment_spec": geography_spec.to_dict(),
+        "geography_assignment_sha256": geography_result.canonical_geography_sha256,
+        "geography_assignment_status": geography_result.status,
         "target_selection_sha256": target_selection.checksum,
         "target_selection_n_targets": target_selection.n_selected_targets,
     }
@@ -1736,7 +1753,11 @@ def run_calibration(
         package_path = Path(package_output_path)
         targets_path = package_path.with_name(CALIBRATION_TARGETS_FILENAME)
         target_facets_path = package_path.with_name(CALIBRATION_TARGET_FACETS_FILENAME)
+        geography_summary_path = package_path.with_name(
+            GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME
+        )
         target_selection.write_artifacts(targets_path, target_facets_path)
+        geography_result.write_summary(geography_summary_path)
         package_payload = CalibrationPackagePayload(
             X_sparse=X_sparse,
             targets_df=targets_df,
@@ -1790,6 +1811,8 @@ def run_calibration(
             target_metadata_path=targets_path,
             target_facets_path=target_facets_path,
             target_selection_summary=target_selection.summary(),
+            geography_summary_path=geography_summary_path,
+            geography_assignment_summary=geography_result.summary(),
         )
         validate_calibration_package_contract(
             package_path=package_path,

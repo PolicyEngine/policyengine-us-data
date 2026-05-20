@@ -812,6 +812,8 @@ stages:
     - stage2_target_catalog_reader
     - stage2_target_selection_policy
     - stage2_target_selection_result
+    - stage2_geography_assignment_spec
+    - stage2_geography_assignment_result
     - target_resolve
     - stage2_target_config_apply
     - target_uprate
@@ -832,6 +834,7 @@ stages:
     - out_metadata
     - out_targets
     - out_target_facets
+    - out_geography_summary
     - stage2_calibration_package_contract_writer
     - out_contract
     - stage2_calibration_package_contract_validator
@@ -896,6 +899,10 @@ stages:
     label: calibration_target_facets.json
     node_type: artifact
     description: Compact target counts by variable, geography level, target name, period, and constraint key
+  - id: out_geography_summary
+    label: geography_assignment_summary.json
+    node_type: artifact
+    description: Compact clone-major geography identity summary for block, county, state, and congressional district arrays
   - id: out_contract
     label: calibration_package_contract.json
     node_type: artifact
@@ -981,6 +988,30 @@ stages:
     target: build_matrix_chunked
     edge_type: data_flow
     label: matrix target order
+  - source: in_cps_s5
+    target: stage2_geography_assignment_spec
+    edge_type: data_flow
+    label: household AGI and fixed state overrides
+  - source: in_db_s5
+    target: stage2_geography_assignment_spec
+    edge_type: external_source
+    label: district AGI targets
+  - source: stage2_geography_assignment_spec
+    target: stage2_geography_assignment_result
+    edge_type: data_flow
+    label: deterministic assignment inputs
+  - source: in_blocks_s5
+    target: stage2_geography_assignment_result
+    edge_type: data_flow
+    label: block populations
+  - source: stage2_geography_assignment_result
+    target: build_matrix
+    edge_type: data_flow
+    label: clone-major geography
+  - source: stage2_geography_assignment_result
+    target: build_matrix_chunked
+    edge_type: data_flow
+    label: clone-major geography
   - source: stage2_target_catalog_load
     target: stage2_target_config_apply
     edge_type: data_flow
@@ -1060,6 +1091,10 @@ stages:
     target: out_target_facets
     edge_type: produces_artifact
     label: derived facets
+  - source: stage2_geography_assignment_result
+    target: out_geography_summary
+    edge_type: produces_artifact
+    label: geography identity
   - source: out_pkg
     target: stage2_payload_reader
     edge_type: data_flow
@@ -1078,6 +1113,10 @@ stages:
     target: stage2_calibration_package_contract_writer
     edge_type: data_flow
     label: target facet artifact
+  - source: out_geography_summary
+    target: stage2_calibration_package_contract_writer
+    edge_type: data_flow
+    label: geography summary artifact
   - source: stage2_artifact_specs
     target: stage2_calibration_package_contract_writer
     edge_type: uses_utility
@@ -1090,6 +1129,9 @@ stages:
     edge_type: validates
   - source: stage2_calibration_package_contract_writer
     target: out_target_facets
+    edge_type: validates
+  - source: stage2_calibration_package_contract_writer
+    target: out_geography_summary
     edge_type: validates
   - source: out_pkg
     target: stage2_calibration_package_contract_validator

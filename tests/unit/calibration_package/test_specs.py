@@ -12,6 +12,7 @@ from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_REPORTS_DIRNAME,
     DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
     DEFAULT_TARGET_CONFIG_PATH,
+    GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
     MATRIX_BUILD_DIRNAME,
     SOURCE_DATASET_FILENAME,
     TARGET_DATABASE_FILENAME,
@@ -104,6 +105,9 @@ def test_calibration_package_artifact_paths():
     assert paths.target_facets == Path("/pipeline/artifacts/run-a") / (
         CALIBRATION_TARGET_FACETS_FILENAME
     )
+    assert paths.geography_summary == Path("/pipeline/artifacts/run-a") / (
+        GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME
+    )
     assert paths.reports_dir == Path("/pipeline/artifacts/run-a") / (
         CALIBRATION_REPORTS_DIRNAME
     )
@@ -115,6 +119,7 @@ def test_calibration_package_artifact_paths():
         paths.contract,
         paths.targets,
         paths.target_facets,
+        paths.geography_summary,
     )
 
 

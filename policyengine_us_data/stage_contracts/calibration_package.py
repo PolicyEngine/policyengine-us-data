@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 from policyengine_us_data.calibration_package.payload import (
     CalibrationPackagePayload,
@@ -15,6 +17,7 @@ from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_PACKAGE_SUBSTAGE_ID,
     CALIBRATION_TARGET_FACETS_FILENAME,
     CALIBRATION_TARGETS_FILENAME,
+    GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -70,6 +73,10 @@ def build_calibration_package_contract(
     target_metadata_path: Path | None = None,
     target_facets_path: Path | None = None,
     target_selection_summary: Mapping[str, Any] | None = None,
+    geography_summary_path: Path | None = None,
+    geography_assignment_summary: GeographyAssignmentSummary
+    | Mapping[str, Any]
+    | None = None,
 ) -> StageContract:
     """Build the Stage 2 handoff contract from a calibration package."""
 
@@ -88,7 +95,9 @@ def build_calibration_package_contract(
         metadata,
     )
     package_summary = payload.summary().to_dict()
-    geography_summary = payload.geography_summary().to_dict()
+    geography_summary = _geography_assignment_summary(
+        geography_assignment_summary or payload.geography_summary()
+    ).to_dict()
     inputs = (
         _artifact_ref_from_path(
             logical_name="source_imputed_stratified_extended_cps",
@@ -144,6 +153,22 @@ def build_calibration_package_contract(
                     "artifact_family": "target_metadata",
                     "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
                     "derived_from": CALIBRATION_TARGETS_FILENAME,
+                },
+            )
+        )
+    if geography_summary_path is not None:
+        _require_existing_file(geography_summary_path, "geography assignment summary")
+        outputs.append(
+            _artifact_ref_from_path(
+                logical_name="geography_assignment_summary",
+                path=Path(geography_summary_path),
+                media_type="application/json",
+                metadata={
+                    "artifact_family": "geography_assignment",
+                    "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
+                    "canonical_geography_sha256": geography_summary.get(
+                        "canonical_geography_sha256"
+                    ),
                 },
             )
         )
@@ -226,6 +251,7 @@ def build_calibration_package_contract(
             CALIBRATION_PACKAGE_CONTRACT_FILENAME,
             CALIBRATION_TARGETS_FILENAME,
             CALIBRATION_TARGET_FACETS_FILENAME,
+            GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
         ],
         validation_commands=[
             "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
@@ -249,6 +275,10 @@ def write_calibration_package_contract(
     target_metadata_path: Path | None = None,
     target_facets_path: Path | None = None,
     target_selection_summary: Mapping[str, Any] | None = None,
+    geography_summary_path: Path | None = None,
+    geography_assignment_summary: GeographyAssignmentSummary
+    | Mapping[str, Any]
+    | None = None,
 ) -> StageContract:
     """Write and return the Stage 2 calibration-package contract."""
 
@@ -268,6 +298,8 @@ def write_calibration_package_contract(
         target_metadata_path=target_metadata_path,
         target_facets_path=target_facets_path,
         target_selection_summary=target_selection_summary,
+        geography_summary_path=geography_summary_path,
+        geography_assignment_summary=geography_assignment_summary,
     )
     write_contract(
         contract,
@@ -359,6 +391,22 @@ def validate_calibration_package_contract(
         raise ValueError(
             "Calibration package contract geography assignment does not match pickle"
         )
+    geography_artifact = _optional_artifact(
+        contract.outputs,
+        "geography_assignment_summary",
+    )
+    if geography_artifact is not None:
+        geography_summary_path = _artifact_uri_to_path(geography_artifact.uri)
+        _assert_artifact_matches_file(geography_artifact, geography_summary_path)
+        persisted_geography = canonicalize_for_fingerprint(
+            GeographyAssignmentSummary.from_dict(
+                json.loads(geography_summary_path.read_text(encoding="utf-8"))
+            ).to_dict()
+        )
+        if persisted_geography != expected_geography:
+            raise ValueError(
+                "Calibration package geography summary artifact does not match pickle"
+            )
     return contract
 
 
@@ -431,6 +479,14 @@ def _calibration_package_parameters(
     if isinstance(parameters, CalibrationPackageParameters):
         return parameters
     return CalibrationPackageParameters.from_dict(parameters)
+
+
+def _geography_assignment_summary(
+    summary: GeographyAssignmentSummary | Mapping[str, Any],
+) -> GeographyAssignmentSummary:
+    if isinstance(summary, GeographyAssignmentSummary):
+        return summary
+    return GeographyAssignmentSummary.from_dict(summary)
 
 
 def _parameters_with_package_identity(
@@ -526,6 +582,20 @@ def _single_artifact(
     return matches[0]
 
 
+def _optional_artifact(
+    artifacts: tuple[ArtifactRef, ...],
+    logical_name: str,
+) -> ArtifactRef | None:
+    matches = [
+        artifact for artifact in artifacts if artifact.logical_name == logical_name
+    ]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Expected at most one artifact named {logical_name!r}, found {len(matches)}"
+        )
+    return matches[0] if matches else None
+
+
 def _assert_artifact_matches_file(artifact: ArtifactRef, path: Path) -> None:
     _require_existing_file(path, artifact.logical_name)
     expected_sha = f"sha256:{sha256_file(path)}"
@@ -539,3 +609,12 @@ def _assert_artifact_matches_file(artifact: ArtifactRef, path: Path) -> None:
             f"Artifact {artifact.logical_name!r} size mismatch: "
             f"{artifact.size_bytes!r} != {path.stat().st_size!r}"
         )
+
+
+def _artifact_uri_to_path(uri: str) -> Path:
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        return Path(unquote(parsed.path))
+    if not parsed.scheme:
+        return Path(uri)
+    raise ValueError(f"Unsupported artifact URI scheme: {uri}")

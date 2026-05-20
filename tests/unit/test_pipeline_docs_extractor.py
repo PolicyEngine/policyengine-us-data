@@ -136,6 +136,8 @@ def test_pipeline_map_manifest_validates():
         "stage2_target_catalog_reader",
         "stage2_target_selection_policy",
         "stage2_target_selection_result",
+        "stage2_geography_assignment_spec",
+        "stage2_geography_assignment_result",
         "build_matrix",
         "build_matrix_chunked",
         "stage2_payload_boundary",

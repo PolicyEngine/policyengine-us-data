@@ -1,3 +1,5 @@
+import json
+
 from tests.unit.fixtures.calibration_package_stage_contract import (
     TARGET_CONFIG_PATH,
     calibration_package_contract,
@@ -63,7 +65,7 @@ def test_calibration_package_contract_references_target_metadata_artifacts(tmp_p
     targets_path.write_text('{"target_id":1,"target_index":0}\n', encoding="utf-8")
     facets_path.write_text('{"target_count":1}\n', encoding="utf-8")
 
-    contract = build_calibration_package_contract(
+    contract = write_calibration_package_contract(
         package_path=package_path,
         dataset_path=dataset_path,
         db_path=db_path,
@@ -81,6 +83,46 @@ def test_calibration_package_contract_references_target_metadata_artifacts(tmp_p
     assert outputs["calibration_target_facets"].media_type == "application/json"
     assert contract.metadata["target_selection"] == {"target_count": 1}
     assert contract.execution.reuse_summary.expected_outputs == 3
+
+
+def test_calibration_package_contract_references_geography_summary_artifact(tmp_path):
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
+    geography_summary = summarize_geography_assignment(package)
+    geography_path = tmp_path / "geography_assignment_summary.json"
+    geography_path.write_text(
+        json.dumps(geography_summary.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    contract = write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=calibration_package_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+        geography_summary_path=geography_path,
+        geography_assignment_summary=geography_summary,
+    )
+
+    outputs = {artifact.logical_name: artifact for artifact in contract.outputs}
+    assert outputs["geography_assignment_summary"].media_type == "application/json"
+    assert (
+        outputs["geography_assignment_summary"].metadata["canonical_geography_sha256"]
+        == geography_summary.canonical_geography_sha256
+    )
+    assert contract.execution.reuse_summary.expected_outputs == 2
+    assert (
+        validate_calibration_package_contract(
+            package_path=package_path,
+            package=package,
+            dataset_path=dataset_path,
+            db_path=db_path,
+        )
+        == contract
+    )
 
 
 def test_calibration_package_parameters_parse_runtime_args():
@@ -149,12 +191,17 @@ def test_geography_assignment_summary_round_trips_through_schema():
 
     assert isinstance(summary, GeographyAssignmentSummary)
     assert GeographyAssignmentSummary.from_dict(summary.to_dict()) == summary
+    assert summary.schema_version == 1
     assert summary.source_kind == "calibration_package"
+    assert summary.status == "completed"
+    assert summary.ordering == "clone_major"
     assert summary.n_records == 1
     assert summary.n_clones == 3
     assert summary.n_rows == 3
     assert summary.block_geoid_sha256.startswith("sha256:")
     assert summary.cd_geoid_sha256.startswith("sha256:")
+    assert summary.county_fips_sha256.startswith("sha256:")
+    assert summary.state_fips_sha256.startswith("sha256:")
     assert summary.canonical_geography_sha256.startswith("sha256:")
 
 
@@ -184,6 +231,7 @@ def test_geography_assignment_summary_allows_unavailable_package_geography():
     summary = summarize_geography_assignment(package)
 
     assert summary.source_kind == "unavailable"
+    assert summary.status == "unavailable"
     assert summary.n_records == 1
     assert summary.n_clones == 3
     assert summary.n_rows is None

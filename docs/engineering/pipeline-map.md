@@ -339,7 +339,7 @@ Stage base source-imputed datasets and policy database artifacts for the run
 | --- | --- | --- | --- | --- |
 | `in_source_imputed_s1g` source_imputed_*.h5 | `artifact` | `unknown` | `unknown` |  |
 | `in_policy_db_s1g` policy_data.db | `artifact` | `unknown` | `unknown` |  |
-| `hf_staging_base_s1g` HuggingFace staging/{candidate_version}/{run_id} | `external` | `unknown` | `unknown` |  |
+| `hf_staging_base_s1g` HuggingFace staging/{candidate_version}-{run_id} | `external` | `unknown` | `unknown` |  |
 | `stage_base_datasets` stage base datasets | `process` | `current` | `moving` |  |
 | `out_staged_base_s1g` staged base datasets | `artifact` | `unknown` | `unknown` |  |
 
@@ -687,7 +687,7 @@ Promote validated staged artifacts to HuggingFace production paths
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
 | `in_validated_candidates_s5b` validated release candidates | `artifact` | `unknown` | `unknown` |  |
-| `hf_staging_s5b` HuggingFace staging/{candidate_version}/{run_id} | `external` | `unknown` | `unknown` |  |
+| `hf_staging_s5b` HuggingFace staging/{candidate_version}-{run_id} | `external` | `unknown` | `unknown` |  |
 | `out_hf_prod` HuggingFace Production | `external` | `unknown` | `unknown` |  |
 | `util_upload_s5b` data_upload.py | `utility` | `unknown` | `unknown` |  |
 | `staging_upload` Upload Local H5s To Staging | `entrypoint` | `current` | `moving` | `modal_app.local_area.upload_to_staging` |
@@ -881,6 +881,14 @@ def _validate_housing_assistance_microsimulation(cls, data, time_period, microsi
 ```
 
 Check formula-reconstructed housing assistance before export.
+
+### `policyengine_us_data.release_promotion.candidate_builders.build_legacy_release_candidate_bundle`
+
+```python
+def build_legacy_release_candidate_bundle(*, context: ReleasePromotionContext, rel_paths: Sequence[str], artifact_metadata_by_path: Mapping[str, Mapping[str, Any]] | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), source_output_contract_path: str | None = None, diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle
+```
+
+Build a candidate bundle from the current legacy staged relative paths.
 
 ### `policyengine_us_data.calibration.publish_local_area.load_calibration_geography`
 
@@ -1322,6 +1330,38 @@ def normalize_worker_response(*, worker_index: int, result: object) -> Coordinat
 
 Normalize worker JSON into explicit fatal and nonfatal coordinator issues.
 
+### `policyengine_us_data.release_promotion.artifacts.ReleaseArtifactSpec`
+
+```python
+class ReleaseArtifactSpec
+```
+
+Normalized identity for one artifact in a Stage 5 release candidate.
+
+### `policyengine_us_data.release_promotion.candidate.ReleaseCandidateInputBundle`
+
+```python
+class ReleaseCandidateInputBundle
+```
+
+Typed Stage 5 input bundle describing a candidate ready for promotion.
+
+### `policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report`
+
+```python
+def build_release_candidate_shape_report(bundle: ReleaseCandidateInputBundle) -> ValidationReport
+```
+
+Describe candidate-bundle shape using the shared validation schema.
+
+### `policyengine_us_data.release_promotion.context.ReleasePromotionContext`
+
+```python
+class ReleasePromotionContext
+```
+
+Canonical run, candidate, release, and destination identity for Stage 5.
+
 ### `modal_app.local_area._resolve_scope_fingerprint`
 
 ```python
@@ -1361,6 +1401,22 @@ def impute_source_variables(data: Dict[str, Dict[int, np.ndarray]], state_fips: 
 ```
 
 Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.
+
+### `policyengine_us_data.release_promotion.stage4_reader.build_release_candidate_bundle_from_stage4_contract`
+
+```python
+def build_release_candidate_bundle_from_stage4_contract(*, context: ReleasePromotionContext, output_contract: StageContract, inventory_records: Iterable[Mapping[str, Any]] = (), source_output_contract_path: str | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle
+```
+
+Build a candidate bundle from a Stage 4 output contract shape.
+
+### `policyengine_us_data.release_promotion.stage4_reader.read_stage4_release_candidate_bundle`
+
+```python
+def read_stage4_release_candidate_bundle(*, context: ReleasePromotionContext, output_contract_path: str | Path, output_inventory_path: str | Path | None = None, source_output_contract_path: str | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle
+```
+
+Read a candidate bundle from Stage 4 contract and optional inventory files.
 
 ### `policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs`
 

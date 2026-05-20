@@ -338,6 +338,24 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.release_promotion.candidate_builders.build_legacy_release_candidate_bundle"
+      ],
+      "description": "Compatibility builder for Stage 5 candidates from legacy staged path sets.",
+      "id": "legacy_release_candidate_bundle_builder",
+      "label": "Legacy Release Candidate Bundle Builder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/candidate_builders.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.geography_loader.CalibrationGeographyLoader",
         "policyengine_us_data.calibration.publish_local_area.load_calibration_geography"
       ],
@@ -1381,6 +1399,78 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.release_promotion.artifacts.ReleaseArtifactSpec"
+      ],
+      "description": "Normalized per-artifact identity for a Stage 5 release candidate.",
+      "id": "release_artifact_spec",
+      "label": "ReleaseArtifactSpec",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/artifacts.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.candidate.ReleaseCandidateInputBundle"
+      ],
+      "description": "Typed Stage 5 input bundle describing artifacts eligible for release promotion.",
+      "id": "release_candidate_input_bundle",
+      "label": "ReleaseCandidateInputBundle",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/candidate.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report"
+      ],
+      "description": "Adapt Stage 5 release-candidate shape checks into the canonical validation report schema.",
+      "id": "release_candidate_shape_report",
+      "label": "Release Candidate Shape Report",
+      "node_type": "validation",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/validation.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.context.ReleasePromotionContext"
+      ],
+      "description": "Typed Stage 5 run, candidate, release, and destination identity.",
+      "id": "release_promotion_context",
+      "label": "ReleasePromotionContext",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/context.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
         "modal_app.local_area._resolve_scope_fingerprint"
       ],
@@ -1496,6 +1586,42 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/calibration/test_source_impute.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.stage4_reader.build_release_candidate_bundle_from_stage4_contract"
+      ],
+      "description": "Build a Stage 5 candidate bundle from Stage 4 contract and inventory records.",
+      "id": "stage4_release_candidate_bundle_builder",
+      "label": "Stage 4 Release Candidate Bundle Builder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/stage4_reader.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.stage4_reader.read_stage4_release_candidate_bundle"
+      ],
+      "description": "Read Stage 4 output contract and inventory files into a Stage 5 candidate bundle.",
+      "id": "stage4_release_candidate_bundle_reader",
+      "label": "Stage 4 Release Candidate Bundle Reader",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/stage4_reader.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
       ]
     },
     {
@@ -1781,9 +1907,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 84,
+    "api_node_count": 93,
     "canonical_stage_count": 5,
-    "decorated_object_count": 133,
+    "decorated_object_count": 142,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17
@@ -3589,7 +3715,7 @@
         {
           "description": "Run-scoped staging prefix for base datasets",
           "id": "hf_staging_base_s1g",
-          "label": "HuggingFace staging/{candidate_version}/{run_id}",
+          "label": "HuggingFace staging/{candidate_version}-{run_id}",
           "node_type": "external"
         },
         {
@@ -5141,7 +5267,7 @@
         {
           "description": "Run-scoped staging prefix containing validated artifacts",
           "id": "hf_staging_s5b",
-          "label": "HuggingFace staging/{candidate_version}/{run_id}",
+          "label": "HuggingFace staging/{candidate_version}-{run_id}",
           "node_type": "external"
         },
         {

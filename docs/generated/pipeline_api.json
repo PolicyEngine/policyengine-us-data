@@ -1363,6 +1363,33 @@
     "signature": "def compute_initial_weights(X_sparse, targets_df: 'pd.DataFrame') -> np.ndarray",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
+  "legacy_release_candidate_bundle_builder": {
+    "docstring": "Build a candidate bundle from the current legacy staged relative paths.",
+    "id": "legacy_release_candidate_bundle_builder",
+    "kind": "function",
+    "line": 38,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.candidate_builders.build_legacy_release_candidate_bundle"
+      ],
+      "description": "Compatibility builder for Stage 5 candidates from legacy staged path sets.",
+      "id": "legacy_release_candidate_bundle_builder",
+      "label": "Legacy Release Candidate Bundle Builder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/candidate_builders.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.candidate_builders.build_legacy_release_candidate_bundle",
+    "signature": "def build_legacy_release_candidate_bundle(*, context: ReleasePromotionContext, rel_paths: Sequence[str], artifact_metadata_by_path: Mapping[str, Mapping[str, Any]] | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), source_output_contract_path: str | None = None, diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle",
+    "source_file": "policyengine_us_data/release_promotion/candidate_builders.py"
+  },
   "load_calibration_geography": {
     "docstring": "",
     "id": "load_calibration_geography",
@@ -3105,6 +3132,114 @@
     "signature": "def puf_clone_dataset(data: Dict[str, Dict[int, np.ndarray]], state_fips: np.ndarray, block_geoid: Optional[np.ndarray] = None, cd_geoid: Optional[np.ndarray] = None, county_fips: Optional[np.ndarray] = None, time_period: int = 2024, puf_dataset = None, skip_qrf: bool = False, dataset_path: Optional[str] = None) -> Dict[str, Dict[int, np.ndarray]]",
     "source_file": "policyengine_us_data/calibration/puf_impute.py"
   },
+  "release_artifact_spec": {
+    "docstring": "Normalized identity for one artifact in a Stage 5 release candidate.",
+    "id": "release_artifact_spec",
+    "kind": "class",
+    "line": 61,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.artifacts.ReleaseArtifactSpec"
+      ],
+      "description": "Normalized per-artifact identity for a Stage 5 release candidate.",
+      "id": "release_artifact_spec",
+      "label": "ReleaseArtifactSpec",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/artifacts.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.artifacts.ReleaseArtifactSpec",
+    "signature": "class ReleaseArtifactSpec",
+    "source_file": "policyengine_us_data/release_promotion/artifacts.py"
+  },
+  "release_candidate_input_bundle": {
+    "docstring": "Typed Stage 5 input bundle describing a candidate ready for promotion.",
+    "id": "release_candidate_input_bundle",
+    "kind": "class",
+    "line": 50,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.candidate.ReleaseCandidateInputBundle"
+      ],
+      "description": "Typed Stage 5 input bundle describing artifacts eligible for release promotion.",
+      "id": "release_candidate_input_bundle",
+      "label": "ReleaseCandidateInputBundle",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/candidate.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.candidate.ReleaseCandidateInputBundle",
+    "signature": "class ReleaseCandidateInputBundle",
+    "source_file": "policyengine_us_data/release_promotion/candidate.py"
+  },
+  "release_candidate_shape_report": {
+    "docstring": "Describe candidate-bundle shape using the shared validation schema.",
+    "id": "release_candidate_shape_report",
+    "kind": "function",
+    "line": 28,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report"
+      ],
+      "description": "Adapt Stage 5 release-candidate shape checks into the canonical validation report schema.",
+      "id": "release_candidate_shape_report",
+      "label": "Release Candidate Shape Report",
+      "node_type": "validation",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/validation.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report",
+    "signature": "def build_release_candidate_shape_report(bundle: ReleaseCandidateInputBundle) -> ValidationReport",
+    "source_file": "policyengine_us_data/release_promotion/validation.py"
+  },
+  "release_promotion_context": {
+    "docstring": "Canonical run, candidate, release, and destination identity for Stage 5.",
+    "id": "release_promotion_context",
+    "kind": "class",
+    "line": 44,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.context.ReleasePromotionContext"
+      ],
+      "description": "Typed Stage 5 run, candidate, release, and destination identity.",
+      "id": "release_promotion_context",
+      "label": "ReleasePromotionContext",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/context.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.context.ReleasePromotionContext",
+    "signature": "class ReleasePromotionContext",
+    "source_file": "policyengine_us_data/release_promotion/context.py"
+  },
   "resolve_scope_fingerprint": {
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
@@ -3463,11 +3598,65 @@
     "signature": "def reconcile_ss_subcomponents(data: Dict[str, Dict[int, np.ndarray]], n_cps: int, time_period: int) -> None",
     "source_file": "policyengine_us_data/calibration/puf_impute.py"
   },
+  "stage4_release_candidate_bundle_builder": {
+    "docstring": "Build a candidate bundle from a Stage 4 output contract shape.",
+    "id": "stage4_release_candidate_bundle_builder",
+    "kind": "function",
+    "line": 48,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.stage4_reader.build_release_candidate_bundle_from_stage4_contract"
+      ],
+      "description": "Build a Stage 5 candidate bundle from Stage 4 contract and inventory records.",
+      "id": "stage4_release_candidate_bundle_builder",
+      "label": "Stage 4 Release Candidate Bundle Builder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/stage4_reader.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.stage4_reader.build_release_candidate_bundle_from_stage4_contract",
+    "signature": "def build_release_candidate_bundle_from_stage4_contract(*, context: ReleasePromotionContext, output_contract: StageContract, inventory_records: Iterable[Mapping[str, Any]] = (), source_output_contract_path: str | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle",
+    "source_file": "policyengine_us_data/release_promotion/stage4_reader.py"
+  },
+  "stage4_release_candidate_bundle_reader": {
+    "docstring": "Read a candidate bundle from Stage 4 contract and optional inventory files.",
+    "id": "stage4_release_candidate_bundle_reader",
+    "kind": "function",
+    "line": 126,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.stage4_reader.read_stage4_release_candidate_bundle"
+      ],
+      "description": "Read Stage 4 output contract and inventory files into a Stage 5 candidate bundle.",
+      "id": "stage4_release_candidate_bundle_reader",
+      "label": "Stage 4 Release Candidate Bundle Reader",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/stage4_reader.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_candidate.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.stage4_reader.read_stage4_release_candidate_bundle",
+    "signature": "def read_stage4_release_candidate_bundle(*, context: ReleasePromotionContext, output_contract_path: str | Path, output_inventory_path: str | Path | None = None, source_output_contract_path: str | None = None, validation_report_paths: Sequence[str] = (), validation_report_refs: Sequence[DiagnosticRef] = (), diagnostics_manifest_path: str | None = None) -> ReleaseCandidateInputBundle",
+    "source_file": "policyengine_us_data/release_promotion/stage4_reader.py"
+  },
   "stage_1_dataset_artifact_specs": {
     "docstring": "Return all artifact specs known to the Stage 1 dataset build.",
     "id": "stage_1_dataset_artifact_specs",
     "kind": "function",
-    "line": 230,
+    "line": 231,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs"

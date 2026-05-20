@@ -343,7 +343,7 @@ class CPS(Dataset):
 @pipeline_node(
     PipelineNode(
         id="add_rent",
-        label="Rent Imputation",
+        label="ACS Housing Imputation",
         node_type="library",
         description="Impute housing values, rent, and real estate taxes using ACS donor data.",
         source_file="policyengine_us_data/datasets/cps/cps.py",
@@ -405,6 +405,7 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     train_df = acs.calculate_dataframe(
         PREDICTORS + ACS_CALCULATED_IMPUTED_VARIABLES,
         map_to="person",
+        use_weights=False,
     )
     # TODO(PolicyEngine/policyengine-core#482): policyengine-core 3.24.0+
     # silently drops user-supplied ETERNITY inputs on dataset reload because
@@ -430,7 +431,11 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         na_action="ignore",
     ).fillna(train_df.tenure_type)
     train_df = train_df[train_df.is_household_head].sample(10_000)
-    inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
+    inference_df = cps_sim.calculate_dataframe(
+        PREDICTORS,
+        map_to="person",
+        use_weights=False,
+    )
     inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]

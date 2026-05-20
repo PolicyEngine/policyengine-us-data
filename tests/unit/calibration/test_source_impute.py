@@ -264,7 +264,8 @@ class TestSubfunctions:
             def __init__(self, dataset):
                 self.dataset = dataset
 
-            def calculate_dataframe(self, variables, map_to=None):
+            def calculate_dataframe(self, variables, map_to=None, use_weights=True):
+                assert use_weights is False
                 if self.dataset is acs_module.ACS_2022:
                     return pd.DataFrame(
                         {

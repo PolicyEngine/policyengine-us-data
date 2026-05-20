@@ -648,7 +648,7 @@ stages:
   stability: moving
 - id: 1f_source_imputation
   label: 1f
-  title: 'Substage 1f: Source Imputation (ACS + SIPP + SCF)'
+  title: 'Substage 1f: Source Imputation (ACS + SIPP + ORG + SCF)'
   canonical_stage_id: 1_build_datasets
   legacy_stage_id: '4'
   manifest_step_ids:

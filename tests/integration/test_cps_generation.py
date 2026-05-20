@@ -287,7 +287,9 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
         def calculate_dataframe(
             self, columns, period=None, map_to=None, use_weights=True
         ):
-            FakeMicrosimulation.calls.append((self.dataset, tuple(columns), map_to))
+            FakeMicrosimulation.calls.append(
+                (self.dataset, tuple(columns), map_to, use_weights)
+            )
             if self.dataset is fake_acs_dataset:
                 rows = 10_050
                 return pd.DataFrame(
@@ -361,7 +363,10 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
 
     add_rent(dataset, cps, person, household)
 
-    assert [call[2] for call in FakeMicrosimulation.calls] == ["person", "person"]
+    assert [(call[2], call[3]) for call in FakeMicrosimulation.calls] == [
+        ("person", False),
+        ("person", False),
+    ]
     np.testing.assert_array_equal(cps["rent"], np.array([1200, 0, 0], dtype=np.int32))
     np.testing.assert_array_equal(
         cps["real_estate_taxes"],

@@ -101,6 +101,30 @@ from policyengine_us_data.datasets.cps.long_term.run_long_term_production import
 )
 
 
+def test_long_term_weight_attribute_access_is_centralized():
+    """Keep direct MicroSeries weight access behind one calibration helper."""
+    long_term_dir = (
+        Path(__file__).parents[2]
+        / "policyengine_us_data"
+        / "datasets"
+        / "cps"
+        / "long_term"
+    )
+    weight_attribute = ".weights"
+    matches = []
+    for path in sorted(long_term_dir.glob("*.py")):
+        for line in path.read_text().splitlines():
+            if weight_attribute in line:
+                matches.append((path.name, line.strip()))
+
+    assert matches == [
+        (
+            "projection_utils.py",
+            "return np.asarray(household_series.weights, dtype=float)",
+        )
+    ]
+
+
 class ExplodingCalibrator:
     def calibrate(self, **kwargs):
         raise RuntimeError("boom")

@@ -198,6 +198,7 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
     ),
 )
 
+
 @pipeline_node(
     id="stage_1_dataset_artifact_specs",
     label="Stage 1 Dataset Artifact Specs",

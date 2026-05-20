@@ -22,6 +22,7 @@ blocks to SLDU, SLDL, Place, VTD, PUMA, and ZCTA.
 """
 
 import random
+import time
 import unicodedata
 from functools import lru_cache
 from io import StringIO
@@ -63,6 +64,35 @@ def get_tract_geoid_from_block(block_geoid: str) -> str:
 
 # === County FIPS to Enum Mapping ===
 
+COUNTY_FIPS_2020_URL = (
+    "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
+)
+COUNTY_FIPS_DOWNLOAD_ATTEMPTS = 5
+COUNTY_FIPS_RETRY_BACKOFF_SECONDS = 1.0
+
+
+def _county_fips_session() -> requests.Session:
+    return requests.Session()
+
+
+def _download_county_fips_2020(
+    session: requests.Session | None = None,
+) -> str:
+    session = session or _county_fips_session()
+    last_exception = None
+    for attempt in range(COUNTY_FIPS_DOWNLOAD_ATTEMPTS):
+        try:
+            response = session.get(COUNTY_FIPS_2020_URL, timeout=(10, 60))
+            response.raise_for_status()
+            return response.content.decode("utf-8")
+        except requests.RequestException as exc:
+            last_exception = exc
+            if attempt == COUNTY_FIPS_DOWNLOAD_ATTEMPTS - 1:
+                raise
+            time.sleep(COUNTY_FIPS_RETRY_BACKOFF_SECONDS * (2**attempt))
+
+    raise RuntimeError("Failed to download 2020 county FIPS data") from last_exception
+
 
 @lru_cache(maxsize=1)
 def _build_county_fips_to_enum() -> Dict[str, str]:
@@ -72,11 +102,8 @@ def _build_county_fips_to_enum() -> Dict[str, str]:
     Downloads Census county FIPS file and matches to County enum names.
     Cached to avoid repeated downloads.
     """
-    url = "https://www2.census.gov/geo/docs/reference/codes2020/national_county2020.txt"
-    response = requests.get(url, timeout=60)
-    response.raise_for_status()
     df = pd.read_csv(
-        StringIO(response.content.decode("utf-8")),
+        StringIO(_download_county_fips_2020()),
         delimiter="|",
         dtype=str,
         usecols=["STATE", "STATEFP", "COUNTYFP", "COUNTYNAME"],

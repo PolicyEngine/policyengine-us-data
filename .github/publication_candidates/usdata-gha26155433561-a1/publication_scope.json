@@ -1,0 +1,7 @@
+{
+  "base_release_version": "1.115.4",
+  "candidate_scope": "1.115.4-patch",
+  "release_bump": "patch",
+  "run_id": "usdata-gha26155433561-a1",
+  "would_release_as_at_build_time": "1.115.5"
+}

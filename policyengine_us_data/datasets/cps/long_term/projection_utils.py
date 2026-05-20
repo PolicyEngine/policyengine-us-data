@@ -32,6 +32,26 @@ def _row_values(series):
     return np.asarray(series)
 
 
+def household_calibration_weights(sim, *, period=None) -> np.ndarray:
+    """
+    Return household weights for calibration decision vectors only.
+
+    Ordinary weighted totals should use MicroSeries/MicroDataFrame methods such
+    as ``sum()`` so PolicyEngine owns the entity-to-weight mapping. The long-run
+    calibration optimizer is the exception: it needs the household-level weight
+    vector because it directly solves for adjusted household weights.
+    """
+    if period is None:
+        household_series = sim.calculate("household_id", map_to="household")
+    else:
+        household_series = sim.calculate(
+            "household_id",
+            period=period,
+            map_to="household",
+        )
+    return np.asarray(household_series.weights, dtype=float)
+
+
 def _person_level_values(sim, variable, *, period):
     try:
         series = sim.calculate(variable, period=period, map_to="person")
@@ -426,10 +446,7 @@ def calculate_year_statistics(
     income_tax_baseline_total = income_tax_hh.sum()
     income_tax_values = income_tax_hh.values
 
-    household_microseries = sim.calculate("household_id", map_to="household")
-    # Explicit weight access is reserved for the household-level calibration
-    # decision vector; ordinary aggregates should use MicroSeries methods.
-    baseline_weights_actual = household_microseries.weights.values
+    baseline_weights_actual = household_calibration_weights(sim)
 
     ss_values = None
     ss_target = None

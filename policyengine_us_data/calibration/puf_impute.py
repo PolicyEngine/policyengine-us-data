@@ -462,9 +462,11 @@ def puf_clone_dataset(
 ) -> Dict[str, Dict[int, np.ndarray]]:
     """Clone CPS data 2x and impute PUF variables on one half.
 
-    The first half keeps CPS values (with OVERRIDDEN vars QRF'd).
-    The second half gets full PUF QRF imputation. The second half
-    has household weights set to zero.
+    The first half keeps CPS values when CPS reports the variable.
+    Variables absent from CPS get PUF QRF predictions on both halves
+    so positive-weight CPS rows can support those calibration targets.
+    The second half still gets full PUF QRF imputation and starts with
+    household weights set to zero.
 
     Args:
         data: CPS dataset dict {variable: {time_period: array}}.
@@ -602,8 +604,7 @@ def puf_clone_dataset(
         for var in IMPUTED_VARIABLES:
             if var not in data:
                 pred = _map_to_entity(y_full[var], var)
-                orig = np.zeros_like(pred)
-                new_data[var] = {time_period: np.concatenate([orig, pred])}
+                new_data[var] = {time_period: np.concatenate([pred, pred])}
 
     if cps_sim is not None:
         del cps_sim

@@ -119,3 +119,22 @@ repository root.
   may show a running run with no durable error. In that case, report the last
   completed/running manifest and then use Modal dashboard logs as secondary
   evidence.
+
+## Local Publication Preflight
+
+When you already have a locally built or checkpointed
+`enhanced_cps_2024.h5`, run the publication preflight before launching or
+resuming the long local-area publication stages:
+
+```bash
+uv run python scripts/run_publication_preflight.py \
+  --enhanced-cps /path/to/enhanced_cps_2024.h5 \
+  --calibration-log /path/to/calibration_log.csv
+```
+
+This reuses the upload dataset contract, computes baseline SPM, checks
+`employment_income` against the BEA NIPA wages target with a tight tolerance,
+and runs final-epoch JCT diagnostics plus ACA/Medicaid state checks unless
+explicitly skipped. Do not treat a completed local data build as publication
+ready until this preflight or the equivalent Stage 1 publication validation has
+passed.

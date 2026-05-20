@@ -1,5 +1,6 @@
 import numpy as np
 
+from policyengine_core.reforms import Reform
 from policyengine_us import Microsimulation
 
 # H5_PATH = 'hf://policyengine/test/'
@@ -32,11 +33,8 @@ assert round(taxible_estimate_b) == ss_trustees_payroll_b
 ## Population demographics, total
 
 ### Population count of 6 year olds
-person_weights = sim.calculate("age", map_to="person").weights
-person_ages = sim.calculate("age", map_to="person").values
-person_is_6 = person_ages == 6
-
-total_age6_est = np.sum(person_is_6 * person_weights)
+person_ages = sim.calculate("age", map_to="person")
+total_age6_est = (person_ages == 6).sum()
 
 ### Single Year Age demographic projections - latest published is 2024:
 ### "Mid Year" CSV from https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html
@@ -73,11 +71,8 @@ assert round(taxible_estimate_b) == ss_trustees_payroll_b
 ## Population demographics, total
 
 ### Population count of 6 year olds
-person_weights = sim.calculate("age", map_to="person").weights
-person_ages = sim.calculate("age", map_to="person").values
-person_is_6 = person_ages == 6
-
-total_age6_est = np.sum(person_is_6 * person_weights)
+person_ages = sim.calculate("age", map_to="person")
+total_age6_est = (person_ages == 6).sum()
 
 ### Single Year Age demographic projections - latest published is 2024:
 ### "Mid Year" CSV from https://www.ssa.gov/oact/HistEst/Population/2024/Population2024.html
@@ -100,9 +95,6 @@ oasdi_tob_estimate_b
 
 
 # Testing the H6 Reform ------------------------------------------------------
-
-from policyengine_us import Microsimulation
-from policyengine_core.reforms import Reform
 
 
 def create_h6_reform():

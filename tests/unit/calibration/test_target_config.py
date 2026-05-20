@@ -360,10 +360,32 @@ class TestLoadTargetConfig:
         for variable in [
             "employment_income_before_lsr",
             etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE,
-            etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
-            "dividend_income",
         ]:
             assert {"variable": variable, "geo_level": "national"} in include_rules
+
+        assert {
+            "variable": "interest_income",
+            "geo_level": "national",
+        } not in include_rules
+        assert {
+            "variable": "dividend_income",
+            "geo_level": "national",
+        } not in include_rules
+
+    def test_training_config_includes_bea_state_wage_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        assert {
+            "variable": "employment_income_before_lsr",
+            "geo_level": "state",
+        } in config["include"]
 
     def test_training_config_includes_soi_ltcg_target(self):
         config = load_target_config(

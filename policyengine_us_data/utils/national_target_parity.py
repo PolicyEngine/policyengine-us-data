@@ -41,6 +41,9 @@ _SPM_THRESHOLD_LABEL = re.compile(
     r"^nation/census/(?:agi|count)_in_spm_threshold_decile_[0-9]+$"
 )
 _SOI_FILER_AGI_LABEL = re.compile(r"^nation/soi/filer_count/agi_.+$")
+_CBO_INCOME_BY_SOURCE_LABEL = re.compile(
+    r"^nation/cbo/income_by_source/(?P<variable>.+)/filers$"
+)
 _DEPRECATED_SPM_SURVEY_LABEL = re.compile(
     r"^nation/census/(?:spm_unit_|(?:agi|count)_in_spm_threshold_decile_).+$"
 )
@@ -392,6 +395,20 @@ def classify_national_target(
             target_name,
             matches,
             reason="structured_real_estate_tax_itemizer_target",
+        )
+
+    match = _CBO_INCOME_BY_SOURCE_LABEL.match(target_name)
+    if match:
+        variable = match.group("variable")
+        matches = index.match(
+            variable=variable,
+            period=period,
+            constraints=[_constraint("tax_unit_is_filer", "==", 1)],
+        )
+        return _match_result(
+            target_name,
+            matches,
+            reason="structured_cbo_income_by_source_filer_target",
         )
 
     if target_name.startswith("nation/cbo/"):

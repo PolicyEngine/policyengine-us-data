@@ -83,6 +83,7 @@ from projection_utils import (
     build_age_bins,
     build_household_age_matrix,
     create_household_year_h5,
+    household_calibration_weights,
     validate_projected_social_security_cap,
 )
 from tax_assumptions import (
@@ -1115,25 +1116,24 @@ for year_idx in range(n_years):
     income_tax_values = income_tax_hh.values
 
     household_microseries = sim.calculate("household_id", map_to="household")
-    # This is the calibrated household-weight decision vector. All ordinary
-    # baseline aggregates should continue to use MicroSeries methods directly.
-    baseline_weights = household_microseries.weights.values
-    household_ids_hh = household_microseries.values
+    baseline_weights = household_calibration_weights(sim)
+    household_ids_hh = np.asarray(household_microseries.array)
 
     income_guard_constraints = {}
     if year >= SUPPORT_AUGMENTATION_START_YEAR:
         for group_name, components in INCOME_GUARD_GROUPS.items():
             group_values = np.zeros(len(baseline_weights), dtype=float)
+            group_target = 0.0
             included_components = []
             for component in components:
                 if component not in sim.tax_benefit_system.variables:
                     continue
                 component_hh = sim.calculate(component, period=year, map_to="household")
                 group_values += np.asarray(component_hh.values, dtype=float)
+                group_target += float(component_hh.sum())
                 included_components.append(component)
             if not included_components:
                 continue
-            group_target = float(np.sum(group_values * baseline_weights))
             if abs(group_target) <= 1e-6:
                 continue
             income_guard_constraints[f"income_guard_{group_name}"] = (
@@ -1164,7 +1164,7 @@ for year_idx in range(n_years):
         ss_values = ss_hh.values
         ss_target = load_ssa_benefit_projections(year)
         if year in display_years:
-            ss_baseline = np.sum(ss_values * baseline_weights)
+            ss_baseline = ss_hh.sum()
             print(
                 f"  [DEBUG {year}] SS baseline: ${ss_baseline / 1e9:.1f}B, target: ${ss_target / 1e9:.1f}B"
             )
@@ -1190,7 +1190,7 @@ for year_idx in range(n_years):
         payroll_values = taxable_wages_hh.values + taxable_self_emp_hh.values
         payroll_target = load_taxable_payroll_projections(year)
         if year in display_years:
-            payroll_baseline = np.sum(payroll_values * baseline_weights)
+            payroll_baseline = taxable_wages_hh.sum() + taxable_self_emp_hh.sum()
             print(f"  [DEBUG {year}] Payroll cap: ${payroll_cap:,.0f}")
             print(
                 f"  [DEBUG {year}] Payroll baseline: ${payroll_baseline / 1e9:.1f}B, target: ${payroll_target / 1e9:.1f}B"
@@ -1231,7 +1231,7 @@ for year_idx in range(n_years):
 
             # Debug output for key years
             if year in display_years:
-                h6_impact_baseline = np.sum(h6_income_values * baseline_weights)
+                h6_impact_baseline = income_tax_reform_hh.sum() - income_tax_hh.sum()
                 print(
                     f"  [DEBUG {year}] H6 baseline revenue: ${h6_impact_baseline / 1e9:.3f}B, target: ${h6_revenue_target / 1e9:.3f}B"
                 )
@@ -1260,8 +1260,8 @@ for year_idx in range(n_years):
         hi_tob_target = load_hi_tob_projections(year)
 
         if year in display_years:
-            oasdi_baseline = np.sum(oasdi_tob_values * baseline_weights)
-            hi_baseline = np.sum(hi_tob_values * baseline_weights)
+            oasdi_baseline = oasdi_tob_hh.sum()
+            hi_baseline = hi_tob_hh.sum()
             print(
                 f"  [DEBUG {year}] OASDI TOB baseline: ${oasdi_baseline / 1e9:.1f}B, target: ${oasdi_tob_target / 1e9:.1f}B"
             )

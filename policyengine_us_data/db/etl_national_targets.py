@@ -36,13 +36,19 @@ from policyengine_us_data.utils.target_variables import (
 # list should train on the target, add it to calibration/target_config.yaml too.
 BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
 BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
-BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
-BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
-NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "self_employment_income_before_lsr"
+    "+sstb_self_employment_income_before_lsr"
+    "+farm_operations_income"
+    "+partnership_s_corp_income"
+)
+# CBO's individual income tax model computes AGI with "taxable interest
+# and ordinary dividends" explicitly excluding qualified dividends, which
+# are reported on the next line. Keep this mapped to the tax-return concept
+# for filer tax units, not total interest plus all dividends.
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
-    "taxable_interest_income+dividend_income"
+    "taxable_interest_income+non_qualified_dividend_income"
 )
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
@@ -99,8 +105,9 @@ CBO_INCOME_BY_SOURCE_TARGETS = [
         "parameter": "taxable_interest_and_ordinary_dividends",
         "notes": (
             "CBO detailed AGI-by-source taxable interest plus ordinary "
-            "dividends; restricted to tax filers because this is an AGI "
-            "tax-return concept"
+            "dividends explicitly excluding qualified dividends; "
+            "restricted to tax filers because this is an AGI tax-return "
+            "concept"
         ),
     },
 ]
@@ -455,33 +462,9 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "notes": (
                 "Proprietors' income with IVA and CCAdj for all persons, "
                 "including nonfilers; FRED/BEA series A041RC1A027NBEA. "
-                "Mapped to the PolicyEngine-US NIPA proprietors' income "
-                "aggregate."
-            ),
-            "year": 2024,
-        },
-        {
-            "variable": NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
-            "value": BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
-            "source": "BEA NIPA Table 2.1",
-            "notes": (
-                "Personal interest income for all persons, including "
-                "nonfilers; FRED/BEA series A064RC1A027NBEA. NIPA also "
-                "includes imputed interest, so this is a macro benchmark "
-                "rather than a pure tax concept."
-            ),
-            "year": 2024,
-        },
-        {
-            "variable": "dividend_income",
-            "value": BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
-            "source": "BEA NIPA Table 2.1",
-            "notes": (
-                "Personal dividend income for all persons, including "
-                "nonfilers; FRED/BEA series B703RC1A027NBEA. NIPA "
-                "includes dividends received through pension funds and "
-                "private trusts, so this is a macro benchmark rather than "
-                "a pure tax concept."
+                "Mapped to Schedule C non-SSTB and SSTB self-employment "
+                "income before labor-supply responses, Schedule F farm "
+                "operations income, and active partnership/S-corp income."
             ),
             "year": 2024,
         },

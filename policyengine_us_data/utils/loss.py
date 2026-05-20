@@ -19,6 +19,7 @@ from policyengine_us_data.utils.cms_medicare import (
     get_beneficiary_paid_medicare_part_b_premiums_target,
     get_medicare_enrollment_target,
 )
+from policyengine_us_data.utils.bea_regional import get_bea_state_wage_targets
 from policyengine_us_data.db.etl_irs_soi import (
     get_national_geography_soi_target,
     get_state_geography_soi_targets,
@@ -43,15 +44,25 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 
 BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
 BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
-BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
-BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
-NIPA_PROPRIETORS_INCOME_VARIABLE = "nipa_proprietors_income"
-NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
+NIPA_PROPRIETORS_INCOME_VARIABLE = (
+    "self_employment_income_before_lsr"
+    "+sstb_self_employment_income_before_lsr"
+    "+farm_operations_income"
+    "+partnership_s_corp_income"
+)
+# CBO's individual income tax model computes AGI with "taxable interest
+# and ordinary dividends" explicitly excluding qualified dividends, which
+# are reported on the next line. Keep this mapped to the tax-return concept
+# for filer tax units, not total interest plus all dividends.
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
-    "taxable_interest_income+dividend_income"
+    "taxable_interest_income+non_qualified_dividend_income"
 )
 
+# Only use direct NIPA totals when the PolicyEngine variable expression is a
+# close microdata concept. BEA personal interest/dividends include imputed
+# interest, pension-plan dividends, and trust flows, so those macro totals
+# should not directly calibrate tax/CPS interest and dividend variables.
 BEA_NIPA_DIRECT_SUM_TARGETS = (
     (
         "nation/bea/nipa_wages_and_salaries",
@@ -63,17 +74,10 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
         NIPA_PROPRIETORS_INCOME_VARIABLE,
         BEA_NIPA_PROPRIETORS_INCOME_2024,
     ),
-    (
-        "nation/bea/nipa_personal_interest_income",
-        NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
-        BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
-    ),
-    (
-        "nation/bea/nipa_personal_dividend_income",
-        "dividend_income",
-        BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
-    ),
 )
+
+BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT = 1_000.0
+BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 1_000.0
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
@@ -1069,6 +1073,40 @@ def _add_bls_ce_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _add_bea_state_wage_targets(loss_matrix, targets_list, sim, time_period):
+    """Add BEA state wage targets to the legacy eCPS loss matrix."""
+    targets, data_year = get_bea_state_wage_targets(
+        time_period,
+        national_total=BEA_NIPA_WAGES_AND_SALARIES_2024,
+    )
+    wages = _calculate_household_target_values(
+        sim,
+        "employment_income_before_lsr",
+        time_period,
+    )
+    state_code = sim.calculate(
+        "state_code",
+        map_to="household",
+        period=time_period,
+    ).values
+
+    for row in targets.itertuples(index=False):
+        in_state = (state_code == row.state_code).astype(np.float32)
+        label = f"state/bea/wages_and_salaries/{row.state_code}"
+        loss_matrix[label] = wages * in_state
+        if any(pd.isna(loss_matrix[label])):
+            raise ValueError(f"Missing values for {label}")
+        targets_list.append(float(row.employment_income_before_lsr))
+
+    logging.info(
+        "Loaded %s BEA state wage targets from SAINC4 %s, scaled to NIPA wages",
+        len(targets),
+        data_year,
+    )
+
+    return targets_list, loss_matrix
+
+
 def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
     """Add paid-minus-received accounting targets for private transfers."""
     for label, (paid_variable, received_variable) in TRANSFER_BALANCE_TARGETS.items():
@@ -1103,6 +1141,22 @@ def get_target_error_normalisation(target_names, targets_array):
         denominator[mask] = scale
 
     return numerator_shift, denominator
+
+
+def get_target_loss_weights(target_names):
+    target_names = np.asarray(target_names, dtype=str)
+    weights = np.ones(target_names.shape, dtype=np.float32)
+    bea_direct_sum_targets = np.array(
+        [label for label, _, _ in BEA_NIPA_DIRECT_SUM_TARGETS],
+        dtype=str,
+    )
+    is_bea_direct_sum_target = np.isin(target_names, bea_direct_sum_targets)
+    is_bea_wage_target = (
+        target_names == "nation/bea/nipa_wages_and_salaries"
+    ) | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
+    weights[is_bea_direct_sum_target] = BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT
+    weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
+    return weights
 
 
 def _should_skip_soi_agi_row(row) -> bool:
@@ -1281,6 +1335,13 @@ def build_loss_matrix(dataset: type, time_period):
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(target)
+
+    targets_array, loss_matrix = _add_bea_state_wage_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # IRS SOI aggregate capital-gains targets. This adds a long-term gains
     # control on top of the CBO net capital gains aggregate, which is important

@@ -15,6 +15,7 @@ modal = pytest.importorskip("modal")
 
 APP_NAME = os.environ.get("MODAL_APP_NAME", "policyengine-us-data-pipeline")
 MODAL_ENVIRONMENT = os.environ.get("MODAL_ENVIRONMENT", "main")
+HTTP_SEAM_TIMEOUT_SECONDS = 90
 
 pytestmark = pytest.mark.integration
 
@@ -161,7 +162,7 @@ def test_pipeline_status_http_endpoint_reports_missing_run():
         endpoint,
         params={"run_id": "missing-run-for-status-http-seam"},
         headers=headers,
-        timeout=30,
+        timeout=HTTP_SEAM_TIMEOUT_SECONDS,
     )
 
     assert response.status_code == 200, response.text[:500]

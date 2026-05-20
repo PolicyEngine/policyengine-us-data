@@ -248,6 +248,18 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
+    def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):
+        data = {"medicare_enrolled": {2024: np.array([True, False])}}
+
+        result = ExtendedCPS._rename_imputed_to_inputs(data)
+
+        assert "medicare_enrolled" not in result
+        assert result["takes_up_medicare_if_eligible"][2024].tolist() == [
+            True,
+            False,
+        ]
+        ExtendedCPS._assert_no_computed_variables_exported(result, 2024)
+
     def test_final_export_contract_allows_structural_cache_variables(self):
         data = {
             "person_id": {2024: np.array([1])},
@@ -270,6 +282,9 @@ class TestVariableListConsistency:
             "pre_subsidy_rent": {2024: np.array([1_000.0])},
             "spm_unit_capped_work_childcare_expenses": {2024: np.array([500.0])},
             "spm_unit_pre_subsidy_childcare_expenses": {2024: np.array([600.0])},
+            "spm_unit_spm_threshold": {2024: np.array([25_000.0])},
+            "spm_unit_geographic_adjustment": {2024: np.array([1.1])},
+            "person_in_poverty": {2024: np.array([False])},
             "has_tin": {2024: np.array([True])},
             "has_itin": {2024: np.array([True])},
             "in_nyc": {2024: np.array([False])},
@@ -282,6 +297,9 @@ class TestVariableListConsistency:
             "dividend_income",
             "rent",
             "spm_unit_capped_work_childcare_expenses",
+            "spm_unit_spm_threshold",
+            "spm_unit_geographic_adjustment",
+            "person_in_poverty",
         ):
             assert variable not in result
         for variable in (
@@ -402,6 +420,26 @@ class TestVariableListConsistency:
                 microsimulation_cls=_FakeHousingMicrosimulation,
             )
 
+    def test_housing_assistance_validation_allows_observed_formula_gap(self):
+        data = {
+            "receives_housing_assistance": {2024: np.array([True])},
+            "takes_up_housing_assistance_if_eligible": {2024: np.array([True])},
+            "spm_unit_capped_housing_subsidy": {2024: np.array([100.0])},
+        }
+        _FakeHousingMicrosimulation.outputs = {
+            "housing_assistance": np.array([100.0]),
+            "spm_unit_capped_housing_subsidy": np.array([55.0]),
+            "spm_unit_weight": np.array([1.0]),
+        }
+
+        result = ExtendedCPS._validate_housing_assistance_microsimulation(
+            data,
+            2024,
+            microsimulation_cls=_FakeHousingMicrosimulation,
+        )
+
+        assert result is data
+
     def test_housing_assistance_validation_rejects_half_reported_match(self):
         data = {
             "receives_housing_assistance": {2024: np.array([True])},
@@ -410,7 +448,7 @@ class TestVariableListConsistency:
         }
         _FakeHousingMicrosimulation.outputs = {
             "housing_assistance": np.array([100.0]),
-            "spm_unit_capped_housing_subsidy": np.array([59.0]),
+            "spm_unit_capped_housing_subsidy": np.array([49.0]),
             "spm_unit_weight": np.array([1.0]),
         }
 

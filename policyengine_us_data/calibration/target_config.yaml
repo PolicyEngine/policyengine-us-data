@@ -58,6 +58,11 @@ include:
     geo_level: state
   - variable: adjusted_gross_income
     geo_level: state
+  # BEA regional wage totals. New macro targets like this must be wired into
+  # both legacy utils/loss.py and the target DB ETL, or one publication path
+  # will silently miss the constraint.
+  - variable: employment_income_before_lsr
+    geo_level: state
   - variable: rent
     geo_level: state
   - variable: spm_unit_count
@@ -166,12 +171,12 @@ include:
     geo_level: national
   - variable: employment_income_before_lsr
     geo_level: national
-  - variable: nipa_proprietors_income
+  - variable: self_employment_income_before_lsr+sstb_self_employment_income_before_lsr+farm_operations_income+partnership_s_corp_income
     geo_level: national
-  - variable: interest_income
-    geo_level: national
-  - variable: dividend_income
-    geo_level: national
+  # Do not train direct national interest_income/dividend_income totals against
+  # BEA personal interest/dividend income. Those NIPA concepts include imputed
+  # interest, pension-plan dividends, and trust flows; use SOI/CBO tax-return
+  # targets below for tax/CPS interest and dividend variables.
   - variable: long_term_capital_gains
     geo_level: national
   - variable: medicaid

@@ -84,6 +84,7 @@ database:
 	python -m policyengine_us_data.db.create_database_tables
 	python -m policyengine_us_data.db.create_initial_strata --year $(YEAR)
 	python -m policyengine_us_data.db.etl_national_targets --year $(YEAR)
+	python -m policyengine_us_data.db.etl_bea_state_wages --year $(YEAR)
 	python -m policyengine_us_data.db.etl_age --year $(YEAR)
 	python -m policyengine_us_data.db.etl_medicaid --year $(YEAR)
 	python -m policyengine_us_data.db.etl_snap --year $(YEAR)

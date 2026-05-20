@@ -69,6 +69,7 @@ def populate_field_valid_values(session: Session) -> None:
     # Static values for source field
     source_values = [
         ("source", "Census ACS S0101", "survey"),
+        ("source", "BEA Regional SAINC4", "administrative"),
         ("source", "IRS SOI", "administrative"),
         ("source", "IRS EITC Central", "administrative"),
         ("source", "CMS Marketplace", "administrative"),

@@ -3,7 +3,7 @@
     "docstring": "Set 2025 ACA take-up to match APTC enrollment targets.",
     "id": "aca_2025_override",
     "kind": "function",
-    "line": 403,
+    "line": 404,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.enhanced_cps.create_aca_2025_takeup_override"
@@ -416,7 +416,7 @@
     "docstring": "Worker function that builds a subset of H5 files.\nUses subprocess to avoid import conflicts with Modal's environment.",
     "id": "build_areas_worker",
     "kind": "function",
-    "line": 908,
+    "line": 912,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.build_areas_worker"
@@ -635,7 +635,7 @@
     "docstring": "Build the normalized coordinator input bundle for one publish scope.",
     "id": "build_publishing_input_bundle",
     "kind": "function",
-    "line": 407,
+    "line": 411,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
@@ -690,7 +690,7 @@
     "docstring": "Persist optional worker bootstrap artifacts for one local H5 scope.",
     "id": "build_worker_bootstrap",
     "kind": "function",
-    "line": 500,
+    "line": 504,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.bootstrap.WorkerBootstrapBuilder",
@@ -722,7 +722,7 @@
     "docstring": "",
     "id": "calibration_diagnostics",
     "kind": "function",
-    "line": 1147,
+    "line": 1144,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
@@ -810,7 +810,7 @@
     "docstring": "Replace clone-half person-level feature variables with donor matches.",
     "id": "clone_features",
     "kind": "function",
-    "line": 408,
+    "line": 411,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_clone_feature_predictions"
@@ -873,7 +873,7 @@
     "docstring": "Assert that final exported variables are leaf inputs.",
     "id": "computed_export_contract",
     "kind": "function",
-    "line": 1579,
+    "line": 1584,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported"
@@ -904,7 +904,7 @@
     "docstring": "Coordinate the full publishing workflow.",
     "id": "coordinate_publish",
     "kind": "function",
-    "line": 1271,
+    "line": 1275,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.coordinate_publish"
@@ -939,7 +939,7 @@
     "docstring": "Compatibility wrapper over the extracted pure partitioning seam.",
     "id": "coordinate_work_partition",
     "kind": "function",
-    "line": 682,
+    "line": 686,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.partitioning.partition_weighted_work_items",
@@ -967,7 +967,7 @@
     "docstring": "Second-stage QRF: train on CPS, predict for PUF clones.\n\nFor the PUF clone half of the extended CPS we need plausible values\nof CPS-only variables (retirement distributions, transfers, hours,\nSPM components, etc.) that are consistent with the clone's\nPUF-imputed income -- not just naively copied from the CPS donor.\n\nWe train a QRF on CPS person-level data where:\n  * predictors = demographics + key income variables\n  * outputs    = CPS-only variables listed in\n                 ``CPS_ONLY_IMPUTED_VARIABLES``\n\nFor PUF clone prediction we use the PUF-imputed income values\nfrom the second half of ``data`` (the clone half, which already\nhas PUF-imputed income from stage 1).\n\nUses ``fit_predict()`` with ``max_train_samples`` instead of\nmanual sampling + separate fit/predict.\n\nArgs:\n    data: Extended dataset dict after ``puf_clone_dataset()`` --\n        already doubled, with PUF-imputed income in the second half.\n    time_period: Tax year.\n    dataset_path: Path to the CPS h5 file for Microsimulation.\n\nReturns:\n    DataFrame with one column per CPS-only variable, containing\n    predicted values for the PUF clone half (person-level).",
     "id": "cps_only",
     "kind": "function",
-    "line": 447,
+    "line": 450,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._impute_cps_only_variables"
@@ -1086,7 +1086,7 @@
     "docstring": "Fit L0-regularized calibration weights.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets: Target values array.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    verbose_freq: Print frequency. Defaults to 10%.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n        None disables logging.\n    log_path: Path for the per-target calibration log CSV.\n    target_names: Human-readable target names for the log.\n    initial_weights: Pre-computed initial weights. If None,\n        computed from targets_df age targets.\n    targets_df: Targets DataFrame, used to compute\n        initial_weights when not provided.\n    target_groups: Optional group ID per target row for balanced loss.\n    resume_from: Path to a `.checkpoint.pt` file or `.npy`\n        weights file to continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "fit_model",
     "kind": "function",
-    "line": 791,
+    "line": 788,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
@@ -1115,6 +1115,79 @@
     "object_path": "policyengine_us_data.calibration.unified_calibration.fit_l0_weights",
     "signature": "def fit_l0_weights(X_sparse, targets: np.ndarray, lambda_l0: float, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', verbose_freq: Optional[int] = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, target_names: list = None, initial_weights: np.ndarray = None, targets_df: 'pd.DataFrame' = None, achievable: np.ndarray = None, target_groups: Optional[np.ndarray] = None, resume_from: str = None, checkpoint_path: str = None) -> np.ndarray",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+  },
+  "fitted_weights_artifacts": {
+    "docstring": "Return canonical fitted-weight artifacts for a regional or national scope.",
+    "id": "fitted_weights_artifacts",
+    "kind": "function",
+    "line": 184,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope"
+      ],
+      "artifacts_in": [
+        "remote fit result bytes"
+      ],
+      "artifacts_out": [
+        "calibration_weights.npy",
+        "geography_assignment.npz",
+        "unified_run_config.json",
+        "national_calibration_weights.npy",
+        "national_geography_assignment.npz",
+        "national_unified_run_config.json"
+      ],
+      "description": "Canonical regional and national fitted-weight artifact filenames.",
+      "id": "fitted_weights_artifacts",
+      "label": "Fitted Weights Artifacts",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "artifact_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/artifacts.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_artifacts.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope",
+    "signature": "def fit_artifacts_for_scope(scope: FitScope | str) -> ScopedFitArtifacts",
+    "source_file": "policyengine_us_data/fit_weights/artifacts.py"
+  },
+  "fitted_weights_spec": {
+    "docstring": "Return the current fitted-weight spec for a regional or national scope.",
+    "id": "fitted_weights_spec",
+    "kind": "function",
+    "line": 178,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope"
+      ],
+      "artifacts_in": [
+        "calibration_package.pkl"
+      ],
+      "artifacts_out": [
+        "fit_parameter_identity"
+      ],
+      "description": "Scoped Stage 3 fit parameters and deterministic reuse identity.",
+      "id": "fitted_weights_spec",
+      "label": "Fitted Weights Spec",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "reuse_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope",
+    "signature": "def fitted_weights_spec_for_scope(scope: FitScope | str) -> FittedWeightsSpec",
+    "source_file": "policyengine_us_data/fit_weights/specs.py"
   },
   "geo_assign": {
     "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n    fixed_state_fips: Optional state FIPS per base record. Positive\n        values constrain every clone of that record to blocks in the\n        requested state; zero or missing values remain unrestricted.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
@@ -1151,7 +1224,7 @@
     "docstring": "Derive all geography from pre-assigned block GEOIDs.\n\nGiven an array of block GEOIDs (already assigned by\ncalibration), derives county, tract, state, CBSA, SLDU,\nSLDL, place, VTD, PUMA, ZCTA, and county enum index.\n\nArgs:\n    block_geoids: Array of 15-char block GEOID strings.\n\nReturns:\n    Dict with same keys as assign_geography_for_cd.",
     "id": "geo_derive",
     "kind": "function",
-    "line": 555,
+    "line": 582,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.block_assignment.derive_geography_from_blocks"
@@ -1179,7 +1252,7 @@
     "docstring": "Check formula-reconstructed housing assistance before export.\n\nThe final H5 must not export formula outputs such as ``housing_assistance``.\nThis guard verifies that the remaining leaf inputs still make those\nformulas produce nonzero values before the export contract strips or\nrejects computed variables.",
     "id": "housing_assistance_microsim_validation",
     "kind": "function",
-    "line": 1350,
+    "line": 1354,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation"
@@ -1264,7 +1337,7 @@
     "docstring": "Compute population-based initial weights from age targets.\n\nFor each congressional district, sums person_count targets where\ndomain_variable == \"age\" to get district population, then divides\nby the number of columns (households) active in that district.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets_df: Targets DataFrame with columns: variable,\n        domain_variable, geo_level, geographic_id, value.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "init_weights",
     "kind": "function",
-    "line": 712,
+    "line": 709,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
@@ -2913,7 +2986,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1908,
+    "line": 1893,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -2948,7 +3021,7 @@
     "docstring": "Run QRF imputation for PUF variables.\n\nStratified-subsamples PUF records (top 0.5% by AGI kept,\nrest randomly sampled to ~20K total), trains QRF, and\npredicts on CPS data.\n\nArgs:\n    data: CPS data dict.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path.\n    dataset_path: Path to CPS h5 for computing\n        demographic predictors via Microsimulation.\n\nReturns:\n    Tuple of (y_full_imputations, y_override_imputations)\n    as dicts of {variable: np.ndarray}.",
     "id": "puf_qrf_pass",
     "kind": "function",
-    "line": 890,
+    "line": 891,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._run_qrf_imputation"
@@ -2975,7 +3048,7 @@
     "docstring": "Replace PUF clone half of CPS-only variables with QRF predictions.\n\nAfter ``puf_clone_dataset()`` the CPS-only variables in the second\nhalf are naive copies of the CPS donor values. This function\nreplaces them with the second-stage QRF predictions that are\nconsistent with the clone's PUF-imputed income.\n\nArgs:\n    data: Extended dataset dict (already doubled).\n    predictions: DataFrame from ``_impute_cps_only_variables()``.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 file for entity mapping.\n\nReturns:\n    Modified data dict with CPS-only variables spliced in.",
     "id": "qrf_pass2",
     "kind": "function",
-    "line": 820,
+    "line": 824,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"
@@ -3003,7 +3076,7 @@
     "source_file": "policyengine_us_data/datasets/cps/extended_cps.py"
   },
   "record_double": {
-    "docstring": "Clone CPS data 2x and impute PUF variables on one half.\n\nThe first half keeps CPS values (with OVERRIDDEN vars QRF'd).\nThe second half gets full PUF QRF imputation. The second half\nhas household weights set to zero.\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household, shape (n_households,).\n    block_geoid: Optional 15-character Census block GEOID per household.\n    cd_geoid: Optional congressional district GEOID per household.\n    county_fips: Optional 5-digit county FIPS per household.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path for QRF training.\n        If None, skips QRF (same as skip_qrf=True).\n    skip_qrf: If True, skip QRF imputation (for testing).\n    dataset_path: Path to CPS h5 file (needed for QRF to\n        compute demographic predictors via Microsimulation).\n\nReturns:\n    New data dict with doubled records.",
+    "docstring": "Clone CPS data 2x and impute PUF variables on one half.\n\nThe first half keeps CPS values when CPS reports the variable.\nVariables absent from CPS get PUF QRF predictions on both halves\nso positive-weight CPS rows can support those calibration targets.\nThe second half still gets full PUF QRF imputation and starts with\nhousehold weights set to zero.\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household, shape (n_households,).\n    block_geoid: Optional 15-character Census block GEOID per household.\n    cd_geoid: Optional congressional district GEOID per household.\n    county_fips: Optional 5-digit county FIPS per household.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path for QRF training.\n        If None, skips QRF (same as skip_qrf=True).\n    skip_qrf: If True, skip QRF imputation (for testing).\n    dataset_path: Path to CPS h5 file (needed for QRF to\n        compute demographic predictors via Microsimulation).\n\nReturns:\n    New data dict with doubled records.",
     "id": "record_double",
     "kind": "function",
     "line": 452,
@@ -3036,7 +3109,7 @@
     "docstring": "Compute the scope fingerprint while preserving pinned resume values.",
     "id": "resolve_scope_fingerprint",
     "kind": "function",
-    "line": 454,
+    "line": 458,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
@@ -3064,7 +3137,7 @@
     "docstring": "Impute retirement contributions for the PUF half using QRF.\n\nTrains on CPS data (which has realistic income-to-contribution\nrelationships) and predicts onto PUF clone records using\nPUF-imputed income as input features.\n\nNote: ``pre_tax_contributions`` is separately imputed from PUF\nvia OVERRIDDEN_IMPUTED_VARIABLES.  In PolicyEngine it is a\nformula (``adds`` of traditional_401k + traditional_403b + \u2026),\nso the stored value is only used when the formula is bypassed.\nA future improvement could reconcile or drop the stored\npre_tax_contributions in favour of the formula sum.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Dict mapping retirement variable names to imputed arrays.\n    Returns all-zeros on QRF failure.",
     "id": "retire_impute",
     "kind": "function",
-    "line": 745,
+    "line": 746,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_retirement_contributions"
@@ -3091,7 +3164,7 @@
     "docstring": "",
     "id": "reweight",
     "kind": "function",
-    "line": 486,
+    "line": 487,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.enhanced_cps.reweight"
@@ -3123,7 +3196,7 @@
     "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1273,
+    "line": 1270,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"
@@ -3162,7 +3235,7 @@
     "docstring": "Run a single build phase, spawning workers and collecting results.\n\nReturns:\n    A tuple of (volume_completed, phase_errors, validation_rows)\n    where phase_errors is a list of error dicts from workers\n    and crashes, and validation_rows is a list of per-target\n    validation result dicts.",
     "id": "run_local_h5_phase",
     "kind": "function",
-    "line": 750,
+    "line": 754,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.run_phase"
@@ -3192,7 +3265,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 905,
+    "line": 909,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3470,7 +3543,7 @@
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",
     "id": "staging_upload",
     "kind": "function",
-    "line": 1099,
+    "line": 1103,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.upload_to_staging"
@@ -3581,7 +3654,7 @@
     "docstring": "Validate all expected files and generate manifest.",
     "id": "validate_staging",
     "kind": "function",
-    "line": 1029,
+    "line": 1033,
     "metadata": {
       "api_refs": [
         "modal_app.local_area.validate_staging"
@@ -3780,7 +3853,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 532,
+    "line": 536,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"
@@ -3807,7 +3880,7 @@
     "docstring": "Impute weeks_unemployed for the PUF half using QRF.\n\nUses CPS as training data and imputed PUF demographics as\ntest data, preserving the joint distribution of weeks with\nunemployment compensation.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Array of imputed weeks for PUF half.",
     "id": "weeks_impute",
     "kind": "function",
-    "line": 637,
+    "line": 638,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed"

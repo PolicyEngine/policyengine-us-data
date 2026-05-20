@@ -20,6 +20,25 @@ def _name(node: ast.AST) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
+def test_run_pipeline_defaults_to_a100_for_full_target_matrix() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    run_pipeline = _function_def(tree, "run_pipeline")
+    defaults = dict(
+        zip(
+            [
+                arg.arg
+                for arg in run_pipeline.args.args[-len(run_pipeline.args.defaults) :]
+            ],
+            run_pipeline.args.defaults,
+        )
+    )
+
+    assert isinstance(defaults["gpu"], ast.Constant)
+    assert defaults["gpu"].value == "A100-40GB"
+    assert isinstance(defaults["national_gpu"], ast.Constant)
+    assert defaults["national_gpu"].value == "A100-40GB"
+
+
 def test_promote_run_uses_single_full_release_promotion() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     promote_run = _function_def(tree, "promote_run")

@@ -904,9 +904,9 @@ def _new_run_metadata(
 )
 def run_pipeline(
     branch: str = "main",
-    gpu: str = "T4",
+    gpu: str = "A100-40GB",
     epochs: int = 1000,
-    national_gpu: str = "T4",
+    national_gpu: str = "A100-40GB",
     national_epochs: int = 1000,
     num_workers: int = 50,
     n_clones: int = 430,
@@ -2097,9 +2097,9 @@ def main(
     branch: str = "main",
     run_id: str = None,
     resume_run_id: str = None,
-    gpu: str = "T4",
+    gpu: str = "A100-40GB",
     epochs: int = 1000,
-    national_gpu: str = "T4",
+    national_gpu: str = "A100-40GB",
     national_epochs: int = 1000,
     num_workers: int = 50,
     n_clones: int = 430,

@@ -5,11 +5,11 @@ on:
     inputs:
       gpu:
         description: "GPU type for regional calibration"
-        default: "T4"
+        default: "A100-40GB"
         type: string
       national_gpu:
         description: "GPU type for national calibration"
-        default: "T4"
+        default: "A100-40GB"
         type: string
       epochs:
         description: "Epochs for regional calibration"
@@ -116,8 +116,8 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           PIPELINE_BRANCH: main
-          GPU: ${{ inputs.gpu || 'T4' }}
-          NATIONAL_GPU: ${{ inputs.national_gpu || 'T4' }}
+          GPU: ${{ inputs.gpu || 'A100-40GB' }}
+          NATIONAL_GPU: ${{ inputs.national_gpu || 'A100-40GB' }}
           EPOCHS: ${{ inputs.epochs || '1000' }}
           NATIONAL_EPOCHS: ${{ inputs.national_epochs || '1000' }}
           NUM_WORKERS: ${{ inputs.num_workers || '50' }}

@@ -1,9 +1,15 @@
 import json
-from collections.abc import Mapping, Sequence
-from typing import Any
 
 import pytest
 
+from tests.unit.fixtures.release_promotion import (
+    legacy_identity_metadata,
+    release_promotion_context,
+    stage4_contract,
+    stage4_contract_with_outputs,
+    stage4_inventory_record,
+    validation_report_ref,
+)
 from policyengine_us_data.release_promotion import (
     ReleaseCandidateInputBundle,
     ReleaseArtifactSpec,
@@ -24,133 +30,6 @@ from policyengine_us_data.stage_contracts import (
     contract_to_json,
 )
 from policyengine_us_data.stage_contracts.fingerprints import fingerprint_material
-
-
-def _context() -> ReleasePromotionContext:
-    return ReleasePromotionContext(
-        run_id="run-123",
-        candidate_version="1.73.0rc1",
-        release_version="1.73.0",
-        hf_repo_name="policyengine/policyengine-us-data",
-        gcs_bucket_name="policyengine-us-data",
-        base_release_version="1.72.0",
-        release_bump="minor",
-    )
-
-
-def _stage4_contract(
-    *,
-    fingerprint_marker: str = "default",
-    relative_path: str = "states/AL.h5",
-    run_id: str = "run-123",
-    execution_status: str = "completed",
-) -> StageContract:
-    outputs = (
-        ArtifactRef(
-            logical_name="state_al_h5",
-            uri="hf://policyengine/policyengine-us-data/staging/1.73.0rc1-run-123/states/AL.h5",
-            sha256="sha256:state-al",
-            size_bytes=12,
-            metadata={
-                "relative_path": relative_path,
-                "artifact_family": "state_h5",
-                "source_stage_id": "4_build_outputs",
-                "area_type": "state",
-                "area_id": "AL",
-            },
-        ),
-    )
-    return StageContract(
-        contract_type="output_build",
-        stage_id="4_build_outputs",
-        run_id=run_id,
-        created_at="2026-05-18T12:00:00Z",
-        outputs=outputs,
-        fingerprint=fingerprint_material(
-            {
-                "stage_id": "4_build_outputs",
-                "outputs": [output.to_dict() for output in outputs],
-                "fingerprint_marker": fingerprint_marker,
-            }
-        ),
-        execution=ExecutionRecord(status=execution_status, reuse_decision="computed"),
-    )
-
-
-def _stage4_contract_with_outputs(
-    outputs: Sequence[ArtifactRef],
-    *,
-    diagnostics: Sequence[DiagnosticRef] = (),
-    validation: ValidationReport | None = None,
-    fingerprint_payload: Mapping[str, Any] | None = None,
-) -> StageContract:
-    output_tuple = tuple(outputs)
-    return StageContract(
-        contract_type="output_build",
-        stage_id="4_build_outputs",
-        run_id="run-123",
-        created_at="2026-05-18T12:00:00Z",
-        outputs=output_tuple,
-        diagnostics=tuple(diagnostics),
-        validation=validation,
-        fingerprint=fingerprint_material(
-            fingerprint_payload
-            or {"outputs": [output.to_dict() for output in output_tuple]}
-        ),
-        execution=ExecutionRecord(status="completed", reuse_decision="computed"),
-    )
-
-
-def _inventory_record(
-    path: str,
-    *,
-    key: str = "path",
-    logical_name: str = "district_nc_01_h5",
-    artifact_family: str = "district_h5",
-    area_type: str = "district",
-    area_id: str = "NC-01",
-    sha256: str = "sha256:nc-01",
-    size_bytes: int = 42,
-    run_id: str = "run-123",
-) -> dict:
-    return {
-        key: path,
-        "logical_name": logical_name,
-        "artifact_family": artifact_family,
-        "source_stage_id": "4_build_outputs",
-        "area_type": area_type,
-        "area_id": area_id,
-        "sha256": sha256,
-        "size_bytes": size_bytes,
-        "run_id": run_id,
-        "stage_id": "4_build_outputs",
-    }
-
-
-def _legacy_identity_metadata() -> dict[str, dict]:
-    return {
-        "states/AL.h5": {"sha256": "sha256:state-al", "size_bytes": 12},
-        "policy_data.db": {"sha256": "sha256:policy-db", "size_bytes": 24},
-    }
-
-
-def _validation_report_ref(
-    *,
-    path: str = "calibration/runs/run-123/diagnostics/validation_report.json",
-    sha256: str | None = "sha256:validation-report",
-    size_bytes: int | None = 128,
-) -> DiagnosticRef:
-    return DiagnosticRef(
-        name="stage4_validation_report",
-        kind="validation_report",
-        artifact=ArtifactRef(
-            logical_name="stage4_validation_report",
-            uri=f"hf://policyengine/policyengine-us-data/{path}",
-            sha256=sha256,
-            size_bytes=size_bytes,
-            metadata={"relative_path": path},
-        ),
-    )
 
 
 def test_release_path_normalization_rejects_parent_paths() -> None:
@@ -194,7 +73,7 @@ def test_release_artifact_spec_infers_area_and_source_stage() -> None:
 
 
 def test_release_promotion_context_round_trips_with_staging_prefix() -> None:
-    context = _context()
+    context = release_promotion_context()
 
     restored = ReleasePromotionContext.from_dict(context.to_dict())
 
@@ -237,7 +116,7 @@ def test_release_promotion_context_rejects_mismatched_staging_prefix() -> None:
 
 def test_legacy_candidate_bundle_dedupes_and_strips_staging_prefix() -> None:
     bundle = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=[
             "states/AL.h5",
             "staging/1.73.0rc1-run-123/national/US.h5",
@@ -268,52 +147,52 @@ def test_legacy_candidate_bundle_dedupes_and_strips_staging_prefix() -> None:
 def test_legacy_candidate_bundle_rejects_wrong_run_staging_prefix() -> None:
     with pytest.raises(ValueError, match="expected staging prefix"):
         build_legacy_release_candidate_bundle(
-            context=_context(),
+            context=release_promotion_context(),
             rel_paths=["staging/other-run/states/AL.h5"],
         )
 
 
 def test_legacy_candidate_fingerprint_tracks_semantic_material() -> None:
     base = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5", "policy_data.db", "states/AL.h5"],
-        artifact_metadata_by_path=_legacy_identity_metadata(),
+        artifact_metadata_by_path=legacy_identity_metadata(),
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/manifest.json",
     )
     reordered_duplicate = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["policy_data.db", "states/AL.h5", "states/AL.h5"],
-        artifact_metadata_by_path=_legacy_identity_metadata(),
+        artifact_metadata_by_path=legacy_identity_metadata(),
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/manifest.json",
     )
     changed_report = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5", "policy_data.db"],
-        artifact_metadata_by_path=_legacy_identity_metadata(),
+        artifact_metadata_by_path=legacy_identity_metadata(),
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_summary.json"
         ],
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/manifest.json",
     )
     changed_diagnostics = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5", "policy_data.db"],
-        artifact_metadata_by_path=_legacy_identity_metadata(),
+        artifact_metadata_by_path=legacy_identity_metadata(),
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/other.json",
     )
     changed_artifacts = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
-        artifact_metadata_by_path=_legacy_identity_metadata(),
+        artifact_metadata_by_path=legacy_identity_metadata(),
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
@@ -381,10 +260,10 @@ def test_candidate_fingerprint_excludes_arbitrary_metadata() -> None:
 
 def test_candidate_fingerprint_uses_normalized_paths() -> None:
     base = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
         artifact_metadata_by_path={
-            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+            "states/AL.h5": legacy_identity_metadata()["states/AL.h5"]
         },
         validation_report_paths=[
             "./calibration/runs/run-123/diagnostics/validation_report.json"
@@ -392,10 +271,10 @@ def test_candidate_fingerprint_uses_normalized_paths() -> None:
         diagnostics_manifest_path="./calibration/runs/run-123/diagnostics/manifest.json",
     )
     equivalent = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["./states/AL.h5"],
         artifact_metadata_by_path={
-            "./states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+            "./states/AL.h5": legacy_identity_metadata()["states/AL.h5"]
         },
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
@@ -410,29 +289,29 @@ def test_candidate_fingerprint_uses_normalized_paths() -> None:
 
 def test_candidate_fingerprint_tracks_validation_report_ref_identity() -> None:
     first = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
         artifact_metadata_by_path={
-            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+            "states/AL.h5": legacy_identity_metadata()["states/AL.h5"]
         },
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
         validation_report_refs=[
-            _validation_report_ref(sha256="sha256:first", size_bytes=128)
+            validation_report_ref(sha256="sha256:first", size_bytes=128)
         ],
     )
     overwritten = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
         artifact_metadata_by_path={
-            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+            "states/AL.h5": legacy_identity_metadata()["states/AL.h5"]
         },
         validation_report_paths=[
             "calibration/runs/run-123/diagnostics/validation_report.json"
         ],
         validation_report_refs=[
-            _validation_report_ref(sha256="sha256:second", size_bytes=128)
+            validation_report_ref(sha256="sha256:second", size_bytes=128)
         ],
     )
 
@@ -446,12 +325,12 @@ def test_candidate_fingerprint_tracks_validation_report_ref_identity() -> None:
 
 def test_candidate_fingerprint_requires_validation_report_ref_identity() -> None:
     bundle = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
         artifact_metadata_by_path={
-            "states/AL.h5": _legacy_identity_metadata()["states/AL.h5"]
+            "states/AL.h5": legacy_identity_metadata()["states/AL.h5"]
         },
-        validation_report_refs=[_validation_report_ref(sha256=None, size_bytes=128)],
+        validation_report_refs=[validation_report_ref(sha256=None, size_bytes=128)],
     )
 
     assert bundle.release_candidate_fingerprint is None
@@ -466,10 +345,10 @@ def test_candidate_fingerprint_requires_validation_report_ref_identity() -> None
 def test_candidate_validation_report_refs_are_run_scoped() -> None:
     with pytest.raises(ValueError, match="context.run_id"):
         build_legacy_release_candidate_bundle(
-            context=_context(),
+            context=release_promotion_context(),
             rel_paths=["states/AL.h5"],
             validation_report_refs=[
-                _validation_report_ref(
+                validation_report_ref(
                     path="calibration/runs/other-run/diagnostics/validation_report.json"
                 )
             ],
@@ -478,10 +357,10 @@ def test_candidate_validation_report_refs_are_run_scoped() -> None:
 
 def test_stage4_candidate_reader_accepts_inventory_records() -> None:
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(),
         inventory_records=[
-            _inventory_record("staging/1.73.0rc1-run-123/districts/NC-01.h5")
+            stage4_inventory_record("staging/1.73.0rc1-run-123/districts/NC-01.h5")
         ],
         source_output_contract_path="calibration/runs/run-123/output_build_contract.json",
     )
@@ -502,7 +381,7 @@ def test_stage4_candidate_reader_accepts_inventory_records() -> None:
     ("record", "expected_path"),
     [
         (
-            _inventory_record(
+            stage4_inventory_record(
                 "national/US.h5",
                 key="expected_release_path",
                 logical_name="national_us_h5",
@@ -513,7 +392,7 @@ def test_stage4_candidate_reader_accepts_inventory_records() -> None:
             "national/US.h5",
         ),
         (
-            _inventory_record(
+            stage4_inventory_record(
                 "staging/1.73.0rc1-run-123/national/US.h5",
                 key="staging_path",
                 logical_name="national_us_h5",
@@ -524,7 +403,7 @@ def test_stage4_candidate_reader_accepts_inventory_records() -> None:
             "national/US.h5",
         ),
         (
-            _inventory_record(
+            stage4_inventory_record(
                 "national/US.h5",
                 key="output_relative_path",
                 logical_name="national_us_h5",
@@ -535,7 +414,7 @@ def test_stage4_candidate_reader_accepts_inventory_records() -> None:
             "national/US.h5",
         ),
         (
-            _inventory_record(
+            stage4_inventory_record(
                 "states/AL.h5",
                 key="repo_path",
                 logical_name="state_al_h5",
@@ -549,7 +428,7 @@ def test_stage4_candidate_reader_accepts_inventory_records() -> None:
         ),
         (
             {
-                "artifact": _inventory_record(
+                "artifact": stage4_inventory_record(
                     "districts/NC-01.h5",
                     key="output_relative_path",
                 )
@@ -563,8 +442,8 @@ def test_stage4_candidate_reader_accepts_supported_inventory_path_shapes(
     expected_path,
 ) -> None:
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(),
         inventory_records=[record],
     )
 
@@ -573,7 +452,7 @@ def test_stage4_candidate_reader_accepts_supported_inventory_path_shapes(
 
 
 def test_stage4_candidate_reader_requires_inventory_path_fields_to_agree() -> None:
-    matching_record = _inventory_record(
+    matching_record = stage4_inventory_record(
         "national/US.h5",
         key="expected_release_path",
         logical_name="national_us_h5",
@@ -583,8 +462,8 @@ def test_stage4_candidate_reader_requires_inventory_path_fields_to_agree() -> No
     )
     matching_record["staging_path"] = "staging/1.73.0rc1-run-123/national/US.h5"
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(),
         inventory_records=[matching_record],
     )
 
@@ -596,8 +475,8 @@ def test_stage4_candidate_reader_requires_inventory_path_fields_to_agree() -> No
     }
     with pytest.raises(ValueError, match="path fields must agree"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             inventory_records=[conflicting_record],
         )
 
@@ -607,8 +486,8 @@ def test_stage4_candidate_reader_requires_inventory_path_fields_to_agree() -> No
     }
     with pytest.raises(ValueError, match="expected staging prefix"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             inventory_records=[wrong_prefix_record],
         )
 
@@ -616,22 +495,24 @@ def test_stage4_candidate_reader_requires_inventory_path_fields_to_agree() -> No
 def test_stage4_candidate_reader_rejects_run_mismatches() -> None:
     with pytest.raises(ValueError, match="run_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(run_id="other-run"),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(run_id="other-run"),
         )
 
     with pytest.raises(ValueError, match="run_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
-            inventory_records=[_inventory_record("states/AL.h5", run_id="other-run")],
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
+            inventory_records=[
+                stage4_inventory_record("states/AL.h5", run_id="other-run")
+            ],
         )
 
 
 def test_stage4_candidate_reader_rejects_stage_mismatches() -> None:
     with pytest.raises(ValueError, match="Stage 4"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
+            context=release_promotion_context(),
             output_contract=StageContract(
                 contract_type="dataset_build_output",
                 stage_id="1_build_datasets",
@@ -645,11 +526,11 @@ def test_stage4_candidate_reader_rejects_stage_mismatches() -> None:
 
     with pytest.raises(ValueError, match="stage_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             inventory_records=[
                 {
-                    **_inventory_record("states/AL.h5"),
+                    **stage4_inventory_record("states/AL.h5"),
                     "stage_id": "3_fit_weights",
                 }
             ],
@@ -660,8 +541,8 @@ def test_stage4_candidate_reader_rejects_incomplete_contracts() -> None:
     for execution_status in ("pending", "running", "failed", "skipped"):
         with pytest.raises(ValueError, match="execution.status"):
             build_release_candidate_bundle_from_stage4_contract(
-                context=_context(),
-                output_contract=_stage4_contract(execution_status=execution_status),
+                context=release_promotion_context(),
+                output_contract=stage4_contract(execution_status=execution_status),
             )
 
 
@@ -672,8 +553,8 @@ def test_stage4_candidate_reader_accepts_release_safe_execution_statuses(
     execution_status,
 ) -> None:
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(execution_status=execution_status),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(execution_status=execution_status),
     )
 
     assert [artifact.relative_path for artifact in bundle.artifacts] == ["states/AL.h5"]
@@ -681,8 +562,8 @@ def test_stage4_candidate_reader_accepts_release_safe_execution_statuses(
 
 def test_stage4_candidate_reader_strips_or_rejects_staged_contract_paths() -> None:
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(
+        context=release_promotion_context(),
+        output_contract=stage4_contract(
             relative_path="staging/1.73.0rc1-run-123/states/AL.h5"
         ),
     )
@@ -691,8 +572,8 @@ def test_stage4_candidate_reader_strips_or_rejects_staged_contract_paths() -> No
 
     with pytest.raises(ValueError, match="expected staging prefix"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(
+            context=release_promotion_context(),
+            output_contract=stage4_contract(
                 relative_path="staging/other-run/states/AL.h5"
             ),
         )
@@ -701,10 +582,10 @@ def test_stage4_candidate_reader_strips_or_rejects_staged_contract_paths() -> No
 def test_stage4_candidate_reader_rejects_duplicate_identity_conflicts() -> None:
     with pytest.raises(ValueError, match="sha256"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             inventory_records=[
-                _inventory_record(
+                stage4_inventory_record(
                     "states/AL.h5",
                     logical_name="state_al_h5",
                     artifact_family="state_h5",
@@ -718,23 +599,23 @@ def test_stage4_candidate_reader_rejects_duplicate_identity_conflicts() -> None:
 
     with pytest.raises(ValueError, match="sha256"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             inventory_records=[
-                _inventory_record("districts/NC-01.h5", sha256="sha256:first"),
-                _inventory_record("districts/NC-01.h5", sha256="sha256:second"),
+                stage4_inventory_record("districts/NC-01.h5", sha256="sha256:first"),
+                stage4_inventory_record("districts/NC-01.h5", sha256="sha256:second"),
             ],
         )
 
 
 def test_stage4_candidate_fingerprint_tracks_source_contract_fingerprint() -> None:
     first = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(fingerprint_marker="first"),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(fingerprint_marker="first"),
     )
     second = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(fingerprint_marker="second"),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(fingerprint_marker="second"),
     )
 
     assert first.release_candidate_fingerprint != second.release_candidate_fingerprint
@@ -742,8 +623,8 @@ def test_stage4_candidate_fingerprint_tracks_source_contract_fingerprint() -> No
 
 def test_stage4_candidate_reader_falls_back_to_contract_output_paths() -> None:
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
-        output_contract=_stage4_contract(),
+        context=release_promotion_context(),
+        output_contract=stage4_contract(),
     )
 
     assert [artifact.relative_path for artifact in bundle.artifacts] == ["states/AL.h5"]
@@ -757,10 +638,10 @@ def test_stage4_candidate_reader_can_use_artifact_uri_without_path_metadata() ->
         sha256="sha256:state-al",
         size_bytes=12,
     )
-    contract = _stage4_contract_with_outputs((output,))
+    contract = stage4_contract_with_outputs((output,))
 
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract,
     )
 
@@ -809,8 +690,8 @@ def test_stage4_candidate_reader_validates_contract_artifact_uri_against_metadat
 
     with pytest.raises(ValueError, match=match):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract_with_outputs((output,)),
+            context=release_promotion_context(),
+            output_contract=stage4_contract_with_outputs((output,)),
         )
 
 
@@ -821,11 +702,11 @@ def test_stage4_candidate_reader_rejects_external_production_uris() -> None:
         sha256="sha256:state-al",
         size_bytes=12,
     )
-    contract = _stage4_contract_with_outputs((output,))
+    contract = stage4_contract_with_outputs((output,))
 
     with pytest.raises(ValueError, match="expected staging prefix"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
+            context=release_promotion_context(),
             output_contract=contract,
         )
 
@@ -837,11 +718,11 @@ def test_stage4_candidate_reader_rejects_wrong_repo_staged_uris() -> None:
         sha256="sha256:state-al",
         size_bytes=12,
     )
-    contract = _stage4_contract_with_outputs((output,))
+    contract = stage4_contract_with_outputs((output,))
 
     with pytest.raises(ValueError, match="hf_repo_name"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
+            context=release_promotion_context(),
             output_contract=contract,
         )
 
@@ -856,8 +737,8 @@ def test_stage4_candidate_reader_rejects_uri_only_base_artifact() -> None:
 
     with pytest.raises(ValueError, match="expected staging prefix"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract_with_outputs((output,)),
+            context=release_promotion_context(),
+            output_contract=stage4_contract_with_outputs((output,)),
         )
 
 
@@ -866,10 +747,10 @@ def test_stage4_candidate_bundle_can_read_contract_and_inventory_files(
 ) -> None:
     contract_path = tmp_path / "output_build_contract.json"
     inventory_path = tmp_path / "output_inventory.jsonl"
-    contract_path.write_text(contract_to_json(_stage4_contract()), encoding="utf-8")
+    contract_path.write_text(contract_to_json(stage4_contract()), encoding="utf-8")
     inventory_path.write_text(
         json.dumps(
-            _inventory_record(
+            stage4_inventory_record(
                 "cities/NYC.h5",
                 key="relative_path",
                 logical_name="city_nyc_h5",
@@ -885,7 +766,7 @@ def test_stage4_candidate_bundle_can_read_contract_and_inventory_files(
     )
 
     bundle = read_stage4_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract_path=contract_path,
         output_inventory_path=inventory_path,
         source_output_contract_path="calibration/runs/run-123/output_build_contract.json",
@@ -914,8 +795,8 @@ def test_stage4_candidate_reader_uses_named_diagnostics_manifest() -> None:
         uri="hf://policyengine/policyengine-us-data/calibration/runs/run-123/diagnostics/worker.log",
         metadata={"relative_path": "calibration/runs/run-123/diagnostics/worker.log"},
     )
-    contract = _stage4_contract_with_outputs(
-        _stage4_contract().outputs,
+    contract = stage4_contract_with_outputs(
+        stage4_contract().outputs,
         diagnostics=(
             DiagnosticRef(name="worker_log", kind="log", artifact=other_diagnostic),
             DiagnosticRef(
@@ -928,7 +809,7 @@ def test_stage4_candidate_reader_uses_named_diagnostics_manifest() -> None:
     )
 
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract,
     )
 
@@ -942,8 +823,8 @@ def test_stage4_candidate_reader_uses_uri_only_and_validation_diagnostics() -> N
         logical_name="diagnostics_manifest",
         uri="hf://policyengine/policyengine-us-data/calibration/runs/run-123/diagnostics/manifest.json",
     )
-    contract = _stage4_contract_with_outputs(
-        _stage4_contract().outputs,
+    contract = stage4_contract_with_outputs(
+        stage4_contract().outputs,
         validation=ValidationReport(
             status="pass",
             diagnostics=(
@@ -958,7 +839,7 @@ def test_stage4_candidate_reader_uses_uri_only_and_validation_diagnostics() -> N
     )
 
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract,
     )
 
@@ -970,8 +851,8 @@ def test_stage4_candidate_reader_uses_uri_only_and_validation_diagnostics() -> N
 def test_stage4_candidate_reader_scopes_diagnostics_and_validation_paths() -> None:
     with pytest.raises(ValueError, match="context.run_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             diagnostics_manifest_path=(
                 "calibration/runs/other-run/diagnostics/manifest.json"
             ),
@@ -979,8 +860,8 @@ def test_stage4_candidate_reader_scopes_diagnostics_and_validation_paths() -> No
 
     with pytest.raises(ValueError, match="context.run_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             validation_report_paths=(
                 "calibration/runs/other-run/diagnostics/validation_report.json",
             ),
@@ -990,8 +871,8 @@ def test_stage4_candidate_reader_scopes_diagnostics_and_validation_paths() -> No
 def test_stage4_candidate_reader_scopes_source_contract_path() -> None:
     with pytest.raises(ValueError, match="context.run_id"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
-            output_contract=_stage4_contract(),
+            context=release_promotion_context(),
+            output_contract=stage4_contract(),
             source_output_contract_path=(
                 "calibration/runs/other-run/output_build_contract.json"
             ),
@@ -1006,8 +887,8 @@ def test_stage4_candidate_reader_validates_diagnostics_manifest_uri() -> None:
             "relative_path": "calibration/runs/run-123/diagnostics/manifest.json"
         },
     )
-    contract = _stage4_contract_with_outputs(
-        _stage4_contract().outputs,
+    contract = stage4_contract_with_outputs(
+        stage4_contract().outputs,
         diagnostics=(
             DiagnosticRef(
                 name="diagnostics_manifest",
@@ -1020,7 +901,7 @@ def test_stage4_candidate_reader_validates_diagnostics_manifest_uri() -> None:
 
     with pytest.raises(ValueError, match="metadata path must match"):
         build_release_candidate_bundle_from_stage4_contract(
-            context=_context(),
+            context=release_promotion_context(),
             output_contract=contract,
         )
 
@@ -1036,8 +917,8 @@ def test_stage4_candidate_fingerprint_tracks_diagnostics_manifest_identity() -> 
                 "relative_path": "calibration/runs/run-123/diagnostics/manifest.json"
             },
         )
-        return _stage4_contract_with_outputs(
-            _stage4_contract().outputs,
+        return stage4_contract_with_outputs(
+            stage4_contract().outputs,
             diagnostics=(
                 DiagnosticRef(
                     name="diagnostics_manifest",
@@ -1049,11 +930,11 @@ def test_stage4_candidate_fingerprint_tracks_diagnostics_manifest_identity() -> 
         )
 
     first = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract_with_manifest_sha("sha256:first"),
     )
     second = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract_with_manifest_sha("sha256:second"),
     )
 
@@ -1070,14 +951,14 @@ def test_stage4_candidate_reader_keeps_diagnostics_out_of_release_artifacts() ->
             "source_stage_id": "4_build_outputs",
         },
     )
-    base_contract = _stage4_contract()
-    contract = _stage4_contract_with_outputs(
+    base_contract = stage4_contract()
+    contract = stage4_contract_with_outputs(
         (*base_contract.outputs, diagnostics_output),
         fingerprint_payload={"outputs": "with_diagnostics"},
     )
 
     bundle = build_release_candidate_bundle_from_stage4_contract(
-        context=_context(),
+        context=release_promotion_context(),
         output_contract=contract,
     )
 
@@ -1095,14 +976,14 @@ def test_release_candidate_bundle_round_trips_through_dict_and_json() -> None:
         metadata={"source": "fixture"},
     )
     bundle = ReleaseCandidateInputBundle(
-        context=_context(),
+        context=release_promotion_context(),
         artifacts=(artifact,),
         source_output_contract_path="calibration/runs/run-123/output_build_contract.json",
         release_candidate_fingerprint="sha256:fixture",
         validation_report_paths=(
             "calibration/runs/run-123/diagnostics/validation_report.json",
         ),
-        validation_report_refs=(_validation_report_ref(),),
+        validation_report_refs=(validation_report_ref(),),
         diagnostics_manifest_path="calibration/runs/run-123/diagnostics/manifest.json",
         metadata={"reader": "fixture"},
     )
@@ -1120,7 +1001,7 @@ def test_release_candidate_bundle_round_trips_through_dict_and_json() -> None:
 
 def test_release_candidate_shape_report_uses_canonical_validation_schema() -> None:
     bundle = build_legacy_release_candidate_bundle(
-        context=_context(),
+        context=release_promotion_context(),
         rel_paths=["states/AL.h5"],
     )
 

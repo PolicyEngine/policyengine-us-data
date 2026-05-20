@@ -154,3 +154,20 @@ updated idempotently. Repeated promotions must not duplicate run entries or
 release-version run lists. The release promotion contract should reference the
 index as `promoted_runs_index` and include the update status so readers can see
 whether the current promotion created or updated the run discovery record.
+
+## Release Diagnostics Summary
+
+Stage 5 writes `release_diagnostics_summary.json` under the run-local
+`diagnostics/` directory as the compact dashboard/API overview for the promoted
+release. The summary joins existing structured run artifacts when they are
+available: the run manifest, Stage 2 package step manifest, Stage 3 regional
+and national fit step manifests, Stage 4 H5 and diagnostics step manifests, the
+Stage 4 output contract, and the typed Stage 5 promotion result.
+
+Do not invent new Stage 2 or Stage 3 normalized diagnostics for this summary.
+If an upstream source artifact is absent, invalid, or not yet produced, record
+that source explicitly as missing or invalid and continue building a partial
+summary. The release promotion contract should reference the summary as
+`release_diagnostics_summary`, and the Stage 5 step manifest should include it
+as a diagnostic so status endpoints and AI agents can discover the summary
+without scanning the full run directory.

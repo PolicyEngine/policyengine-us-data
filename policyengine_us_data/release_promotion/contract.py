@@ -84,6 +84,7 @@ class ReleasePromotionContractBuilder:
     published_artifact_index: ArtifactRef | None = None
     promoted_runs_index: ArtifactRef | None = None
     promoted_runs_index_update: Mapping[str, Any] | None = None
+    release_diagnostics_summary: ArtifactRef | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -99,6 +100,10 @@ class ReleasePromotionContractBuilder:
             self.promoted_runs_index, ArtifactRef
         ):
             raise ValueError("promoted_runs_index must be ArtifactRef")
+        if self.release_diagnostics_summary is not None and not isinstance(
+            self.release_diagnostics_summary, ArtifactRef
+        ):
+            raise ValueError("release_diagnostics_summary must be ArtifactRef")
         if self.promoted_runs_index_update is not None:
             object.__setattr__(
                 self,
@@ -128,12 +133,14 @@ class ReleasePromotionContractBuilder:
             self.promotion_result,
             published_artifact_index=self.published_artifact_index,
             promoted_runs_index=self.promoted_runs_index,
+            release_diagnostics_summary=self.release_diagnostics_summary,
         )
         parameters = _contract_parameters(
             self.candidate_bundle,
             self.promotion_result,
             published_artifact_index=self.published_artifact_index,
             promoted_runs_index=self.promoted_runs_index,
+            release_diagnostics_summary=self.release_diagnostics_summary,
         )
         return StageContract(
             contract_type=RELEASE_PROMOTION_CONTRACT_TYPE,
@@ -165,6 +172,11 @@ class ReleasePromotionContractBuilder:
                     "promoted_runs_index_update": (
                         dict(self.promoted_runs_index_update)
                         if self.promoted_runs_index_update is not None
+                        else None
+                    ),
+                    "release_diagnostics_summary": (
+                        self.release_diagnostics_summary.to_dict()
+                        if self.release_diagnostics_summary is not None
                         else None
                     ),
                     "outputs": [output.to_dict() for output in outputs],
@@ -201,6 +213,7 @@ def build_release_promotion_contract(
     published_artifact_index: ArtifactRef | None = None,
     promoted_runs_index: ArtifactRef | None = None,
     promoted_runs_index_update: Mapping[str, Any] | None = None,
+    release_diagnostics_summary: ArtifactRef | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 5 release promotion contract."""
@@ -216,6 +229,7 @@ def build_release_promotion_contract(
         published_artifact_index=published_artifact_index,
         promoted_runs_index=promoted_runs_index,
         promoted_runs_index_update=promoted_runs_index_update,
+        release_diagnostics_summary=release_diagnostics_summary,
         metadata=metadata or {},
     ).build()
 
@@ -233,6 +247,7 @@ def write_release_promotion_contract(
     published_artifact_index: ArtifactRef | None = None,
     promoted_runs_index: ArtifactRef | None = None,
     promoted_runs_index_update: Mapping[str, Any] | None = None,
+    release_diagnostics_summary: ArtifactRef | None = None,
     metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build, write, and return the Stage 5 release promotion contract."""
@@ -248,6 +263,7 @@ def write_release_promotion_contract(
         published_artifact_index=published_artifact_index,
         promoted_runs_index=promoted_runs_index,
         promoted_runs_index_update=promoted_runs_index_update,
+        release_diagnostics_summary=release_diagnostics_summary,
         metadata=metadata,
     )
     write_contract(contract, contract_path)
@@ -327,6 +343,7 @@ def _contract_outputs(
     *,
     published_artifact_index: ArtifactRef | None = None,
     promoted_runs_index: ArtifactRef | None = None,
+    release_diagnostics_summary: ArtifactRef | None = None,
 ) -> tuple[ArtifactRef, ...]:
     hf_base = f"hf://{context.hf_repo_name}"
     completion_marker_path = (
@@ -404,6 +421,8 @@ def _contract_outputs(
         outputs = (*outputs, published_artifact_index)
     if promoted_runs_index is not None:
         outputs = (*outputs, promoted_runs_index)
+    if release_diagnostics_summary is not None:
+        outputs = (*outputs, release_diagnostics_summary)
     return outputs
 
 
@@ -413,6 +432,7 @@ def _contract_parameters(
     *,
     published_artifact_index: ArtifactRef | None = None,
     promoted_runs_index: ArtifactRef | None = None,
+    release_diagnostics_summary: ArtifactRef | None = None,
 ) -> dict[str, Any]:
     context = candidate_bundle.context
     return {
@@ -436,6 +456,9 @@ def _contract_parameters(
             published_artifact_index
         ),
         "promoted_runs_index_path": _artifact_relative_path(promoted_runs_index),
+        "release_diagnostics_summary_path": _artifact_relative_path(
+            release_diagnostics_summary
+        ),
     }
 
 
@@ -471,6 +494,11 @@ def _contract_metadata(
         "promoted_runs_index_update": (
             dict(promoted_runs_index_update)
             if promoted_runs_index_update is not None
+            else None
+        ),
+        "release_diagnostics_summary": (
+            outputs_by_name["release_diagnostics_summary"].to_dict()
+            if "release_diagnostics_summary" in outputs_by_name
             else None
         ),
         "public_refs": {output.logical_name: output.uri for output in outputs},
@@ -520,6 +548,8 @@ def _substage_records(
         finalization_outputs.append(outputs_by_name["published_artifact_index"])
     if "promoted_runs_index" in outputs_by_name:
         finalization_outputs.append(outputs_by_name["promoted_runs_index"])
+    if "release_diagnostics_summary" in outputs_by_name:
+        finalization_outputs.append(outputs_by_name["release_diagnostics_summary"])
     return (
         SubstageRecord(
             substage_id="5a_validate_outputs",

@@ -117,8 +117,10 @@ def test_promote_run_writes_release_promotion_contract_output() -> None:
     assert "build_legacy_release_candidate_bundle(" in helper_source
     assert "build_published_artifact_index(" in helper_source
     assert "build_promoted_run_index_entry(" in helper_source
+    assert "build_release_diagnostics_summary_from_run_dir(" in helper_source
     assert "write_published_artifact_index(" in helper_source
     assert "update_promoted_runs_index(" in helper_source
+    assert "write_release_diagnostics_summary(" in helper_source
     assert "write_release_promotion_contract(" in helper_source
     assert 'role="contract"' in helper_source
     assert 'role="index"' in helper_source
@@ -131,11 +133,22 @@ def test_promote_run_writes_release_promotion_contract_output() -> None:
     )
     assert "published_artifact_index=published_index_artifact" in helper_source
     assert "promoted_runs_index=promoted_index_artifact" in helper_source
+    assert "release_diagnostics_summary=release_summary_artifact" in helper_source
     assert "promoted_runs_index_update=promoted_index_update.to_dict()" in (
         helper_source
     )
     assert 'diagnostics" / "contracts" / "output_build_contract.json"' in stage4_source
     assert "calibration/runs/{run_id}/" in stage4_source
+
+
+def test_promote_run_records_release_diagnostics_summary_diagnostic() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    promote_run = _function_def(tree, "promote_run")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), promote_run)
+
+    assert "release_promotion_diagnostics = [" in source
+    assert 'if artifact.role == "diagnostic"' in source
+    assert "diagnostics=release_promotion_diagnostics" in source
 
 
 def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> None:

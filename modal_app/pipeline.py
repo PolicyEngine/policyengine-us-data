@@ -593,15 +593,19 @@ def _write_release_promotion_contract_for_run(
         build_legacy_release_candidate_bundle,
         build_published_artifact_index,
         build_promoted_run_index_entry,
+        build_release_diagnostics_summary_from_run_dir,
         published_artifact_index_artifact_ref,
         published_artifact_index_path,
         published_artifact_index_repo_path,
+        release_diagnostics_summary_artifact_ref,
+        release_diagnostics_summary_path,
         promoted_runs_index_artifact_ref,
         promoted_runs_index_path,
         release_promotion_contract_repo_path,
         release_promotion_contract_path,
         update_promoted_runs_index,
         write_published_artifact_index,
+        write_release_diagnostics_summary,
         write_release_promotion_contract,
     )
     from policyengine_us_data.stage_contracts import ArtifactRef
@@ -695,6 +699,37 @@ def _write_release_promotion_contract_for_run(
         sha256=f"sha256:{promoted_index_manifest_ref.sha256}",
         size_bytes=promoted_index_manifest_ref.size_bytes,
     )
+    release_summary_path = release_diagnostics_summary_path(run_dir)
+    release_summary = build_release_diagnostics_summary_from_run_dir(
+        run_dir=run_dir,
+        context=release_context,
+        promotion_result=promotion_result,
+        generated_at=created_at,
+        artifact_refs=(
+            contract_artifact,
+            published_index_artifact,
+            promoted_index_artifact,
+        ),
+        metadata={
+            "writer": "modal_app.pipeline.promote_run",
+            "branch": meta.branch,
+            "code_sha": meta.sha,
+            "package_version": meta.version,
+        },
+    )
+    write_release_diagnostics_summary(release_summary, release_summary_path)
+    release_summary_manifest_ref = ArtifactReference.from_path(
+        release_summary_path,
+        role="diagnostic",
+        base_dir=run_dir,
+        media_type="application/json",
+    )
+    release_summary_artifact = release_diagnostics_summary_artifact_ref(
+        release_context,
+        release_summary,
+        sha256=f"sha256:{release_summary_manifest_ref.sha256}",
+        size_bytes=release_summary_manifest_ref.size_bytes,
+    )
     write_release_promotion_contract(
         contract_path=contract_path,
         candidate_bundle=candidate_bundle,
@@ -705,6 +740,7 @@ def _write_release_promotion_contract_for_run(
         published_artifact_index=published_index_artifact,
         promoted_runs_index=promoted_index_artifact,
         promoted_runs_index_update=promoted_index_update.to_dict(),
+        release_diagnostics_summary=release_summary_artifact,
         metadata={
             "writer": "modal_app.pipeline.promote_run",
             "branch": meta.branch,
@@ -719,6 +755,7 @@ def _write_release_promotion_contract_for_run(
         ),
         published_index_manifest_ref,
         promoted_index_manifest_ref,
+        release_summary_manifest_ref,
     )
 
 
@@ -2254,6 +2291,11 @@ def promote_run(
             rel_paths=rel_paths,
             promotion_result=promotion_result,
         )
+        release_promotion_diagnostics = [
+            artifact
+            for artifact in release_promotion_refs
+            if artifact.role == "diagnostic"
+        ]
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"
@@ -2268,6 +2310,7 @@ def promote_run(
                 ],
                 *release_promotion_refs,
             ],
+            diagnostics=release_promotion_diagnostics,
             reuse_decision="computed",
             vol=pipeline_volume,
         )

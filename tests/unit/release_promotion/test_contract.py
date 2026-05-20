@@ -10,6 +10,9 @@ from policyengine_us_data.release_promotion import (
     build_legacy_release_candidate_bundle,
     build_release_promotion_contract,
     published_artifact_index_artifact_ref,
+    release_diagnostics_summary_artifact_ref,
+    ReleaseDiagnosticsSummary,
+    ReleaseDiagnosticsSource,
     promoted_runs_index_artifact_ref,
     PromotedRunsIndexUpdate,
     release_promotion_contract_path,
@@ -117,8 +120,29 @@ def _promoted_runs_index_update() -> PromotedRunsIndexUpdate:
     )
 
 
+def _release_diagnostics_summary() -> ReleaseDiagnosticsSummary:
+    return ReleaseDiagnosticsSummary(
+        run_id="run-123",
+        candidate_version="1.73.0rc1",
+        release_version="1.73.0",
+        generated_at="2026-05-18T12:00:00+00:00",
+        status="partial",
+        sources={
+            "stage_5_promotion_result": ReleaseDiagnosticsSource(
+                name="stage_5_promotion_result",
+                source_kind="typed_result",
+                status="available",
+                path="in_memory:FullPromotionResult",
+                facts={"artifact_count": 2},
+            )
+        },
+        missing_sources=("stage_2_calibration_package",),
+    )
+
+
 def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
     promoted_runs_update = _promoted_runs_index_update()
+    release_summary = _release_diagnostics_summary()
     contract = build_release_promotion_contract(
         candidate_bundle=_candidate_bundle(),
         promotion_result=_promotion_result(),
@@ -139,6 +163,12 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
             size_bytes=456,
         ),
         promoted_runs_index_update=promoted_runs_update.to_dict(),
+        release_diagnostics_summary=release_diagnostics_summary_artifact_ref(
+            _context(),
+            release_summary,
+            sha256="sha256:summary",
+            size_bytes=789,
+        ),
         metadata={"writer": "test"},
     )
 
@@ -162,6 +192,7 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
         "release_completion_marker",
         "published_artifact_index",
         "promoted_runs_index",
+        "release_diagnostics_summary",
     }
     assert contract.execution.status == "completed"
     assert contract.execution.reuse_decision == "computed"
@@ -176,6 +207,9 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
     assert contract.parameters["promoted_runs_index_path"] == (
         "calibration/runs/index.json"
     )
+    assert contract.parameters["release_diagnostics_summary_path"] == (
+        "calibration/runs/run-123/diagnostics/release_diagnostics_summary.json"
+    )
     assert contract.metadata["contract_file"] == RELEASE_PROMOTION_CONTRACT_FILENAME
     assert contract.metadata["already_finalized"] is False
     assert contract.metadata["cleanup"]["cleaned_count"] == 3
@@ -185,6 +219,10 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
         == "created"
     )
     assert contract.metadata["promoted_runs_index_update"]["run_count"] == 1
+    assert (
+        contract.metadata["release_diagnostics_summary"]["metadata"]["summary_status"]
+        == "partial"
+    )
     assert contract.metadata["public_refs"]["release_manifest"] == (
         "hf://policyengine/policyengine-us-data/release_manifest.json"
     )
@@ -193,6 +231,9 @@ def test_release_promotion_contract_records_candidate_and_public_refs() -> None:
     )
     assert contract.metadata["public_refs"]["promoted_runs_index"].endswith(
         "calibration/runs/index.json"
+    )
+    assert contract.metadata["public_refs"]["release_diagnostics_summary"].endswith(
+        "release_diagnostics_summary.json"
     )
     assert [substage.substage_id for substage in contract.substages] == [
         "5a_validate_outputs",

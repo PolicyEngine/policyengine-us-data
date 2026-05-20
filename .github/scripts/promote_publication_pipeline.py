@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import tomllib
 from pathlib import Path
 
 import modal
@@ -17,13 +16,7 @@ if str(_REPO_ROOT) not in sys.path:
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     RunContext,
     release_version_from_bump,
-    stable_release_version,
 )
-
-
-def _current_package_version() -> str:
-    with (_REPO_ROOT / "pyproject.toml").open("rb") as file:
-        return stable_release_version(tomllib.load(file)["project"]["version"])
 
 
 def _modal_function(app_name: str, function_name: str, environment_name: str):
@@ -61,8 +54,13 @@ def _promotion_context_from_status(context: RunContext, status: dict) -> RunCont
         raise RuntimeError("Run manifest is missing release_bump.")
     release_version = _manifest_field(manifest, "release_version")
     if not release_version:
+        if not base_release_version:
+            raise RuntimeError(
+                "Run manifest is missing base_release_version, so promotion "
+                "cannot reconstruct release_version from release_bump."
+            )
         release_version = release_version_from_bump(
-            _current_package_version(),
+            base_release_version,
             release_bump,
         )
     return RunContext.from_mapping(

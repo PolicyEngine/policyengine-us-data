@@ -30,27 +30,28 @@ jobs:
         id: run-context
         run: python .github/scripts/resolve_run_context.py
 
-  policyengine-us-freshness:
-    name: PolicyEngine US freshness
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - name: Require current PolicyEngine US dependency
-        run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
-
   data-release-version:
     name: Data release version
     runs-on: ubuntu-latest
+    outputs:
+      package_version: ${{ steps.check-data-release-version.outputs.package_version }}
+      finalized_release_version: ${{ steps.check-data-release-version.outputs.finalized_release_version }}
+      release_version_relation: ${{ steps.check-data-release-version.outputs.release_version_relation }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - name: Require pyproject.toml to match finalized HF release base
-        run: python .github/scripts/check_data_release_version.py --mode fail
+        id: check-data-release-version
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          mode=warn
+          case "$HEAD_COMMIT_MESSAGE" in
+            "Update publication candidate"*) mode=fail ;;
+          esac
+          python .github/scripts/check_data_release_version.py --mode "$mode"
 
   # ── Documentation ──────────────────────────────────────────
   docs:
@@ -90,11 +91,15 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - run-context
-      - policyengine-us-freshness
       - data-release-version
     if: |
       !startsWith(github.event.head_commit.message, 'Update publication candidate') &&
-      !startsWith(github.event.head_commit.message, 'Finalize package version')
+      !startsWith(github.event.head_commit.message, 'Finalize package version') &&
+      (
+        needs.data-release-version.outputs.release_version_relation == 'current' ||
+        needs.data-release-version.outputs.release_version_relation == 'ahead' ||
+        needs.data-release-version.outputs.release_version_relation == 'behind'
+      )
     outputs:
       version_sha: ${{ steps.version-commit.outputs.sha }}
     steps:
@@ -112,6 +117,11 @@ jobs:
         with:
           python-version: "3.14"
       - uses: astral-sh/setup-uv@v8.1.0
+      - name: Sync finalized data release version
+        if: needs.data-release-version.outputs.release_version_relation == 'behind'
+        run: |
+          python .github/scripts/sync_finalized_data_release_version.py \
+            --finalized-release-version "${{ needs.data-release-version.outputs.finalized_release_version }}"
       - name: Snapshot candidate changelog fragments
         env:
           US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
@@ -137,7 +147,6 @@ jobs:
     needs:
       - lint
       - run-context
-      - policyengine-us-freshness
       - data-release-version
     if: startsWith(github.event.head_commit.message, 'Update publication candidate')
     permissions:

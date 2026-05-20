@@ -428,7 +428,7 @@ class TestVariableListConsistency:
         }
         _FakeHousingMicrosimulation.outputs = {
             "housing_assistance": np.array([100.0]),
-            "spm_unit_capped_housing_subsidy": np.array([58.0]),
+            "spm_unit_capped_housing_subsidy": np.array([54.0]),
             "spm_unit_weight": np.array([1.0]),
         }
 
@@ -440,7 +440,7 @@ class TestVariableListConsistency:
 
         assert result is data
 
-    def test_housing_assistance_validation_rejects_half_reported_match(self):
+    def test_housing_assistance_validation_rejects_below_half_reported_match(self):
         data = {
             "receives_housing_assistance": {2024: np.array([True])},
             "takes_up_housing_assistance_if_eligible": {2024: np.array([True])},
@@ -448,7 +448,7 @@ class TestVariableListConsistency:
         }
         _FakeHousingMicrosimulation.outputs = {
             "housing_assistance": np.array([100.0]),
-            "spm_unit_capped_housing_subsidy": np.array([54.0]),
+            "spm_unit_capped_housing_subsidy": np.array([49.0]),
             "spm_unit_weight": np.array([1.0]),
         }
 

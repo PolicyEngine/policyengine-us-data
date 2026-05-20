@@ -7,6 +7,8 @@ from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     CALIBRATION_PACKAGE_FILENAME,
     CALIBRATION_PACKAGE_METADATA_FILENAME,
+    CALIBRATION_TARGET_FACETS_FILENAME,
+    CALIBRATION_TARGETS_FILENAME,
     CALIBRATION_REPORTS_DIRNAME,
     DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
     DEFAULT_TARGET_CONFIG_PATH,
@@ -96,13 +98,24 @@ def test_calibration_package_artifact_paths():
     assert paths.contract == Path("/pipeline/artifacts/run-a") / (
         CALIBRATION_PACKAGE_CONTRACT_FILENAME
     )
+    assert paths.targets == Path("/pipeline/artifacts/run-a") / (
+        CALIBRATION_TARGETS_FILENAME
+    )
+    assert paths.target_facets == Path("/pipeline/artifacts/run-a") / (
+        CALIBRATION_TARGET_FACETS_FILENAME
+    )
     assert paths.reports_dir == Path("/pipeline/artifacts/run-a") / (
         CALIBRATION_REPORTS_DIRNAME
     )
     assert paths.matrix_build_dir == Path("/pipeline/artifacts/run-a") / (
         MATRIX_BUILD_DIRNAME
     )
-    assert paths.manifest_outputs == (paths.package, paths.contract)
+    assert paths.manifest_outputs == (
+        paths.package,
+        paths.contract,
+        paths.targets,
+        paths.target_facets,
+    )
 
 
 def test_stage2_input_bundle_from_artifacts_dir(tmp_path):

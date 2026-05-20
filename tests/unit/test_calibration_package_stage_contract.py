@@ -55,6 +55,34 @@ def test_calibration_package_contract_records_stage_2_handoff(tmp_path):
     assert contract.outputs[0].media_type == "application/python-pickle"
 
 
+def test_calibration_package_contract_references_target_metadata_artifacts(tmp_path):
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
+    targets_path = tmp_path / "calibration_targets.jsonl"
+    facets_path = tmp_path / "calibration_target_facets.json"
+    targets_path.write_text('{"target_id":1,"target_index":0}\n', encoding="utf-8")
+    facets_path.write_text('{"target_count":1}\n', encoding="utf-8")
+
+    contract = build_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=calibration_package_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+        target_metadata_path=targets_path,
+        target_facets_path=facets_path,
+        target_selection_summary={"target_count": 1},
+    )
+
+    outputs = {artifact.logical_name: artifact for artifact in contract.outputs}
+    assert outputs["calibration_targets"].media_type == "application/x-ndjson"
+    assert outputs["calibration_target_facets"].media_type == "application/json"
+    assert contract.metadata["target_selection"] == {"target_count": 1}
+    assert contract.execution.reuse_summary.expected_outputs == 3
+
+
 def test_calibration_package_parameters_parse_runtime_args():
     params = CalibrationPackageParameters.from_runtime_args(
         workers=8,

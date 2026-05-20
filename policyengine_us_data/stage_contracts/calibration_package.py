@@ -13,6 +13,8 @@ from policyengine_us_data.calibration_package.payload import (
 from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     CALIBRATION_PACKAGE_SUBSTAGE_ID,
+    CALIBRATION_TARGET_FACETS_FILENAME,
+    CALIBRATION_TARGETS_FILENAME,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -65,6 +67,9 @@ def build_calibration_package_contract(
     duration_s: float | None = None,
     code_sha: str | None = None,
     package_version: str | None = None,
+    target_metadata_path: Path | None = None,
+    target_facets_path: Path | None = None,
+    target_selection_summary: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 2 handoff contract from a calibration package."""
 
@@ -104,7 +109,7 @@ def build_calibration_package_contract(
             },
         ),
     )
-    outputs = (
+    outputs = [
         _artifact_ref_from_path(
             logical_name="calibration_package",
             path=package_path,
@@ -113,7 +118,36 @@ def build_calibration_package_contract(
                 "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
             },
         ),
-    )
+    ]
+    if target_metadata_path is not None:
+        _require_existing_file(target_metadata_path, "calibration targets metadata")
+        outputs.append(
+            _artifact_ref_from_path(
+                logical_name="calibration_targets",
+                path=Path(target_metadata_path),
+                media_type="application/x-ndjson",
+                metadata={
+                    "artifact_family": "target_metadata",
+                    "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
+                    "stable_join_keys": ("target_id", "target_index"),
+                },
+            )
+        )
+    if target_facets_path is not None:
+        _require_existing_file(target_facets_path, "calibration target facets")
+        outputs.append(
+            _artifact_ref_from_path(
+                logical_name="calibration_target_facets",
+                path=Path(target_facets_path),
+                media_type="application/json",
+                metadata={
+                    "artifact_family": "target_metadata",
+                    "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
+                    "derived_from": CALIBRATION_TARGETS_FILENAME,
+                },
+            )
+        )
+    outputs = tuple(outputs)
     code_sha = code_sha or _optional_metadata_string(metadata, "git_commit")
     package_version = package_version or _optional_metadata_string(
         metadata,
@@ -126,9 +160,9 @@ def build_calibration_package_contract(
         duration_s=duration_s,
         reuse_decision="not_applicable",
         reuse_summary=ReuseSummary(
-            expected_outputs=1,
+            expected_outputs=len(outputs),
             valid_reused_outputs=0,
-            recomputed_outputs=1,
+            recomputed_outputs=len(outputs),
             invalid_outputs=0,
         ),
     )
@@ -141,6 +175,7 @@ def build_calibration_package_contract(
             "parameters": parameter_payload,
             "package_summary": package_summary,
             "geography_assignment": geography_summary,
+            "target_selection": target_selection_summary or {},
         }
     )
     return StageContract(
@@ -171,6 +206,7 @@ def build_calibration_package_contract(
             "contract_file": CALIBRATION_PACKAGE_CONTRACT_FILENAME,
             "geography_assignment": geography_summary,
             "package_summary": package_summary,
+            "target_selection": dict(target_selection_summary or {}),
         },
     )
 
@@ -186,7 +222,11 @@ def build_calibration_package_contract(
         stability="moving",
         pathways=["calibration_package"],
         artifacts_in=["calibration_package.pkl"],
-        artifacts_out=[CALIBRATION_PACKAGE_CONTRACT_FILENAME],
+        artifacts_out=[
+            CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+            CALIBRATION_TARGETS_FILENAME,
+            CALIBRATION_TARGET_FACETS_FILENAME,
+        ],
         validation_commands=[
             "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
         ],
@@ -206,6 +246,9 @@ def write_calibration_package_contract(
     code_sha: str | None = None,
     package_version: str | None = None,
     contract_path: Path | None = None,
+    target_metadata_path: Path | None = None,
+    target_facets_path: Path | None = None,
+    target_selection_summary: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Write and return the Stage 2 calibration-package contract."""
 
@@ -222,6 +265,9 @@ def write_calibration_package_contract(
         duration_s=duration_s,
         code_sha=code_sha,
         package_version=package_version,
+        target_metadata_path=target_metadata_path,
+        target_facets_path=target_facets_path,
+        target_selection_summary=target_selection_summary,
     )
     write_contract(
         contract,
@@ -439,13 +485,14 @@ def _artifact_ref_from_path(
     logical_name: str,
     path: Path,
     metadata: Mapping[str, Any],
+    media_type: str | None = None,
 ) -> ArtifactRef:
     return ArtifactRef(
         logical_name=logical_name,
         uri=path.resolve().as_uri(),
         sha256=f"sha256:{sha256_file(path)}",
         size_bytes=path.stat().st_size,
-        media_type=_media_type_for_path(path),
+        media_type=media_type or _media_type_for_path(path),
         metadata=metadata,
     )
 
@@ -458,6 +505,8 @@ def _media_type_for_path(path: Path) -> str:
         return "application/vnd.sqlite3"
     if suffix == ".json":
         return "application/json"
+    if suffix == ".jsonl":
+        return "application/x-ndjson"
     if suffix == ".pkl":
         return "application/python-pickle"
     return "application/octet-stream"

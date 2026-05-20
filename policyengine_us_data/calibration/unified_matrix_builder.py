@@ -34,6 +34,10 @@ from policyengine_us_data.calibration.calibration_utils import (
     apply_op,
     get_geo_level,
 )
+from policyengine_us_data.calibration_package.targets import (
+    TargetCatalogReader,
+    TargetSelectionResult,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.target_variables import (
@@ -2106,98 +2110,19 @@ class UnifiedMatrixBuilder:
     def _query_targets(self, target_filter: dict) -> pd.DataFrame:
         """Query targets via target_overview view with
         best-period selection."""
-        and_conditions = []
-
-        if "domain_variables" in target_filter:
-            dvs = target_filter["domain_variables"]
-            ph = ",".join(f"'{dv}'" for dv in dvs)
-            and_conditions.append(f"tv.domain_variable IN ({ph})")
-
-        if "variables" in target_filter:
-            vs = ",".join(f"'{v}'" for v in target_filter["variables"])
-            and_conditions.append(f"tv.variable IN ({vs})")
-
-        if "target_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["target_ids"]))
-            and_conditions.append(f"tv.target_id IN ({ids})")
-
-        if "stratum_ids" in target_filter:
-            ids = ",".join(map(str, target_filter["stratum_ids"]))
-            and_conditions.append(f"tv.stratum_id IN ({ids})")
-
-        if not and_conditions:
-            where_clause = "1=1"
-        else:
-            where_clause = " AND ".join(f"({c})" for c in and_conditions)
-
-        if "reform_id" in self._get_target_overview_columns():
-            query = f"""
-            WITH filtered_targets AS (
-                SELECT tv.target_id, tv.stratum_id, tv.variable, tv.reform_id,
-                       tv.value, tv.period, tv.geo_level,
-                       tv.geographic_id, tv.domain_variable
-                FROM target_overview tv
-                WHERE tv.active = 1
-                  AND ({where_clause})
-            ),
-            best_periods AS (
-                SELECT stratum_id, variable, reform_id,
-                    CASE
-                        WHEN MAX(CASE WHEN period <= :time_period
-                                 THEN period END) IS NOT NULL
-                        THEN MAX(CASE WHEN period <= :time_period
-                                 THEN period END)
-                        ELSE MIN(period)
-                    END as best_period
-                FROM filtered_targets
-                GROUP BY stratum_id, variable, reform_id
+        target_selection = target_filter.get("target_selection")
+        if target_selection is not None:
+            if not isinstance(target_selection, TargetSelectionResult):
+                raise ValueError("target_selection must be a TargetSelectionResult")
+            return target_selection.targets_df.copy()
+        return (
+            TargetCatalogReader(
+                engine=self.engine,
+                time_period=self.time_period,
             )
-            SELECT ft.*
-            FROM filtered_targets ft
-            JOIN best_periods bp
-                ON ft.stratum_id = bp.stratum_id
-                AND ft.variable = bp.variable
-                AND ft.reform_id = bp.reform_id
-                AND ft.period = bp.best_period
-            ORDER BY ft.target_id
-            """
-        else:
-            query = f"""
-            WITH filtered_targets AS (
-                SELECT tv.target_id, tv.stratum_id, tv.variable,
-                       0 AS reform_id, tv.value, tv.period, tv.geo_level,
-                       tv.geographic_id, tv.domain_variable
-                FROM target_overview tv
-                WHERE tv.active = 1
-                  AND ({where_clause})
-            ),
-            best_periods AS (
-                SELECT stratum_id, variable,
-                    CASE
-                        WHEN MAX(CASE WHEN period <= :time_period
-                                 THEN period END) IS NOT NULL
-                        THEN MAX(CASE WHEN period <= :time_period
-                                 THEN period END)
-                        ELSE MIN(period)
-                    END as best_period
-                FROM filtered_targets
-                GROUP BY stratum_id, variable
-            )
-            SELECT ft.*
-            FROM filtered_targets ft
-            JOIN best_periods bp
-                ON ft.stratum_id = bp.stratum_id
-                AND ft.variable = bp.variable
-                AND ft.period = bp.best_period
-            ORDER BY ft.target_id
-            """
-
-        with self.engine.connect() as conn:
-            return pd.read_sql(
-                query,
-                conn,
-                params={"time_period": self.time_period},
-            )
+            .load(target_filter)
+            .targets
+        )
 
     def get_district_agi_targets(self) -> Dict[str, float]:
         """Return current-law district AGI targets for geography assignment."""

@@ -809,6 +809,9 @@ stages:
     - stage2_build_context
     - stage2_target_config_identity
     - stage2_target_catalog_load
+    - stage2_target_catalog_reader
+    - stage2_target_selection_policy
+    - stage2_target_selection_result
     - target_resolve
     - stage2_target_config_apply
     - target_uprate
@@ -827,6 +830,8 @@ stages:
     - stage2_calibration_package_writer
     - out_pkg
     - out_metadata
+    - out_targets
+    - out_target_facets
     - stage2_calibration_package_contract_writer
     - out_contract
     - stage2_calibration_package_contract_validator
@@ -883,6 +888,14 @@ stages:
     label: calibration_package_meta.json
     node_type: artifact
     description: Metadata sidecar generated from the typed package payload and Stage 2 contract
+  - id: out_targets
+    label: calibration_targets.jsonl
+    node_type: artifact
+    description: Row-level selected target metadata with stable target_id and target_index join keys
+  - id: out_target_facets
+    label: calibration_target_facets.json
+    node_type: artifact
+    description: Compact target counts by variable, geography level, target name, period, and constraint key
   - id: out_contract
     label: calibration_package_contract.json
     node_type: artifact
@@ -944,6 +957,30 @@ stages:
     target: stage2_target_catalog_load
     edge_type: data_flow
     label: resolved path and checksum
+  - source: in_db_s5
+    target: stage2_target_catalog_reader
+    edge_type: external_source
+    label: active and disabled targets
+  - source: stage2_target_catalog_reader
+    target: stage2_target_selection_policy
+    edge_type: data_flow
+    label: target catalog
+  - source: stage2_target_catalog_load
+    target: stage2_target_selection_policy
+    edge_type: data_flow
+    label: include/exclude rules
+  - source: stage2_target_selection_policy
+    target: stage2_target_selection_result
+    edge_type: data_flow
+    label: selected targets
+  - source: stage2_target_selection_result
+    target: build_matrix
+    edge_type: data_flow
+    label: matrix target order
+  - source: stage2_target_selection_result
+    target: build_matrix_chunked
+    edge_type: data_flow
+    label: matrix target order
   - source: stage2_target_catalog_load
     target: stage2_target_config_apply
     edge_type: data_flow
@@ -1015,6 +1052,14 @@ stages:
     target: out_metadata
     edge_type: produces_artifact
     label: sidecar metadata
+  - source: stage2_target_selection_result
+    target: out_targets
+    edge_type: produces_artifact
+    label: row-level selected targets
+  - source: stage2_target_selection_result
+    target: out_target_facets
+    edge_type: produces_artifact
+    label: derived facets
   - source: out_pkg
     target: stage2_payload_reader
     edge_type: data_flow
@@ -1025,6 +1070,14 @@ stages:
     target: stage2_calibration_package_contract_writer
     edge_type: uses_library
     label: summary and checksum
+  - source: out_targets
+    target: stage2_calibration_package_contract_writer
+    edge_type: data_flow
+    label: target metadata artifact
+  - source: out_target_facets
+    target: stage2_calibration_package_contract_writer
+    edge_type: data_flow
+    label: target facet artifact
   - source: stage2_artifact_specs
     target: stage2_calibration_package_contract_writer
     edge_type: uses_utility
@@ -1032,6 +1085,12 @@ stages:
   - source: stage2_calibration_package_contract_writer
     target: out_contract
     edge_type: produces_artifact
+  - source: stage2_calibration_package_contract_writer
+    target: out_targets
+    edge_type: validates
+  - source: stage2_calibration_package_contract_writer
+    target: out_target_facets
+    edge_type: validates
   - source: out_pkg
     target: stage2_calibration_package_contract_validator
     edge_type: validates

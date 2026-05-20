@@ -21,6 +21,8 @@ DATASET_BUILD_OUTPUT_CONTRACT_FILENAME = "dataset_build_output.json"
 CALIBRATION_PACKAGE_FILENAME = "calibration_package.pkl"
 CALIBRATION_PACKAGE_METADATA_FILENAME = "calibration_package_meta.json"
 CALIBRATION_PACKAGE_CONTRACT_FILENAME = "calibration_package_contract.json"
+CALIBRATION_TARGETS_FILENAME = "calibration_targets.jsonl"
+CALIBRATION_TARGET_FACETS_FILENAME = "calibration_target_facets.json"
 CALIBRATION_REPORTS_DIRNAME = "calibration_reports"
 MATRIX_BUILD_DIRNAME = "matrix_build"
 CALIBRATION_PACKAGE_SUBSTAGE_ID = "2a_matrix_build_calibration_target_construction"
@@ -185,14 +187,16 @@ class CalibrationPackageOutputBundle:
     package: Path
     metadata: Path
     contract: Path
+    targets: Path
+    target_facets: Path
     reports_dir: Path
     matrix_build_dir: Path
 
     @property
-    def manifest_outputs(self) -> tuple[Path, Path]:
+    def manifest_outputs(self) -> tuple[Path, Path, Path, Path]:
         """Return the durable Stage 2 outputs recorded in step manifests."""
 
-        return (self.package, self.contract)
+        return (self.package, self.contract, self.targets, self.target_facets)
 
 
 CalibrationPackageArtifactPaths = CalibrationPackageOutputBundle
@@ -369,6 +373,8 @@ def stage2_build_context_for_run(
             CALIBRATION_PACKAGE_FILENAME,
             CALIBRATION_PACKAGE_METADATA_FILENAME,
             CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+            CALIBRATION_TARGETS_FILENAME,
+            CALIBRATION_TARGET_FACETS_FILENAME,
         ],
         validation_commands=[
             "uv run pytest tests/unit/calibration_package/test_specs.py"
@@ -386,6 +392,8 @@ def calibration_package_artifact_paths(
         package=root / CALIBRATION_PACKAGE_FILENAME,
         metadata=root / CALIBRATION_PACKAGE_METADATA_FILENAME,
         contract=root / CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        targets=root / CALIBRATION_TARGETS_FILENAME,
+        target_facets=root / CALIBRATION_TARGET_FACETS_FILENAME,
         reports_dir=root / CALIBRATION_REPORTS_DIRNAME,
         matrix_build_dir=root / MATRIX_BUILD_DIRNAME,
     )
@@ -494,6 +502,8 @@ __all__ = [
     "CALIBRATION_PACKAGE_FILENAME",
     "CALIBRATION_PACKAGE_METADATA_FILENAME",
     "CALIBRATION_PACKAGE_SUBSTAGE_ID",
+    "CALIBRATION_TARGET_FACETS_FILENAME",
+    "CALIBRATION_TARGETS_FILENAME",
     "CALIBRATION_REPORTS_DIRNAME",
     "DATASET_BUILD_OUTPUT_CONTRACT_FILENAME",
     "DEFAULT_TARGET_CONFIG_PATH",

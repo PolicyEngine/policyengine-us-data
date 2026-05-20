@@ -51,8 +51,15 @@ from policyengine_us_data.calibration_package.payload import (
 )
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
+    CALIBRATION_TARGET_FACETS_FILENAME,
+    CALIBRATION_TARGETS_FILENAME,
     TargetConfigIdentity,
     resolve_target_config_identity,
+)
+from policyengine_us_data.calibration_package.targets import (
+    TargetCatalog,
+    TargetCatalogReader,
+    TargetSelectionPolicy,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.stage_contracts.calibration_package import (
@@ -582,24 +589,18 @@ def apply_target_config(
     Returns:
         (filtered_targets_df, filtered_X_sparse, filtered_names)
     """
-    include_rules = config.get("include", [])
-    exclude_rules = config.get("exclude", [])
-
-    if not include_rules and not exclude_rules:
+    policy = TargetSelectionPolicy.from_config(config)
+    if not policy.include_rules and not policy.exclude_rules:
         return targets_df, X_sparse, target_names
 
     n_before = len(targets_df)
-
-    if include_rules:
-        keep_mask = _match_rules(targets_df, include_rules)
-    else:
-        keep_mask = np.ones(n_before, dtype=bool)
-
-    if exclude_rules:
-        drop_mask = _match_rules(targets_df, exclude_rules)
-        keep_mask &= ~drop_mask
-
-    n_dropped = n_before - keep_mask.sum()
+    working_targets = targets_df.copy()
+    if "target_id" not in working_targets.columns:
+        working_targets["target_id"] = list(range(len(working_targets)))
+    selection = policy.select(TargetCatalog.from_targets(working_targets))
+    selected_ids = set(selection.target_ids)
+    keep_mask = working_targets["target_id"].isin(selected_ids)
+    n_dropped = n_before - int(keep_mask.sum())
     logger.info(
         "Target config: kept %d / %d targets (dropped %d)",
         keep_mask.sum(),
@@ -607,7 +608,7 @@ def apply_target_config(
         n_dropped,
     )
 
-    idx = np.where(keep_mask)[0]
+    idx = np.where(keep_mask.to_numpy())[0]
     filtered_df = targets_df.iloc[idx].reset_index(drop=True)
     filtered_X = None if X_sparse is None else X_sparse[idx, :]
     filtered_names = [target_names[i] for i in idx]
@@ -1532,6 +1533,11 @@ def run_calibration(
         db_uri=db_uri,
         time_period=time_period,
     )
+    resolved_target_identity = _target_config_identity_for_metadata(
+        target_config=target_config,
+        target_config_path=target_config_path,
+        target_config_identity=target_config_identity,
+    )
 
     # Compute base household AGI for conditional geographic assignment
     base_agi = sim.calculate("adjusted_gross_income", map_to="household").values.astype(
@@ -1622,20 +1628,23 @@ def run_calibration(
     target_filter = {}
     if domain_variables:
         target_filter["domain_variables"] = domain_variables
-    if target_config:
-        candidate_targets = builder._query_targets(target_filter)
-        filtered_targets = apply_target_config_to_targets(
-            candidate_targets,
-            target_config,
-        )
-        if len(filtered_targets) == 0:
-            raise ValueError("Target config excluded all targets")
-        target_filter["target_ids"] = filtered_targets["target_id"].tolist()
-        logger.info(
-            "Build target config: selected %d / %d targets before matrix build",
-            len(filtered_targets),
-            len(candidate_targets),
-        )
+    target_catalog = TargetCatalogReader(
+        engine=builder.engine,
+        time_period=time_period,
+    ).load(target_filter)
+    target_selection = TargetSelectionPolicy.from_config(target_config).select(
+        target_catalog,
+        target_config_identity=resolved_target_identity,
+        valid_variables=sim.tax_benefit_system.variables,
+    )
+    if len(target_selection.targets_df) == 0:
+        raise ValueError("Target config excluded all targets")
+    target_filter["target_selection"] = target_selection
+    logger.info(
+        "Build target selection: selected %d / %d active targets",
+        len(target_selection.targets_df),
+        len(target_catalog.targets),
+    )
 
     # Step 6: Build sparse calibration matrix
     do_rerandomize = not skip_takeup_rerandomize
@@ -1687,15 +1696,11 @@ def run_calibration(
         X_sparse.shape,
         X_sparse.nnz,
     )
+    target_selection = target_selection.with_matrix_order(targets_df, target_names)
 
     # Step 6b: Save the calibration package. By default this is the
     # minimal package selected by target_config.yaml; use
     # --all-active-targets to build a broad diagnostic package.
-    resolved_target_identity = _target_config_identity_for_metadata(
-        target_config=target_config,
-        target_config_path=target_config_path,
-        target_config_identity=target_config_identity,
-    )
     metadata = {
         "dataset_path": dataset_path,
         "db_path": db_path,
@@ -1717,6 +1722,8 @@ def run_calibration(
         "matrix_builder": "chunked" if chunked_matrix else "precompute",
         "chunk_size": chunk_size if chunked_matrix else None,
         "chunk_dir": chunk_dir if chunked_matrix else None,
+        "target_selection_sha256": target_selection.checksum,
+        "target_selection_n_targets": target_selection.n_selected_targets,
     }
     metadata.update(get_git_provenance())
     from policyengine_us_data.utils.manifest import compute_file_checksum
@@ -1726,6 +1733,10 @@ def run_calibration(
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
     if package_output_path:
+        package_path = Path(package_output_path)
+        targets_path = package_path.with_name(CALIBRATION_TARGETS_FILENAME)
+        target_facets_path = package_path.with_name(CALIBRATION_TARGET_FACETS_FILENAME)
+        target_selection.write_artifacts(targets_path, target_facets_path)
         package_payload = CalibrationPackagePayload(
             X_sparse=X_sparse,
             targets_df=targets_df,
@@ -1752,7 +1763,7 @@ def run_calibration(
 
         completed_at = _utc_now_isoformat()
         write_calibration_package_contract(
-            package_path=Path(package_output_path),
+            package_path=package_path,
             dataset_path=Path(dataset_path),
             db_path=Path(db_path),
             package=package_payload,
@@ -1776,9 +1787,12 @@ def run_calibration(
             duration_s=round(time.time() - t0, 1),
             code_sha=metadata.get("git_commit"),
             package_version=metadata.get("package_version"),
+            target_metadata_path=targets_path,
+            target_facets_path=target_facets_path,
+            target_selection_summary=target_selection.summary(),
         )
         validate_calibration_package_contract(
-            package_path=Path(package_output_path),
+            package_path=package_path,
             package=package_payload,
             dataset_path=Path(dataset_path),
             db_path=Path(db_path),

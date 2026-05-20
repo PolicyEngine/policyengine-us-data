@@ -229,3 +229,29 @@ def test_dataset_build_contract_records_diagnostic_refs(tmp_path):
 
     assert contract.diagnostics == (diagnostic,)
     assert contract.metadata["diagnostic_count"] == 1
+
+
+def test_dataset_build_contract_records_stage_1_status_metadata(tmp_path):
+    _write_artifacts(tmp_path)
+
+    contract = build_dataset_build_output_contract(
+        artifacts_dir=tmp_path,
+        run_id="run-a",
+        code_sha="abc123",
+        package_version="1.98.2",
+        checkpoint_stats={"expected_outputs": 4},
+        started_at="2026-05-08T12:00:00Z",
+        completed_at="2026-05-08T12:01:00Z",
+        stage_1_status_metadata={
+            "substep_results": [
+                {
+                    "substep_id": "1b_base_dataset_construction",
+                    "reuse_decision": {"action": "reuse"},
+                }
+            ]
+        },
+    )
+
+    assert contract.metadata["stage_1_status"]["substep_results"][0][
+        "reuse_decision"
+    ] == {"action": "reuse"}

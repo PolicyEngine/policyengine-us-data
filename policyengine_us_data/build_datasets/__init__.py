@@ -9,6 +9,11 @@ from .artifacts import (
     stage_1_pipeline_artifact_specs,
     stage_1_script_outputs,
 )
+from .checkpoints import (
+    CheckpointDecision,
+    CheckpointReuseSummary,
+    CheckpointStore,
+)
 from .commands import CommandRunner, DatasetCommand, DatasetCommandError
 from .context import DatasetBuildContext
 from .contracts import DatasetBuildOutputContractBuilder
@@ -33,11 +38,19 @@ from .specs import (
     stage_1_step_specs,
 )
 from .results import DatasetCommandResult, DatasetSubstepResult
+from .rerun import (
+    Stage1IdentityMaterial,
+    Stage1RerunPlanner,
+    Stage1ReuseDecision,
+)
 from .staging import PipelineArtifactStager
 from .status import Stage1ErrorRecord, Stage1StatusEvent
 
 __all__ = [
     "ARTIFACT_SCHEMA_VERSION",
+    "CheckpointDecision",
+    "CheckpointReuseSummary",
+    "CheckpointStore",
     "CommandBackedSubstepRunner",
     "CommandRunner",
     "DatasetArtifactSpec",
@@ -56,6 +69,9 @@ __all__ = [
     "SourceDatasetSchemaSummaryWriter",
     "Stage1Coordinator",
     "Stage1ErrorRecord",
+    "Stage1IdentityMaterial",
+    "Stage1RerunPlanner",
+    "Stage1ReuseDecision",
     "Stage1StatusEvent",
     "Stage1SubstepRunner",
     "TargetDatabaseSchemaSummaryWriter",

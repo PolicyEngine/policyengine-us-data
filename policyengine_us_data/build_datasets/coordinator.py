@@ -56,6 +56,8 @@ class Stage1Coordinator:
         *,
         command_names: Sequence[str] = (),
         artifact_paths: Sequence[str | Path] = (),
+        reuse_decision: Mapping[str, Any] | None = None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]] = (),
         skip: bool = False,
         skip_reason: str | None = None,
         metadata: Mapping[str, Any] | None = None,
@@ -71,6 +73,8 @@ class Stage1Coordinator:
             result = self._skipped_result(
                 runner=runner,
                 command_names=command_names,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 skip_reason=skip_reason,
                 metadata=metadata,
             )
@@ -103,6 +107,8 @@ class Stage1Coordinator:
                 started_dt=started_dt,
                 command_names=command_names,
                 artifact_paths=artifact_paths,
+                reuse_decision=reuse_decision,
+                checkpoint_decisions=checkpoint_decisions,
                 error=error,
                 metadata=metadata,
             )
@@ -115,6 +121,8 @@ class Stage1Coordinator:
             started_dt=started_dt,
             command_names=command_names,
             artifact_paths=artifact_paths,
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=checkpoint_decisions,
             metadata=metadata,
         )
         self._record(result)
@@ -125,6 +133,8 @@ class Stage1Coordinator:
         *,
         runner: CommandBackedSubstepRunner,
         command_names: Sequence[str],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         skip_reason: str | None,
         metadata: Mapping[str, Any] | None,
     ) -> DatasetSubstepResult:
@@ -137,6 +147,8 @@ class Stage1Coordinator:
             completed_at=completed_at,
             duration_s=None,
             command_names=tuple(command_names),
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=tuple(checkpoint_decisions),
             metadata={**dict(metadata or {}), "skip_reason": skip_reason},
         )
 
@@ -148,6 +160,8 @@ class Stage1Coordinator:
         started_dt: datetime,
         command_names: Sequence[str],
         artifact_paths: Sequence[str | Path],
+        reuse_decision: Mapping[str, Any] | None,
+        checkpoint_decisions: Sequence[Mapping[str, Any]],
         error: Stage1ErrorRecord | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> DatasetSubstepResult:
@@ -161,6 +175,8 @@ class Stage1Coordinator:
             duration_s=(completed_dt - started_dt).total_seconds(),
             command_names=tuple(command_names),
             artifact_paths=_existing_artifact_paths(artifact_paths),
+            reuse_decision=reuse_decision,
+            checkpoint_decisions=tuple(checkpoint_decisions),
             error=error,
             metadata=dict(metadata or {}),
         )
@@ -174,7 +190,13 @@ class Stage1Coordinator:
                     status=result.status,
                     created_at=result.completed_at,
                     message=f"{result.title}: {result.status}",
-                    metadata=dict(result.metadata),
+                    metadata={
+                        **dict(result.metadata),
+                        "reuse_decision": result.reuse_decision,
+                        "checkpoint_decisions": [
+                            dict(decision) for decision in result.checkpoint_decisions
+                        ],
+                    },
                 )
             )
             if result.error is not None:

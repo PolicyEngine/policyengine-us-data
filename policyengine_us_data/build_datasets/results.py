@@ -56,6 +56,8 @@ class DatasetSubstepResult:
     duration_s: float | None
     command_names: tuple[str, ...] = ()
     artifact_paths: tuple[str, ...] = ()
+    reuse_decision: Mapping[str, Any] | None = None
+    checkpoint_decisions: tuple[Mapping[str, Any], ...] = ()
     error: Stage1ErrorRecord | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
@@ -71,6 +73,12 @@ class DatasetSubstepResult:
             "duration_s": self.duration_s,
             "command_names": list(self.command_names),
             "artifact_paths": list(self.artifact_paths),
+            "reuse_decision": (
+                dict(self.reuse_decision) if self.reuse_decision is not None else None
+            ),
+            "checkpoint_decisions": [
+                dict(decision) for decision in self.checkpoint_decisions
+            ],
             "error": self.error.to_dict() if self.error else None,
             "metadata": dict(self.metadata),
         }

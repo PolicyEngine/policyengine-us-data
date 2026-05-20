@@ -3,7 +3,11 @@ import sys
 from datetime import datetime, timedelta, timezone
 from types import ModuleType, SimpleNamespace
 
-from policyengine_us_data.build_datasets import stage_1_script_outputs
+from policyengine_us_data.build_datasets import (
+    CheckpointStore,
+    Stage1ReuseDecision,
+    stage_1_script_outputs,
+)
 from policyengine_us_data.stage_contracts import read_contract
 
 
@@ -317,6 +321,45 @@ def test_write_dataset_build_contract_writes_stage_1_handoff(tmp_path):
     assert read_contract(contract_path) == contract
     assert contract.stage_id == "1_build_datasets"
     assert contract.parameters["stage_only"] is True
+
+
+def test_run_script_with_checkpoint_rejects_blocked_reuse_decision(
+    tmp_path,
+    monkeypatch,
+):
+    data_build = _load_data_build_module()
+
+    def fail_run_script(*args, **kwargs):
+        raise AssertionError("blocked decisions must not run commands")
+
+    monkeypatch.setattr(data_build, "run_script", fail_run_script)
+    decision = Stage1ReuseDecision(
+        run_id="run-a",
+        rerun_id="attempt-2",
+        artifact_namespace="run-a",
+        substep_id="1b_base_dataset_construction",
+        action="blocked",
+        reason="identity_mismatch",
+        identity_fingerprint="sha256:abc",
+    )
+
+    try:
+        data_build.run_script_with_checkpoint(
+            "policyengine_us_data/datasets/cps/cps.py",
+            "cps_2024.h5",
+            "branch",
+            object(),
+            checkpoint_store=CheckpointStore(
+                root=tmp_path,
+                branch="branch",
+                commit_sha="abc123",
+            ),
+            reuse_decision=decision,
+        )
+    except RuntimeError as exc:
+        assert "identity_mismatch" in str(exc)
+    else:
+        raise AssertionError("blocked reuse decision should fail")
 
 
 def test_utc_timestamp_renders_zulu_time_for_build_log():

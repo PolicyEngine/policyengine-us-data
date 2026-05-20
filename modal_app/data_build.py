@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import os
 import shutil
@@ -22,12 +24,17 @@ for _p in (_baked, _local):
 from modal_app.images import cpu_image as image  # noqa: E402
 from policyengine_us_data.__version__ import __version__ as DATA_PACKAGE_VERSION  # noqa: E402
 from policyengine_us_data.build_datasets import (  # noqa: E402
+    CheckpointStore,
     CommandRunner,
     DatasetCommand,
     DatasetBuildContext,
     DatasetBuildOutputContractBuilder,
     PipelineArtifactStager,
     Stage1Coordinator,
+    Stage1IdentityMaterial,
+    Stage1RerunPlanner,
+    Stage1ReuseDecision,
+    stage_1_artifact_specs,
     stage_1_script_outputs,
     stage_1_substep_id_for_script,
     stage_1_substep_title,
@@ -171,30 +178,20 @@ def get_current_commit() -> str:
 
 def get_checkpoint_path(branch: str, output_file: str) -> Path:
     """Get the checkpoint path for an output file, scoped by branch and commit."""
-    commit = get_current_commit()
-    return Path(VOLUME_MOUNT) / branch / commit / Path(output_file).name
+    return _checkpoint_store(branch).checkpoint_path(output_file)
 
 
 def is_checkpointed(branch: str, output_file: str) -> bool:
     """Check if output file exists in checkpoint volume and is valid."""
-    checkpoint_path = get_checkpoint_path(branch, output_file)
-    if checkpoint_path.exists():
-        # Verify file is not empty/corrupted
-        if checkpoint_path.stat().st_size > 0:
-            return True
-    return False
+    return _checkpoint_store(branch).decision_for(output_file).action == "reuse"
 
 
 def restore_from_checkpoint(branch: str, output_file: str) -> bool:
     """Restore output file from checkpoint volume if it exists."""
-    checkpoint_path = get_checkpoint_path(branch, output_file)
-    if checkpoint_path.exists() and checkpoint_path.stat().st_size > 0:
-        local_path = Path(output_file)
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(checkpoint_path, local_path)
+    restored = _checkpoint_store(branch).restore_output(output_file)
+    if restored:
         print(f"Restored from checkpoint: {output_file}")
-        return True
-    return False
+    return restored
 
 
 def save_checkpoint(
@@ -203,23 +200,33 @@ def save_checkpoint(
     volume: modal.Volume,
 ) -> None:
     """Save output file to checkpoint volume."""
-    local_path = Path(output_file)
-    if local_path.exists() and local_path.stat().st_size > 0:
-        checkpoint_path = get_checkpoint_path(branch, output_file)
-        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(local_path, checkpoint_path)
-        with _volume_lock:
-            volume.commit()
+    saved = _checkpoint_store(branch, volume).save_output(output_file)
+    if saved:
         print(f"Checkpointed: {output_file}")
 
 
 def cleanup_checkpoints(branch: str, volume: modal.Volume) -> None:
     """Delete checkpoints for this branch after successful completion."""
-    branch_dir = Path(VOLUME_MOUNT) / branch
-    if branch_dir.exists():
-        shutil.rmtree(branch_dir)
-        volume.commit()
+    cleaned = _checkpoint_store(branch, volume).cleanup_branch()
+    if cleaned:
         print(f"Cleaned up checkpoints for branch: {branch}")
+
+
+def _checkpoint_store(
+    branch: str,
+    volume: modal.Volume | None = None,
+) -> CheckpointStore:
+    def commit_volume() -> None:
+        if volume is not None:
+            with _volume_lock:
+                volume.commit()
+
+    return CheckpointStore(
+        root=Path(VOLUME_MOUNT),
+        branch=branch,
+        commit_sha=get_current_commit(),
+        commit=commit_volume if volume is not None else None,
+    )
 
 
 def run_script_logged(
@@ -332,6 +339,8 @@ def run_script_with_checkpoint(
     env: Optional[dict] = None,
     log_file: IO = None,
     checkpoint_stats: CheckpointStats | None = None,
+    checkpoint_store: CheckpointStore | None = None,
+    reuse_decision: Stage1ReuseDecision | None = None,
 ) -> str:
     """Run script if output not checkpointed, then checkpoint result.
 
@@ -351,14 +360,29 @@ def run_script_with_checkpoint(
     if isinstance(output_files, str):
         output_files = [output_files]
     expected_count = len(output_files)
+    checkpoint_store = checkpoint_store or _checkpoint_store(branch, volume)
+    reuse_decision = reuse_decision or _compat_reuse_decision(
+        script_path=script_path,
+        output_files=output_files,
+        branch=branch,
+    )
+    if reuse_decision.action == "blocked":
+        raise RuntimeError(
+            "Stage 1 checkpoint reuse is blocked for "
+            f"{script_path}: {reuse_decision.reason}"
+        )
 
     # Check if ALL outputs are checkpointed
-    all_checkpointed = all(is_checkpointed(branch, f) for f in output_files)
+    checkpoint_decisions = checkpoint_store.decisions_for(output_files)
+    all_checkpointed = reuse_decision.action == "reuse" and all(
+        decision.action == "reuse" for decision in checkpoint_decisions
+    )
 
     if all_checkpointed:
         # Restore all files from checkpoint
+        checkpoint_store.restore_all_outputs(output_files)
         for output_file in output_files:
-            restore_from_checkpoint(branch, output_file)
+            print(f"Restored from checkpoint: {output_file}")
         print(f"Skipping {script_path} (restored from checkpoint)")
         if checkpoint_stats is not None:
             checkpoint_stats.record(
@@ -368,7 +392,7 @@ def run_script_with_checkpoint(
         return script_path
 
     missing_or_invalid = sum(
-        1 for output_file in output_files if not is_checkpointed(branch, output_file)
+        1 for decision in checkpoint_decisions if decision.action != "reuse"
     )
 
     # Run the script
@@ -376,7 +400,9 @@ def run_script_with_checkpoint(
 
     # Checkpoint all outputs
     for output_file in output_files:
-        save_checkpoint(branch, output_file, volume)
+        saved = checkpoint_store.save_output(output_file)
+        if saved:
+            print(f"Checkpointed: {output_file}")
     if checkpoint_stats is not None:
         checkpoint_stats.record(
             expected_outputs=expected_count,
@@ -392,6 +418,46 @@ def _output_paths(output_files: str | list[str]) -> tuple[Path, ...]:
     return tuple(Path(path) for path in paths)
 
 
+def _compat_reuse_decision(
+    *,
+    script_path: str,
+    output_files: list[str],
+    branch: str,
+    run_id: str | None = None,
+    rerun_id: str | None = None,
+) -> Stage1ReuseDecision:
+    """Return the current compatible semantic reuse decision for a script."""
+
+    substep_id = stage_1_substep_id_for_script(script_path)
+    material = Stage1IdentityMaterial(
+        substep_id=substep_id,
+        inputs={"script_path": script_path},
+        parameters={"branch": branch, "outputs": output_files},
+        artifact_specs=[
+            {
+                "filename": spec.filename,
+                "logical_name": spec.logical_name,
+                "storage_path": spec.storage_path,
+                "substage_id": spec.substage_id,
+            }
+            for spec in stage_1_artifact_specs()
+            if spec.script_path == script_path
+        ],
+        code_sha=get_current_commit(),
+        schema_version="stage-1-rerun-v1",
+        upstream_contract_fingerprints=(),
+        randomness={"checkpoint_scope": "branch_commit"},
+    )
+    planner = Stage1RerunPlanner(
+        previous_identities={substep_id: material.fingerprint()}
+    )
+    return planner.decide(
+        material,
+        run_id=run_id or os.environ.get("US_DATA_RUN_ID", "unknown"),
+        rerun_id=rerun_id,
+    )
+
+
 def _run_checkpointed_substep(
     *,
     coordinator: Stage1Coordinator | None,
@@ -403,7 +469,8 @@ def _run_checkpointed_substep(
     log_file: IO = None,
     checkpoint_stats: CheckpointStats | None = None,
 ) -> str:
-    def action() -> str:
+    output_list = output_files if isinstance(output_files, list) else [output_files]
+    if coordinator is None:
         return run_script_with_checkpoint(
             script_path,
             output_files,
@@ -414,8 +481,27 @@ def _run_checkpointed_substep(
             checkpoint_stats=checkpoint_stats,
         )
 
-    if coordinator is None:
-        return action()
+    checkpoint_store = _checkpoint_store(branch, volume)
+    reuse_decision = _compat_reuse_decision(
+        script_path=script_path,
+        output_files=output_list,
+        branch=branch,
+    )
+    checkpoint_decisions = checkpoint_store.decisions_for(output_list)
+
+    def action() -> str:
+        return run_script_with_checkpoint(
+            script_path,
+            output_files,
+            branch,
+            volume,
+            env=env,
+            log_file=log_file,
+            checkpoint_stats=checkpoint_stats,
+            checkpoint_store=checkpoint_store,
+            reuse_decision=reuse_decision,
+        )
+
     substep_id = stage_1_substep_id_for_script(script_path)
     return coordinator.run_substep(
         substep_id,
@@ -423,6 +509,10 @@ def _run_checkpointed_substep(
         action,
         command_names=(script_path,),
         artifact_paths=_output_paths(output_files),
+        reuse_decision=reuse_decision.to_dict(),
+        checkpoint_decisions=tuple(
+            decision.to_dict() for decision in checkpoint_decisions
+        ),
     )
 
 
@@ -526,6 +616,7 @@ def write_dataset_build_contract(
     package_version: str = DATA_PACKAGE_VERSION,
     branch: str = "unknown",
     diagnostics: tuple = (),
+    stage_1_status_metadata: Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Write the Stage 1 semantic handoff contract next to copied artifacts."""
     context = DatasetBuildContext(
@@ -545,6 +636,7 @@ def write_dataset_build_contract(
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
         diagnostics=diagnostics,
+        stage_1_status_metadata=stage_1_status_metadata,
     )
 
 
@@ -628,14 +720,11 @@ def build_datasets(
     os.chdir("/root/policyengine-us-data")
 
     # Clean stale checkpoints from other commits
-    branch_dir = Path(VOLUME_MOUNT) / branch
-    if branch_dir.exists():
-        current_commit = get_current_commit()
-        for entry in branch_dir.iterdir():
-            if entry.is_dir() and entry.name != current_commit:
-                shutil.rmtree(entry)
-                print(f"Removed stale checkpoint dir: {entry.name[:12]}")
-        checkpoint_volume.commit()
+    for removed_checkpoint in _checkpoint_store(
+        branch,
+        checkpoint_volume,
+    ).cleanup_other_commits():
+        print(f"Removed stale checkpoint dir: {removed_checkpoint.name[:12]}")
 
     env = os.environ.copy()
 
@@ -936,6 +1025,11 @@ def build_datasets(
         skip_enhanced_cps=skip_enhanced_cps,
         skip_stage_5=skip_stage_5,
     )
+    stage_1_status_metadata = {
+        "substep_results": [result.to_dict() for result in coordinator.results],
+        "status_events": [event.to_dict() for event in coordinator.status_events],
+        "error_records": [error.to_dict() for error in coordinator.error_records],
+    }
     write_dataset_build_contract(
         artifacts_dir=artifacts_dir,
         run_id=run_id,
@@ -951,6 +1045,7 @@ def build_datasets(
         package_version=version,
         branch=branch,
         diagnostics=diagnostics,
+        stage_1_status_metadata=stage_1_status_metadata,
     )
     pipeline_volume.commit()
     print("Pipeline artifacts committed to shared volume")

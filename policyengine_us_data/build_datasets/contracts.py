@@ -26,6 +26,7 @@ class DatasetBuildOutputContractBuilder:
         skip_enhanced_cps: bool,
         skip_stage_5: bool = False,
         diagnostics: Sequence[object] = (),
+        stage_1_status_metadata: Mapping[str, object] | None = None,
     ):
         """Build the Stage 1 handoff contract from staged artifacts."""
 
@@ -47,6 +48,7 @@ class DatasetBuildOutputContractBuilder:
             skip_enhanced_cps=skip_enhanced_cps,
             skip_stage_5=skip_stage_5,
             diagnostics=tuple(diagnostics),
+            stage_1_status_metadata=stage_1_status_metadata,
         )
 
     def write(self, **kwargs):

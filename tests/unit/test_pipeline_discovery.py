@@ -54,7 +54,7 @@ def _fake_modal_module():
         App=_FakeModalApp,
         Image=SimpleNamespace(debian_slim=lambda **_kwargs: _FakeModalImage()),
         Secret=_FakeModalSecret,
-        fastapi_endpoint=lambda *_args, **_kwargs: (lambda fn: fn),
+        fastapi_endpoint=lambda *_args, **_kwargs: lambda fn: fn,
     )
 
 

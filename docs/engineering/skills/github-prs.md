@@ -20,8 +20,12 @@ Before creating or sharing a PR:
 4. Add a Towncrier changelog fragment under `changelog.d/` using the issue
    number and the appropriate configured type, for example
    `changelog.d/ISSUE_NUMBER.added`.
-5. Run the repository lint target:
+5. Run the repository-wide lint target from the repository root:
    `make lint`.
+   Do not substitute file-scoped commands such as
+   `ruff check path/to/file.py` or `ruff format --check path/to/file.py` for
+   this step. CI runs whole-repository formatting checks, so agents must verify
+   the whole repository before pushing or sharing a PR update.
 6. Push the current branch to the canonical repository:
    `make push-pr-branch`.
 7. Create the PR as a draft from that same repository:

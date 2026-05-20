@@ -46,6 +46,10 @@ present in one path but missing from another.
 Read `docs/engineering/skills/github-prs.md` before opening, replacing, or
 sharing any pull request.
 
+When asked to lint, before pushing PR updates, or before reporting that lint
+passed, run the repository-wide lint target from the repository root. Do not
+substitute file-scoped Ruff commands for whole-repository lint verification.
+
 Never open `policyengine-us-data` PRs from forks. CI rejects fork-based PRs
 before running the real checks, which wastes the reviewer and agent loop.
 

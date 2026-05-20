@@ -73,6 +73,17 @@ Use this skill whenever adding, moving, or reviewing tests.
 
 ## Quality Guards
 
+When adding, moving, or reviewing tests, run the repository-wide lint target
+before pushing:
+
+```bash
+make lint
+```
+
+Do not treat file-scoped Ruff commands as sufficient verification. CI runs
+whole-repository lint and formatting checks, and test edits can fail formatting
+under the repo-wide command even when a narrower local command appears clean.
+
 Run this before opening or updating a PR:
 
 ```bash

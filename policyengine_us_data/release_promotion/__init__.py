@@ -17,11 +17,13 @@ from .artifacts import (
 )
 from .candidate import (
     ReleaseCandidateInputBundle,
-    build_legacy_release_candidate_bundle,
+)
+from .candidate_builders import build_legacy_release_candidate_bundle
+from .context import ReleasePromotionContext
+from .stage4_reader import (
     build_release_candidate_bundle_from_stage4_contract,
     read_stage4_release_candidate_bundle,
 )
-from .context import ReleasePromotionContext
 from .validation import build_release_candidate_shape_report
 
 __all__ = [

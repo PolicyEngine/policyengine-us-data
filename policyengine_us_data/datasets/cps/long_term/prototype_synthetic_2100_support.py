@@ -2423,7 +2423,7 @@ def _compose_role_donor_rows_to_target(
             cloned,
             cloned.index,
             base_year=base_year,
-            raw_columns=WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS,
+            raw_columns=NON_TARGET_CLONE_INCOME_COMPONENTS,
         )
         cloned.attrs["sanitized_clone_non_target_income_columns"] = tuple(
             sanitized_columns
@@ -2834,7 +2834,7 @@ def build_role_composite_augmented_input_dataframe(
             sanitized_worker_non_target_income_columns
         ),
         "clone_non_target_income_requested_components": list(
-            WORKER_DONOR_NON_TARGET_INCOME_COMPONENTS
+            NON_TARGET_CLONE_INCOME_COMPONENTS
         ),
         "clone_non_target_income_sanitized_columns": sorted(
             sanitized_clone_non_target_income_columns

@@ -57,8 +57,8 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     if: |
-      github.event.head_commit.message != 'Update publication candidate' &&
-      github.event.head_commit.message != 'Finalize package version'
+      !startsWith(github.event.head_commit.message, 'Update publication candidate') &&
+      !startsWith(github.event.head_commit.message, 'Finalize package version')
     permissions:
       contents: write
     steps:
@@ -93,8 +93,8 @@ jobs:
       - policyengine-us-freshness
       - data-release-version
     if: |
-      github.event.head_commit.message != 'Update publication candidate' &&
-      github.event.head_commit.message != 'Finalize package version'
+      !startsWith(github.event.head_commit.message, 'Update publication candidate') &&
+      !startsWith(github.event.head_commit.message, 'Finalize package version')
     outputs:
       version_sha: ${{ steps.version-commit.outputs.sha }}
     steps:
@@ -139,7 +139,7 @@ jobs:
       - run-context
       - policyengine-us-freshness
       - data-release-version
-    if: github.event.head_commit.message == 'Update publication candidate'
+    if: startsWith(github.event.head_commit.message, 'Update publication candidate')
     permissions:
       actions: write
       contents: read

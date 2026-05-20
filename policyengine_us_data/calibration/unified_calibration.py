@@ -41,8 +41,10 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
-from policyengine_us_data.calibration.calibration_utils import (
-    create_target_groups,
+from policyengine_us_data.calibration_package.payload import (
+    CalibrationPackagePayload,
+    CalibrationPackageReader,
+    CalibrationPackageWriter,
 )
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
@@ -680,20 +682,16 @@ def save_calibration_package(
         cd_geoid: CD GEOID array from geography assignment.
         block_geoid: Block GEOID array from geography assignment.
     """
-    import pickle
-
-    package = {
-        "X_sparse": X_sparse,
-        "targets_df": targets_df,
-        "target_names": target_names,
-        "metadata": metadata,
-        "initial_weights": initial_weights,
-        "cd_geoid": cd_geoid,
-        "block_geoid": block_geoid,
-    }
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as f:
-        pickle.dump(package, f, protocol=pickle.HIGHEST_PROTOCOL)
+    payload = CalibrationPackagePayload(
+        X_sparse=X_sparse,
+        targets_df=targets_df,
+        target_names=target_names,
+        metadata=metadata,
+        initial_weights=initial_weights,
+        cd_geoid=cd_geoid,
+        block_geoid=block_geoid,
+    )
+    CalibrationPackageWriter(package_path=Path(path)).write(payload)
     logger.info("Calibration package saved to %s", path)
 
 
@@ -706,16 +704,14 @@ def load_calibration_package(path: str) -> dict:
     Returns:
         Dict with X_sparse, targets_df, target_names, metadata.
     """
-    import pickle
-
-    with open(path, "rb") as f:
-        package = pickle.load(f)
+    payload = CalibrationPackageReader(package_path=Path(path)).read()
+    package = payload.to_mapping()
     logger.info(
         "Loaded package: %d targets, %d records",
-        package["X_sparse"].shape[0],
-        package["X_sparse"].shape[1],
+        payload.X_sparse.shape[0],
+        payload.X_sparse.shape[1],
     )
-    meta = package.get("metadata", {})
+    meta = payload.metadata
     print_package_provenance(meta)
     check_package_staleness(meta)
     return package
@@ -1732,15 +1728,15 @@ def run_calibration(
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
     if package_output_path:
-        package_payload = {
-            "X_sparse": X_sparse,
-            "targets_df": targets_df,
-            "target_names": target_names,
-            "metadata": metadata,
-            "initial_weights": initial_weights,
-            "cd_geoid": geography.cd_geoid,
-            "block_geoid": geography.block_geoid,
-        }
+        package_payload = CalibrationPackagePayload(
+            X_sparse=X_sparse,
+            targets_df=targets_df,
+            target_names=target_names,
+            metadata=metadata,
+            initial_weights=initial_weights,
+            cd_geoid=geography.cd_geoid,
+            block_geoid=geography.block_geoid,
+        )
         save_calibration_package(
             package_output_path,
             X_sparse,

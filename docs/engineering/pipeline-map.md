@@ -379,6 +379,7 @@ Build sparse calibration matrix (targets x households x clones)
 | `takeup_rerand` Block-Level Takeup Re-randomization | `process` | `unknown` | `unknown` |  |
 | `sparse_build` Sparse Matrix Construction | `process` | `unknown` | `unknown` |  |
 | `out_pkg` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
+| `out_metadata` calibration_package_meta.json | `artifact` | `unknown` | `unknown` |  |
 | `out_contract` calibration_package_contract.json | `artifact` | `unknown` | `unknown` |  |
 | `util_sql` sqlalchemy | `utility` | `unknown` | `unknown` |  |
 | `util_pool` ProcessPoolExecutor | `utility` | `unknown` | `unknown` |  |
@@ -395,6 +396,9 @@ Build sparse calibration matrix (targets x households x clones)
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
 | `build_matrix` Build Calibration Matrix | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix` |
 | `build_matrix_chunked` Build Calibration Matrix In Chunks | `library` | `current` | `experimental` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked` |
+| `stage2_payload_boundary` Stage 2 Package Payload | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.payload.CalibrationPackagePayload` |
+| `stage2_payload_writer` Stage 2 Payload Writer | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.payload.CalibrationPackageWriter` |
+| `stage2_payload_reader` Stage 2 Payload Reader | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.payload.CalibrationPackageReader` |
 | `stage2_calibration_package_contract_writer` Stage 2 Contract Writer | `library` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract` |
 | `stage2_calibration_package_contract_validator` Stage 2 Contract Validator | `validation` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract` |
 
@@ -423,13 +427,19 @@ Build sparse calibration matrix (targets x households x clones)
 - `takeup_rerand` -> `sparse_build` `data_flow`
 - `sparse_build` -> `build_matrix` `uses_library` (non-chunked path)
 - `sparse_build` -> `build_matrix_chunked` `uses_library` (chunked path)
-- `build_matrix` -> `stage2_calibration_package_writer` `data_flow`
-- `build_matrix_chunked` -> `stage2_calibration_package_writer` `data_flow`
+- `build_matrix` -> `stage2_payload_boundary` `data_flow`
+- `build_matrix_chunked` -> `stage2_payload_boundary` `data_flow`
+- `stage2_payload_boundary` -> `stage2_calibration_package_writer` `data_flow` (typed package payload)
 - `stage2_artifact_specs` -> `stage2_calibration_package_writer` `uses_utility` (package path)
-- `stage2_calibration_package_writer` -> `out_pkg` `produces_artifact`
+- `stage2_calibration_package_writer` -> `stage2_payload_writer` `uses_library` (pickle write)
+- `stage2_payload_writer` -> `out_pkg` `produces_artifact`
+- `out_pkg` -> `stage2_payload_reader` `data_flow`
 - `out_pkg` -> `stage2_calibration_package_contract_writer` `data_flow`
+- `stage2_payload_reader` -> `stage2_calibration_package_contract_writer` `uses_library` (summary and checksum)
 - `stage2_artifact_specs` -> `stage2_calibration_package_contract_writer` `uses_utility` (contract path)
 - `stage2_calibration_package_contract_writer` -> `out_contract` `produces_artifact`
+- `out_contract` -> `stage2_payload_writer` `data_flow` (sidecar contract material)
+- `stage2_payload_writer` -> `out_metadata` `produces_artifact` (sidecar metadata)
 - `out_pkg` -> `stage2_calibration_package_contract_validator` `validates`
 - `out_contract` -> `stage2_calibration_package_contract_validator` `validates`
 - `in_cps_s5` -> `stage2_calibration_package_contract_validator` `validates`

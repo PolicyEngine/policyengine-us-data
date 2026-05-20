@@ -727,7 +727,7 @@
     "docstring": "",
     "id": "calibration_diagnostics",
     "kind": "function",
-    "line": 1249,
+    "line": 1245,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
@@ -1091,7 +1091,7 @@
     "docstring": "Fit L0-regularized calibration weights.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets: Target values array.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    verbose_freq: Print frequency. Defaults to 10%.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n        None disables logging.\n    log_path: Path for the per-target calibration log CSV.\n    target_names: Human-readable target names for the log.\n    initial_weights: Pre-computed initial weights. If None,\n        computed from targets_df age targets.\n    targets_df: Targets DataFrame, used to compute\n        initial_weights when not provided.\n    target_groups: Optional group ID per target row for balanced loss.\n    resume_from: Path to a `.checkpoint.pt` file or `.npy`\n        weights file to continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "fit_model",
     "kind": "function",
-    "line": 893,
+    "line": 889,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
@@ -1410,7 +1410,7 @@
     "docstring": "Compute population-based initial weights from age targets.\n\nFor each congressional district, sums person_count targets where\ndomain_variable == \"age\" to get district population, then divides\nby the number of columns (households) active in that district.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets_df: Targets DataFrame with columns: variable,\n        domain_variable, geo_level, geographic_id, value.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "init_weights",
     "kind": "function",
-    "line": 814,
+    "line": 810,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
@@ -3472,7 +3472,7 @@
     "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    target_config_identity: Resolved target config path/checksum identity.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1375,
+    "line": 1371,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"
@@ -3801,7 +3801,7 @@
     "docstring": "Validate that a Stage 2 sidecar describes the calibration package.",
     "id": "stage2_calibration_package_contract_validator",
     "kind": "function",
-    "line": 379,
+    "line": 252,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract"
@@ -3822,14 +3822,14 @@
       ]
     },
     "object_path": "policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract",
-    "signature": "def validate_calibration_package_contract(*, package_path: Path, contract_path: Path | None = None, package: Mapping[str, Any] | None = None, dataset_path: Path | None = None, db_path: Path | None = None) -> StageContract",
+    "signature": "def validate_calibration_package_contract(*, package_path: Path, contract_path: Path | None = None, package: CalibrationPackagePayload | Mapping[str, Any] | None = None, dataset_path: Path | None = None, db_path: Path | None = None) -> StageContract",
     "source_file": "policyengine_us_data/stage_contracts/calibration_package.py"
   },
   "stage2_calibration_package_contract_writer": {
     "docstring": "Write and return the Stage 2 calibration-package contract.",
     "id": "stage2_calibration_package_contract_writer",
     "kind": "function",
-    "line": 322,
+    "line": 195,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract"
@@ -3853,14 +3853,14 @@
       ]
     },
     "object_path": "policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract",
-    "signature": "def write_calibration_package_contract(*, package_path: Path, dataset_path: Path, db_path: Path, package: Mapping[str, Any], parameters: CalibrationPackageParameters | Mapping[str, Any], run_id: str | None, completed_at: str, started_at: str | None = None, duration_s: float | None = None, code_sha: str | None = None, package_version: str | None = None, contract_path: Path | None = None) -> StageContract",
+    "signature": "def write_calibration_package_contract(*, package_path: Path, dataset_path: Path, db_path: Path, package: CalibrationPackagePayload | Mapping[str, Any], parameters: CalibrationPackageParameters | Mapping[str, Any], run_id: str | None, completed_at: str, started_at: str | None = None, duration_s: float | None = None, code_sha: str | None = None, package_version: str | None = None, contract_path: Path | None = None) -> StageContract",
     "source_file": "policyengine_us_data/stage_contracts/calibration_package.py"
   },
   "stage2_calibration_package_writer": {
     "docstring": "Save calibration package to pickle.\n\nArgs:\n    path: Output file path.\n    X_sparse: Sparse matrix.\n    targets_df: Targets DataFrame.\n    target_names: Target name list.\n    metadata: Run metadata dict.\n    initial_weights: Pre-computed initial weight array.\n    cd_geoid: CD GEOID array from geography assignment.\n    block_geoid: Block GEOID array from geography assignment.",
     "id": "stage2_calibration_package_writer",
     "kind": "function",
-    "line": 661,
+    "line": 663,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.save_calibration_package"
@@ -3914,11 +3914,95 @@
     "signature": "def stage2_input_bundle_from_artifacts_dir(artifacts_dir: str | Path) -> Stage2InputBundle",
     "source_file": "policyengine_us_data/calibration_package/specs.py"
   },
+  "stage2_payload_boundary": {
+    "docstring": "Typed access to the dictionary persisted in `calibration_package.pkl`.",
+    "id": "stage2_payload_boundary",
+    "kind": "class",
+    "line": 114,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.payload.CalibrationPackagePayload"
+      ],
+      "artifacts_in": "[CALIBRATION_PACKAGE_FILENAME]",
+      "description": "Typed access to the calibration_package.pkl matrix, targets, metadata, geography arrays, and compatibility warnings.",
+      "id": "stage2_payload_boundary",
+      "label": "Stage 2 Package Payload",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/payload.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_payload.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.payload.CalibrationPackagePayload",
+    "signature": "class CalibrationPackagePayload",
+    "source_file": "policyengine_us_data/calibration_package/payload.py"
+  },
+  "stage2_payload_reader": {
+    "docstring": "Read typed Stage 2 package payloads from disk.",
+    "id": "stage2_payload_reader",
+    "kind": "class",
+    "line": 328,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.payload.CalibrationPackageReader"
+      ],
+      "artifacts_in": "[CALIBRATION_PACKAGE_FILENAME]",
+      "description": "Load calibration_package.pkl through the typed Stage 2 payload boundary and expose checksum/summary material.",
+      "id": "stage2_payload_reader",
+      "label": "Stage 2 Payload Reader",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/payload.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_payload.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.payload.CalibrationPackageReader",
+    "signature": "class CalibrationPackageReader",
+    "source_file": "policyengine_us_data/calibration_package/payload.py"
+  },
+  "stage2_payload_writer": {
+    "docstring": "Write typed Stage 2 package payloads and metadata sidecars.",
+    "id": "stage2_payload_writer",
+    "kind": "class",
+    "line": 385,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.payload.CalibrationPackageWriter"
+      ],
+      "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_METADATA_FILENAME]",
+      "description": "Persist calibration_package.pkl and derive calibration_package_meta.json from typed payload and contract material.",
+      "id": "stage2_payload_writer",
+      "label": "Stage 2 Payload Writer",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/payload.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_payload.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.payload.CalibrationPackageWriter",
+    "signature": "class CalibrationPackageWriter",
+    "source_file": "policyengine_us_data/calibration_package/payload.py"
+  },
   "stage2_target_config_apply": {
     "docstring": "Filter target rows before matrix construction.",
     "id": "stage2_target_config_apply",
     "kind": "function",
-    "line": 631,
+    "line": 633,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets"
@@ -3973,7 +4057,7 @@
     "docstring": "Load target include/exclude config from YAML.\n\nArgs:\n    path: Path to YAML config file.\n\nReturns:\n    Parsed config dict with include and exclude lists.",
     "id": "stage2_target_config_load",
     "kind": "function",
-    "line": 525,
+    "line": 527,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.load_target_config"

@@ -363,23 +363,30 @@ def _print_provenance_from_meta(meta: dict, current_branch: str = None) -> None:
 
 
 def _write_package_sidecar(pkg_path: str) -> bool:
-    """Extract metadata from a pickle package and write a JSON sidecar.
+    """Write package metadata from the typed payload and contract sidecar.
 
     Returns:
         True if sidecar was written successfully, False otherwise.
     """
-    import json
     import logging
-    import pickle
 
-    sidecar_path = pkg_path.replace(".pkl", "_meta.json")
     try:
-        with open(pkg_path, "rb") as f:
-            package = pickle.load(f)
-        meta = package.get("metadata", {})
-        del package
-        with open(sidecar_path, "w") as f:
-            json.dump(meta, f, indent=2)
+        from policyengine_us_data.calibration_package.payload import (
+            CalibrationPackageReader,
+            CalibrationPackageWriter,
+        )
+        from policyengine_us_data.calibration_package.specs import (
+            CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        )
+        from policyengine_us_data.stage_contracts.io import read_contract
+
+        package_path = Path(pkg_path)
+        payload = CalibrationPackageReader(package_path=package_path).read()
+        contract_path = package_path.with_name(CALIBRATION_PACKAGE_CONTRACT_FILENAME)
+        contract = read_contract(contract_path) if contract_path.exists() else None
+        sidecar_path = CalibrationPackageWriter(
+            package_path=package_path,
+        ).write_metadata_sidecar(payload, contract=contract)
         print(
             f"Sidecar metadata written to {sidecar_path}",
             flush=True,

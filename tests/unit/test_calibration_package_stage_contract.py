@@ -31,6 +31,9 @@ from policyengine_us_data.stage_contracts.calibration_package import (
     validate_persisted_calibration_package_contract,
     write_calibration_package_contract,
 )
+from policyengine_us_data.calibration_package.payload import (
+    CalibrationPackagePayloadError,
+)
 from policyengine_us_data.utils.geography_checksum import (
     canonical_geography_checksum,
     hash_string_array,
@@ -656,7 +659,8 @@ def test_load_calibration_package_payload_rejects_non_mapping(tmp_path):
 
     try:
         load_calibration_package_payload(package_path)
-    except ValueError as exc:
+    except CalibrationPackagePayloadError as exc:
         assert "must contain a mapping" in str(exc)
+        assert exc.validation_report.status == "fail"
     else:
         raise AssertionError("Non-mapping package payload should fail")

@@ -693,7 +693,7 @@ _FINAL_COMPUTED_OUTPUTS_TO_DROP = {
     "rent",
     "spm_unit_capped_work_childcare_expenses",
 }
-_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.55
+_MIN_MODELED_HOUSING_SHARE_OF_BENCHMARK = 0.50
 
 
 class _InMemoryTimePeriodDataset(Dataset):

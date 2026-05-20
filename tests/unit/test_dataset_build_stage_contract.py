@@ -9,6 +9,7 @@ from policyengine_us_data.stage_contracts.dataset_build import (
     DATASET_BUILD_OUTPUT_CONTRACT_FILENAME,
     build_dataset_build_output_contract,
 )
+from policyengine_us_data.build_datasets import stage_1_contract_artifact_specs
 
 _ARTIFACT_BYTES = {
     "acs_2022.h5": b"acs",
@@ -95,6 +96,16 @@ def test_dataset_build_contract_records_stage_1_handoff_artifacts(tmp_path):
     } <= logical_names
     assert all(artifact.sha256.startswith("sha256:") for artifact in contract.outputs)
     assert all(artifact.uri.startswith("file://") for artifact in contract.outputs)
+
+
+def test_dataset_build_contract_outputs_use_shared_artifact_specs(tmp_path):
+    _write_artifacts(tmp_path)
+
+    contract = _contract(tmp_path)
+
+    assert {artifact.logical_name for artifact in contract.outputs} == {
+        spec.logical_name for spec in stage_1_contract_artifact_specs()
+    }
 
 
 def test_dataset_build_contract_records_substage_shape(tmp_path):

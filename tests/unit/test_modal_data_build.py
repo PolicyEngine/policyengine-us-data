@@ -3,6 +3,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from types import ModuleType, SimpleNamespace
 
+from policyengine_us_data.build_datasets import stage_1_script_outputs
 from policyengine_us_data.stage_contracts import read_contract
 
 
@@ -62,6 +63,12 @@ def test_checkpoint_stats_are_per_instance():
         "recomputed_outputs": 0,
         "invalid_outputs": 0,
     }
+
+
+def test_script_outputs_are_generated_from_stage_1_artifact_specs():
+    data_build = _load_data_build_module()
+
+    assert data_build.SCRIPT_OUTPUTS == stage_1_script_outputs()
 
 
 def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch):

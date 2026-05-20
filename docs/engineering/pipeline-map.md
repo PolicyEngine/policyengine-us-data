@@ -1362,6 +1362,22 @@ def impute_source_variables(data: Dict[str, Dict[int, np.ndarray]], state_fips: 
 
 Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.
 
+### `policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs`
+
+```python
+def stage_1_artifact_specs() -> tuple[DatasetArtifactSpec, ...]
+```
+
+Return all artifact specs known to the Stage 1 dataset build.
+
+### `policyengine_us_data.build_datasets.specs.stage_1_step_specs`
+
+```python
+def stage_1_step_specs() -> tuple[DatasetBuildStepSpec, ...]
+```
+
+Return the canonical Stage 1 dataset-build substage specs.
+
 ### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder`
 
 ```python

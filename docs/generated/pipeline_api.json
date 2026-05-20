@@ -474,7 +474,7 @@
     "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    skip_stage_5: Skip source-imputed CPS and small enhanced CPS after\n        enhanced_cps_2024.h5 is built.\n    stage_only: Upload to HF staging only, without promoting a release.\n    version: policyengine-us-data package version used for staging and\n        dataset-build contracts.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 569,
+    "line": 536,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
@@ -999,7 +999,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 437,
+    "line": 404,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -3462,6 +3462,82 @@
     "object_path": "policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents",
     "signature": "def reconcile_ss_subcomponents(data: Dict[str, Dict[int, np.ndarray]], n_cps: int, time_period: int) -> None",
     "source_file": "policyengine_us_data/calibration/puf_impute.py"
+  },
+  "stage_1_dataset_artifact_specs": {
+    "docstring": "Return all artifact specs known to the Stage 1 dataset build.",
+    "id": "stage_1_dataset_artifact_specs",
+    "kind": "function",
+    "line": 230,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs"
+      ],
+      "artifacts_out": [
+        "uprating_factors.csv",
+        "acs_2022.h5",
+        "irs_puf_2015.h5",
+        "cps_2024.h5",
+        "puf_2024.h5",
+        "extended_cps_2024.h5",
+        "enhanced_cps_2024.h5",
+        "enhanced_cps_2024.clone_diagnostics.json",
+        "calibration_log.csv",
+        "stratified_extended_cps_2024.h5",
+        "source_imputed_stratified_extended_cps_2024.h5",
+        "small_enhanced_cps_2024.h5",
+        "source_imputed_stratified_extended_cps.h5",
+        "policy_data.db",
+        "build_log.txt",
+        "data_build_checkpoint_stats.json"
+      ],
+      "description": "Canonical artifact inventory for Stage 1 dataset-build outputs.",
+      "id": "stage_1_dataset_artifact_specs",
+      "label": "Stage 1 Dataset Artifact Specs",
+      "node_type": "library",
+      "pathways": [
+        "data_build",
+        "stage_contracts",
+        "pipeline_docs"
+      ],
+      "source_file": "policyengine_us_data/build_datasets/artifacts.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_build_dataset_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs",
+    "signature": "def stage_1_artifact_specs() -> tuple[DatasetArtifactSpec, ...]",
+    "source_file": "policyengine_us_data/build_datasets/artifacts.py"
+  },
+  "stage_1_dataset_build_specs": {
+    "docstring": "Return the canonical Stage 1 dataset-build substage specs.",
+    "id": "stage_1_dataset_build_specs",
+    "kind": "function",
+    "line": 87,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.build_datasets.specs.stage_1_step_specs"
+      ],
+      "description": "Canonical substage taxonomy for Stage 1 dataset-build contracts, step manifests, and pipeline documentation.",
+      "id": "stage_1_dataset_build_specs",
+      "label": "Stage 1 Dataset Build Specs",
+      "node_type": "library",
+      "pathways": [
+        "data_build",
+        "stage_contracts",
+        "pipeline_docs"
+      ],
+      "source_file": "policyengine_us_data/build_datasets/specs.py",
+      "stability": "stable",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_build_dataset_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.build_datasets.specs.stage_1_step_specs",
+    "signature": "def stage_1_step_specs() -> tuple[DatasetBuildStepSpec, ...]",
+    "source_file": "policyengine_us_data/build_datasets/specs.py"
   },
   "staging_upload": {
     "docstring": "Upload files to HuggingFace staging only.\n\nGCS is updated during promote_publish, not here.\nPromote must be run separately via promote_publish.",

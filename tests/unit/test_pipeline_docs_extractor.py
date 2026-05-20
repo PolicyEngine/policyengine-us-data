@@ -6,6 +6,7 @@ from scripts.extract_pipeline_docs import (
     render_markdown,
     scan_decorated_objects,
 )
+from policyengine_us_data.build_datasets import STAGE_1_BUILD_STEP_SPECS
 
 
 def test_scan_decorated_objects_finds_pipeline_metadata():
@@ -122,3 +123,25 @@ def test_pipeline_map_manifest_validates():
     assert bundle["metadata"]["mapped_decorated_node_count"] >= 45
     assert sum(len(stage["nodes"]) for stage in bundle["stages"]) >= 160
     assert sum(len(stage["edges"]) for stage in bundle["stages"]) >= 170
+
+
+def test_pipeline_map_stage_1_substages_match_dataset_build_specs():
+    manifest = load_pipeline_map(Path("docs/pipeline_map.yaml"))
+    stage_1_substages = tuple(
+        stage["id"]
+        for stage in manifest["stages"]
+        if stage.get("canonical_stage_id") == "1_build_datasets"
+    )
+
+    assert stage_1_substages == tuple(spec.id for spec in STAGE_1_BUILD_STEP_SPECS)
+
+
+def test_stage_1_spec_pipeline_nodes_point_at_focused_tests():
+    objects = scan_decorated_objects()
+
+    assert objects["stage_1_dataset_artifact_specs"].metadata[
+        "validation_commands"
+    ] == ["uv run pytest tests/unit/test_build_dataset_specs.py"]
+    assert objects["stage_1_dataset_build_specs"].metadata["validation_commands"] == [
+        "uv run pytest tests/unit/test_build_dataset_specs.py"
+    ]

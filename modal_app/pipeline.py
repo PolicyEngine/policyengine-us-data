@@ -108,6 +108,12 @@ from policyengine_us_data.utils.step_manifest import (  # noqa: E402
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
+from policyengine_us_data.fit_weights import (  # noqa: E402
+    FitScope,
+    NATIONAL_FIT_LAMBDA_L0 as _NATIONAL_FIT_LAMBDA_L0,
+    fit_artifacts_for_scope,
+    fitted_weights_spec_for_scope,
+)
 
 # ── Modal resources ──────────────────────────────────────────────
 
@@ -117,7 +123,7 @@ app = modal.App(
     or "policyengine-us-data-pipeline"
 )
 
-NATIONAL_FIT_LAMBDA_L0 = 1e-4
+NATIONAL_FIT_LAMBDA_L0 = _NATIONAL_FIT_LAMBDA_L0
 
 hf_secret = modal.Secret.from_name("huggingface-token")
 gcp_secret = modal.Secret.from_name("gcp-credentials")
@@ -272,16 +278,14 @@ def archive_diagnostics(
     result_bytes: dict,
     vol: modal.Volume,
     prefix: str = "",
+    scope: FitScope | str | None = None,
 ) -> None:
     """Archive calibration diagnostics to the run directory."""
     diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
     diag_dir.mkdir(parents=True, exist_ok=True)
 
-    file_map = {
-        "log": f"{prefix}unified_diagnostics.csv",
-        "cal_log": f"{prefix}calibration_log.csv",
-        "config": f"{prefix}unified_run_config.json",
-    }
+    scope = scope or (FitScope.NATIONAL if prefix == "national_" else FitScope.REGIONAL)
+    file_map = fit_artifacts_for_scope(scope).diagnostic_result_filenames()
 
     for key, filename in file_map.items():
         data = result_bytes.get(key)
@@ -1317,25 +1321,19 @@ def run_pipeline(
                 / "calibration_package.pkl",
             }
         )
-        regional_fit_parameters = {
-            "gpu": gpu,
-            "epochs": epochs,
-            "target_config": "policyengine_us_data/calibration/target_config.yaml",
-            "beta": 0.65,
-            "lambda_l0": 1e-7,
-            "lambda_l2": 1e-8,
-            "log_freq": 100,
-        }
-        national_fit_parameters = {
-            "gpu": national_gpu,
-            "epochs": national_epochs,
-            "target_config": "policyengine_us_data/calibration/target_config.yaml",
-            "beta": 0.65,
-            "lambda_l0": NATIONAL_FIT_LAMBDA_L0,
-            "lambda_l2": 1e-12,
-            "log_freq": 100,
-            "skip_national": skip_national,
-        }
+        regional_fit_spec = fitted_weights_spec_for_scope(FitScope.REGIONAL)
+        national_fit_spec = fitted_weights_spec_for_scope(FitScope.NATIONAL)
+        regional_fit_artifacts = fit_artifacts_for_scope(FitScope.REGIONAL)
+        national_fit_artifacts = fit_artifacts_for_scope(FitScope.NATIONAL)
+        regional_fit_parameters = regional_fit_spec.manifest_parameters(
+            gpu=gpu,
+            epochs=epochs,
+        )
+        national_fit_parameters = national_fit_spec.manifest_parameters(
+            gpu=national_gpu,
+            epochs=national_epochs,
+            extra={"skip_national": skip_national},
+        )
         regional_fit_reuse = _step_reusable(
             meta,
             WEIGHT_FITTING_REGIONAL,
@@ -1375,7 +1373,6 @@ def run_pipeline(
             step_start = time.time()
 
             vol_path = f"{artifacts_dir_for_run(run_id)}/calibration_package.pkl"
-            target_cfg = "policyengine_us_data/calibration/target_config.yaml"
 
             # Spawn regional fit
             regional_func = PACKAGE_GPU_FUNCTIONS[gpu]
@@ -1384,11 +1381,7 @@ def run_pipeline(
                 branch=branch,
                 epochs=epochs,
                 volume_package_path=vol_path,
-                target_config=target_cfg,
-                beta=0.65,
-                lambda_l0=1e-7,
-                lambda_l2=1e-8,
-                log_freq=100,
+                **regional_fit_spec.runtime_kwargs(),
             )
             print(f"    → regional fit fc: {regional_handle.object_id}")
             regional_fit_manifest = _start_step_manifest(
@@ -1416,11 +1409,7 @@ def run_pipeline(
                     branch=branch,
                     epochs=national_epochs,
                     volume_package_path=vol_path,
-                    target_config=target_cfg,
-                    beta=0.65,
-                    lambda_l0=NATIONAL_FIT_LAMBDA_L0,
-                    lambda_l2=1e-12,
-                    log_freq=100,
+                    **national_fit_spec.runtime_kwargs(),
                 )
                 print(f"    → national fit fc: {national_handle.object_id}")
                 national_fit_manifest = _start_step_manifest(
@@ -1443,31 +1432,27 @@ def run_pipeline(
             with pipeline_volume.batch_upload(force=True) as batch:
                 batch.put_file(
                     BytesIO(regional_result["weights"]),
-                    f"{artifacts_rel}/calibration_weights.npy",
+                    f"{artifacts_rel}/{regional_fit_artifacts.weights.filename}",
                 )
                 if regional_result.get("geography"):
                     batch.put_file(
                         BytesIO(regional_result["geography"]),
-                        f"{artifacts_rel}/geography_assignment.npz",
+                        f"{artifacts_rel}/{regional_fit_artifacts.geography.filename}",
                     )
                 if regional_result.get("config"):
                     batch.put_file(
                         BytesIO(regional_result["config"]),
-                        f"{artifacts_rel}/unified_run_config.json",
+                        f"{artifacts_rel}/{regional_fit_artifacts.run_config.filename}",
                     )
 
             archive_diagnostics(
                 run_id,
                 regional_result,
                 pipeline_volume,
-                prefix="",
+                scope=FitScope.REGIONAL,
             )
             regional_outputs = collect_artifacts(
-                [
-                    _artifacts_dir(run_id) / "calibration_weights.npy",
-                    _artifacts_dir(run_id) / "geography_assignment.npz",
-                    _artifacts_dir(run_id) / "unified_run_config.json",
-                ],
+                regional_fit_artifacts.artifact_paths(_artifacts_dir(run_id)),
                 missing_ok=True,
             )
             regional_fit_reuse_measurement = ReuseMeasurement(
@@ -1493,31 +1478,27 @@ def run_pipeline(
                 with pipeline_volume.batch_upload(force=True) as batch:
                     batch.put_file(
                         BytesIO(national_result["weights"]),
-                        f"{artifacts_rel}/national_calibration_weights.npy",
+                        f"{artifacts_rel}/{national_fit_artifacts.weights.filename}",
                     )
                     if national_result.get("geography"):
                         batch.put_file(
                             BytesIO(national_result["geography"]),
-                            f"{artifacts_rel}/national_geography_assignment.npz",
+                            f"{artifacts_rel}/{national_fit_artifacts.geography.filename}",
                         )
                     if national_result.get("config"):
                         batch.put_file(
                             BytesIO(national_result["config"]),
-                            f"{artifacts_rel}/national_unified_run_config.json",
+                            f"{artifacts_rel}/{national_fit_artifacts.run_config.filename}",
                         )
 
                 archive_diagnostics(
                     run_id,
                     national_result,
                     pipeline_volume,
-                    prefix="national_",
+                    scope=FitScope.NATIONAL,
                 )
                 national_outputs = collect_artifacts(
-                    [
-                        _artifacts_dir(run_id) / "national_calibration_weights.npy",
-                        _artifacts_dir(run_id) / "national_geography_assignment.npz",
-                        _artifacts_dir(run_id) / "national_unified_run_config.json",
-                    ],
+                    national_fit_artifacts.artifact_paths(_artifacts_dir(run_id)),
                     missing_ok=True,
                 )
                 _complete_step_manifest(
@@ -1544,12 +1525,15 @@ def run_pipeline(
         #   4e. upload_run_diagnostics (validation diagnostics → HF)
         regional_h5_inputs = _artifact_identities(
             {
-                "weights": _artifacts_dir(run_id) / "calibration_weights.npy",
-                "geography": _artifacts_dir(run_id) / "geography_assignment.npz",
+                "weights": _artifacts_dir(run_id)
+                / regional_fit_artifacts.weights.filename,
+                "geography": _artifacts_dir(run_id)
+                / regional_fit_artifacts.geography.filename,
                 "dataset": _artifacts_dir(run_id)
                 / "source_imputed_stratified_extended_cps.h5",
                 "database": _artifacts_dir(run_id) / "policy_data.db",
-                "run_config": _artifacts_dir(run_id) / "unified_run_config.json",
+                "run_config": _artifacts_dir(run_id)
+                / regional_fit_artifacts.run_config.filename,
                 "calibration_package": _artifacts_dir(run_id)
                 / "calibration_package.pkl",
             }
@@ -1562,14 +1546,15 @@ def run_pipeline(
         }
         national_h5_inputs = _artifact_identities(
             {
-                "weights": _artifacts_dir(run_id) / "national_calibration_weights.npy",
+                "weights": _artifacts_dir(run_id)
+                / national_fit_artifacts.weights.filename,
                 "geography": _artifacts_dir(run_id)
-                / "national_geography_assignment.npz",
+                / national_fit_artifacts.geography.filename,
                 "dataset": _artifacts_dir(run_id)
                 / "source_imputed_stratified_extended_cps.h5",
                 "database": _artifacts_dir(run_id) / "policy_data.db",
                 "run_config": _artifacts_dir(run_id)
-                / "national_unified_run_config.json",
+                / national_fit_artifacts.run_config.filename,
             }
         )
         national_h5_parameters = {

@@ -55,6 +55,10 @@ from policyengine_us_data.build_outputs.worker_responses import (  # noqa: E402
 from policyengine_us_data.build_outputs.worker_inputs import (  # noqa: E402
     WorkerCalibrationInputs,
 )
+from policyengine_us_data.fit_weights import (  # noqa: E402
+    FitScope,
+    fit_artifacts_for_scope,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.utils.run_context import (  # noqa: E402
@@ -1310,11 +1314,12 @@ def coordinate_publish(
     artifacts = (
         Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
     )
-    weights_path = artifacts / "calibration_weights.npy"
-    geography_path = artifacts / "geography_assignment.npz"
+    regional_fit_artifacts = fit_artifacts_for_scope(FitScope.REGIONAL)
+    weights_path = artifacts / regional_fit_artifacts.weights.filename
+    geography_path = artifacts / regional_fit_artifacts.geography.filename
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
-    config_json_path = artifacts / "unified_run_config.json"
+    config_json_path = artifacts / regional_fit_artifacts.run_config.filename
     calibration_package_path = artifacts / "calibration_package.pkl"
 
     required = {
@@ -1609,11 +1614,13 @@ def coordinate_national_publish(
     artifacts = (
         Path(f"/pipeline/artifacts/{run_id}") if run_id else Path("/pipeline/artifacts")
     )
-    weights_path = artifacts / "national_calibration_weights.npy"
-    geography_path = artifacts / "national_geography_assignment.npz"
+    regional_fit_artifacts = fit_artifacts_for_scope(FitScope.REGIONAL)
+    national_fit_artifacts = fit_artifacts_for_scope(FitScope.NATIONAL)
+    weights_path = artifacts / national_fit_artifacts.weights.filename
+    geography_path = artifacts / national_fit_artifacts.geography.filename
     db_path = artifacts / "policy_data.db"
     dataset_path = artifacts / "source_imputed_stratified_extended_cps.h5"
-    config_json_path = artifacts / "national_unified_run_config.json"
+    config_json_path = artifacts / national_fit_artifacts.run_config.filename
 
     required = {
         "weights": weights_path,
@@ -1641,8 +1648,8 @@ def coordinate_national_publish(
         config_json_path,
         artifacts,
         filename_remap={
-            "calibration_weights.npy": "national_calibration_weights.npy",
-            "geography_assignment.npz": "national_geography_assignment.npz",
+            regional_fit_artifacts.weights.filename: national_fit_artifacts.weights.filename,
+            regional_fit_artifacts.geography.filename: national_fit_artifacts.geography.filename,
         },
     )
     fingerprint_inputs = _build_publishing_input_bundle(

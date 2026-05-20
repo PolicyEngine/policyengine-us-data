@@ -88,6 +88,56 @@ def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):
     }
 
 
+def test_fit_output_filenames_match_scoped_artifacts():
+    remote_runner = _load_remote_calibration_runner_module()
+    regional = remote_runner.fit_artifacts_for_scope(remote_runner.FitScope.REGIONAL)
+    national = remote_runner.fit_artifacts_for_scope(remote_runner.FitScope.NATIONAL)
+
+    assert remote_runner._fit_output_filenames(
+        scope=remote_runner.FitScope.REGIONAL,
+        output=regional.weights.filename,
+        log_output=regional.diagnostics.filename,
+    ) == {
+        "output": regional.weights.filename,
+        "log_output": regional.diagnostics.filename,
+        "geography": regional.geography.filename,
+        "calibration_log": regional.epoch_log.filename,
+        "run_config": regional.run_config.filename,
+        "pipeline_weights": regional.weights.filename,
+        "pipeline_geography": regional.geography.filename,
+        "pipeline_run_config": regional.run_config.filename,
+    }
+    assert remote_runner._fit_output_filenames(
+        scope=remote_runner.FitScope.NATIONAL,
+        output=regional.weights.filename,
+        log_output=regional.diagnostics.filename,
+    ) == {
+        "output": national.weights.filename,
+        "log_output": national.diagnostics.filename,
+        "geography": national.geography.filename,
+        "calibration_log": national.epoch_log.filename,
+        "run_config": national.run_config.filename,
+        "pipeline_weights": national.weights.filename,
+        "pipeline_geography": national.geography.filename,
+        "pipeline_run_config": national.run_config.filename,
+    }
+
+
+def test_national_fit_output_filenames_preserve_explicit_overrides():
+    remote_runner = _load_remote_calibration_runner_module()
+    national = remote_runner.fit_artifacts_for_scope(remote_runner.FitScope.NATIONAL)
+
+    filenames = remote_runner._fit_output_filenames(
+        scope=remote_runner.FitScope.NATIONAL,
+        output="custom_weights.npy",
+        log_output="custom_diagnostics.csv",
+    )
+
+    assert filenames["output"] == "national_custom_weights.npy"
+    assert filenames["log_output"] == "national_custom_diagnostics.csv"
+    assert filenames["pipeline_weights"] == national.weights.filename
+
+
 def test_ensure_geography_prerequisites_downloads_only_geography(monkeypatch):
     remote_runner = _load_remote_calibration_runner_module()
     from policyengine_us_data.storage import download_prerequisites as prereq_module

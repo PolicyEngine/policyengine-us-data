@@ -109,6 +109,36 @@ def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> Non
     assert "Upload validation diagnostics even when H5 outputs are reused." in source
 
 
+def test_run_pipeline_uses_stage_3_fit_specs_for_reuse_and_paths() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    archive_diagnostics = _function_def(tree, "archive_diagnostics")
+    source = ast.get_source_segment(source_text, run_pipeline)
+    archive_source = ast.get_source_segment(source_text, archive_diagnostics)
+
+    assert "fitted_weights_spec_for_scope(FitScope.REGIONAL)" in source
+    assert "fitted_weights_spec_for_scope(FitScope.NATIONAL)" in source
+    assert "fit_artifacts_for_scope(FitScope.REGIONAL)" in source
+    assert "fit_artifacts_for_scope(FitScope.NATIONAL)" in source
+    assert "regional_fit_spec.manifest_parameters(" in source
+    assert "national_fit_spec.manifest_parameters(" in source
+    assert "regional_fit_spec.runtime_kwargs()" in source
+    assert "national_fit_spec.runtime_kwargs()" in source
+    assert "regional_fit_artifacts.artifact_paths(_artifacts_dir(run_id))" in source
+    assert "national_fit_artifacts.artifact_paths(_artifacts_dir(run_id))" in source
+    assert "diagnostic_result_filenames()" in archive_source
+
+
+def test_local_area_consumes_centralized_stage_3_artifact_specs() -> None:
+    source = Path("modal_app/local_area.py").read_text()
+
+    assert "fit_artifacts_for_scope(FitScope.REGIONAL)" in source
+    assert "fit_artifacts_for_scope(FitScope.NATIONAL)" in source
+    assert "regional_fit_artifacts.weights.filename" in source
+    assert "national_fit_artifacts.weights.filename" in source
+
+
 def test_run_pipeline_tolerates_post_h5_pipeline_volume_open_files() -> None:
     source_text = PIPELINE_SOURCE.read_text()
     tree = ast.parse(source_text)

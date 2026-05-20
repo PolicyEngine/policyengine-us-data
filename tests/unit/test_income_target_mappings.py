@@ -16,4 +16,4 @@ def test_cbo_taxable_interest_and_ordinary_dividends_excludes_qualified_dividend
         if target["parameter"] == "taxable_interest_and_ordinary_dividends"
     )
     assert target["variable"] == expected
-    assert "excluding qualified dividends" in target["notes"]
+    assert "explicitly excluding qualified dividends" in target["notes"]

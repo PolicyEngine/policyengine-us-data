@@ -44,8 +44,6 @@ MEDICARE_PART_B_PREMIUM_VARIABLE = "medicare_part_b_premium"
 
 BEA_NIPA_WAGES_AND_SALARIES_2024 = 12_387_929_000_000
 BEA_NIPA_PROPRIETORS_INCOME_2024 = 2_023_080_000_000
-BEA_NIPA_PERSONAL_INTEREST_INCOME_2024 = 1_926_644_000_000
-BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024 = 2_218_700_000_000
 
 NIPA_PROPRIETORS_INCOME_VARIABLE = (
     "self_employment_income_before_lsr"
@@ -53,11 +51,18 @@ NIPA_PROPRIETORS_INCOME_VARIABLE = (
     "+farm_operations_income"
     "+partnership_s_corp_income"
 )
-NIPA_PERSONAL_INTEREST_INCOME_VARIABLE = "interest_income"
+# CBO's individual income tax model computes AGI with "taxable interest
+# and ordinary dividends" explicitly excluding qualified dividends, which
+# are reported on the next line. Keep this mapped to the tax-return concept
+# for filer tax units, not total interest plus all dividends.
 TAXABLE_INTEREST_AND_ORDINARY_DIVIDENDS_VARIABLE = (
     "taxable_interest_income+non_qualified_dividend_income"
 )
 
+# Only use direct NIPA totals when the PolicyEngine variable expression is a
+# close microdata concept. BEA personal interest/dividends include imputed
+# interest, pension-plan dividends, and trust flows, so those macro totals
+# should not directly calibrate tax/CPS interest and dividend variables.
 BEA_NIPA_DIRECT_SUM_TARGETS = (
     (
         "nation/bea/nipa_wages_and_salaries",
@@ -69,19 +74,10 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
         NIPA_PROPRIETORS_INCOME_VARIABLE,
         BEA_NIPA_PROPRIETORS_INCOME_2024,
     ),
-    (
-        "nation/bea/nipa_personal_interest_income",
-        NIPA_PERSONAL_INTEREST_INCOME_VARIABLE,
-        BEA_NIPA_PERSONAL_INTEREST_INCOME_2024,
-    ),
-    (
-        "nation/bea/nipa_personal_dividend_income",
-        "dividend_income",
-        BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024,
-    ),
 )
 
-BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 5_000.0
+BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT = 1_000.0
+BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 1_000.0
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
@@ -1150,9 +1146,15 @@ def get_target_error_normalisation(target_names, targets_array):
 def get_target_loss_weights(target_names):
     target_names = np.asarray(target_names, dtype=str)
     weights = np.ones(target_names.shape, dtype=np.float32)
+    bea_direct_sum_targets = np.array(
+        [label for label, _, _ in BEA_NIPA_DIRECT_SUM_TARGETS],
+        dtype=str,
+    )
+    is_bea_direct_sum_target = np.isin(target_names, bea_direct_sum_targets)
     is_bea_wage_target = (
         target_names == "nation/bea/nipa_wages_and_salaries"
     ) | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
+    weights[is_bea_direct_sum_target] = BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT
     weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
     return weights
 

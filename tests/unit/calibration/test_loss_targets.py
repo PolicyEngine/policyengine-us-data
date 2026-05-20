@@ -11,6 +11,7 @@ from policyengine_us_data.utils.loss import (
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
     BEA_NIPA_DIRECT_SUM_TARGETS,
+    BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT,
     BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
@@ -56,21 +57,17 @@ def test_bea_nipa_direct_sum_targets_match_targets_db():
         etl_national_targets.NIPA_PROPRIETORS_INCOME_VARIABLE: (
             etl_national_targets.BEA_NIPA_PROPRIETORS_INCOME_2024
         ),
-        etl_national_targets.NIPA_PERSONAL_INTEREST_INCOME_VARIABLE: (
-            etl_national_targets.BEA_NIPA_PERSONAL_INTEREST_INCOME_2024
-        ),
-        "dividend_income": (
-            etl_national_targets.BEA_NIPA_PERSONAL_DIVIDEND_INCOME_2024
-        ),
     }
 
 
-def test_bea_wage_targets_get_higher_loss_weight():
+def test_bea_nipa_direct_sum_targets_get_higher_loss_weight():
     target_names = np.array(
         [
             "nation/bea/nipa_wages_and_salaries",
             "state/bea/wages_and_salaries/CA",
             "nation/bea/nipa_proprietors_income",
+            "nation/bea/nipa_personal_interest_income",
+            "nation/bea/nipa_personal_dividend_income",
             "state/CA/adjusted_gross_income/amount/1000000_inf",
         ]
     )
@@ -80,6 +77,8 @@ def test_bea_wage_targets_get_higher_loss_weight():
     assert weights.tolist() == [
         BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
         BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+        BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT,
+        1.0,
         1.0,
         1.0,
     ]

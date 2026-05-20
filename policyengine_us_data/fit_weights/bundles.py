@@ -17,7 +17,7 @@ from policyengine_us_data.pipeline_schema import PipelineNode
 
 
 class MissingFitWeightsOutputError(ValueError):
-    """Raised when remote fit bytes omit required weights."""
+    """Raised when remote fit bytes omit required fitted-weight artifacts."""
 
 
 @dataclass(frozen=True)
@@ -152,6 +152,12 @@ class FittedWeightsOutputBundle:
         for artifact in self.artifacts.artifact_specs():
             data = self.result.bytes_for_result_key(artifact.result_key)
             if data is None:
+                if artifact.required:
+                    raise MissingFitWeightsOutputError(
+                        "Fitted-weight result is missing required "
+                        f"{self.scope.value} {artifact.role.value} bytes "
+                        f"for {artifact.filename}."
+                    )
                 continue
             destination = f"{artifacts_rel}/{artifact.filename}"
             batch.put_file(BytesIO(data), destination)

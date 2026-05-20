@@ -87,6 +87,8 @@ def test_missing_optional_epoch_log_is_allowed() -> None:
         scope=FitScope.REGIONAL,
         result_bytes={
             "weights": b"weights",
+            "geography": b"geo",
+            "config": b"config",
             "log": b"log",
         },
     )
@@ -94,7 +96,7 @@ def test_missing_optional_epoch_log_is_allowed() -> None:
     assert bundle.diagnostic_result_bytes() == {
         "log": b"log",
         "cal_log": None,
-        "config": None,
+        "config": b"config",
     }
 
 
@@ -106,11 +108,39 @@ def test_missing_weights_is_a_hard_failure() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("missing_key", "expected_role"),
+    [
+        ("geography", "geography"),
+        ("config", "run_config"),
+    ],
+)
+def test_missing_required_primary_artifacts_fail_before_writes(
+    missing_key: str,
+    expected_role: str,
+) -> None:
+    result_bytes = {
+        "weights": b"weights",
+        "geography": b"geo",
+        "config": b"config",
+    }
+    result_bytes.pop(missing_key)
+    bundle = FittedWeightsOutputBundle.from_result_bytes(
+        scope=FitScope.REGIONAL,
+        result_bytes=result_bytes,
+    )
+
+    with pytest.raises(MissingFitWeightsOutputError, match=expected_role):
+        bundle.write_artifacts(FakeBatch(), "artifacts/run-1")
+
+
 def test_diagnostics_are_scoped_to_the_output_bundle() -> None:
     regional = FittedWeightsOutputBundle.from_result_bytes(
         scope=FitScope.REGIONAL,
         result_bytes={
             "weights": b"weights",
+            "geography": b"regional-geo",
+            "config": b"regional-config",
             "log": b"regional-log",
             "cal_log": b"regional-epoch",
         },
@@ -119,6 +149,8 @@ def test_diagnostics_are_scoped_to_the_output_bundle() -> None:
         scope=FitScope.NATIONAL,
         result_bytes={
             "weights": b"weights",
+            "geography": b"national-geo",
+            "config": b"national-config",
             "log": b"national-log",
             "cal_log": b"national-epoch",
         },

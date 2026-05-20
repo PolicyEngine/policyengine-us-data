@@ -57,6 +57,7 @@ HOUSEHOLD_COLUMNS = [
     "RMSP",  # Number of rooms
     "RNTP",  # Monthly rent
     "TEN",  # Tenure
+    "VALP",  # Property value
     "VEH",  # Number of vehicles
     "FINCP",  # Total income
     "GRNTP",  # Gross rent

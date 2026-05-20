@@ -205,7 +205,7 @@ stages:
   - id: in_acs
     label: ACS 2022
     node_type: artifact
-    description: Training data for rent QRF
+    description: Training data for housing QRF
   - id: in_sipp
     label: SIPP 2023
     node_type: artifact
@@ -653,7 +653,7 @@ stages:
   legacy_stage_id: '4'
   manifest_step_ids:
   - 01_build_datasets
-  description: Impute wealth/assets from external surveys onto stratified CPS via QRF
+  description: Impute housing, wealth/assets, and labor-market variables from external surveys onto stratified CPS via QRF
   country: us
   extra_nodes:
   - id: in_strat_s4
@@ -663,7 +663,7 @@ stages:
   - id: in_acs_s4
     label: ACS_2022
     node_type: artifact
-    description: American Community Survey - has state_fips predictor
+    description: American Community Survey - has state_fips predictor and housing targets
   - id: in_sipp_s4
     label: SIPP 2023
     node_type: external
@@ -679,7 +679,7 @@ stages:
   - id: out_imputed
     label: source_imputed_stratified_extended_cps.h5
     node_type: artifact
-    description: Enriched with ACS/SIPP/SCF vars - uploaded to HuggingFace
+    description: Enriched with ACS/SIPP/ORG/SCF vars - uploaded to HuggingFace
   - id: util_clone_assign
     label: clone_and_assign.py
     node_type: utility

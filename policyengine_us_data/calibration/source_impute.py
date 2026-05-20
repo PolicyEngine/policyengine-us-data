@@ -6,7 +6,8 @@ lack state data, so their imputations use only demographic and
 financial predictors.
 
 Sources and variables:
-    ACS  -> rent, real_estate_taxes  (with state predictor)
+    ACS  -> rent, real_estate_taxes, primary_residence_value
+            (with state predictor)
     SIPP -> tip_income, bank_account_assets, stock_assets,
             bond_assets, household_vehicles_owned,
             household_vehicles_value  (no state predictor)
@@ -29,6 +30,7 @@ import gc
 import logging
 from typing import Dict, Optional
 
+import h5py
 import numpy as np
 import pandas as pd
 from policyengine_us_data.datasets.cps.tipped_occupation import (
@@ -70,6 +72,12 @@ from policyengine_us_data.pipeline_schema import PipelineNode
 logger = logging.getLogger(__name__)
 
 ACS_IMPUTED_VARIABLES = [
+    "rent",
+    "real_estate_taxes",
+    "primary_residence_value",
+]
+
+ACS_CALCULATED_IMPUTED_VARIABLES = [
     "rent",
     "real_estate_taxes",
 ]
@@ -150,6 +158,7 @@ TENURE_TYPE_MAP = {
     "RENTED": 2,
     "NONE": 0,
 }
+OWNER_TENURE_CODE = 1
 
 SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
 
@@ -321,7 +330,7 @@ def _person_state_fips(
         id="acs_qrf",
         label="ACS QRF Imputation",
         node_type="library",
-        description="Impute rent and real estate tax variables from ACS donor data.",
+        description="Impute housing value, rent, and real estate tax variables from ACS donor data.",
         source_file="policyengine_us_data/calibration/source_impute.py",
         status="current",
         stability="moving",
@@ -337,7 +346,7 @@ def _impute_acs(
     time_period: int,
     dataset_path: Optional[str] = None,
 ) -> Dict[str, Dict[int, np.ndarray]]:
-    """Impute rent and real_estate_taxes from ACS with state.
+    """Impute rent, real_estate_taxes, and primary_residence_value from ACS.
 
     Args:
         data: CPS data dict.
@@ -357,11 +366,17 @@ def _impute_acs(
     predictors = ACS_PREDICTORS + ["state_fips"]
 
     acs_df = acs.calculate_dataframe(
-        ACS_PREDICTORS + ACS_IMPUTED_VARIABLES, map_to="person"
+        ACS_PREDICTORS + ACS_CALCULATED_IMPUTED_VARIABLES,
+        map_to="person",
     )
     acs_df["state_fips"] = acs.calculate("state_fips", map_to="person").values.astype(
         np.float32
     )
+    with h5py.File(ACS_2022.file_path, "r") as acs_h5:
+        acs_df["primary_residence_value"] = np.asarray(
+            acs_h5["primary_residence_value"],
+            dtype=np.float32,
+        )
 
     train_df = acs_df[acs_df.is_household_head].sample(10_000, random_state=42)
     train_df = _encode_tenure_type(train_df)
@@ -402,18 +417,22 @@ def _impute_acs(
         imputed_variables=ACS_IMPUTED_VARIABLES,
     )
     predictions = fitted.predict(X_test=cps_heads)
+    owner_head_mask = cps_heads["tenure_type"].to_numpy() == OWNER_TENURE_CODE
 
     n_persons = len(data["person_id"][time_period])
     for var in ACS_IMPUTED_VARIABLES:
         values = np.zeros(n_persons, dtype=np.float32)
-        values[mask] = predictions[var].values
+        predicted_values = predictions[var].values
+        if var == "primary_residence_value":
+            predicted_values = np.where(owner_head_mask, predicted_values, 0)
+        values[mask] = predicted_values
         data[var] = {time_period: values}
     data["pre_subsidy_rent"] = {time_period: data["rent"][time_period].copy()}
 
     del fitted, predictions
     gc.collect()
 
-    logger.info("ACS imputation complete: rent, real_estate_taxes")
+    logger.info("ACS imputation complete: %s", ", ".join(ACS_IMPUTED_VARIABLES))
     return data
 
 

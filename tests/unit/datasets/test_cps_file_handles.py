@@ -390,6 +390,7 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
     acs_fixture_path = tmp_path / "acs_fixture.h5"
     with h5py.File(acs_fixture_path, "w") as acs_fixture:
         acs_fixture["is_household_head"] = np.ones(10_000, dtype=bool)
+        acs_fixture["primary_residence_value"] = np.full(10_000, 250_000.0)
 
     real_h5py_file = cps_module.h5py.File
     opened_h5_paths = []
@@ -411,6 +412,7 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
                 {
                     "rent": np.full(len(X_test), 1_000.0),
                     "real_estate_taxes": np.full(len(X_test), 250.0),
+                    "primary_residence_value": np.full(len(X_test), 500_000.0),
                 }
             )
 
@@ -494,3 +496,4 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
     assert not existing_path.exists()
     np.testing.assert_array_equal(cps["rent"], np.array([1_000.0]))
     np.testing.assert_array_equal(cps["real_estate_taxes"], np.array([250.0]))
+    np.testing.assert_array_equal(cps["primary_residence_value"], np.array([0.0]))

@@ -5,6 +5,7 @@ Uses skip flags to avoid loading real donor data.
 
 import numpy as np
 import pandas as pd
+import h5py
 
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
@@ -53,6 +54,7 @@ def _make_data_dict(n_persons=20, time_period=2024):
         },
         "rent": {time_period: np.zeros(n_persons)},
         "real_estate_taxes": {time_period: np.zeros(n_persons)},
+        "primary_residence_value": {time_period: np.zeros(n_persons)},
         "tip_income": {time_period: np.zeros(n_persons)},
         "bank_account_assets": {time_period: np.zeros(n_persons)},
         "stock_assets": {time_period: np.zeros(n_persons)},
@@ -74,6 +76,7 @@ class TestConstants:
     def test_acs_variables_defined(self):
         assert "rent" in ACS_IMPUTED_VARIABLES
         assert "real_estate_taxes" in ACS_IMPUTED_VARIABLES
+        assert "primary_residence_value" in ACS_IMPUTED_VARIABLES
 
     def test_sipp_variables_defined(self):
         assert "tip_income" in SIPP_IMPUTED_VARIABLES
@@ -172,6 +175,7 @@ class TestImputeSourceVariables:
         for var in [
             "rent",
             "real_estate_taxes",
+            "primary_residence_value",
             "tip_income",
             "hourly_wage",
             "is_union_member_or_covered",
@@ -237,6 +241,117 @@ class TestPersonStateFips:
 class TestSubfunctions:
     def test_impute_acs_exists(self):
         assert callable(_impute_acs)
+
+    def test_impute_acs_sets_primary_residence_value_only_for_owner_heads(
+        self, monkeypatch, tmp_path
+    ):
+        import microimpute.models.qrf as qrf_module
+        import policyengine_us
+        import policyengine_us_data.datasets.acs.acs as acs_module
+
+        fake_acs_path = tmp_path / "acs.h5"
+        rows = 10_050
+        with h5py.File(fake_acs_path, mode="w") as fake_acs:
+            fake_acs.create_dataset(
+                "primary_residence_value",
+                data=np.full(rows, 300_000, dtype=np.float32),
+            )
+
+        class FakeStateValues:
+            values = np.ones(rows, dtype=np.float32) * 6
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset):
+                self.dataset = dataset
+
+            def calculate_dataframe(self, variables, map_to=None):
+                if self.dataset is acs_module.ACS_2022:
+                    return pd.DataFrame(
+                        {
+                            "is_household_head": np.ones(rows, dtype=bool),
+                            "age": np.full(rows, 55, dtype=np.float32),
+                            "is_male": np.zeros(rows, dtype=bool),
+                            "tenure_type": ["OWNED_WITH_MORTGAGE"] * rows,
+                            "employment_income": np.full(
+                                rows, 75_000, dtype=np.float32
+                            ),
+                            "self_employment_income": np.zeros(rows, dtype=np.float32),
+                            "social_security": np.zeros(rows, dtype=np.float32),
+                            "pension_income": np.zeros(rows, dtype=np.float32),
+                            "household_size": np.full(rows, 2, dtype=np.float32),
+                            "rent": np.zeros(rows, dtype=np.float32),
+                            "real_estate_taxes": np.full(rows, 4_000, dtype=np.float32),
+                        }
+                    )
+                return pd.DataFrame(
+                    {
+                        "is_household_head": [True, False, True],
+                        "age": [55, 53, 31],
+                        "is_male": [True, False, False],
+                        "tenure_type": [
+                            "OWNED_WITH_MORTGAGE",
+                            "OWNED_WITH_MORTGAGE",
+                            "RENTED",
+                        ],
+                        "employment_income": [80_000, 30_000, 45_000],
+                        "self_employment_income": [0, 0, 0],
+                        "social_security": [0, 0, 0],
+                        "pension_income": [0, 0, 0],
+                        "household_size": [2, 2, 1],
+                    }
+                )
+
+            def calculate(self, variable, map_to=None):
+                assert variable == "state_fips"
+                return FakeStateValues()
+
+        class FakeQRFModel:
+            def predict(self, X_test):
+                assert len(X_test) == 2
+                return pd.DataFrame(
+                    {
+                        "rent": [0, 1_200],
+                        "real_estate_taxes": [4_000, 0],
+                        "primary_residence_value": [500_000, 700_000],
+                    }
+                )
+
+        class FakeQRF:
+            def fit(self, X_train, predictors, imputed_variables):
+                assert len(X_train) == 10_000
+                assert "primary_residence_value" in X_train
+                assert imputed_variables == ACS_IMPUTED_VARIABLES
+                return FakeQRFModel()
+
+        monkeypatch.setattr(acs_module.ACS_2022, "file_path", fake_acs_path)
+        monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
+        monkeypatch.setattr(qrf_module, "QRF", FakeQRF)
+
+        data = {
+            "person_id": {2024: np.arange(3)},
+            "household_id": {2024: np.array([0, 1])},
+            "person_household_id": {2024: np.array([0, 0, 1])},
+        }
+
+        result = _impute_acs(
+            data,
+            state_fips=np.array([6, 48], dtype=np.int32),
+            time_period=2024,
+            dataset_path="fake-cps.h5",
+        )
+
+        np.testing.assert_array_equal(
+            result["rent"][2024],
+            np.array([0, 0, 1_200], dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            result["real_estate_taxes"][2024],
+            np.array([4_000, 0, 0], dtype=np.float32),
+        )
+        np.testing.assert_array_equal(
+            result["primary_residence_value"][2024],
+            np.array([500_000, 0, 0], dtype=np.float32),
+        )
 
     def test_impute_sipp_exists(self):
         assert callable(_impute_sipp)

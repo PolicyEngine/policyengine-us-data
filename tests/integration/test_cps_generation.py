@@ -51,6 +51,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
                 "receives_wic": [False, False],
                 "hud_income_level": ["VERY_LOW"],
                 "spm_unit_tenure_type": ["RENTER"],
+                "is_eligible_for_housing_assistance": [True],
                 "tax_unit_child_dependents": [0],
                 "age_head": [40],
             }
@@ -258,6 +259,10 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
             "is_household_head",
             data=np.ones(10_050, dtype=bool),
         )
+        fake_acs_h5.create_dataset(
+            "primary_residence_value",
+            data=np.full(10_050, 300_000.0, dtype=np.float32),
+        )
 
     class FakeACSDataset:
         file_path = fake_acs_path
@@ -324,6 +329,7 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
                 {
                     "rent": [1_200.0, 0.0],
                     "real_estate_taxes": [0.0, 4_000.0],
+                    "primary_residence_value": [250_000.0, 600_000.0],
                 }
             )
 
@@ -331,7 +337,11 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
         def fit(self, X_train, predictors, imputed_variables):
             assert len(X_train) == 10_000
             assert predictors[-1] == "household_size"
-            assert imputed_variables == ["rent", "real_estate_taxes"]
+            assert imputed_variables == [
+                "rent",
+                "real_estate_taxes",
+                "primary_residence_value",
+            ]
             return FakeQRFModel()
 
     monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
@@ -356,6 +366,10 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
     np.testing.assert_array_equal(
         cps["real_estate_taxes"],
         np.array([0, 0, 4000], dtype=np.int32),
+    )
+    np.testing.assert_array_equal(
+        cps["primary_residence_value"],
+        np.array([0, 0, 600_000], dtype=np.int32),
     )
     assert not dataset.file_path.exists()
 

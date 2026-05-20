@@ -71,17 +71,20 @@ class ACS(Dataset):
         acs["self_employment_income"] = person.SEMP
         acs["social_security"] = person.SSP
         acs["taxable_private_pension_income"] = person.RETP
-        person[["rent", "real_estate_taxes"]] = (
+        person[["rent", "real_estate_taxes", "primary_residence_value", "TEN"]] = (
             household.set_index("household_id")
-            .loc[person["household_id"]][["RNTP", "TAXAMT"]]
+            .loc[person["household_id"]][["RNTP", "TAXAMT", "VALP", "TEN"]]
             .values
         )
         acs["is_household_head"] = person.SPORDER == 1
         factor = person.SPORDER == 1
+        owner_occupied = person.TEN.astype(int).isin([1, 2])
         person.rent *= factor * 12
         person.real_estate_taxes *= factor
+        person.primary_residence_value *= factor * owner_occupied
         acs["rent"] = person.rent
         acs["real_estate_taxes"] = person.real_estate_taxes
+        acs["primary_residence_value"] = person.primary_residence_value
         acs["tenure_type"] = (
             household.TEN.astype(int)
             .map(

@@ -9,7 +9,7 @@ sources.
 | ------------------- | ----------------------- | ---------------------------------------------------------------------- |
 | CPS ASEC            | 2024 (income year 2023) | Base microdata; pipeline ages values to target policy year             |
 | IRS PUF             | 2015                    | Pipeline ages values to target policy year using income growth indices |
-| ACS                 | 2022                    | Provides rent and real estate tax imputation targets                   |
+| ACS                 | 2022                    | Provides rent, real estate tax, and primary residence value targets    |
 | SCF                 | 2022                    | Provides wealth and debt variable imputation targets                   |
 | SIPP                | 2023                    | Provides tip income and asset imputation targets                       |
 | Calibration targets | Primarily 2023–2024     | Varies by source; see calibration data sources below                   |
@@ -93,8 +93,10 @@ proper matching.
 
 The ACS provides housing and geographic data that supplements the CPS housing information. For
 homeowners, we impute property taxes based on state of residence, household income, and demographic
-characteristics. We also impute rent values for specific tenure types where CPS data is incomplete,
-along with additional housing characteristics not captured in the CPS. These imputations use
+characteristics. We also impute owner-occupied primary residence market value from ACS property
+value records, with non-owner households set to zero. Rent values are imputed for specific tenure
+types where CPS data is incomplete, along with additional housing characteristics not captured in
+the CPS. These imputations use
 Quantile Regression Forests to preserve distributional characteristics while accounting for
 household heterogeneity.
 

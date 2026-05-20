@@ -73,6 +73,10 @@ from policyengine_us_data.utils.asset_imputation import (
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
+ACS_CALCULATED_IMPUTED_VARIABLES = ["rent", "real_estate_taxes"]
+ACS_IMPUTED_VARIABLES = [*ACS_CALCULATED_IMPUTED_VARIABLES, "primary_residence_value"]
+OWNER_TENURE_TYPES = {"OWNED_WITH_MORTGAGE", "OWNED_OUTRIGHT"}
+
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
     "reported_has_marketplace_health_coverage_at_interview": "NOW_MRK",
@@ -341,7 +345,7 @@ class CPS(Dataset):
         id="add_rent",
         label="Rent Imputation",
         node_type="library",
-        description="Impute rent and real estate taxes using ACS donor data.",
+        description="Impute housing values, rent, and real estate taxes using ACS donor data.",
         source_file="policyengine_us_data/datasets/cps/cps.py",
         status="legacy",
         stability="moving",
@@ -398,8 +402,10 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         "state_code_str",
         "household_size",
     ]
-    IMPUTATIONS = ["rent", "real_estate_taxes"]
-    train_df = acs.calculate_dataframe(PREDICTORS + IMPUTATIONS, map_to="person")
+    train_df = acs.calculate_dataframe(
+        PREDICTORS + ACS_CALCULATED_IMPUTED_VARIABLES,
+        map_to="person",
+    )
     # TODO(PolicyEngine/policyengine-core#482): policyengine-core 3.24.0+
     # silently drops user-supplied ETERNITY inputs on dataset reload because
     # _user_input_keys records the user-supplied period instead of the
@@ -413,6 +419,10 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
         train_df["is_household_head"] = np.asarray(
             acs_h5["is_household_head"], dtype=bool
         )
+        train_df["primary_residence_value"] = np.asarray(
+            acs_h5["primary_residence_value"],
+            dtype=float,
+        )
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
@@ -424,15 +434,16 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
+    owner_head_mask = inference_df.tenure_type.astype(str).isin(OWNER_TENURE_TYPES)
 
     qrf = QRF()
-    logging.info("Training imputation model for rent and real estate taxes.")
+    logging.info("Training imputation model for ACS housing variables.")
     fitted_model = qrf.fit(
         X_train=train_df,
         predictors=PREDICTORS,
-        imputed_variables=IMPUTATIONS,
+        imputed_variables=ACS_IMPUTED_VARIABLES,
     )
-    logging.info("Imputing rent and real estate taxes.")
+    logging.info("Imputing ACS housing variables.")
     imputed_values = fitted_model.predict(X_test=inference_df)
     logging.info("Imputation complete.")
     # ``cps["age"]`` has an integer dtype, so ``np.zeros_like(cps["age"])``
@@ -444,6 +455,16 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     cps["pre_subsidy_rent"] = cps["rent"]
     cps["real_estate_taxes"] = np.zeros(len(cps["age"]), dtype=float)
     cps["real_estate_taxes"][mask] = imputed_values["real_estate_taxes"]
+    primary_residence_values = np.asarray(
+        imputed_values["primary_residence_value"],
+        dtype=float,
+    )
+    cps["primary_residence_value"] = np.zeros(len(cps["age"]), dtype=float)
+    cps["primary_residence_value"][mask] = np.where(
+        owner_head_mask,
+        primary_residence_values,
+        0,
+    )
 
 
 TEMPORARY_TAKEUP_SOURCE_ANCHORS = ("snap_reported", "ssi_reported")

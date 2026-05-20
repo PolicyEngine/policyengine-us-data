@@ -152,7 +152,8 @@ within the same record.
 - auto_loan_balance
 - auto_loan_interest
 
-#### Variables Imputed from American Community Survey (2 variables)
+#### Variables Imputed from American Community Survey (3 variables)
 
 - rent
 - real_estate_taxes
+- primary_residence_value

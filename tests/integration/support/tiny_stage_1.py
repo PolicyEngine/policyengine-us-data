@@ -39,6 +39,7 @@ ACS_PERSON_ARRAYS = (
     "is_household_head",
     "rent",
     "real_estate_taxes",
+    "primary_residence_value",
 )
 
 ACS_HOUSEHOLD_ARRAYS = (
@@ -229,6 +230,7 @@ def write_tiny_acs(path: Path) -> None:
         "is_household_head": np.array([True, False, True], dtype=np.bool_),
         "rent": np.array([0, 0, 14_400], dtype=np.float32),
         "real_estate_taxes": np.array([2_400, 0, 0], dtype=np.float32),
+        "primary_residence_value": np.array([275_000, 0, 0], dtype=np.float32),
         "tenure_type": np.array([b"OWNED_WITH_MORTGAGE", b"RENTED"]),
         "household_vehicles_owned": np.array([2, 1], dtype=np.int16),
         "state_fips": np.array([37, 37], dtype=np.int16),

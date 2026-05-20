@@ -196,6 +196,43 @@ def test_acs_add_id_variables_writes_tax_unit_ids():
     assert tax_unit_id.tolist() == [1, 2]
 
 
+def test_acs_add_person_variables_writes_primary_residence_value_for_owner_heads():
+    person = pd.DataFrame(
+        {
+            "household_id": [0, 0, 1],
+            "SPORDER": [1, 2, 1],
+            "AGEP": [45, 43, 30],
+            "SEX": [1, 2, 1],
+            "WAGP": [60_000, 40_000, 50_000],
+            "SEMP": [0, 0, 0],
+            "SSP": [0, 0, 0],
+            "RETP": [0, 0, 0],
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [0, 1],
+            "RNTP": [0, 1_000],
+            "TAXAMT": [2_400, 0],
+            "VALP": [300_000, 500_000],
+            "TEN": [1, 3],
+        }
+    )
+
+    with h5py.File("memory", mode="w", driver="core", backing_store=False) as acs:
+        ACS.add_person_variables(acs, person, household)
+        rent = acs["rent"][:]
+        real_estate_taxes = acs["real_estate_taxes"][:]
+        primary_residence_value = acs["primary_residence_value"][:]
+
+    np.testing.assert_array_equal(rent, np.array([0, 0, 12_000]))
+    np.testing.assert_array_equal(real_estate_taxes, np.array([2_400, 0, 0]))
+    np.testing.assert_array_equal(
+        primary_residence_value,
+        np.array([300_000, 0, 0]),
+    )
+
+
 def test_acs_add_id_variables_handles_duplicate_person_index_labels():
     person = _acs_person_fixture(
         SERIALNO=["1", "2"],

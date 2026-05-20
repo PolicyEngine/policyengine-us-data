@@ -24,3 +24,10 @@ Current skills:
 Stage-specific AI-facing engineering guides live under `docs/engineering/stages/`.
 Use them alongside these cross-cutting skills when modifying a stage-specific
 pipeline path.
+
+Current stage guides:
+
+- `build_outputs.md`: Stage 4 output-build library boundaries and test
+  expectations.
+- `release_promotion.md`: Stage 5 release candidate identity, validation-report
+  schema, rerun comparison material, and side-effect boundaries.

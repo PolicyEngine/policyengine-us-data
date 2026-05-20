@@ -248,6 +248,18 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
+    def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):
+        data = {"medicare_enrolled": {2024: np.array([True, False])}}
+
+        result = ExtendedCPS._rename_imputed_to_inputs(data)
+
+        assert "medicare_enrolled" not in result
+        assert result["takes_up_medicare_if_eligible"][2024].tolist() == [
+            True,
+            False,
+        ]
+        ExtendedCPS._assert_no_computed_variables_exported(result, 2024)
+
     def test_final_export_contract_allows_structural_cache_variables(self):
         data = {
             "person_id": {2024: np.array([1])},

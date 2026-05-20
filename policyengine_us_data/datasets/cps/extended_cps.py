@@ -1557,6 +1557,7 @@ class ExtendedCPS(Dataset):
     # but we must store them under leaf input names. The engine then
     # recomputes the formula var from its adds.
     _IMPUTED_TO_INPUT = {
+        "medicare_enrolled": "takes_up_medicare_if_eligible",
         "taxable_pension_income": "taxable_private_pension_income",
         "tax_exempt_pension_income": "tax_exempt_private_pension_income",
     }

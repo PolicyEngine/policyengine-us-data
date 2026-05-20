@@ -129,6 +129,8 @@ def test_pipeline_map_manifest_validates():
     )
     stage2_node_ids = {node["id"] for node in stage2["nodes"]}
     assert {
+        "stage2_input_bundle",
+        "stage2_build_context",
         "stage2_target_config_identity",
         "stage2_target_catalog_load",
         "build_matrix",

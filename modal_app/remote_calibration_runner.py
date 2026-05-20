@@ -14,6 +14,7 @@ for _p in (_baked, _local):
 from modal_app.images import gpu_image as image  # noqa: E402
 from policyengine_us_data.calibration_package.specs import (  # noqa: E402
     calibration_package_artifact_paths,
+    stage2_build_context_for_run,
 )
 
 app = modal.App(
@@ -371,18 +372,13 @@ def _build_package_impl(
     _ensure_geography_prerequisites()
 
     pipeline_vol.reload()
-    artifacts = f"{PIPELINE_MOUNT}/artifacts"
-    if run_id:
-        artifacts = f"{artifacts}/{run_id}"
-    db_path = f"{artifacts}/policy_data.db"
-    dataset_path = f"{artifacts}/source_imputed_stratified_extended_cps.h5"
-    for label, p in [("database", db_path), ("dataset", dataset_path)]:
-        if not os.path.exists(p):
-            raise RuntimeError(
-                f"Missing {label} on pipeline volume: {p}. Run data_build first."
-            )
-
-    package_artifacts = calibration_package_artifact_paths(artifacts)
+    build_context = stage2_build_context_for_run(
+        PIPELINE_MOUNT, run_id
+    ).require_inputs()
+    input_bundle = build_context.input_bundle
+    package_artifacts = build_context.output_bundle
+    db_path = str(input_bundle.target_database)
+    dataset_path = str(input_bundle.source_dataset)
     pkg_path = str(package_artifacts.package)
     cmd = [
         *_python_cmd("-m", "policyengine_us_data.calibration.unified_calibration"),

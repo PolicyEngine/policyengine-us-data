@@ -76,7 +76,10 @@ def test_stage_2_manifest_records_package_and_contract_outputs() -> None:
     run_pipeline = _function_def(tree, "run_pipeline")
     source = ast.get_source_segment(source_text, run_pipeline)
 
-    assert "package_artifacts = calibration_package_artifact_paths(" in source
+    assert "package_context = stage2_build_context_for_run(" in source
+    assert "package_context.input_bundle.manifest_inputs" in source
+    assert 'package_inputs["input_validation"]' in source
+    assert "package_artifacts = package_context.output_bundle" in source
     assert "package_artifacts.manifest_outputs" in source
 
 

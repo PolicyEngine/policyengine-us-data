@@ -805,6 +805,8 @@ stages:
     label: run_calibration()
     description: 'Build phase: resolve targets and constraints, assemble clone values, and package the sparse calibration matrix'
     node_ids:
+    - stage2_input_bundle
+    - stage2_build_context
     - stage2_target_config_identity
     - stage2_target_catalog_load
     - target_resolve
@@ -825,6 +827,10 @@ stages:
     - out_contract
     - stage2_calibration_package_contract_validator
   extra_nodes:
+  - id: in_stage1_contract_s2
+    label: dataset_build_output.json
+    node_type: artifact
+    description: Stage 1 handoff contract preferred for Stage 2 input resolution
   - id: in_cps_s5
     label: source_imputed_stratified_extended_cps.h5
     node_type: artifact
@@ -890,9 +896,34 @@ stages:
     node_type: utility
     description: CSR/COO matrix construction
   edges:
+  - source: in_stage1_contract_s2
+    target: stage2_input_bundle
+    edge_type: data_flow
+    label: preferred input contract
   - source: in_cps_s5
+    target: stage2_input_bundle
+    edge_type: data_flow
+    label: compatibility fallback
+  - source: in_db_s5
+    target: stage2_input_bundle
+    edge_type: external_source
+    label: compatibility fallback
+  - source: stage2_input_bundle
+    target: stage2_build_context
+    edge_type: data_flow
+    label: validated inputs
+  - source: stage2_artifact_specs
+    target: stage2_build_context
+    edge_type: uses_utility
+    label: output bundle paths
+  - source: stage2_build_context
     target: target_resolve
     edge_type: data_flow
+    label: dataset and database paths
+  - source: stage2_build_context
+    target: stage2_calibration_package_writer
+    edge_type: uses_utility
+    label: package output bundle
   - source: in_db_s5
     target: target_resolve
     edge_type: external_source

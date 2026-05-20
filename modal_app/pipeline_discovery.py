@@ -17,10 +17,12 @@ for _p in (_baked, _local):
 
 from modal_app.images import cpu_image as image  # noqa: E402
 from modal_app.pipeline_discovery_core import (  # noqa: E402
-    DeployedPipelineRunsPayloadDict,
-    ModalAppRecord,
     RawRecord,
     build_deployed_pipeline_runs_payload,
+)
+from modal_app.pipeline_discovery_schema import (  # noqa: E402
+    DeployedPipelineRunsPayloadDict,
+    ModalAppRecord,
 )
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     DEFAULT_MODAL_ENVIRONMENT,

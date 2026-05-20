@@ -1,3 +1,7 @@
+import importlib
+import sys
+from types import SimpleNamespace
+
 import pytest
 
 from modal_app.pipeline_discovery_core import (
@@ -9,6 +13,62 @@ from modal_app.pipeline_discovery_core import (
 from modal_app.pipeline_discovery_schema import (
     DeployedPipelineRunsPayload,
 )
+
+
+class _FakeModalImage:
+    def apt_install(self, *_args, **_kwargs):
+        return self
+
+    def uv_sync(self, *_args, **_kwargs):
+        return self
+
+    def add_local_dir(self, *_args, **_kwargs):
+        return self
+
+    def workdir(self, *_args, **_kwargs):
+        return self
+
+    def env(self, *_args, **_kwargs):
+        return self
+
+    def pip_install(self, *_args, **_kwargs):
+        return self
+
+
+class _FakeModalApp:
+    def __init__(self, *_args, **_kwargs):
+        pass
+
+    def function(self, *_args, **_kwargs):
+        return lambda fn: fn
+
+
+class _FakeModalSecret:
+    @staticmethod
+    def from_name(_name):
+        return object()
+
+
+def _fake_modal_module():
+    return SimpleNamespace(
+        App=_FakeModalApp,
+        Image=SimpleNamespace(debian_slim=lambda **_kwargs: _FakeModalImage()),
+        Secret=_FakeModalSecret,
+        fastapi_endpoint=lambda *_args, **_kwargs: (lambda fn: fn),
+    )
+
+
+def test_pipeline_discovery_entrypoint_imports_with_typed_schema(monkeypatch):
+    """Catch Modal deploy entrypoint import drift before deployment."""
+
+    monkeypatch.setitem(sys.modules, "modal", _fake_modal_module())
+    monkeypatch.delitem(sys.modules, "modal_app.images", raising=False)
+    monkeypatch.delitem(sys.modules, "modal_app.pipeline_discovery", raising=False)
+
+    module = importlib.import_module("modal_app.pipeline_discovery")
+
+    assert module.list_deployed_pipeline_runs is not None
+    assert module.deployed_pipeline_runs_endpoint is not None
 
 
 def _app_record(

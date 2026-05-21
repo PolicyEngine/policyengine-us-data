@@ -74,6 +74,7 @@ def test_script_outputs_are_generated_from_stage_1_artifact_specs():
 def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch):
     data_build = _load_data_build_module()
     calls = []
+    command_envs = []
 
     class FakeVolume:
         def reload(self):
@@ -109,7 +110,18 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
     def fake_write_contract(*, artifacts_dir, **kwargs):
         (artifacts_dir / "dataset_build_output.json").write_text("{}\n")
 
+    def fake_run_script(script_path, *args, **kwargs):
+        command_envs.append(dict(kwargs["env"]))
+        return script_path
+
+    def fake_run_script_logged(cmd, log_file, env, **kwargs):
+        command_envs.append(dict(env))
+        return data_build.subprocess.CompletedProcess(cmd, 0)
+
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("US_DATA_RUN_ID", "outer-run")
+    monkeypatch.setenv(data_build.CANDIDATE_VERSION_ENV, "outer-candidate")
+    monkeypatch.delenv(data_build.DATA_PACKAGE_VERSION_ENV, raising=False)
     monkeypatch.setattr(data_build, "setup_gcp_credentials", lambda: None)
     monkeypatch.setattr(data_build, "checkpoint_volume", FakeVolume())
     monkeypatch.setattr(data_build, "pipeline_volume", FakeVolume())
@@ -118,12 +130,8 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
     monkeypatch.setattr(data_build.os, "chdir", lambda _path: None)
     monkeypatch.setattr(data_build, "get_current_commit", lambda: "abc123456")
     monkeypatch.setattr(data_build, "SCRIPT_OUTPUTS", {})
-    monkeypatch.setattr(data_build, "run_script", lambda *args, **kwargs: args[0])
-    monkeypatch.setattr(
-        data_build,
-        "run_script_logged",
-        lambda cmd, *args, **kwargs: data_build.subprocess.CompletedProcess(cmd, 0),
-    )
+    monkeypatch.setattr(data_build, "run_script", fake_run_script)
+    monkeypatch.setattr(data_build, "run_script_logged", fake_run_script_logged)
     monkeypatch.setattr(data_build, "save_checkpoint", lambda *args, **kwargs: None)
     monkeypatch.setattr(data_build, "Stage1Coordinator", FakeCoordinator)
     monkeypatch.setattr(data_build, "PipelineArtifactStager", FakeStager)
@@ -139,6 +147,7 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
             sequential=True,
             skip_tests=True,
             run_id="run-123",
+            version="1.2.3",
         )
         == "Data build completed successfully"
     )
@@ -154,6 +163,14 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
         str(path).endswith("dataset_build_output.json")
         for path in stage_base_kwargs["artifact_paths"]
     )
+    assert {env["US_DATA_RUN_ID"] for env in command_envs} == {"run-123"}
+    assert {env[data_build.CANDIDATE_VERSION_ENV] for env in command_envs} == {"1.2.3"}
+    assert {env[data_build.DATA_PACKAGE_VERSION_ENV] for env in command_envs} == {
+        "1.2.3"
+    }
+    assert data_build.os.environ["US_DATA_RUN_ID"] == "outer-run"
+    assert data_build.os.environ[data_build.CANDIDATE_VERSION_ENV] == "outer-candidate"
+    assert data_build.DATA_PACKAGE_VERSION_ENV not in data_build.os.environ
 
 
 def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch):

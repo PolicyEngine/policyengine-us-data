@@ -44,6 +44,7 @@ from policyengine_us_data.stage_contracts import (  # noqa: E402
 from policyengine_us_data.utils.run_context import (  # noqa: E402
     CANDIDATE_VERSION_ENV,
     DATA_PACKAGE_VERSION_ENV,
+    RUN_ID_ENV,
     resolve_run_id,
 )
 
@@ -133,6 +134,16 @@ def _utc_timestamp(value: datetime | None = None) -> str:
         .isoformat()
         .replace("+00:00", "Z")
     )
+
+
+def _dataset_build_env(*, run_id: str, version: str) -> dict[str, str]:
+    """Return the child-process environment for one dataset-build run."""
+
+    env = os.environ.copy()
+    env[RUN_ID_ENV] = run_id
+    env[CANDIDATE_VERSION_ENV] = version
+    env[DATA_PACKAGE_VERSION_ENV] = version
+    return env
 
 
 def setup_gcp_credentials():
@@ -664,10 +675,8 @@ def build_datasets(
             "run_id is required. Production data builds must receive the "
             "GitHub-created run ID via --run-id or US_DATA_RUN_ID."
         )
-    os.environ["US_DATA_RUN_ID"] = run_id
     version = version or DATA_PACKAGE_VERSION
-    os.environ[CANDIDATE_VERSION_ENV] = version
-    os.environ[DATA_PACKAGE_VERSION_ENV] = version
+    env = _dataset_build_env(run_id=run_id, version=version)
 
     # Reload volume to see latest checkpoints
     checkpoint_volume.reload()
@@ -690,8 +699,6 @@ def build_datasets(
                 shutil.rmtree(entry)
                 print(f"Removed stale checkpoint dir: {entry.name[:12]}")
         checkpoint_volume.commit()
-
-    env = os.environ.copy()
 
     # Open persistent build log with provenance header
     commit = get_current_commit()

@@ -2574,6 +2574,24 @@ def add_tips(self, cps: h5py.File):
                     np.zeros(len(person_household_id), dtype=np.float32),
                 )
             ),
+            "social_security": np.asarray(
+                existing_data.get(
+                    "social_security",
+                    np.zeros(len(person_household_id), dtype=np.float32),
+                )
+            ),
+            "pension_income": np.asarray(
+                existing_data.get(
+                    "pension_income",
+                    np.zeros(len(person_household_id), dtype=np.float32),
+                )
+            ),
+            "retirement_distributions": np.asarray(
+                existing_data.get(
+                    "retirement_distributions",
+                    np.zeros(len(person_household_id), dtype=np.float32),
+                )
+            ),
             "age": np.asarray(existing_data["age"]),
             "is_female": np.asarray(existing_data["is_female"]),
         }
@@ -2618,6 +2636,20 @@ def add_tips(self, cps: h5py.File):
         .sum()
         .loc[cps.household_id.values]
         .values
+    )
+    cps["household_size"] = (
+        cps.groupby("household_id")["person_id"]
+        .transform("count")
+        .astype(np.float32)
+        .values
+    )
+    cps["retirement_income"] = cps["pension_income"].fillna(0) + cps[
+        "retirement_distributions"
+    ].fillna(0)
+    cps["non_ssi_income"] = (
+        cps["employment_income"].fillna(0)
+        + cps["social_security"].fillna(0)
+        + cps["retirement_income"].fillna(0)
     )
     cps = pd.DataFrame(cps)
 
@@ -2680,7 +2712,15 @@ def add_tips(self, cps: h5py.File):
     # is_married is person-level here but policyengine-us defines it at Family
     # level, so we must not save it
     cps = cps.drop(
-        columns=["is_married", "is_under_18", "is_under_6", "is_household_head"],
+        columns=[
+            "is_married",
+            "is_under_18",
+            "is_under_6",
+            "is_household_head",
+            "household_size",
+            "retirement_income",
+            "non_ssi_income",
+        ],
         errors="ignore",
     )
     self.save_dataset(cps)

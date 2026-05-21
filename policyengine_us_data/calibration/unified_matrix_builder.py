@@ -2110,8 +2110,26 @@ class UnifiedMatrixBuilder:
 
         if "domain_variables" in target_filter:
             dvs = target_filter["domain_variables"]
-            ph = ",".join(f"'{dv}'" for dv in dvs)
-            and_conditions.append(f"tv.domain_variable IN ({ph})")
+            exact_ph = ",".join(f"'{dv}'" for dv in dvs)
+            single_constraint_dvs = [dv for dv in dvs if "," not in str(dv)]
+            if single_constraint_dvs:
+                component_ph = ",".join(f"'{dv}'" for dv in single_constraint_dvs)
+                and_conditions.append(
+                    "("
+                    f"tv.domain_variable IN ({exact_ph}) "
+                    "OR EXISTS ("
+                    "SELECT 1 FROM stratum_constraints sc_domain "
+                    "WHERE sc_domain.stratum_id = tv.stratum_id "
+                    "AND sc_domain.constraint_variable NOT IN ("
+                    "'state_fips', 'congressional_district_geoid', "
+                    "'tax_unit_is_filer', 'ucgid_str'"
+                    ") "
+                    f"AND sc_domain.constraint_variable IN ({component_ph})"
+                    ")"
+                    ")"
+                )
+            else:
+                and_conditions.append(f"tv.domain_variable IN ({exact_ph})")
 
         if "variables" in target_filter:
             vs = ",".join(f"'{v}'" for v in target_filter["variables"])

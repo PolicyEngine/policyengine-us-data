@@ -128,7 +128,7 @@ GROUP BY t.target_id, t.stratum_id, t.variable,
 
 def _insert_aca_ptc_data(engine):
     with engine.connect() as conn:
-        strata = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        strata = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
         for sid in strata:
             conn.execute(
                 text(
@@ -161,6 +161,10 @@ def _insert_aca_ptc_data(engine):
             (16, 9, "aca_ptc", ">", "0"),
             (17, 10, "congressional_district_geoid", "=", "601"),
             (18, 11, "congressional_district_geoid", "=", "602"),
+            (19, 12, "ssi", ">", "0"),
+            (20, 12, "age", "<", "18"),
+            (21, 13, "adjusted_gross_income", ">", "0"),
+            (22, 13, "refundable_ctc", ">", "0"),
         ]
         for cid, sid, var, op, val in constraints:
             conn.execute(
@@ -200,6 +204,8 @@ def _insert_aca_ptc_data(engine):
             (20, 10, "adjusted_gross_income", 0, 1000.0, 2021, 1),
             (21, 10, "adjusted_gross_income", 0, 1500.0, 2022, 1),
             (22, 11, "adjusted_gross_income", 0, 800.0, 2022, 1),
+            (23, 12, "person_count", 0, 1001922.0, 2024, 1),
+            (24, 13, "tax_unit_count", 0, 123.0, 2024, 1),
         ]
         for tid, sid, var, reform_id, val, period, active in targets:
             conn.execute(
@@ -266,6 +272,33 @@ class TestQueryTargets(unittest.TestCase):
         self.assertIn("geo_level", df.columns)
         self.assertIn("geographic_id", df.columns)
         self.assertIn("domain_variable", df.columns)
+
+    def test_domain_variables_filter_matches_multi_constraint_strata(self):
+        b = self._make_builder()
+        df = b._query_targets({"domain_variables": ["ssi"]})
+
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.iloc[0]["variable"], "person_count")
+        self.assertEqual(df.iloc[0]["domain_variable"], "age,ssi")
+
+    def test_domain_variables_filter_preserves_exact_comma_joined_domains(self):
+        b = self._make_builder()
+        df = b._query_targets(
+            {"domain_variables": ["adjusted_gross_income,refundable_ctc"]}
+        )
+
+        self.assertEqual(len(df), 1)
+        self.assertEqual(df.iloc[0]["variable"], "tax_unit_count")
+        self.assertEqual(
+            df.iloc[0]["domain_variable"],
+            "adjusted_gross_income,refundable_ctc",
+        )
+
+    def test_domain_variables_filter_excludes_non_domain_constraints(self):
+        b = self._make_builder()
+        df = b._query_targets({"domain_variables": ["tax_unit_is_filer"]})
+
+        self.assertEqual(len(df), 0)
 
     def test_all_geo_levels_returned(self):
         b = self._make_builder()

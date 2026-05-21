@@ -920,7 +920,39 @@ def calibrate_weights(
                 extra_constraints=extra_constraints,
                 n_ages=n_ages,
             )
-            approximate_error_pct = float(feasibility["best_case_max_pct_error"])
+            reported_error_pct = float(feasibility["best_case_max_pct_error"])
+            realized_audit = build_calibration_audit(
+                X=X,
+                y_target=y_target,
+                weights=w_new,
+                baseline_weights=baseline_weights,
+                calibration_event=audit,
+                ss_values=ss_values,
+                ss_target=ss_target,
+                payroll_values=payroll_values,
+                payroll_target=payroll_target,
+                h6_income_values=h6_income_values,
+                h6_revenue_target=h6_revenue_target,
+                oasdi_tob_values=oasdi_tob_values,
+                oasdi_tob_target=oasdi_tob_target,
+                hi_tob_values=hi_tob_values,
+                hi_tob_target=hi_tob_target,
+                extra_constraints=extra_constraints,
+            )
+            realized_constraint_error_pct = float(
+                realized_audit.get("max_constraint_pct_error", float("inf"))
+            )
+            realized_age_error_pct = float(
+                realized_audit.get("age_max_pct_error", float("inf"))
+            )
+            approximate_error_pct = max(
+                reported_error_pct,
+                realized_constraint_error_pct,
+                realized_age_error_pct,
+            )
+            audit["lp_reported_constraint_error_pct"] = reported_error_pct
+            audit["lp_realized_constraint_error_pct"] = realized_constraint_error_pct
+            audit["lp_realized_age_error_pct"] = realized_age_error_pct
             exact_lp_available = approximate_error_pct <= max(tol * 100, 1e-6)
             if exact_lp_available and (
                 not allow_approximate_entropy or approximate_max_error_pct is None
@@ -968,6 +1000,12 @@ def calibrate_weights(
                     w_new,
                     approximate_max_error_pct,
                 )
+                if (
+                    dense_lp_info.get("best_case_max_pct_error", float("inf"))
+                    > float(approximate_max_error_pct) + 1e-6
+                ):
+                    dense_lp_weights = None
+                    dense_lp_info = None
             except Exception:
                 dense_lp_weights = None
                 dense_lp_info = None

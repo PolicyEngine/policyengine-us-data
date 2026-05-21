@@ -535,6 +535,28 @@ class TestLoadTargetConfig:
             "domain_variable": "wic",
         } in include_rules
 
+    def test_training_config_includes_ssi_recipient_count_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "ssi",
+        } in include_rules
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
+            "domain_variable": "age,ssi",
+        } in include_rules
+
     def test_training_config_includes_ported_loss_py_target_families(self):
         config = load_target_config(
             str(

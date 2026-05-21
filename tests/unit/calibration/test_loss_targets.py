@@ -26,6 +26,7 @@ from policyengine_us_data.utils.loss import (
     _add_irs_soi_aggregate_targets,
     _add_medicare_enrollment_target,
     _add_real_estate_tax_targets,
+    _add_ssi_recipient_targets,
     _add_transfer_balance_targets,
     _get_medicaid_national_targets,
     _get_aca_national_targets,
@@ -38,6 +39,7 @@ from policyengine_us_data.utils.loss import (
     get_target_loss_weights,
 )
 from policyengine_us_data.db import etl_national_targets
+from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
 
 
 def test_legacy_loss_targets_include_aggregate_qbi_deduction():
@@ -208,6 +210,24 @@ class _FakeMedicareEnrollmentSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeSSIRecipientSimulation:
+    def calculate(self, variable, map_to=None, period=None):
+        values = {
+            "ssi": [100.0, 50.0, 0.0, 75.0],
+            "age": [10.0, 40.0, 80.0, 70.0],
+        }
+        if variable not in values:
+            raise AssertionError(f"Unexpected variable {variable!r}")
+        assert map_to == "person"
+        assert period == 2024
+        return _FakeArrayResult(values[variable])
+
+    def map_result(self, values, source_entity, target_entity, how=None):
+        assert source_entity == "person"
+        assert target_entity == "household"
+        return np.asarray(values, dtype=np.float32)
+
+
 class _FakeCapitalGainsSimulation:
     def __init__(self):
         self.calculate_calls = []
@@ -302,6 +322,35 @@ def test_state_agi_targets_are_limited_to_filers(tmp_path, monkeypatch):
     np.testing.assert_array_equal(
         loss_matrix["state/CA/adjusted_gross_income/amount/1_10000"],
         np.array([0.0, 0.0, 5_000.0, 0.0]),
+    )
+
+
+def test_add_ssi_recipient_targets_adds_total_and_age_counts():
+    targets, loss_matrix = _add_ssi_recipient_targets(
+        pd.DataFrame(),
+        [],
+        _FakeSSIRecipientSimulation(),
+        2024,
+    )
+
+    assert targets == [
+        spec["person_count"] for spec in SSI_RECIPIENT_TARGETS_2024.values()
+    ]
+    np.testing.assert_array_equal(
+        loss_matrix["nation/ssa/ssi_recipients/all"],
+        np.array([1.0, 1.0, 0.0, 1.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["nation/ssa/ssi_recipients/under_18"],
+        np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["nation/ssa/ssi_recipients/18_64"],
+        np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix["nation/ssa/ssi_recipients/65_plus"],
+        np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32),
     )
 
 

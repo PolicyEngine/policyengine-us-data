@@ -1,4 +1,6 @@
 from .sipp import (
+    ASSET_JOB_EARNINGS_COLUMNS,
+    ASSET_PREDICTORS,
     train_tip_model,
     get_tip_model,
     train_asset_model,
@@ -19,6 +21,8 @@ from .sipp import (
 )
 
 __all__ = [
+    "ASSET_JOB_EARNINGS_COLUMNS",
+    "ASSET_PREDICTORS",
     "train_tip_model",
     "get_tip_model",
     "train_asset_model",

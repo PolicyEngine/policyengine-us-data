@@ -16,14 +16,17 @@ from policyengine_us_data.calibration.source_impute import (
     SIPP_IMPUTED_VARIABLES,
     SSI_DISABILITY_MODEL_VARIABLE,
     SIPP_TIPS_PREDICTORS,
+    _add_cps_asset_predictors,
     _impute_acs,
     _impute_org,
     _impute_scf,
     _impute_sipp,
+    _person_is_married,
     _person_state_fips,
     impute_source_variables,
     preserve_under_65_ssi_disability_criteria,
 )
+from policyengine_us_data.datasets.sipp.sipp import ASSET_PREDICTORS
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
@@ -123,6 +126,30 @@ class TestPredictorLists:
 
     def test_sipp_assets_has_income(self):
         assert "employment_income" in SIPP_ASSETS_PREDICTORS
+
+    def test_sipp_assets_use_shared_asset_predictors(self):
+        assert SIPP_ASSETS_PREDICTORS == ASSET_PREDICTORS
+
+    def test_sipp_assets_exclude_circular_and_noncomparable_predictors(self):
+        assert "ssi" not in SIPP_ASSETS_PREDICTORS
+        assert "ssi_reported" not in SIPP_ASSETS_PREDICTORS
+        assert "RSSI_YRYN" not in SIPP_ASSETS_PREDICTORS
+        assert not any("disab" in pred.lower() for pred in SIPP_ASSETS_PREDICTORS)
+
+    def test_sipp_assets_include_comparable_income_and_household_predictors(self):
+        expected = {
+            "employment_income",
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "social_security",
+            "retirement_income",
+            "non_ssi_income",
+            "count_under_18",
+            "count_under_6",
+            "household_size",
+        }
+        assert expected <= set(SIPP_ASSETS_PREDICTORS)
 
     def test_scf_has_income(self):
         assert "employment_income" in SCF_PREDICTORS
@@ -235,6 +262,62 @@ class TestPersonStateFips:
 
         result = _person_state_fips(data, state_fips, 2024)
         assert len(result) == 5
+
+
+class TestAssetPredictorHelpers:
+    def test_person_is_married_uses_existing_flag(self):
+        data = {"is_married": {2024: np.array([1, 0, 1], dtype=bool)}}
+
+        result = _person_is_married(data, 2024, 3)
+
+        np.testing.assert_array_equal(result, np.array([1.0, 0.0, 1.0]))
+
+    def test_person_is_married_falls_back_to_marital_unit_id(self):
+        data = {
+            "person_marital_unit_id": {
+                2024: np.array([10, 10, 20, 30, 30]),
+            }
+        }
+
+        result = _person_is_married(data, 2024, 5)
+
+        np.testing.assert_array_equal(
+            result,
+            np.array([1.0, 1.0, 0.0, 1.0, 1.0]),
+        )
+
+    def test_add_cps_asset_predictors_builds_non_ssi_income(self):
+        data = {
+            "person_household_id": {2024: np.array([1, 1, 2])},
+            "age": {2024: np.array([40, 6, 70], dtype=np.float32)},
+            "person_marital_unit_id": {2024: np.array([1, 1, 2])},
+            "social_security": {2024: np.array([100.0, 0.0, 500.0])},
+            "retirement_distributions": {2024: np.array([10.0, 0.0, 20.0])},
+            "pension_income": {2024: np.array([5.0, 0.0, 30.0])},
+        }
+        cps = pd.DataFrame(
+            {
+                "employment_income": [1000.0, 0.0, 200.0],
+                "interest_income": [1.0, 0.0, 2.0],
+                "dividend_income": [3.0, 0.0, 4.0],
+                "rental_income": [0.0, 0.0, 5.0],
+                "age": [40.0, 6.0, 70.0],
+                "is_male": [True, False, False],
+            }
+        )
+
+        result = _add_cps_asset_predictors(cps, data, 2024)
+
+        assert set(SIPP_ASSETS_PREDICTORS) <= set(result.columns)
+        np.testing.assert_array_equal(result["count_under_18"], [1.0, 1.0, 0.0])
+        np.testing.assert_array_equal(result["count_under_6"], [0.0, 0.0, 0.0])
+        np.testing.assert_array_equal(result["household_size"], [2.0, 2.0, 1.0])
+        np.testing.assert_array_equal(result["is_married"], [1.0, 1.0, 0.0])
+        np.testing.assert_array_equal(result["retirement_income"], [15.0, 0.0, 50.0])
+        np.testing.assert_array_equal(
+            result["non_ssi_income"],
+            [1115.0, 0.0, 750.0],
+        )
 
 
 class TestSubfunctions:

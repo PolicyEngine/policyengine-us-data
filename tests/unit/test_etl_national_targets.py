@@ -13,11 +13,13 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.db.etl_national_targets import (
     MEDICARE_PART_B_AGE_TARGET_YEAR,
+    _ssi_recipient_count_targets,
     extract_national_targets,
     load_medicare_part_b_age_targets,
     load_national_targets,
     load_state_acs_rent_targets,
 )
+from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
 
 
 def test_national_targets_do_not_extract_treasury_eitc():
@@ -399,6 +401,44 @@ def test_extract_national_targets_includes_wic_targets():
     assert wic_count_targets[0]["person_count"] == 6_704_000
 
 
+def test_ssi_recipient_count_targets_are_count_only_and_age_stratified():
+    targets = _ssi_recipient_count_targets()
+
+    assert len(targets) == 4
+    assert {target["target_variable"] for target in targets} == {"person_count"}
+    assert {target["person_count"] for target in targets} == {
+        spec["person_count"] for spec in SSI_RECIPIENT_TARGETS_2024.values()
+    }
+    assert all(
+        constraint["constraint_variable"] != "social_security"
+        for target in targets
+        for constraint in target["constraints"]
+    )
+    under_18 = next(
+        target for target in targets if target["stratum_notes"].endswith("Under 18")
+    )
+    assert {"constraint_variable": "ssi", "operation": ">", "value": "0"} in under_18[
+        "constraints"
+    ]
+    assert {"constraint_variable": "age", "operation": "<", "value": "18"} in under_18[
+        "constraints"
+    ]
+
+
+def test_extract_national_targets_includes_ssi_count_targets():
+    targets = extract_national_targets(year=2024)
+    ssi_targets = [
+        target
+        for target in targets["conditional_count_targets"]
+        if target["constraint_variable"] == "ssi"
+    ]
+
+    assert len(ssi_targets) == 4
+    assert {target["person_count"] for target in ssi_targets} == {
+        spec["person_count"] for spec in SSI_RECIPIENT_TARGETS_2024.values()
+    }
+
+
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
     tmp_path, monkeypatch
 ):
@@ -458,6 +498,68 @@ def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
         ).first()
         assert medicaid_target is not None
         assert medicaid_target.value == 72_429_055
+
+
+def test_load_national_targets_supports_multi_constraint_ssi_counts(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        _make_stratum(session, notes="United States")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    conditional_targets = [
+        target
+        for target in _ssi_recipient_count_targets()
+        if target["stratum_notes"].endswith("Ages 18-64")
+    ]
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=conditional_targets,
+    )
+
+    with Session(engine) as session:
+        ssi_stratum = session.exec(
+            select(Stratum).where(
+                Stratum.notes == "National SSI Federal Payment Recipients - Ages 18-64"
+            )
+        ).first()
+        assert ssi_stratum is not None
+
+        constraints = {
+            (
+                constraint.constraint_variable,
+                constraint.operation,
+                constraint.value,
+            )
+            for constraint in ssi_stratum.constraints_rel
+        }
+        assert constraints == {
+            ("ssi", ">", "0"),
+            ("age", ">=", "18"),
+            ("age", "<", "65"),
+        }
+
+        ssi_target = session.exec(
+            select(Target).where(
+                Target.stratum_id == ssi_stratum.stratum_id,
+                Target.variable == "person_count",
+                Target.period == 2024,
+            )
+        ).first()
+        assert ssi_target is not None
+        assert ssi_target.value == 3_905_779
 
 
 def test_load_national_targets_supports_medicare_enrollment_counts(

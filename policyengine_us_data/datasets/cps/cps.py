@@ -447,6 +447,10 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
 
 
 TEMPORARY_TAKEUP_SOURCE_ANCHORS = ("snap_reported", "ssi_reported")
+TEMPORARY_IMPUTATION_SOURCE_VARIABLES = (
+    "pension_income",
+    "retirement_distributions",
+)
 
 
 def _drop_persisted_dataset_variables(file_path, variable_names):
@@ -2753,6 +2757,8 @@ def add_tips(self, cps: h5py.File):
             "is_household_head",
             "has_disability_income",
             "household_size",
+            "pension_income",
+            "retirement_distributions",
             "retirement_income",
             "non_ssi_income",
         ],
@@ -2760,6 +2766,10 @@ def add_tips(self, cps: h5py.File):
     )
     self.save_dataset(cps)
     self.save_dataset(household_vehicle_data)
+    _drop_persisted_dataset_variables(
+        self.file_path,
+        TEMPORARY_IMPUTATION_SOURCE_VARIABLES,
+    )
 
 
 @pipeline_node(

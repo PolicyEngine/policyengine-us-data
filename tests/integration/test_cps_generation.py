@@ -137,7 +137,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
         assert h5_file["takes_up_housing_assistance_if_eligible"][:].tolist() == [True]
 
 
-def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
+def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
     import policyengine_us_data.datasets.sipp as sipp_module
     from policyengine_us_data.datasets.cps.cps import add_tips
 
@@ -168,6 +168,13 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     class FakeDataset:
         def __init__(self):
             self.raw_cps = FakeRawCPS()
+            self.file_path = tmp_path / "cps_2024.h5"
+            with h5py.File(self.file_path, "w") as h5_file:
+                h5_file.create_dataset("pension_income", data=np.array([1.0, 2.0]))
+                h5_file.create_dataset(
+                    "retirement_distributions",
+                    data=np.array([3.0, 4.0]),
+                )
             self.saved_dataset = None
             self.base_dataset = {
                 "person_id": [1, 2],
@@ -178,6 +185,8 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 "qualified_dividend_income": [40.0, 0.0],
                 "non_qualified_dividend_income": [10.0, 0.0],
                 "rental_income": [0.0, 0.0],
+                "pension_income": [2_000.0, 0.0],
+                "retirement_distributions": [3_000.0, 4_000.0],
                 "age": [30, 45],
                 "household_weight": [1.0, 1.0],
                 "is_female": [False, True],
@@ -206,6 +215,7 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
         def predict(self, X_test, mean_quantile):
             assert X_test["interest_income"].tolist() == [125.0, 0.0]
             assert X_test["dividend_income"].tolist() == [50.0, 0.0]
+            assert X_test["retirement_income"].tolist() == [5_000.0, 4_000.0]
             return pd.DataFrame(
                 {
                     "bank_account_assets": [0.0, 0.0],
@@ -268,6 +278,11 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
         True,
         False,
     ]
+    assert "pension_income" not in dataset.saved_dataset
+    assert "retirement_distributions" not in dataset.saved_dataset
+    with h5py.File(dataset.file_path, "r") as h5_file:
+        assert "pension_income" not in h5_file
+        assert "retirement_distributions" not in h5_file
 
 
 def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):

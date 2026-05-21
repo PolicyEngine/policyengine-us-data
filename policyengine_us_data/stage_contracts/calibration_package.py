@@ -568,7 +568,7 @@ def _parameters_with_package_identity(
         payload["target_config_mode"] = (
             "all_active_targets" if payload.get("target_config") is None else "explicit"
         )
-    return payload
+    return CalibrationPackageParameters.from_dict(payload).to_dict()
 
 
 def _require_existing_file(path: Path, label: str) -> None:

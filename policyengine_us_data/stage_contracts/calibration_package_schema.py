@@ -238,11 +238,10 @@ class CalibrationPackageParameters:
         _validate_bool(self.parallel_matrix, "parallel_matrix")
         if self.target_config is not None and not isinstance(self.target_config, str):
             raise ValueError("target_config must be a string or None")
-        if self.target_config_sha256 is not None and not isinstance(
+        _validate_optional_sha256(
             self.target_config_sha256,
-            str,
-        ):
-            raise ValueError("target_config_sha256 must be a string or None")
+            "target_config_sha256",
+        )
         if self.target_config_mode is not None:
             if not isinstance(self.target_config_mode, str):
                 raise ValueError("target_config_mode must be a string or None")
@@ -649,5 +648,8 @@ def _validate_optional_sha256(value: Any, key: str) -> None:
         return
     if not isinstance(value, str) or not value.startswith("sha256:"):
         raise ValueError(f"Calibration package field {key!r} must be a SHA-256 digest")
-    if len(value) != len("sha256:") + 64:
+    digest = value.removeprefix("sha256:")
+    if len(digest) != 64:
+        raise ValueError(f"Calibration package field {key!r} must be a SHA-256 digest")
+    if any(character not in "0123456789abcdef" for character in digest.lower()):
         raise ValueError(f"Calibration package field {key!r} must be a SHA-256 digest")

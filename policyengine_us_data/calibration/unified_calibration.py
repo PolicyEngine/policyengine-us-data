@@ -1452,6 +1452,11 @@ def run_calibration(
 
     started_at = _utc_now_isoformat()
     t0 = time.time()
+    resolved_target_identity = _target_config_identity_for_metadata(
+        target_config=target_config,
+        target_config_path=target_config_path,
+        target_config_identity=target_config_identity,
+    )
 
     # Early exit: load pre-built package
     if package_path is not None:
@@ -1697,11 +1702,6 @@ def run_calibration(
     # Step 6b: Save the calibration package. By default this is the
     # minimal package selected by target_config.yaml; use
     # --all-active-targets to build a broad diagnostic package.
-    resolved_target_identity = _target_config_identity_for_metadata(
-        target_config=target_config,
-        target_config_path=target_config_path,
-        target_config_identity=target_config_identity,
-    )
     metadata = {
         "dataset_path": dataset_path,
         "db_path": db_path,

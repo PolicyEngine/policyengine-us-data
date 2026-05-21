@@ -31,6 +31,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _build_clone_test_frame,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
+    _splice_cps_only_predictions,
     apply_retirement_constraints,
     reconcile_ss_subcomponents,
 )
@@ -202,6 +203,9 @@ class TestVariableListConsistency:
 
     def test_weeks_worked_is_cps_only_imputed_for_clone_records(self):
         assert "weeks_worked" in set(CPS_ONLY_IMPUTED_VARIABLES)
+
+    def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
+        assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -830,6 +834,35 @@ class TestLLCEligibilityInputImputation:
 
 
 class TestStage2PostProcessing:
+    def test_splice_replaces_clone_half_ssi_disability_criteria(self, monkeypatch):
+        import policyengine_us
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset):
+                self.tax_benefit_system = type("TBS", (), {"variables": {}})()
+
+        monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
+
+        data = {
+            "person_id": {2024: np.array([1, 2, 101, 102])},
+            "meets_ssi_disability_criteria": {
+                2024: np.array([True, False, True, False])
+            },
+        }
+        predictions = pd.DataFrame({"meets_ssi_disability_criteria": [False, True]})
+
+        result = _splice_cps_only_predictions(
+            data,
+            predictions,
+            2024,
+            dataset_path="unused",
+        )
+
+        np.testing.assert_array_equal(
+            result["meets_ssi_disability_criteria"][2024],
+            np.array([True, False, False, True]),
+        )
+
     def test_zeroes_esi_premiums_for_non_policyholder_clone_records(self):
         predictions = pd.DataFrame(
             {"employer_sponsored_insurance_premiums": [6_000.0, 4_000.0]}

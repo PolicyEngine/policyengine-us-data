@@ -178,6 +178,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "financial_assistance",
     "survivor_benefits",
     "disability_benefits",
+    "meets_ssi_disability_criteria",
     "strike_benefits",
     "receives_wic",
     # SPM variables

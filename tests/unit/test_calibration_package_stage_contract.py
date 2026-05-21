@@ -20,6 +20,10 @@ from policyengine_us_data.stage_contracts import (
     contract_to_json,
     GeographyAssignmentSummary,
 )
+from policyengine_us_data.calibration_package.matrix import (
+    MatrixBuildResult,
+    MatrixBuildSpec,
+)
 from policyengine_us_data.stage_contracts.calibration_package import (
     CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     CalibrationPackageParameters,
@@ -32,10 +36,29 @@ from policyengine_us_data.stage_contracts.calibration_package import (
     validate_persisted_calibration_package_contract,
     write_calibration_package_contract,
 )
+from policyengine_us_data.stage_contracts.calibration_package_schema import (
+    MatrixBuildSummary,
+)
 from policyengine_us_data.utils.geography_checksum import (
     canonical_geography_checksum,
     hash_string_array,
 )
+
+
+def matrix_build_summary_for_package(package: dict) -> MatrixBuildSummary:
+    metadata = package["metadata"]
+    return MatrixBuildResult.from_builder_output(
+        spec=MatrixBuildSpec(
+            matrix_builder=metadata["matrix_builder"],
+            base_n_records=metadata["base_n_records"],
+            n_clones=metadata["n_clones"],
+            chunk_size=metadata["chunk_size"],
+            chunk_dir=metadata["chunk_dir"],
+        ),
+        targets_df=package["targets_df"],
+        X_sparse=package["X_sparse"],
+        target_names=package["target_names"],
+    ).summary()
 
 
 def test_calibration_package_contract_records_stage_2_handoff(tmp_path):
@@ -112,6 +135,48 @@ def test_calibration_package_contract_references_geography_summary_artifact(tmp_
     assert (
         outputs["geography_assignment_summary"].metadata["canonical_geography_sha256"]
         == geography_summary.canonical_geography_sha256
+    )
+    assert contract.execution.reuse_summary.expected_outputs == 2
+    assert (
+        validate_calibration_package_contract(
+            package_path=package_path,
+            package=package,
+            dataset_path=dataset_path,
+            db_path=db_path,
+        )
+        == contract
+    )
+
+
+def test_calibration_package_contract_references_matrix_summary_artifact(tmp_path):
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = write_calibration_package_payload(package_path)
+    matrix_summary = matrix_build_summary_for_package(package)
+    matrix_path = tmp_path / "matrix_summary.json"
+    matrix_path.write_text(
+        json.dumps(matrix_summary.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    contract = write_calibration_package_contract(
+        package_path=package_path,
+        dataset_path=dataset_path,
+        db_path=db_path,
+        package=package,
+        parameters=calibration_package_parameters(),
+        run_id="run-a",
+        completed_at="2026-05-08T12:02:00Z",
+        matrix_summary_path=matrix_path,
+        matrix_build_summary=matrix_summary,
+    )
+
+    outputs = {artifact.logical_name: artifact for artifact in contract.outputs}
+    assert outputs["matrix_summary"].media_type == "application/json"
+    assert outputs["matrix_summary"].metadata["matrix_builder"] == "chunked"
+    assert outputs["matrix_summary"].metadata["matrix_shape"] == (2, 3)
+    assert (
+        MatrixBuildSummary.from_dict(contract.metadata["matrix_build"]).to_dict()
+        == matrix_summary.to_dict()
     )
     assert contract.execution.reuse_summary.expected_outputs == 2
     assert (

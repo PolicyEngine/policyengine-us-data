@@ -12,6 +12,7 @@ from .specs import (
     DEFAULT_TARGET_CONFIG_PATH,
     GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
     MATRIX_BUILD_DIRNAME,
+    MATRIX_SUMMARY_FILENAME,
     SOURCE_DATASET_FILENAME,
     TARGET_CONFIG_IDENTITY_MODES,
     TARGET_DATABASE_FILENAME,
@@ -36,6 +37,13 @@ from .geography import (
     GeographyAssignmentSpec,
     geography_spec_from_metadata,
     geography_summary_from_package,
+)
+from .matrix import (
+    MATRIX_BUILD_SCHEMA_VERSION,
+    MATRIX_BUILDER_MODES,
+    MatrixBuildResult,
+    MatrixBuildService,
+    MatrixBuildSpec,
 )
 from .payload import (
     LEGACY_MISSING_GEOGRAPHY_WARNING,
@@ -65,7 +73,10 @@ __all__ = [
     "GEOGRAPHY_ASSIGNMENT_ORDERING",
     "GEOGRAPHY_ASSIGNMENT_SCHEMA_VERSION",
     "GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME",
+    "MATRIX_BUILD_SCHEMA_VERSION",
     "MATRIX_BUILD_DIRNAME",
+    "MATRIX_BUILDER_MODES",
+    "MATRIX_SUMMARY_FILENAME",
     "SOURCE_DATASET_FILENAME",
     "TARGET_CONFIG_IDENTITY_MODES",
     "TARGET_DATABASE_FILENAME",
@@ -77,6 +88,9 @@ __all__ = [
     "GeographyAssignmentResult",
     "GeographyAssignmentSpec",
     "LEGACY_MISSING_GEOGRAPHY_WARNING",
+    "MatrixBuildResult",
+    "MatrixBuildService",
+    "MatrixBuildSpec",
     "Stage2BuildContext",
     "Stage2InputBundle",
     "Stage2InputBundleError",

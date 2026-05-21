@@ -50,11 +50,16 @@ from policyengine_us_data.calibration_package.payload import (
     CalibrationPackageWriter,
 )
 from policyengine_us_data.calibration_package.geography import GeographyAssignmentSpec
+from policyengine_us_data.calibration_package.matrix import (
+    MatrixBuildService,
+    MatrixBuildSpec,
+)
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
     CALIBRATION_TARGET_FACETS_FILENAME,
     CALIBRATION_TARGETS_FILENAME,
     GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
+    MATRIX_SUMMARY_FILENAME,
     TargetConfigIdentity,
     resolve_target_config_identity,
 )
@@ -1664,41 +1669,44 @@ def run_calibration(
     do_rerandomize = not skip_takeup_rerandomize
     t_matrix = time.time()
     builder.dataset_path = dataset_for_matrix
+    matrix_spec = MatrixBuildSpec.from_runtime_args(
+        chunked_matrix=chunked_matrix,
+        base_n_records=n_records,
+        n_clones=n_clones,
+        chunk_size=chunk_size,
+        chunk_dir=chunk_dir,
+        keep_chunks=keep_chunks,
+        resume_chunks=resume_chunks,
+        rerandomize_takeup=do_rerandomize,
+        parallel=parallel,
+        num_matrix_workers=num_matrix_workers,
+        county_level=not skip_county,
+        workers=workers,
+        run_id=run_id,
+    )
     if chunked_matrix:
         if workers != 1:
             logger.warning(
                 "--workers is ignored by --chunked-matrix; chunks run sequentially"
             )
-        targets_df, X_sparse, target_names = builder.build_matrix_chunked(
-            geography=geography,
-            sim=sim,
-            target_filter=target_filter,
-            hierarchical_domains=hierarchical_domains,
-            chunk_size=chunk_size,
-            chunk_dir=chunk_dir,
-            keep_chunks=keep_chunks,
-            resume_chunks=resume_chunks,
-            rerandomize_takeup=do_rerandomize,
-            parallel=parallel,
-            num_matrix_workers=num_matrix_workers,
-            run_id=run_id,
-        )
     else:
         if parallel:
             logger.info(
                 "--parallel is ignored on the non-chunked matrix path; "
                 "pass --chunked-matrix to enable Modal fan-out"
             )
-        targets_df, X_sparse, target_names = builder.build_matrix(
-            geography=geography,
-            sim=sim,
-            target_filter=target_filter,
-            hierarchical_domains=hierarchical_domains,
-            sim_modifier=sim_modifier,
-            rerandomize_takeup=do_rerandomize,
-            county_level=not skip_county,
-            workers=workers,
-        )
+    matrix_result = MatrixBuildService(builder=builder).build(
+        spec=matrix_spec,
+        geography=geography,
+        sim=sim,
+        target_filter=target_filter,
+        hierarchical_domains=hierarchical_domains,
+        sim_modifier=sim_modifier,
+    )
+    targets_df = matrix_result.targets_df
+    X_sparse = matrix_result.X_sparse
+    target_names = list(matrix_result.target_names)
+    matrix_summary = matrix_result.summary()
 
     builder.print_uprating_summary(targets_df)
     logger.info(
@@ -1733,9 +1741,11 @@ def run_calibration(
             resolved_target_identity.mode if resolved_target_identity else "explicit"
         ),
         "package_scope": "minimal" if target_config else "all_active_targets",
-        "matrix_builder": "chunked" if chunked_matrix else "precompute",
-        "chunk_size": chunk_size if chunked_matrix else None,
-        "chunk_dir": chunk_dir if chunked_matrix else None,
+        "matrix_builder": matrix_summary.matrix_builder,
+        "chunk_size": matrix_summary.chunk_size,
+        "chunk_dir": matrix_summary.chunk_dir,
+        "matrix_build_spec": matrix_spec.to_dict(),
+        "matrix_build_summary": matrix_summary.to_dict(),
         "geography_assignment_spec": geography_spec.to_dict(),
         "geography_assignment_sha256": geography_result.canonical_geography_sha256,
         "geography_assignment_status": geography_result.status,
@@ -1756,8 +1766,11 @@ def run_calibration(
         geography_summary_path = package_path.with_name(
             GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME
         )
+        matrix_summary_path = package_path.with_name(MATRIX_SUMMARY_FILENAME)
         target_selection.write_artifacts(targets_path, target_facets_path)
         geography_result.write_summary(geography_summary_path)
+        matrix_result.write_summary(matrix_summary_path)
+        metadata["matrix_summary_sha256"] = compute_file_checksum(matrix_summary_path)
         package_payload = CalibrationPackagePayload(
             X_sparse=X_sparse,
             targets_df=targets_df,
@@ -1813,6 +1826,8 @@ def run_calibration(
             target_selection_summary=target_selection.summary(),
             geography_summary_path=geography_summary_path,
             geography_assignment_summary=geography_result.summary(),
+            matrix_summary_path=matrix_summary_path,
+            matrix_build_summary=matrix_summary,
         )
         validate_calibration_package_contract(
             package_path=package_path,

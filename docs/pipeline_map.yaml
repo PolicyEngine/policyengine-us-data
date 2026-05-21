@@ -814,6 +814,9 @@ stages:
     - stage2_target_selection_result
     - stage2_geography_assignment_spec
     - stage2_geography_assignment_result
+    - stage2_matrix_build_spec
+    - stage2_matrix_build_service
+    - stage2_matrix_build_result
     - target_resolve
     - stage2_target_config_apply
     - target_uprate
@@ -835,6 +838,7 @@ stages:
     - out_targets
     - out_target_facets
     - out_geography_summary
+    - out_matrix_summary
     - stage2_calibration_package_contract_writer
     - out_contract
     - stage2_calibration_package_contract_validator
@@ -903,6 +907,10 @@ stages:
     label: geography_assignment_summary.json
     node_type: artifact
     description: Compact clone-major geography identity summary for block, county, state, and congressional district arrays
+  - id: out_matrix_summary
+    label: matrix_summary.json
+    node_type: artifact
+    description: Compact Stage 2 matrix shape, sparsity, target order, builder mode, and chunk lineage summary
   - id: out_contract
     label: calibration_package_contract.json
     node_type: artifact
@@ -981,13 +989,13 @@ stages:
     edge_type: data_flow
     label: selected targets
   - source: stage2_target_selection_result
-    target: build_matrix
+    target: stage2_matrix_build_service
     edge_type: data_flow
     label: matrix target order
   - source: stage2_target_selection_result
-    target: build_matrix_chunked
+    target: stage2_matrix_build_result
     edge_type: data_flow
-    label: matrix target order
+    label: selected target summary
   - source: in_cps_s5
     target: stage2_geography_assignment_spec
     edge_type: data_flow
@@ -1005,13 +1013,17 @@ stages:
     edge_type: data_flow
     label: block populations
   - source: stage2_geography_assignment_result
-    target: build_matrix
+    target: stage2_matrix_build_service
     edge_type: data_flow
     label: clone-major geography
   - source: stage2_geography_assignment_result
-    target: build_matrix_chunked
+    target: out_geography_summary
+    edge_type: produces_artifact
+    label: geography identity
+  - source: stage2_matrix_build_spec
+    target: stage2_matrix_build_service
     edge_type: data_flow
-    label: clone-major geography
+    label: builder mode and chunk settings
   - source: stage2_target_catalog_load
     target: stage2_target_config_apply
     edge_type: data_flow
@@ -1059,11 +1071,28 @@ stages:
     edge_type: uses_library
     label: chunked path
   - source: build_matrix
-    target: stage2_payload_boundary
+    target: stage2_matrix_build_result
     edge_type: data_flow
   - source: build_matrix_chunked
+    target: stage2_matrix_build_result
+    edge_type: data_flow
+    label: chunk manifest and shards
+  - source: stage2_matrix_build_service
+    target: build_matrix
+    edge_type: uses_library
+    label: standard engine adapter
+  - source: stage2_matrix_build_service
+    target: build_matrix_chunked
+    edge_type: uses_library
+    label: chunked engine adapter
+  - source: stage2_matrix_build_result
     target: stage2_payload_boundary
     edge_type: data_flow
+    label: matrix, target rows, target names
+  - source: stage2_matrix_build_result
+    target: out_matrix_summary
+    edge_type: produces_artifact
+    label: matrix diagnostic summary
   - source: stage2_payload_boundary
     target: stage2_payload_writer
     edge_type: data_flow
@@ -1091,10 +1120,6 @@ stages:
     target: out_target_facets
     edge_type: produces_artifact
     label: derived facets
-  - source: stage2_geography_assignment_result
-    target: out_geography_summary
-    edge_type: produces_artifact
-    label: geography identity
   - source: out_pkg
     target: stage2_payload_reader
     edge_type: data_flow
@@ -1117,6 +1142,10 @@ stages:
     target: stage2_calibration_package_contract_writer
     edge_type: data_flow
     label: geography summary artifact
+  - source: out_matrix_summary
+    target: stage2_calibration_package_contract_writer
+    edge_type: data_flow
+    label: matrix summary artifact
   - source: stage2_artifact_specs
     target: stage2_calibration_package_contract_writer
     edge_type: uses_utility
@@ -1132,6 +1161,9 @@ stages:
     edge_type: validates
   - source: stage2_calibration_package_contract_writer
     target: out_geography_summary
+    edge_type: validates
+  - source: stage2_calibration_package_contract_writer
+    target: out_matrix_summary
     edge_type: validates
   - source: out_pkg
     target: stage2_calibration_package_contract_validator

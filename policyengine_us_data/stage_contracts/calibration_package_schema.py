@@ -54,6 +54,34 @@ GEOGRAPHY_ASSIGNMENT_SUMMARY_KEYS = frozenset(
         "validation_errors",
     }
 )
+MATRIX_BUILD_SUMMARY_KEYS = frozenset(
+    {
+        "base_n_records",
+        "chunk_dir",
+        "chunk_manifest_path",
+        "chunk_manifest_sha256",
+        "chunk_shard_count",
+        "chunk_shard_paths",
+        "chunk_size",
+        "county_level",
+        "keep_chunks",
+        "matrix_builder",
+        "matrix_density",
+        "matrix_nnz",
+        "matrix_shape",
+        "n_clones",
+        "n_columns",
+        "n_targets",
+        "num_matrix_workers",
+        "parallel_matrix",
+        "rerandomize_takeup",
+        "resume_chunks",
+        "schema_version",
+        "target_name_count",
+        "target_order_sha256",
+        "workers",
+    }
+)
 CALIBRATION_PACKAGE_PARAMETER_KEYS = frozenset(
     {
         "chunk_size",
@@ -346,6 +374,185 @@ class GeographyAssignmentSummary:
             "state_fips_unique_count": self.state_fips_unique_count,
             "status": self.status,
             "validation_errors": list(self.validation_errors),
+        }
+
+
+@dataclass(frozen=True, kw_only=True)
+class MatrixBuildSummary:
+    """Canonical summary of Stage 2 matrix materialization."""
+
+    schema_version: int
+    matrix_shape: tuple[int, int]
+    matrix_nnz: int
+    matrix_density: float
+    n_targets: int
+    n_columns: int
+    target_name_count: int
+    target_order_sha256: str
+    base_n_records: int
+    n_clones: int
+    matrix_builder: str
+    chunk_size: int | None
+    chunk_dir: str | None
+    keep_chunks: bool
+    resume_chunks: bool
+    rerandomize_takeup: bool
+    parallel_matrix: bool
+    num_matrix_workers: int | None
+    county_level: bool
+    workers: int | None
+    chunk_manifest_path: str | None
+    chunk_manifest_sha256: str | None
+    chunk_shard_count: int
+    chunk_shard_paths: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
+        if len(self.matrix_shape) != 2:
+            raise ValueError("matrix_shape must have two entries")
+        for index, value in enumerate(self.matrix_shape):
+            _validate_non_negative_int(value, f"matrix_shape[{index}]")
+        _validate_non_negative_int(self.matrix_nnz, "matrix_nnz")
+        _validate_non_negative_float(self.matrix_density, "matrix_density")
+        _validate_non_negative_int(self.n_targets, "n_targets")
+        _validate_non_negative_int(self.n_columns, "n_columns")
+        _validate_non_negative_int(self.target_name_count, "target_name_count")
+        _validate_optional_sha256(self.target_order_sha256, "target_order_sha256")
+        _validate_positive_int(self.base_n_records, "base_n_records")
+        _validate_positive_int(self.n_clones, "n_clones")
+        _validate_optional_positive_int(self.chunk_size, "chunk_size")
+        _validate_optional_positive_int(
+            self.num_matrix_workers,
+            "num_matrix_workers",
+        )
+        _validate_optional_positive_int(self.workers, "workers")
+        _validate_bool(self.keep_chunks, "keep_chunks")
+        _validate_bool(self.resume_chunks, "resume_chunks")
+        _validate_bool(self.rerandomize_takeup, "rerandomize_takeup")
+        _validate_bool(self.parallel_matrix, "parallel_matrix")
+        _validate_bool(self.county_level, "county_level")
+        _validate_non_negative_int(self.chunk_shard_count, "chunk_shard_count")
+        _validate_optional_sha256(
+            self.chunk_manifest_sha256,
+            "chunk_manifest_sha256",
+        )
+        if self.matrix_builder not in {"precompute", "chunked"}:
+            raise ValueError("matrix_builder must be 'precompute' or 'chunked'")
+        for key in ("chunk_dir", "chunk_manifest_path"):
+            value = getattr(self, key)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{key} must be a string or None")
+        if not isinstance(self.chunk_shard_paths, tuple) or not all(
+            isinstance(path, str) for path in self.chunk_shard_paths
+        ):
+            raise ValueError("chunk_shard_paths must be a tuple of strings")
+        if self.chunk_shard_count != len(self.chunk_shard_paths):
+            raise ValueError("chunk_shard_count must match chunk_shard_paths length")
+        if self.matrix_shape[0] != self.n_targets:
+            raise ValueError("matrix_shape row count must equal n_targets")
+        if self.matrix_shape[0] != self.target_name_count:
+            raise ValueError("matrix_shape row count must equal target_name_count")
+        if self.matrix_shape[1] != self.n_columns:
+            raise ValueError("matrix_shape column count must equal n_columns")
+        if self.base_n_records * self.n_clones != self.n_columns:
+            raise ValueError("base_n_records * n_clones must equal n_columns")
+        if self.matrix_builder == "chunked":
+            if self.chunk_size is None:
+                raise ValueError("chunk_size is required for chunked matrix builds")
+            if self.workers is not None:
+                raise ValueError("workers must be None for chunked matrix builds")
+        else:
+            if self.chunk_size is not None:
+                raise ValueError("chunk_size must be None for precompute matrix builds")
+            if self.chunk_dir is not None:
+                raise ValueError("chunk_dir must be None for precompute matrix builds")
+            if self.keep_chunks or self.resume_chunks:
+                raise ValueError("chunk cache flags require chunked matrix builds")
+            if self.parallel_matrix:
+                raise ValueError("parallel_matrix requires chunked matrix builds")
+            if self.num_matrix_workers is not None:
+                raise ValueError(
+                    "num_matrix_workers must be None for precompute matrix builds"
+                )
+            if self.workers is None:
+                raise ValueError("workers is required for precompute matrix builds")
+        if self.parallel_matrix and self.num_matrix_workers is None:
+            raise ValueError(
+                "num_matrix_workers is required when parallel_matrix is true"
+            )
+        if not self.parallel_matrix and self.num_matrix_workers is not None:
+            raise ValueError(
+                "num_matrix_workers must be None when parallel_matrix is false"
+            )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "MatrixBuildSummary":
+        """Parse matrix summary JSON into a typed schema object."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("matrix build summary must be a mapping")
+        _require_exact_keys(data, "matrix build summary", MATRIX_BUILD_SUMMARY_KEYS)
+        return cls(
+            schema_version=_required_int_field(data, "schema_version"),
+            matrix_shape=_matrix_shape_field(data, "matrix_shape"),
+            matrix_nnz=_required_int_field(data, "matrix_nnz"),
+            matrix_density=_required_float_field(data, "matrix_density"),
+            n_targets=_required_int_field(data, "n_targets"),
+            n_columns=_required_int_field(data, "n_columns"),
+            target_name_count=_required_int_field(data, "target_name_count"),
+            target_order_sha256=_required_string_field(
+                data,
+                "target_order_sha256",
+            ),
+            base_n_records=_required_int_field(data, "base_n_records"),
+            n_clones=_required_int_field(data, "n_clones"),
+            matrix_builder=_required_string_field(data, "matrix_builder"),
+            chunk_size=_optional_int_field(data, "chunk_size"),
+            chunk_dir=_optional_string_field(data, "chunk_dir"),
+            keep_chunks=_required_bool_field(data, "keep_chunks"),
+            resume_chunks=_required_bool_field(data, "resume_chunks"),
+            rerandomize_takeup=_required_bool_field(data, "rerandomize_takeup"),
+            parallel_matrix=_required_bool_field(data, "parallel_matrix"),
+            num_matrix_workers=_optional_int_field(data, "num_matrix_workers"),
+            county_level=_required_bool_field(data, "county_level"),
+            workers=_optional_int_field(data, "workers"),
+            chunk_manifest_path=_optional_string_field(data, "chunk_manifest_path"),
+            chunk_manifest_sha256=_optional_string_field(
+                data,
+                "chunk_manifest_sha256",
+            ),
+            chunk_shard_count=_required_int_field(data, "chunk_shard_count"),
+            chunk_shard_paths=_string_tuple_field(data, "chunk_shard_paths"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible matrix summary material."""
+
+        return {
+            "base_n_records": self.base_n_records,
+            "chunk_dir": self.chunk_dir,
+            "chunk_manifest_path": self.chunk_manifest_path,
+            "chunk_manifest_sha256": self.chunk_manifest_sha256,
+            "chunk_shard_count": self.chunk_shard_count,
+            "chunk_shard_paths": list(self.chunk_shard_paths),
+            "chunk_size": self.chunk_size,
+            "county_level": self.county_level,
+            "keep_chunks": self.keep_chunks,
+            "matrix_builder": self.matrix_builder,
+            "matrix_density": self.matrix_density,
+            "matrix_nnz": self.matrix_nnz,
+            "matrix_shape": self.matrix_shape,
+            "n_clones": self.n_clones,
+            "n_columns": self.n_columns,
+            "n_targets": self.n_targets,
+            "num_matrix_workers": self.num_matrix_workers,
+            "parallel_matrix": self.parallel_matrix,
+            "rerandomize_takeup": self.rerandomize_takeup,
+            "resume_chunks": self.resume_chunks,
+            "schema_version": self.schema_version,
+            "target_name_count": self.target_name_count,
+            "target_order_sha256": self.target_order_sha256,
+            "workers": self.workers,
         }
 
 

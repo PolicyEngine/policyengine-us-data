@@ -18,6 +18,7 @@ from policyengine_us_data.calibration_package.specs import (
     CALIBRATION_TARGET_FACETS_FILENAME,
     CALIBRATION_TARGETS_FILENAME,
     GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
+    MATRIX_SUMMARY_FILENAME,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -28,6 +29,7 @@ from .calibration_package_schema import (
     CalibrationPackageParameters,
     CalibrationPackageSummary,
     GeographyAssignmentSummary,
+    MatrixBuildSummary,
 )
 from .contracts import StageContract
 from .execution import ExecutionRecord, ReuseSummary
@@ -77,6 +79,8 @@ def build_calibration_package_contract(
     geography_assignment_summary: GeographyAssignmentSummary
     | Mapping[str, Any]
     | None = None,
+    matrix_summary_path: Path | None = None,
+    matrix_build_summary: MatrixBuildSummary | Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Build the Stage 2 handoff contract from a calibration package."""
 
@@ -94,10 +98,23 @@ def build_calibration_package_contract(
         parameter_schema.to_dict(),
         metadata,
     )
-    package_summary = payload.summary().to_dict()
+    package_summary_schema = payload.summary()
+    package_summary = package_summary_schema.to_dict()
     geography_summary = _geography_assignment_summary(
         geography_assignment_summary or payload.geography_summary()
     ).to_dict()
+    matrix_summary_schema = _optional_matrix_build_summary(
+        matrix_build_summary,
+        matrix_summary_path=matrix_summary_path,
+    )
+    if matrix_summary_schema is not None:
+        _assert_matrix_summary_matches_package(
+            matrix_summary_schema,
+            package_summary_schema,
+        )
+    matrix_summary = (
+        matrix_summary_schema.to_dict() if matrix_summary_schema is not None else {}
+    )
     inputs = (
         _artifact_ref_from_path(
             logical_name="source_imputed_stratified_extended_cps",
@@ -172,6 +189,30 @@ def build_calibration_package_contract(
                 },
             )
         )
+    if matrix_summary_path is not None:
+        _require_existing_file(matrix_summary_path, "matrix summary")
+        if matrix_summary_schema is None:
+            raise ValueError(
+                "matrix_build_summary is required with matrix_summary_path"
+            )
+        outputs.append(
+            _artifact_ref_from_path(
+                logical_name="matrix_summary",
+                path=Path(matrix_summary_path),
+                media_type="application/json",
+                metadata={
+                    "artifact_family": "matrix_build",
+                    "substage_id": CALIBRATION_PACKAGE_SUBSTAGE_ID,
+                    "matrix_builder": matrix_summary_schema.matrix_builder,
+                    "matrix_shape": matrix_summary_schema.matrix_shape,
+                    "matrix_nnz": matrix_summary_schema.matrix_nnz,
+                    "target_order_sha256": matrix_summary_schema.target_order_sha256,
+                    "chunk_manifest_sha256": (
+                        matrix_summary_schema.chunk_manifest_sha256
+                    ),
+                },
+            )
+        )
     outputs = tuple(outputs)
     code_sha = code_sha or _optional_metadata_string(metadata, "git_commit")
     package_version = package_version or _optional_metadata_string(
@@ -200,6 +241,7 @@ def build_calibration_package_contract(
             "parameters": parameter_payload,
             "package_summary": package_summary,
             "geography_assignment": geography_summary,
+            "matrix_build": matrix_summary,
             "target_selection": target_selection_summary or {},
         }
     )
@@ -230,6 +272,7 @@ def build_calibration_package_contract(
             "artifact_count": len(inputs) + len(outputs),
             "contract_file": CALIBRATION_PACKAGE_CONTRACT_FILENAME,
             "geography_assignment": geography_summary,
+            "matrix_build": matrix_summary,
             "package_summary": package_summary,
             "target_selection": dict(target_selection_summary or {}),
         },
@@ -252,6 +295,7 @@ def build_calibration_package_contract(
             CALIBRATION_TARGETS_FILENAME,
             CALIBRATION_TARGET_FACETS_FILENAME,
             GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
+            MATRIX_SUMMARY_FILENAME,
         ],
         validation_commands=[
             "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
@@ -279,6 +323,8 @@ def write_calibration_package_contract(
     geography_assignment_summary: GeographyAssignmentSummary
     | Mapping[str, Any]
     | None = None,
+    matrix_summary_path: Path | None = None,
+    matrix_build_summary: MatrixBuildSummary | Mapping[str, Any] | None = None,
 ) -> StageContract:
     """Write and return the Stage 2 calibration-package contract."""
 
@@ -300,6 +346,8 @@ def write_calibration_package_contract(
         target_selection_summary=target_selection_summary,
         geography_summary_path=geography_summary_path,
         geography_assignment_summary=geography_assignment_summary,
+        matrix_summary_path=matrix_summary_path,
+        matrix_build_summary=matrix_build_summary,
     )
     write_contract(
         contract,
@@ -379,6 +427,15 @@ def validate_calibration_package_contract(
     )
     if actual_summary != expected_summary:
         raise ValueError("Calibration package contract summary does not match pickle")
+    contract_matrix_summary = None
+    if contract.metadata.get("matrix_build"):
+        contract_matrix_summary = MatrixBuildSummary.from_dict(
+            contract.metadata.get("matrix_build", {})
+        )
+        _assert_matrix_summary_matches_package(
+            contract_matrix_summary,
+            summarize_calibration_package(package),
+        )
     expected_geography = canonicalize_for_fingerprint(
         summarize_geography_assignment(package).to_dict()
     )
@@ -406,6 +463,23 @@ def validate_calibration_package_contract(
         if persisted_geography != expected_geography:
             raise ValueError(
                 "Calibration package geography summary artifact does not match pickle"
+            )
+    matrix_artifact = _optional_artifact(contract.outputs, "matrix_summary")
+    if matrix_artifact is not None:
+        matrix_summary_path = _artifact_uri_to_path(matrix_artifact.uri)
+        _assert_artifact_matches_file(matrix_artifact, matrix_summary_path)
+        persisted_matrix = MatrixBuildSummary.from_dict(
+            json.loads(matrix_summary_path.read_text(encoding="utf-8"))
+        )
+        _assert_matrix_summary_matches_package(
+            persisted_matrix,
+            summarize_calibration_package(package),
+        )
+        if contract_matrix_summary is not None and canonicalize_for_fingerprint(
+            contract_matrix_summary.to_dict()
+        ) != canonicalize_for_fingerprint(persisted_matrix.to_dict()):
+            raise ValueError(
+                "Calibration package matrix summary artifact does not match contract"
             )
     return contract
 
@@ -487,6 +561,48 @@ def _geography_assignment_summary(
     if isinstance(summary, GeographyAssignmentSummary):
         return summary
     return GeographyAssignmentSummary.from_dict(summary)
+
+
+def _optional_matrix_build_summary(
+    summary: MatrixBuildSummary | Mapping[str, Any] | None,
+    *,
+    matrix_summary_path: Path | None,
+) -> MatrixBuildSummary | None:
+    if summary is None:
+        if matrix_summary_path is None:
+            return None
+        return MatrixBuildSummary.from_dict(
+            json.loads(Path(matrix_summary_path).read_text(encoding="utf-8"))
+        )
+    if isinstance(summary, MatrixBuildSummary):
+        return summary
+    return MatrixBuildSummary.from_dict(summary)
+
+
+def _assert_matrix_summary_matches_package(
+    matrix_summary: MatrixBuildSummary,
+    package_summary: CalibrationPackageSummary,
+) -> None:
+    comparisons = {
+        "matrix_shape": package_summary.matrix_shape,
+        "matrix_nnz": package_summary.matrix_nnz,
+        "matrix_density": package_summary.matrix_density,
+        "n_targets": package_summary.n_targets,
+        "n_columns": package_summary.n_columns,
+        "target_name_count": package_summary.target_name_count,
+        "base_n_records": package_summary.base_n_records,
+        "n_clones": package_summary.n_clones,
+        "matrix_builder": package_summary.matrix_builder,
+        "chunk_size": package_summary.chunk_size,
+        "chunk_dir": package_summary.chunk_dir,
+    }
+    for key, expected in comparisons.items():
+        actual = getattr(matrix_summary, key)
+        if actual != expected:
+            raise ValueError(
+                "Calibration package matrix summary does not match pickle "
+                f"for {key}: {actual!r} != {expected!r}"
+            )
 
 
 def _parameters_with_package_identity(

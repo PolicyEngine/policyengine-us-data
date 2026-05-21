@@ -248,6 +248,13 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
+    def test_final_export_contract_allows_data_overridden_ssi_disability_criteria(
+        self,
+    ):
+        data = {"meets_ssi_disability_criteria": {2024: np.array([True, False])}}
+
+        ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
     def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):
         data = {"medicare_enrolled": {2024: np.array([True, False])}}
 

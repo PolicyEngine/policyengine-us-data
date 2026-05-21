@@ -26,6 +26,9 @@ class DatasetArtifactSpec:
     required_for_stage_2: bool = False
     yearless_alias: bool = False
     contract_output: bool = True
+    pipeline_output: bool = True
+    diagnostic_output: bool = False
+    diagnostic_kind: str | None = None
     skip_when_enhanced_cps_skipped: bool = False
     skip_when_stage_5_skipped: bool = False
 
@@ -53,6 +56,7 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
         storage_path="policyengine_us_data/storage/uprating_factors.csv",
         script_path=_UPRATING_SCRIPT,
         contract_output=False,
+        pipeline_output=False,
     ),
     DatasetArtifactSpec(
         filename="acs_2022.h5",
@@ -120,6 +124,7 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
         ),
         script_path=_ENHANCED_CPS_SCRIPT,
         contract_output=False,
+        pipeline_output=False,
         skip_when_enhanced_cps_skipped=True,
     ),
     DatasetArtifactSpec(
@@ -130,6 +135,7 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
         storage_path="calibration_log.csv",
         script_path=_ENHANCED_CPS_SCRIPT,
         contract_output=False,
+        pipeline_output=False,
         skip_when_enhanced_cps_skipped=True,
     ),
     DatasetArtifactSpec(
@@ -185,16 +191,60 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
         required_for_stage_2=True,
     ),
     DatasetArtifactSpec(
+        filename="calibration_weights.npy",
+        logical_name="calibration_weights",
+        artifact_family="legacy_optional_weight",
+        substage_id="1g_stage_base_datasets",
+        storage_path="policyengine_us_data/storage/calibration_weights.npy",
+        required=False,
+        contract_output=False,
+    ),
+    DatasetArtifactSpec(
         filename="build_log.txt",
         logical_name="build_log",
         artifact_family="log",
         substage_id="1g_stage_base_datasets",
+        storage_path="build_log.txt",
     ),
     DatasetArtifactSpec(
         filename="data_build_checkpoint_stats.json",
         logical_name="data_build_checkpoint_stats",
         artifact_family="execution_metadata",
         substage_id="1g_stage_base_datasets",
+    ),
+    DatasetArtifactSpec(
+        filename="dataset_inventory.json",
+        logical_name="dataset_inventory",
+        artifact_family="diagnostic",
+        substage_id="1g_stage_base_datasets",
+        required=False,
+        contract_output=False,
+        pipeline_output=False,
+        diagnostic_output=True,
+        diagnostic_kind="dataset_inventory",
+    ),
+    DatasetArtifactSpec(
+        filename="source_dataset_schema_summary.json",
+        logical_name="source_dataset_schema_summary",
+        artifact_family="diagnostic",
+        substage_id="1f_source_imputation",
+        required=False,
+        contract_output=False,
+        pipeline_output=False,
+        diagnostic_output=True,
+        diagnostic_kind="source_dataset_schema_summary",
+        skip_when_stage_5_skipped=True,
+    ),
+    DatasetArtifactSpec(
+        filename="target_database_schema_summary.json",
+        logical_name="target_database_schema_summary",
+        artifact_family="diagnostic",
+        substage_id="1g_stage_base_datasets",
+        required=False,
+        contract_output=False,
+        pipeline_output=False,
+        diagnostic_output=True,
+        diagnostic_kind="target_database_schema_summary",
     ),
 )
 
@@ -223,8 +273,12 @@ STAGE_1_ARTIFACT_SPECS: tuple[DatasetArtifactSpec, ...] = (
         "small_enhanced_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
         "policy_data.db",
+        "calibration_weights.npy",
         "build_log.txt",
         "data_build_checkpoint_stats.json",
+        "dataset_inventory.json",
+        "source_dataset_schema_summary.json",
+        "target_database_schema_summary.json",
     ],
     validation_commands=["uv run pytest tests/unit/test_build_dataset_specs.py"],
 )
@@ -238,6 +292,18 @@ def stage_1_contract_artifact_specs() -> tuple[DatasetArtifactSpec, ...]:
     """Return artifact specs emitted in the Stage 1 handoff contract."""
 
     return tuple(spec for spec in STAGE_1_ARTIFACT_SPECS if spec.contract_output)
+
+
+def stage_1_pipeline_artifact_specs() -> tuple[DatasetArtifactSpec, ...]:
+    """Return artifact specs staged into the run-scoped pipeline directory."""
+
+    return tuple(spec for spec in STAGE_1_ARTIFACT_SPECS if spec.pipeline_output)
+
+
+def stage_1_diagnostic_artifact_specs() -> tuple[DatasetArtifactSpec, ...]:
+    """Return diagnostic artifact specs emitted by Stage 1 writers."""
+
+    return tuple(spec for spec in STAGE_1_ARTIFACT_SPECS if spec.diagnostic_output)
 
 
 def stage_1_script_outputs() -> Mapping[str, ScriptOutput]:
@@ -261,5 +327,7 @@ __all__ = [
     "ScriptOutput",
     "stage_1_artifact_specs",
     "stage_1_contract_artifact_specs",
+    "stage_1_diagnostic_artifact_specs",
+    "stage_1_pipeline_artifact_specs",
     "stage_1_script_outputs",
 ]

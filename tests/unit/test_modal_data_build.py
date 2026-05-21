@@ -309,6 +309,7 @@ def test_write_dataset_build_contract_writes_stage_1_handoff(tmp_path):
         upload_requested=False,
         stage_only=True,
         skip_enhanced_cps=True,
+        branch="stage-1",
     )
 
     contract_path = tmp_path / "dataset_build_output.json"

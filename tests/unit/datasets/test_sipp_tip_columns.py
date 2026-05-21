@@ -6,8 +6,10 @@ to explicit `TJB*_TXAMT` dollar-amount columns only.
 """
 
 import pandas as pd
+import pytest
 
 from policyengine_us_data.datasets.sipp.sipp import SIPP_TIP_AMOUNT_COLUMNS
+import policyengine_us_data.datasets.sipp.sipp as sipp_module
 
 
 def test_tip_regex_matches_dollar_amounts_only():
@@ -50,3 +52,17 @@ def test_tip_sum_excludes_allocation_flags():
         df[df.columns[df.columns.str.contains("TXAMT")]].fillna(0).sum(axis=1)
     )
     assert list(buggy_tip_income_monthly) == [151.0, 278.0]
+
+
+def test_train_tip_model_requires_allocation_flags_for_present_tip_columns(
+    monkeypatch,
+):
+    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        sipp_module.pd,
+        "read_csv",
+        lambda *args, **kwargs: pd.DataFrame({"TJB1_TXAMT": [10.0]}),
+    )
+
+    with pytest.raises(KeyError, match="AJB1_TXAMT"):
+        sipp_module.train_tip_model()

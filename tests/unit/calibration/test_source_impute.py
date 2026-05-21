@@ -6,6 +6,7 @@ Uses skip flags to avoid loading real donor data.
 import numpy as np
 import pandas as pd
 import huggingface_hub
+import pytest
 
 from policyengine_us_data.calibration import source_impute
 from policyengine_us_data.calibration.source_impute import (
@@ -346,7 +347,7 @@ class TestSubfunctions:
         }
         for column in source_impute.SIPP_TIP_AMOUNT_COLUMNS:
             columns[column] = [0.0, 10.0, 0.0, 5.0]
-        for column in source_impute.SIPP_TIP_ALLOCATION_COLUMNS:
+        for column in source_impute.SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN.values():
             columns[column] = [0, 0, 0, 0]
         for column in source_impute.SIPP_JOB_OCCUPATION_COLUMNS:
             columns[column] = [0, 0, 0, 0]
@@ -389,6 +390,25 @@ class TestSubfunctions:
         household_one = captured["train"][captured["train"]["household_id"] == 1]
         np.testing.assert_array_equal(household_one["count_under_18"], [1, 1])
         np.testing.assert_array_equal(household_one["count_under_6"], [0, 0])
+
+    def test_calibration_sipp_tip_requires_allocation_flags(self, monkeypatch):
+        monkeypatch.setattr(
+            huggingface_hub,
+            "hf_hub_download",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(
+            source_impute.pd,
+            "read_csv",
+            lambda *args, **kwargs: pd.DataFrame({"TJB1_TXAMT": [10.0]}),
+        )
+
+        with pytest.raises(KeyError, match="AJB1_TXAMT"):
+            _impute_sipp(
+                data=_make_data_dict(n_persons=4),
+                state_fips=np.array([1, 1], dtype=np.int32),
+                time_period=2024,
+            )
 
     def test_impute_org_exists(self):
         assert callable(_impute_org)

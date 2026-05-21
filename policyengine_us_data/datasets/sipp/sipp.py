@@ -11,6 +11,7 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 )
 from policyengine_us_data.utils.source_quality import (
     filter_observed_source_rows,
+    require_columns_present,
     sipp_allocation_flag_for,
     target_observed_source_masks,
 )
@@ -18,9 +19,10 @@ from policyengine_us_data.utils.source_quality import (
 
 SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
 SIPP_TIP_AMOUNT_COLUMNS = [f"TJB{i}_TXAMT" for i in range(1, 8)]
-SIPP_TIP_ALLOCATION_COLUMNS = [
-    sipp_allocation_flag_for(column) for column in SIPP_TIP_AMOUNT_COLUMNS
-]
+SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN = {
+    column: sipp_allocation_flag_for(column) for column in SIPP_TIP_AMOUNT_COLUMNS
+}
+SIPP_TIP_ALLOCATION_COLUMNS = list(SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN.values())
 TIP_MODEL_PREDICTORS = [
     "employment_income",
     "age",
@@ -124,6 +126,14 @@ def train_tip_model():
     # AJB*_TXAMT Census allocation flags (small ints 0/1/2 indicating
     # imputation status) and added them to the dollar totals.
     tip_amount_columns = [column for column in SIPP_TIP_AMOUNT_COLUMNS if column in df]
+    tip_allocation_columns = [
+        SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN[column] for column in tip_amount_columns
+    ]
+    require_columns_present(
+        df.columns,
+        tip_allocation_columns,
+        source_name="SIPP tip donor file",
+    )
     df["tip_income"] = df[tip_amount_columns].fillna(0).sum(axis=1) * 12
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)
@@ -159,7 +169,7 @@ def train_tip_model():
         df,
         targets=["tip_income"],
         target_source_columns={"tip_income": tip_amount_columns},
-        target_allocation_flag_columns={"tip_income": SIPP_TIP_ALLOCATION_COLUMNS},
+        target_allocation_flag_columns={"tip_income": tip_allocation_columns},
         require_nonmissing_source=False,
     )
 

@@ -43,8 +43,8 @@ from policyengine_us_data.datasets.sipp.sipp import (
     SIPP_ASSET_ALLOCATION_COLUMNS,
     SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
     SIPP_ASSET_TARGET_SOURCE_COLUMNS,
-    SIPP_TIP_ALLOCATION_COLUMNS,
     SIPP_TIP_AMOUNT_COLUMNS,
+    SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN,
     SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
     SSI_DISABILITY_MODEL_VARIABLE,
     VEHICLE_MODEL_PREDICTORS,
@@ -652,6 +652,14 @@ def _impute_sipp(
     tip_amount_columns = [
         column for column in SIPP_TIP_AMOUNT_COLUMNS if column in sipp_df
     ]
+    tip_allocation_columns = [
+        SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN[column] for column in tip_amount_columns
+    ]
+    require_columns_present(
+        sipp_df.columns,
+        tip_allocation_columns,
+        source_name="SIPP slim tip donor file",
+    )
     sipp_df["tip_income"] = sipp_df[tip_amount_columns].fillna(0).sum(axis=1) * 12
     sipp_df["employment_income"] = sipp_df.TPTOTINC * 12
     sipp_df["age"] = sipp_df.TAGE
@@ -679,7 +687,7 @@ def _impute_sipp(
         sipp_df,
         targets=["tip_income"],
         target_source_columns={"tip_income": tip_amount_columns},
-        target_allocation_flag_columns={"tip_income": SIPP_TIP_ALLOCATION_COLUMNS},
+        target_allocation_flag_columns={"tip_income": tip_allocation_columns},
         require_nonmissing_source=False,
     )
 

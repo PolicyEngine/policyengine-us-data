@@ -81,6 +81,7 @@ from policyengine_us_data.utils.asset_imputation import (
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
     require_columns_present,
     target_observed_source_masks,
 )
@@ -580,15 +581,22 @@ def _impute_acs(
         len(cps_heads),
         len(predictors),
     )
-    fitted = QRF(max_train_samples=10_000).fit(
+    acs_target_filters = target_observed_source_masks(
+        train_df,
+        targets=ACS_IMPUTED_VARIABLES,
+        target_allocation_flag_columns=ACS_TARGET_ALLOCATION_COLUMNS,
+    )
+    train_df, acs_target_filters = cap_training_sample(
+        train_df,
+        max_train_samples=10_000,
+        seed_name="calibration_acs_source_imputation_training_sample",
+        target_filters=acs_target_filters,
+    )
+    fitted = QRF().fit(
         X_train=train_df,
         predictors=predictors,
         imputed_variables=ACS_IMPUTED_VARIABLES,
-        target_filters=target_observed_source_masks(
-            train_df,
-            targets=ACS_IMPUTED_VARIABLES,
-            target_allocation_flag_columns=ACS_TARGET_ALLOCATION_COLUMNS,
-        ),
+        target_filters=acs_target_filters,
     )
     predictions = fitted.predict(X_test=cps_heads)
 
@@ -702,6 +710,12 @@ def _impute_sipp(
         "household_weight",
     ]
     tip_train = sipp_df[tip_cols].dropna()
+    tip_train, tip_target_filters = cap_training_sample(
+        tip_train,
+        max_train_samples=10_000,
+        seed_name="calibration_sipp_tip_training_sample",
+        target_filters=tip_target_filters,
+    )
 
     cps_tip_df = _build_cps_receiver(
         data, time_period, dataset_path, ["employment_income", "age"]
@@ -733,7 +747,7 @@ def _impute_sipp(
         len(tip_train),
         len(cps_tip_df),
     )
-    fitted = QRF(max_train_samples=10_000).fit(
+    fitted = QRF().fit(
         X_train=tip_train,
         predictors=SIPP_TIPS_PREDICTORS,
         imputed_variables=["tip_income"],
@@ -829,21 +843,28 @@ def _impute_sipp(
             "stock_assets",
             "bond_assets",
         ]
+        asset_target_filters = target_observed_source_masks(
+            asset_train,
+            targets=asset_vars,
+            target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
+            target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+        )
+        asset_train, asset_target_filters = cap_training_sample(
+            asset_train,
+            max_train_samples=20_000,
+            seed_name="calibration_sipp_asset_training_sample",
+            target_filters=asset_target_filters,
+        )
         logger.info(
             "SIPP assets QRF: %d train, %d test",
             len(asset_train),
             len(cps_asset_df),
         )
-        fitted = QRF(max_train_samples=20_000).fit(
+        fitted = QRF().fit(
             X_train=asset_train,
             predictors=SIPP_ASSETS_PREDICTORS,
             imputed_variables=asset_vars,
-            target_filters=target_observed_source_masks(
-                asset_train,
-                targets=asset_vars,
-                target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
-                target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
-            ),
+            target_filters=asset_target_filters,
             weight_col="household_weight",
         )
         asset_preds = fitted.predict(X_test=cps_asset_df)
@@ -987,15 +1008,22 @@ def _impute_sipp(
             "household_vehicles_owned",
             "household_vehicles_value",
         ]
-        fitted = QRF(max_train_samples=20_000).fit(
+        vehicle_target_filters = target_observed_source_masks(
+            vehicle_train,
+            targets=vehicle_vars,
+            target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+        )
+        vehicle_train, vehicle_target_filters = cap_training_sample(
+            vehicle_train,
+            max_train_samples=20_000,
+            seed_name="calibration_sipp_vehicle_training_sample",
+            target_filters=vehicle_target_filters,
+        )
+        fitted = QRF().fit(
             X_train=vehicle_train,
             predictors=VEHICLE_MODEL_PREDICTORS,
             imputed_variables=vehicle_vars,
-            target_filters=target_observed_source_masks(
-                vehicle_train,
-                targets=vehicle_vars,
-                target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
-            ),
+            target_filters=vehicle_target_filters,
             weight_col="household_weight",
         )
         vehicle_preds = fitted.predict(X_test=vehicle_receiver)

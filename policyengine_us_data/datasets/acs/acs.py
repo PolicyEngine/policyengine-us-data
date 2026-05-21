@@ -10,11 +10,27 @@ from pandas import DataFrame
 import numpy as np
 import pandas as pd
 
+ACS_SOURCE_QUALITY_DATASETS = (
+    "rent_is_allocated",
+    "real_estate_taxes_is_allocated",
+)
+
 
 class ACS(Dataset):
     data_format = Dataset.ARRAYS
     time_period = None
     census_acs = None
+
+    @property
+    def exists(self) -> bool:
+        """Treat stale ACS artifacts without source-quality flags as absent."""
+        if not self.file_path.exists():
+            return False
+        try:
+            with h5py.File(self.file_path, mode="r") as acs:
+                return all(column in acs for column in ACS_SOURCE_QUALITY_DATASETS)
+        except OSError:
+            return False
 
     def generate(self) -> None:
         """Generates the ACS dataset."""
@@ -130,7 +146,7 @@ class ACS_2022(ACS):
     time_period = 2022
     file_path = STORAGE_FOLDER / "acs_2022.h5"
     census_acs = CensusACS_2022
-    url = "release://PolicyEngine/policyengine-us-data/1.13.0/acs_2022.h5"
+    url = None
 
 
 if __name__ == "__main__":

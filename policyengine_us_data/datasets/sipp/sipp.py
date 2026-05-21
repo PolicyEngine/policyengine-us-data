@@ -10,6 +10,7 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_is_tipped_occupation,
 )
 from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
     filter_observed_source_rows,
     require_columns_present,
     sipp_allocation_flag_for,
@@ -187,8 +188,14 @@ def train_tip_model():
     ]
 
     sipp = sipp[~sipp.isna().any(axis=1)]
+    sipp, tip_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=10_000,
+        seed_name="sipp_tip_model_training_sample",
+        target_filters=tip_target_filters,
+    )
 
-    model = QRF(max_train_samples=10_000)
+    model = QRF()
 
     model = model.fit(
         X_train=sipp,
@@ -639,17 +646,24 @@ def train_asset_model():
         "stock_assets",
         "bond_assets",
     ]
-    model = QRF(max_train_samples=20_000)
+    asset_target_filters = target_observed_source_masks(
+        sipp,
+        targets=asset_vars,
+        target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
+        target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+    )
+    sipp, asset_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=20_000,
+        seed_name="sipp_asset_model_training_sample",
+        target_filters=asset_target_filters,
+    )
+    model = QRF()
     model = model.fit(
         X_train=sipp,
         predictors=ASSET_PREDICTORS,
         imputed_variables=asset_vars,
-        target_filters=target_observed_source_masks(
-            sipp,
-            targets=asset_vars,
-            target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
-            target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
-        ),
+        target_filters=asset_target_filters,
         weight_col="household_weight",
     )
 
@@ -820,16 +834,23 @@ def train_vehicle_model():
         "household_vehicles_owned",
         "household_vehicles_value",
     ]
-    model = QRF(max_train_samples=20_000)
+    vehicle_target_filters = target_observed_source_masks(
+        sipp,
+        targets=vehicle_vars,
+        target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+    )
+    sipp, vehicle_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=20_000,
+        seed_name="sipp_vehicle_model_training_sample",
+        target_filters=vehicle_target_filters,
+    )
+    model = QRF()
     model = model.fit(
         X_train=sipp,
         predictors=VEHICLE_MODEL_PREDICTORS,
         imputed_variables=vehicle_vars,
-        target_filters=target_observed_source_masks(
-            sipp,
-            targets=vehicle_vars,
-            target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
-        ),
+        target_filters=vehicle_target_filters,
         weight_col="household_weight",
     )
     return model

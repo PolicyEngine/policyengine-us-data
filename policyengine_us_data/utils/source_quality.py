@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Container, Mapping, Sequence
 
+import numpy as np
 import pandas as pd
+
+from policyengine_us_data.utils.randomness import seeded_rng
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +131,97 @@ def target_observed_source_masks(
             )
 
     return masks
+
+
+def cap_training_sample(
+    df: pd.DataFrame,
+    *,
+    max_train_samples: int,
+    seed_name: str,
+    target_filters: Mapping[str, pd.Series] | None = None,
+) -> tuple[pd.DataFrame, dict[str, pd.Series]]:
+    """Deterministically cap a target-filtered QRF training frame.
+
+    microimpute's QRF ``max_train_samples`` currently does not subsample when
+    ``target_filters`` are present, because target-specific masks must remain
+    aligned with each target's training rows. This helper applies the same
+    positional, without-replacement cap locally and returns reindexed masks.
+    """
+    if max_train_samples < 1:
+        raise ValueError("max_train_samples must be a positive integer")
+
+    filters = {}
+    for target, mask in (target_filters or {}).items():
+        aligned = mask.reindex(df.index)
+        if aligned.isna().any():
+            raise ValueError(f"target_filters[{target!r}] contains missing values")
+        filters[target] = aligned.astype(bool)
+
+    if not filters:
+        if len(df) <= max_train_samples:
+            return df, filters
+        sample_positions = seeded_rng(seed_name).choice(
+            len(df),
+            size=max_train_samples,
+            replace=False,
+        )
+    else:
+        if max_train_samples < len(filters):
+            raise ValueError(
+                "max_train_samples must be at least the number of target filters"
+            )
+        union_mask = pd.Series(False, index=df.index)
+        for mask in filters.values():
+            union_mask |= mask
+        if not union_mask.any():
+            raise ValueError("No observed donor rows available across target_filters")
+
+        union_positions = np.flatnonzero(union_mask.to_numpy())
+        if len(union_positions) <= max_train_samples:
+            sample_positions = union_positions
+        else:
+            selected: list[int] = []
+            selected_set: set[int] = set()
+            per_target_cap = max(1, max_train_samples // len(filters))
+            for target, mask in filters.items():
+                target_positions = np.flatnonzero(mask.to_numpy())
+                target_n = min(per_target_cap, len(target_positions))
+                target_sample = seeded_rng(seed_name, salt=target).choice(
+                    target_positions,
+                    size=target_n,
+                    replace=False,
+                )
+                for position in target_sample:
+                    if int(position) not in selected_set:
+                        selected.append(int(position))
+                        selected_set.add(int(position))
+
+            remaining_n = max_train_samples - len(selected)
+            if remaining_n > 0:
+                remaining_positions = np.array(
+                    [
+                        position
+                        for position in union_positions
+                        if int(position) not in selected_set
+                    ],
+                    dtype=int,
+                )
+                if len(remaining_positions):
+                    fill_sample = seeded_rng(seed_name, salt="fill").choice(
+                        remaining_positions,
+                        size=min(remaining_n, len(remaining_positions)),
+                        replace=False,
+                    )
+                    selected.extend(int(position) for position in fill_sample)
+
+            sample_positions = np.asarray(selected, dtype=int)
+
+    sampled_df = df.iloc[sample_positions].copy().reset_index(drop=True)
+    sampled_filters = {
+        target: pd.Series(
+            np.asarray(mask.iloc[sample_positions], dtype=bool),
+            index=sampled_df.index,
+        )
+        for target, mask in filters.items()
+    }
+    return sampled_df, sampled_filters

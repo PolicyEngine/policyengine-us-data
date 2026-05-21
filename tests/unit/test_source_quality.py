@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 
 from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
     observed_source_mask,
     require_columns_present,
     sipp_allocation_flag_for,
@@ -120,3 +121,83 @@ def test_target_observed_source_masks_are_target_specific():
 
     np.testing.assert_array_equal(result["tip_income"].values, [True, True])
     np.testing.assert_array_equal(result["bank_account_assets"].values, [False, True])
+
+
+def test_cap_training_sample_keeps_target_filters_aligned():
+    df = pd.DataFrame({"value": np.arange(20)}, index=np.arange(100, 120))
+    filters = {
+        "value": pd.Series(
+            [i % 2 == 0 for i in range(20)],
+            index=df.index,
+        )
+    }
+
+    sampled, sampled_filters = cap_training_sample(
+        df,
+        max_train_samples=5,
+        seed_name="unit_test_cap_training_sample",
+        target_filters=filters,
+    )
+
+    assert len(sampled) == 5
+    assert list(sampled.index) == list(sampled_filters["value"].index)
+    assert sampled["value"].mod(2).eq(0).all()
+    np.testing.assert_array_equal(sampled_filters["value"].values, [True] * 5)
+
+
+def test_cap_training_sample_uses_observed_union_before_capping():
+    df = pd.DataFrame({"value": np.arange(100)})
+    filters = {
+        "value": pd.Series(
+            [False] * 97 + [True] * 3,
+            index=df.index,
+        )
+    }
+
+    sampled, sampled_filters = cap_training_sample(
+        df,
+        max_train_samples=5,
+        seed_name="unit_test_sparse_cap_training_sample",
+        target_filters=filters,
+    )
+
+    assert sampled["value"].tolist() == [97, 98, 99]
+    np.testing.assert_array_equal(sampled_filters["value"].values, [True, True, True])
+
+
+def test_cap_training_sample_preserves_each_target_when_capping():
+    df = pd.DataFrame({"value": np.arange(100)})
+    filters = {
+        "rare_a": pd.Series([True, True] + [False] * 98, index=df.index),
+        "rare_b": pd.Series([False] * 98 + [True, True], index=df.index),
+    }
+
+    sampled, sampled_filters = cap_training_sample(
+        df,
+        max_train_samples=4,
+        seed_name="unit_test_target_coverage_cap_training_sample",
+        target_filters=filters,
+    )
+
+    assert set(sampled["value"]) == {0, 1, 98, 99}
+    assert sampled_filters["rare_a"].sum() == 2
+    assert sampled_filters["rare_b"].sum() == 2
+
+
+def test_cap_training_sample_rejects_misaligned_filters():
+    df = pd.DataFrame({"value": [1, 2]}, index=[10, 11])
+    filters = {"value": pd.Series([True, False], index=[0, 1])}
+
+    try:
+        cap_training_sample(
+            df,
+            max_train_samples=1,
+            seed_name="unit_test_misaligned_cap_training_sample",
+            target_filters=filters,
+        )
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("Expected misaligned target filters to fail")
+
+    assert "target_filters['value']" in message

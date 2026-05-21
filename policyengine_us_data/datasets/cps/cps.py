@@ -73,6 +73,7 @@ from policyengine_us_data.utils.asset_imputation import (
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
     require_columns_present,
     target_observed_source_masks,
 )
@@ -448,15 +449,22 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     inference_df = inference_df[mask]
 
     logging.info("Training imputation model for rent and real estate taxes.")
-    fitted_model = QRF(max_train_samples=10_000).fit(
+    rent_target_filters = target_observed_source_masks(
+        train_df,
+        targets=IMPUTATIONS,
+        target_allocation_flag_columns=ACS_RENT_TARGET_ALLOCATION_COLUMNS,
+    )
+    train_df, rent_target_filters = cap_training_sample(
+        train_df,
+        max_train_samples=10_000,
+        seed_name="legacy_acs_rent_training_sample",
+        target_filters=rent_target_filters,
+    )
+    fitted_model = QRF().fit(
         X_train=train_df,
         predictors=PREDICTORS,
         imputed_variables=IMPUTATIONS,
-        target_filters=target_observed_source_masks(
-            train_df,
-            targets=IMPUTATIONS,
-            target_allocation_flag_columns=ACS_RENT_TARGET_ALLOCATION_COLUMNS,
-        ),
+        target_filters=rent_target_filters,
     )
     logging.info("Imputing rent and real estate taxes.")
     imputed_values = fitted_model.predict(X_test=inference_df)

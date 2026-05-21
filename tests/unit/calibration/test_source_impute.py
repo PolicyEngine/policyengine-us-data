@@ -363,10 +363,11 @@ class TestSubfunctions:
 
         class FakeQRF:
             def __init__(self, *args, **kwargs):
-                pass
+                captured["init_kwargs"] = kwargs
 
             def fit(self, X_train, **kwargs):
                 captured["train"] = X_train.copy()
+                captured["fit_kwargs"] = kwargs
                 return self
 
             def predict(self, X_test):
@@ -390,6 +391,170 @@ class TestSubfunctions:
         household_one = captured["train"][captured["train"]["household_id"] == 1]
         np.testing.assert_array_equal(household_one["count_under_18"], [1, 1])
         np.testing.assert_array_equal(household_one["count_under_6"], [0, 0])
+        assert captured["init_kwargs"] == {}
+        assert set(captured["fit_kwargs"]["target_filters"]) == {"tip_income"}
+        assert len(captured["fit_kwargs"]["target_filters"]["tip_income"]) == len(
+            captured["train"]
+        )
+
+    def test_calibration_sipp_qrf_passes_target_filters(self, monkeypatch):
+        fit_calls = []
+
+        tip_columns = {
+            "SSUID": [1, 2, 3],
+            "MONTHCODE": [12, 12, 12],
+            "TAGE": [40, 30, 10],
+            "TPTOTINC": [1_000.0, 2_000.0, 0.0],
+            "WPFINWGT": [1.0, 1.0, 1.0],
+        }
+        for column in source_impute.SIPP_TIP_AMOUNT_COLUMNS:
+            tip_columns[column] = [10.0, 5.0, 0.0]
+        for column in source_impute.SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN.values():
+            tip_columns[column] = [0, 1, 0]
+        for column in source_impute.SIPP_JOB_OCCUPATION_COLUMNS:
+            tip_columns[column] = [0, 0, 0]
+        tip_source = pd.DataFrame(tip_columns)
+
+        asset_columns = {
+            "SSUID": [1, 2, 3],
+            "PNUM": [1, 1, 1],
+            "MONTHCODE": [12, 12, 12],
+            "WPFINWGT": [1.0, 1.0, 1.0],
+            "TAGE": [40, 30, 10],
+            "ESEX": [1, 2, 1],
+            "EMS": [1, 2, 2],
+            "TSSSAMT": [0.0, 0.0, 0.0],
+            "TRETINCAMT": [0.0, 0.0, 0.0],
+            "TVAL_BANK": [100.0, 200.0, 300.0],
+            "TVAL_STMF": [10.0, 20.0, 30.0],
+            "TVAL_BOND": [1.0, 2.0, 3.0],
+            "TINC_BANK": [0.0, 0.0, 0.0],
+            "TINC_STMF": [0.0, 0.0, 0.0],
+            "TINC_BOND": [0.0, 0.0, 0.0],
+            "TINC_RENT": [0.0, 0.0, 0.0],
+        }
+        for column in source_impute.ASSET_JOB_EARNINGS_COLUMNS:
+            asset_columns[column] = [1_000.0, 2_000.0, 0.0]
+        for column in source_impute.SIPP_ASSET_ALLOCATION_COLUMNS:
+            asset_columns[column] = [0, 0, 0]
+        asset_columns["AVAL_BANK"] = [0, 1, 0]
+        asset_columns["AVAL_STMF"] = [0, 0, 1]
+        asset_source = pd.DataFrame(asset_columns)
+
+        vehicle_train = pd.DataFrame(
+            {
+                **{
+                    predictor: [0.0, 1.0, 2.0]
+                    for predictor in source_impute.VEHICLE_MODEL_PREDICTORS
+                },
+                "household_vehicles_owned": [1.0, 2.0, 3.0],
+                "household_vehicles_value": [5_000.0, 10_000.0, 15_000.0],
+                "AVEH_NUM": [0, 1, 0],
+                "AHVAL_VEH": [0, 0, 1],
+                "household_weight": [1.0, 1.0, 1.0],
+            }
+        )
+
+        def fake_read_csv(path, *args, **kwargs):
+            if str(path).endswith("pu2023_slim.csv"):
+                return tip_source.copy()
+            if str(path).endswith("pu2023.csv"):
+                return asset_source.copy()
+            raise AssertionError(f"Unexpected read_csv path: {path}")
+
+        class FakeQRF:
+            def __init__(self, *args, **kwargs):
+                self.init_kwargs = kwargs
+
+            def fit(self, X_train, **kwargs):
+                self.imputed_variables = kwargs["imputed_variables"]
+                fit_calls.append(
+                    {
+                        "init_kwargs": self.init_kwargs,
+                        "train": X_train.copy(),
+                        "kwargs": kwargs,
+                    }
+                )
+                return self
+
+            def predict(self, X_test):
+                return pd.DataFrame(
+                    {
+                        variable: np.zeros(len(X_test), dtype=np.float32)
+                        for variable in self.imputed_variables
+                    }
+                )
+
+        monkeypatch.setattr(
+            huggingface_hub,
+            "hf_hub_download",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(source_impute.pd, "read_csv", fake_read_csv)
+        monkeypatch.setattr(source_impute, "QRF", FakeQRF)
+        monkeypatch.setattr(
+            source_impute,
+            "get_ssi_disability_model",
+            lambda time_period: object(),
+        )
+        monkeypatch.setattr(
+            source_impute,
+            "predict_ssi_disability_criteria",
+            lambda model, receiver: np.zeros(len(receiver), dtype=bool),
+        )
+        monkeypatch.setattr(
+            source_impute,
+            "build_vehicle_training_frame",
+            lambda: vehicle_train.copy(),
+        )
+
+        _impute_sipp(
+            data=_make_data_dict(n_persons=6),
+            state_fips=np.array([1, 1, 1], dtype=np.int32),
+            time_period=2024,
+        )
+
+        by_targets = {
+            tuple(call["kwargs"]["imputed_variables"]): call for call in fit_calls
+        }
+        assert set(by_targets) == {
+            ("tip_income",),
+            ("bank_account_assets", "stock_assets", "bond_assets"),
+            ("household_vehicles_owned", "household_vehicles_value"),
+        }
+        for call in fit_calls:
+            assert call["init_kwargs"] == {}
+            filters = call["kwargs"]["target_filters"]
+            assert set(filters) == set(call["kwargs"]["imputed_variables"])
+            assert all(len(mask) == len(call["train"]) for mask in filters.values())
+
+        tip_filters = by_targets[("tip_income",)]["kwargs"]["target_filters"]
+        assert len(by_targets[("tip_income",)]["train"]) == 2
+        np.testing.assert_array_equal(tip_filters["tip_income"].values, [True, True])
+
+        asset_filters = by_targets[
+            ("bank_account_assets", "stock_assets", "bond_assets")
+        ]["kwargs"]["target_filters"]
+        np.testing.assert_array_equal(
+            asset_filters["bank_account_assets"].values,
+            [True, False, True],
+        )
+        np.testing.assert_array_equal(
+            asset_filters["stock_assets"].values,
+            [True, True, False],
+        )
+
+        vehicle_filters = by_targets[
+            ("household_vehicles_owned", "household_vehicles_value")
+        ]["kwargs"]["target_filters"]
+        np.testing.assert_array_equal(
+            vehicle_filters["household_vehicles_owned"].values,
+            [True, False, True],
+        )
+        np.testing.assert_array_equal(
+            vehicle_filters["household_vehicles_value"].values,
+            [True, True, False],
+        )
 
     def test_calibration_sipp_tip_requires_allocation_flags(self, monkeypatch):
         monkeypatch.setattr(

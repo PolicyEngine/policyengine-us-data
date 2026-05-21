@@ -3,7 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from policyengine_us_data.datasets.acs.acs import ACS
+from policyengine_us_data.datasets.acs.acs import ACS, ACS_2022
+from policyengine_us_data.datasets.acs.census_acs import CensusACS
 from policyengine_us_data.datasets.acs.acs_to_cps_columns import (
     acs_person_to_cps_tax_unit_columns,
 )
@@ -277,3 +278,54 @@ def test_acs_add_person_variables_writes_allocation_flags_for_heads_only():
 
     assert rent_is_allocated.tolist() == [True, False]
     assert real_estate_taxes_is_allocated.tolist() == [False, False]
+
+
+def test_acs_2022_does_not_download_stale_release_artifact():
+    assert ACS_2022.url is None
+
+
+def test_acs_exists_rejects_stale_artifact_missing_allocation_flags(tmp_path):
+    path = tmp_path / "acs_2022.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("is_household_head", data=np.array([True]))
+
+    class TempACS(ACS):
+        name = "temp_acs"
+        label = "Temp ACS"
+        file_path = path
+
+    assert TempACS().exists is False
+
+    with h5py.File(path, "a") as h5:
+        h5.create_dataset("rent_is_allocated", data=np.array([False]))
+        h5.create_dataset("real_estate_taxes_is_allocated", data=np.array([False]))
+
+    assert TempACS().exists is True
+
+
+def test_raw_census_acs_exists_rejects_stale_cache_missing_allocation_flags(tmp_path):
+    path = tmp_path / "census_acs_2022.h5"
+
+    class TempCensusACS(CensusACS):
+        name = "temp_census_acs"
+        label = "Temp Census ACS"
+        file_path = path
+
+    with pd.HDFStore(path, mode="w") as storage:
+        storage["household"] = pd.DataFrame({"SERIALNO": ["1"], "RNTP": [1_200]})
+        storage["person"] = pd.DataFrame({"SERIALNO": ["1"]})
+
+    assert TempCensusACS().exists is False
+
+    with pd.HDFStore(path, mode="w") as storage:
+        storage["household"] = pd.DataFrame(
+            {
+                "SERIALNO": ["1"],
+                "RNTP": [1_200],
+                "FRNTP": [0],
+                "FTAXP": [0],
+            }
+        )
+        storage["person"] = pd.DataFrame({"SERIALNO": ["1"]})
+
+    assert TempCensusACS().exists is True

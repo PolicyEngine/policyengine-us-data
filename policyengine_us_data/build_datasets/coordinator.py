@@ -215,7 +215,7 @@ class Stage1Coordinator:
                 command_results=captured_command_results,
                 metadata=dict(metadata or {}),
             )
-            state = self._finish_aggregate_failure(
+            self._finish_aggregate_failure(
                 runner=runner,
                 completed_dt=completed_dt,
                 command_names=command_names,
@@ -224,7 +224,6 @@ class Stage1Coordinator:
                 error=error,
                 metadata=metadata,
             )
-            self._record(self._result_from_aggregate(state))
             raise
 
         completed_dt = datetime.now(timezone.utc)
@@ -319,7 +318,6 @@ class Stage1Coordinator:
             state.artifact_paths.extend(artifact_paths)
             state.metadata.update(dict(metadata or {}))
             state.error = error
-            state.finalized = True
             return state
 
     def _aggregate_state(
@@ -445,7 +443,7 @@ def stage_1_substep_id_for_script(script_path: str) -> str:
     for spec in stage_1_artifact_specs():
         if spec.script_path == script_path:
             return spec.substage_id
-    return "1g_stage_base_datasets"
+    raise ValueError(f"No Stage 1 substep mapping declared for script: {script_path}")
 
 
 def stage_1_substep_title(substep_id: str) -> str:

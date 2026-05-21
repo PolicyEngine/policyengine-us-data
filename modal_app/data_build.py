@@ -30,6 +30,7 @@ from policyengine_us_data.build_datasets import (  # noqa: E402
     DatasetBuildOutputContractBuilder,
     PipelineArtifactStager,
     Stage1Coordinator,
+    stage_1_artifact_specs,
     stage_1_script_outputs,
     stage_1_substep_id_for_script,
     stage_1_substep_title,
@@ -422,6 +423,16 @@ def _output_paths(output_files: str | list[str]) -> tuple[Path, ...]:
     return tuple(Path(path) for path in paths)
 
 
+def _stage_base_artifact_paths(artifacts_dir: Path) -> tuple[Path, ...]:
+    paths = [
+        artifacts_dir / spec.filename
+        for spec in stage_1_artifact_specs()
+        if spec.substage_id == "1g_stage_base_datasets"
+    ]
+    paths.append(artifacts_dir / "dataset_build_output.json")
+    return tuple(paths)
+
+
 def _run_checkpointed_substep(
     *,
     coordinator: Stage1Coordinator | None,
@@ -744,67 +755,37 @@ def build_datasets(
             checkpoint_volume,
         )
 
-    coordinator.run_substep(
-        "1a_raw_data_download",
-        stage_1_substep_title("1a_raw_data_download"),
-        run_raw_data_download,
-        command_names=(
-            "policyengine_us_data/storage/download_prerequisites.py",
-            "make database",
-        ),
-        command_results=raw_data_command_results,
-        artifact_paths=("policyengine_us_data/storage/calibration/policy_data.db",),
-        aggregate=True,
-    )
+    try:
+        coordinator.run_substep(
+            "1a_raw_data_download",
+            stage_1_substep_title("1a_raw_data_download"),
+            run_raw_data_download,
+            command_names=(
+                "policyengine_us_data/storage/download_prerequisites.py",
+                "make database",
+            ),
+            command_results=raw_data_command_results,
+            artifact_paths=("policyengine_us_data/storage/calibration/policy_data.db",),
+            aggregate=True,
+        )
 
-    if sequential:
-        for script, output in SCRIPT_OUTPUTS.items():
-            if skip_stage_5 and script in (
-                "policyengine_us_data/calibration/create_source_imputed_cps.py",
-                "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-            ):
-                print(f"Skipping {script} (--skip-stage-5)")
-                record_skipped_script(script, "--skip-stage-5")
-                continue
-            if skip_enhanced_cps and script in (
-                "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
-            ):
-                print(f"Skipping {script} (--skip-enhanced-cps)")
-                record_skipped_script(script, "--skip-enhanced-cps")
-                continue
-            _run_checkpointed_substep(
-                coordinator=coordinator,
-                script_path=script,
-                output_files=output,
-                branch=branch,
-                volume=checkpoint_volume,
-                env=env,
-                log_file=log_file,
-                checkpoint_stats=checkpoint_stats,
-            )
-    else:
-        # Parallel execution based on dependency groups with checkpointing
-        # GROUP 1: Independent scripts - run in parallel
-        print("=== Phase 1: Building independent datasets (parallel) ===")
-        group1 = [
-            (
-                "policyengine_us_data/utils/uprating.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/utils/uprating.py"],
-            ),
-            (
-                "policyengine_us_data/datasets/acs/acs.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/acs/acs.py"],
-            ),
-            (
-                "policyengine_us_data/datasets/puf/irs_puf.py",
-                SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/irs_puf.py"],
-            ),
-        ]
-        with ThreadPoolExecutor(max_workers=3) as executor:
-            futures = {
-                executor.submit(
-                    _run_checkpointed_substep,
+        if sequential:
+            for script, output in SCRIPT_OUTPUTS.items():
+                if skip_stage_5 and script in (
+                    "policyengine_us_data/calibration/create_source_imputed_cps.py",
+                    "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                ):
+                    print(f"Skipping {script} (--skip-stage-5)")
+                    record_skipped_script(script, "--skip-stage-5")
+                    continue
+                if skip_enhanced_cps and script in (
+                    "policyengine_us_data/datasets/cps/enhanced_cps.py",
+                    "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                ):
+                    print(f"Skipping {script} (--skip-enhanced-cps)")
+                    record_skipped_script(script, "--skip-enhanced-cps")
+                    continue
+                _run_checkpointed_substep(
                     coordinator=coordinator,
                     script_path=script,
                     output_files=output,
@@ -813,130 +794,86 @@ def build_datasets(
                     env=env,
                     log_file=log_file,
                     checkpoint_stats=checkpoint_stats,
-                ): script
-                for script, output in group1
-            }
-            for future in as_completed(futures):
-                future.result()  # Raises if script failed
-
-        # GROUP 2: Depends on Group 1 - run sequentially.
-        # puf.py pension imputation can instantiate CPS_2024, so it must
-        # not run while cps.py is writing cps_2024.h5.
-        print("=== Phase 2: Building CPS then PUF (sequential) ===")
-        run_cps_then_puf_phase(
-            branch,
-            checkpoint_volume,
-            env=env,
-            log_file=log_file,
-            checkpoint_stats=checkpoint_stats,
-            coordinator=coordinator,
-        )
-
-        # SEQUENTIAL: Extended CPS (needs both cps and puf)
-        print("=== Phase 3: Building extended CPS ===")
-        _run_checkpointed_substep(
-            coordinator=coordinator,
-            script_path="policyengine_us_data/datasets/cps/extended_cps.py",
-            output_files=SCRIPT_OUTPUTS[
-                "policyengine_us_data/datasets/cps/extended_cps.py"
-            ],
-            branch=branch,
-            volume=checkpoint_volume,
-            env=env,
-            log_file=log_file,
-            checkpoint_stats=checkpoint_stats,
-        )
-
-        # GROUP 3: After extended_cps - run in parallel
-        # enhanced_cps and stratified_cps both depend on extended_cps
-        print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
-        phase4_futures = []
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            if not skip_enhanced_cps:
-                phase4_futures.append(
-                    executor.submit(
-                        _run_checkpointed_substep,
-                        coordinator=coordinator,
-                        script_path="policyengine_us_data/datasets/cps/enhanced_cps.py",
-                        output_files=SCRIPT_OUTPUTS[
-                            "policyengine_us_data/datasets/cps/enhanced_cps.py"
-                        ],
-                        branch=branch,
-                        volume=checkpoint_volume,
-                        env=env,
-                        log_file=log_file,
-                        checkpoint_stats=checkpoint_stats,
-                    )
                 )
-            else:
-                print("Skipping enhanced_cps.py (--skip-enhanced-cps)")
-                record_skipped_script(
-                    "policyengine_us_data/datasets/cps/enhanced_cps.py",
-                    "--skip-enhanced-cps",
-                )
-            phase4_futures.append(
-                executor.submit(
-                    _run_checkpointed_substep,
-                    coordinator=coordinator,
-                    script_path=(
-                        "policyengine_us_data/calibration/create_stratified_cps.py"
-                    ),
-                    output_files=SCRIPT_OUTPUTS[
-                        "policyengine_us_data/calibration/create_stratified_cps.py"
-                    ],
-                    branch=branch,
-                    volume=checkpoint_volume,
-                    env=env,
-                    log_file=log_file,
-                    checkpoint_stats=checkpoint_stats,
-                )
-            )
-            for future in as_completed(phase4_futures):
-                future.result()
-
-        # GROUP 4: After Phase 4 - run in parallel
-        # create_source_imputed_cps needs stratified_cps
-        # small_enhanced_cps needs enhanced_cps
-        if skip_stage_5:
-            print("Skipping Phase 5 (--skip-stage-5)")
-            record_skipped_script(
-                "policyengine_us_data/calibration/create_source_imputed_cps.py",
-                "--skip-stage-5",
-            )
         else:
-            print(
-                "=== Phase 5: Building source imputed CPS "
-                "and small enhanced CPS (parallel) ==="
-            )
-            phase5_futures = []
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                phase5_futures.append(
+            # Parallel execution based on dependency groups with checkpointing
+            # GROUP 1: Independent scripts - run in parallel
+            print("=== Phase 1: Building independent datasets (parallel) ===")
+            group1 = [
+                (
+                    "policyengine_us_data/utils/uprating.py",
+                    SCRIPT_OUTPUTS["policyengine_us_data/utils/uprating.py"],
+                ),
+                (
+                    "policyengine_us_data/datasets/acs/acs.py",
+                    SCRIPT_OUTPUTS["policyengine_us_data/datasets/acs/acs.py"],
+                ),
+                (
+                    "policyengine_us_data/datasets/puf/irs_puf.py",
+                    SCRIPT_OUTPUTS["policyengine_us_data/datasets/puf/irs_puf.py"],
+                ),
+            ]
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {
                     executor.submit(
                         _run_checkpointed_substep,
                         coordinator=coordinator,
-                        script_path=(
-                            "policyengine_us_data/calibration/create_source_imputed_cps.py"
-                        ),
-                        output_files=SCRIPT_OUTPUTS[
-                            "policyengine_us_data/calibration/create_source_imputed_cps.py"
-                        ],
+                        script_path=script,
+                        output_files=output,
                         branch=branch,
                         volume=checkpoint_volume,
                         env=env,
                         log_file=log_file,
                         checkpoint_stats=checkpoint_stats,
-                    )
-                )
+                    ): script
+                    for script, output in group1
+                }
+                for future in as_completed(futures):
+                    future.result()  # Raises if script failed
+
+            # GROUP 2: Depends on Group 1 - run sequentially.
+            # puf.py pension imputation can instantiate CPS_2024, so it must
+            # not run while cps.py is writing cps_2024.h5.
+            print("=== Phase 2: Building CPS then PUF (sequential) ===")
+            run_cps_then_puf_phase(
+                branch,
+                checkpoint_volume,
+                env=env,
+                log_file=log_file,
+                checkpoint_stats=checkpoint_stats,
+                coordinator=coordinator,
+            )
+
+            # SEQUENTIAL: Extended CPS (needs both cps and puf)
+            print("=== Phase 3: Building extended CPS ===")
+            _run_checkpointed_substep(
+                coordinator=coordinator,
+                script_path="policyengine_us_data/datasets/cps/extended_cps.py",
+                output_files=SCRIPT_OUTPUTS[
+                    "policyengine_us_data/datasets/cps/extended_cps.py"
+                ],
+                branch=branch,
+                volume=checkpoint_volume,
+                env=env,
+                log_file=log_file,
+                checkpoint_stats=checkpoint_stats,
+            )
+
+            # GROUP 3: After extended_cps - run in parallel
+            # enhanced_cps and stratified_cps both depend on extended_cps
+            print("=== Phase 4: Building enhanced and stratified CPS (parallel) ===")
+            phase4_futures = []
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 if not skip_enhanced_cps:
-                    phase5_futures.append(
+                    phase4_futures.append(
                         executor.submit(
                             _run_checkpointed_substep,
                             coordinator=coordinator,
                             script_path=(
-                                "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                                "policyengine_us_data/datasets/cps/enhanced_cps.py"
                             ),
                             output_files=SCRIPT_OUTPUTS[
-                                "policyengine_us_data/datasets/cps/small_enhanced_cps.py"
+                                "policyengine_us_data/datasets/cps/enhanced_cps.py"
                             ],
                             branch=branch,
                             volume=checkpoint_volume,
@@ -946,22 +883,99 @@ def build_datasets(
                         )
                     )
                 else:
-                    print("Skipping small_enhanced_cps.py (--skip-enhanced-cps)")
+                    print("Skipping enhanced_cps.py (--skip-enhanced-cps)")
                     record_skipped_script(
-                        "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                        "policyengine_us_data/datasets/cps/enhanced_cps.py",
                         "--skip-enhanced-cps",
                     )
-                for future in as_completed(phase5_futures):
+                phase4_futures.append(
+                    executor.submit(
+                        _run_checkpointed_substep,
+                        coordinator=coordinator,
+                        script_path=(
+                            "policyengine_us_data/calibration/create_stratified_cps.py"
+                        ),
+                        output_files=SCRIPT_OUTPUTS[
+                            "policyengine_us_data/calibration/create_stratified_cps.py"
+                        ],
+                        branch=branch,
+                        volume=checkpoint_volume,
+                        env=env,
+                        log_file=log_file,
+                        checkpoint_stats=checkpoint_stats,
+                    )
+                )
+                for future in as_completed(phase4_futures):
                     future.result()
 
-    # Checkpoint the build log so it survives preemption
-    coordinator.finalize_results()
-    log_file.flush()
-    save_checkpoint(branch, str(log_path), checkpoint_volume)
+            # GROUP 4: After Phase 4 - run in parallel
+            # create_source_imputed_cps needs stratified_cps
+            # small_enhanced_cps needs enhanced_cps
+            if skip_stage_5:
+                print("Skipping Phase 5 (--skip-stage-5)")
+                record_skipped_script(
+                    "policyengine_us_data/calibration/create_source_imputed_cps.py",
+                    "--skip-stage-5",
+                )
+            else:
+                print(
+                    "=== Phase 5: Building source imputed CPS "
+                    "and small enhanced CPS (parallel) ==="
+                )
+                phase5_futures = []
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    phase5_futures.append(
+                        executor.submit(
+                            _run_checkpointed_substep,
+                            coordinator=coordinator,
+                            script_path=(
+                                "policyengine_us_data/calibration/"
+                                "create_source_imputed_cps.py"
+                            ),
+                            output_files=SCRIPT_OUTPUTS[
+                                "policyengine_us_data/calibration/"
+                                "create_source_imputed_cps.py"
+                            ],
+                            branch=branch,
+                            volume=checkpoint_volume,
+                            env=env,
+                            log_file=log_file,
+                            checkpoint_stats=checkpoint_stats,
+                        )
+                    )
+                    if not skip_enhanced_cps:
+                        phase5_futures.append(
+                            executor.submit(
+                                _run_checkpointed_substep,
+                                coordinator=coordinator,
+                                script_path=(
+                                    "policyengine_us_data/datasets/cps/"
+                                    "small_enhanced_cps.py"
+                                ),
+                                output_files=SCRIPT_OUTPUTS[
+                                    "policyengine_us_data/datasets/cps/"
+                                    "small_enhanced_cps.py"
+                                ],
+                                branch=branch,
+                                volume=checkpoint_volume,
+                                env=env,
+                                log_file=log_file,
+                                checkpoint_stats=checkpoint_stats,
+                            )
+                        )
+                    else:
+                        print("Skipping small_enhanced_cps.py (--skip-enhanced-cps)")
+                        record_skipped_script(
+                            "policyengine_us_data/datasets/cps/small_enhanced_cps.py",
+                            "--skip-enhanced-cps",
+                        )
+                    for future in as_completed(phase5_futures):
+                        future.result()
+    finally:
+        coordinator.finalize_results()
 
     # Copy pipeline artifacts to shared volume before tests so that a test
     # failure does not block downstream calibration steps.
-    print("Copying pipeline artifacts to shared volume...")
     artifacts_dir = Path(PIPELINE_MOUNT) / "artifacts"
     if run_id:
         artifacts_dir = artifacts_dir / run_id
@@ -972,43 +986,56 @@ def build_datasets(
         package_version=version,
         artifacts_dir=artifacts_dir,
     )
-    stager = PipelineArtifactStager(context=build_context)
-    staged_paths = stager.stage_declared_artifacts(
-        skip_enhanced_cps=skip_enhanced_cps,
-        skip_stage_5=skip_stage_5,
-    )
-    for staged_path in staged_paths:
-        print(
-            f"  Copied {staged_path.name} "
-            f"({staged_path.stat().st_size / 1024 / 1024:.1f} MB)"
+
+    def run_stage_base_handoff() -> None:
+        log_file.flush()
+        save_checkpoint(branch, str(log_path), checkpoint_volume)
+        print("Copying pipeline artifacts to shared volume...")
+        stager = PipelineArtifactStager(context=build_context)
+        staged_paths = stager.stage_declared_artifacts(
+            skip_enhanced_cps=skip_enhanced_cps,
+            skip_stage_5=skip_stage_5,
         )
-    checkpoint_snapshot = checkpoint_stats.snapshot()
-    stager.write_checkpoint_stats(checkpoint_snapshot)
-    log_file.close()
-    completed_at_dt = datetime.now(timezone.utc)
-    diagnostics = write_stage_1_diagnostics(
-        context=build_context,
-        skip_enhanced_cps=skip_enhanced_cps,
-        skip_stage_5=skip_stage_5,
+        for staged_path in staged_paths:
+            print(
+                f"  Copied {staged_path.name} "
+                f"({staged_path.stat().st_size / 1024 / 1024:.1f} MB)"
+            )
+        checkpoint_snapshot = checkpoint_stats.snapshot()
+        stager.write_checkpoint_stats(checkpoint_snapshot)
+        log_file.close()
+        completed_at_dt = datetime.now(timezone.utc)
+        diagnostics = write_stage_1_diagnostics(
+            context=build_context,
+            skip_enhanced_cps=skip_enhanced_cps,
+            skip_stage_5=skip_stage_5,
+        )
+        write_dataset_build_contract(
+            artifacts_dir=artifacts_dir,
+            run_id=run_id,
+            code_sha=commit,
+            checkpoint_stats=checkpoint_snapshot,
+            started_at=started,
+            completed_at=_utc_timestamp(completed_at_dt),
+            duration_s=(completed_at_dt - started_at_dt).total_seconds(),
+            upload_requested=upload,
+            stage_only=stage_only,
+            skip_enhanced_cps=skip_enhanced_cps,
+            skip_stage_5=skip_stage_5,
+            package_version=version,
+            branch=branch,
+            diagnostics=diagnostics,
+        )
+        pipeline_volume.commit()
+        print("Pipeline artifacts committed to shared volume")
+
+    coordinator.run_substep(
+        "1g_stage_base_datasets",
+        stage_1_substep_title("1g_stage_base_datasets"),
+        run_stage_base_handoff,
+        command_names=("stage_base_datasets",),
+        artifact_paths=_stage_base_artifact_paths(artifacts_dir),
     )
-    write_dataset_build_contract(
-        artifacts_dir=artifacts_dir,
-        run_id=run_id,
-        code_sha=commit,
-        checkpoint_stats=checkpoint_snapshot,
-        started_at=started,
-        completed_at=_utc_timestamp(completed_at_dt),
-        duration_s=(completed_at_dt - started_at_dt).total_seconds(),
-        upload_requested=upload,
-        stage_only=stage_only,
-        skip_enhanced_cps=skip_enhanced_cps,
-        skip_stage_5=skip_stage_5,
-        package_version=version,
-        branch=branch,
-        diagnostics=diagnostics,
-    )
-    pipeline_volume.commit()
-    print("Pipeline artifacts committed to shared volume")
 
     # Run post-build validators with checkpointing.
     if skip_tests:

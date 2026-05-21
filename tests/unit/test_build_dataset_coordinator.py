@@ -24,6 +24,11 @@ def test_stage_1_substep_mapping_uses_artifact_specs():
     )
 
 
+def test_stage_1_substep_mapping_rejects_unknown_scripts():
+    with pytest.raises(ValueError, match="No Stage 1 substep mapping"):
+        stage_1_substep_id_for_script("policyengine_us_data/datasets/new.py")
+
+
 def test_coordinator_records_completed_substep_and_artifacts(tmp_path):
     coordinator = Stage1Coordinator()
     artifact = tmp_path / "artifact.h5"
@@ -89,6 +94,43 @@ def test_coordinator_aggregates_canonical_substep_results(tmp_path):
         "started",
         "completed",
     ]
+
+
+def test_coordinator_finalizes_aggregated_failure_after_sibling_results(tmp_path):
+    coordinator = Stage1Coordinator()
+    sibling_artifact = tmp_path / "puf.h5"
+
+    def fail_action():
+        raise RuntimeError("acs failed")
+
+    with pytest.raises(RuntimeError, match="acs failed"):
+        coordinator.run_substep(
+            "1b_base_dataset_construction",
+            "Base dataset construction",
+            fail_action,
+            command_names=("build-acs",),
+            aggregate=True,
+        )
+
+    coordinator.run_substep(
+        "1b_base_dataset_construction",
+        "Base dataset construction",
+        lambda: sibling_artifact.write_text("puf"),
+        command_names=("build-puf",),
+        artifact_paths=(sibling_artifact,),
+        aggregate=True,
+    )
+
+    assert coordinator.results == []
+
+    coordinator.finalize_results()
+
+    [result] = coordinator.results
+    assert result.status == "failed"
+    assert result.command_names == ("build-acs", "build-puf")
+    assert result.artifact_paths == (str(sibling_artifact),)
+    assert result.error is not None
+    assert result.error.command_name == "build-acs"
 
 
 def test_coordinator_records_skipped_substep_not_completed():

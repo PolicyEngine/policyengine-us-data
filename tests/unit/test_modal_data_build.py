@@ -71,6 +71,91 @@ def test_script_outputs_are_generated_from_stage_1_artifact_specs():
     assert data_build.SCRIPT_OUTPUTS == stage_1_script_outputs()
 
 
+def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch):
+    data_build = _load_data_build_module()
+    calls = []
+
+    class FakeVolume:
+        def reload(self):
+            pass
+
+        def commit(self):
+            pass
+
+    class FakeCoordinator:
+        def run_substep(self, substep_id, title, action, **kwargs):
+            calls.append((substep_id, kwargs))
+            return action()
+
+        def finalize_results(self):
+            calls.append(("finalize", {}))
+            return ()
+
+    class FakeStager:
+        def __init__(self, *, context):
+            self.context = context
+
+        def stage_declared_artifacts(self, **kwargs):
+            self.context.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            path = self.context.artifact_path("policy_data.db")
+            path.write_bytes(b"db")
+            return (path,)
+
+        def write_checkpoint_stats(self, checkpoint_stats):
+            path = self.context.artifact_path("data_build_checkpoint_stats.json")
+            path.write_text("{}\n")
+            return path
+
+    def fake_write_contract(*, artifacts_dir, **kwargs):
+        (artifacts_dir / "dataset_build_output.json").write_text("{}\n")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(data_build, "setup_gcp_credentials", lambda: None)
+    monkeypatch.setattr(data_build, "checkpoint_volume", FakeVolume())
+    monkeypatch.setattr(data_build, "pipeline_volume", FakeVolume())
+    monkeypatch.setattr(data_build, "PIPELINE_MOUNT", str(tmp_path / "pipeline"))
+    monkeypatch.setattr(data_build, "VOLUME_MOUNT", str(tmp_path / "checkpoints"))
+    monkeypatch.setattr(data_build.os, "chdir", lambda _path: None)
+    monkeypatch.setattr(data_build, "get_current_commit", lambda: "abc123456")
+    monkeypatch.setattr(data_build, "SCRIPT_OUTPUTS", {})
+    monkeypatch.setattr(data_build, "run_script", lambda *args, **kwargs: args[0])
+    monkeypatch.setattr(
+        data_build,
+        "run_script_logged",
+        lambda cmd, *args, **kwargs: data_build.subprocess.CompletedProcess(cmd, 0),
+    )
+    monkeypatch.setattr(data_build, "save_checkpoint", lambda *args, **kwargs: None)
+    monkeypatch.setattr(data_build, "Stage1Coordinator", FakeCoordinator)
+    monkeypatch.setattr(data_build, "PipelineArtifactStager", FakeStager)
+    monkeypatch.setattr(data_build, "write_stage_1_diagnostics", lambda **kwargs: ())
+    monkeypatch.setattr(data_build, "write_dataset_build_contract", fake_write_contract)
+    monkeypatch.setattr(
+        data_build, "validate_and_maybe_upload_datasets", lambda **kwargs: None
+    )
+    monkeypatch.setattr(data_build, "cleanup_checkpoints", lambda *args, **kwargs: None)
+
+    assert (
+        data_build.build_datasets(
+            sequential=True,
+            skip_tests=True,
+            run_id="run-123",
+        )
+        == "Data build completed successfully"
+    )
+
+    assert [call[0] for call in calls] == [
+        "1a_raw_data_download",
+        "finalize",
+        "1g_stage_base_datasets",
+    ]
+    stage_base_kwargs = calls[-1][1]
+    assert stage_base_kwargs["command_names"] == ("stage_base_datasets",)
+    assert any(
+        str(path).endswith("dataset_build_output.json")
+        for path in stage_base_kwargs["artifact_paths"]
+    )
+
+
 def test_validate_and_maybe_upload_datasets_validates_before_upload(monkeypatch):
     data_build = _load_data_build_module()
     calls = []

@@ -140,6 +140,8 @@ def test_pipeline_map_manifest_validates():
         "stage2_geography_assignment_result",
         "stage2_matrix_build_spec",
         "stage2_matrix_build_service",
+        "stage2_chunk_build_request",
+        "stage2_chunk_worker_result",
         "stage2_matrix_build_result",
         "build_matrix",
         "build_matrix_chunked",

@@ -55,71 +55,140 @@ def _chunk_root(run_id: str) -> str:
     nonpreemptible=True,
 )
 def build_matrix_chunk_worker(
-    run_id: str,
-    chunk_ids: List[int],
+    request: Dict | None = None,
+    run_id: str | None = None,
+    chunk_ids: List[int] | None = None,
     resume_chunks: bool = False,
 ) -> Dict:
-    """Materialize ``chunk_ids`` from the pickled ``SharedBuildState``.
+    """Materialize a typed chunk request from pickled ``SharedBuildState``.
 
     Args:
-        run_id: Pipeline run identifier; selects the volume path for
-            this worker's shared state and shard output directory.
-        chunk_ids: Chunk indices this worker is responsible for.
-        resume_chunks: Whether to trust matching pre-existing COO shards.
-            Fresh builds pass ``False`` so workers overwrite stale chunks.
+        request: Typed worker request material. Legacy ``run_id`` and
+            ``chunk_ids`` arguments are accepted for compatibility with
+            older local tests and undeployed call sites.
+        run_id: Legacy pipeline run identifier.
+        chunk_ids: Legacy chunk indices this worker is responsible for.
+        resume_chunks: Legacy resume flag.
 
     Returns:
-        Dict with ``chunk_ids``, ``nnz_per_chunk``, and ``errors``
-        lists suitable for the coordinator to aggregate.
+        Structured worker result material suitable for the coordinator to
+        aggregate.
     """
     from policyengine_us_data.calibration.chunked_matrix_assembler import (
         ChunkedMatrixAssembler,
     )
+    from policyengine_us_data.calibration.signatures import signature_mismatches
+    from policyengine_us_data.calibration_package.matrix import (
+        CHUNK_EXECUTION_SCHEMA_VERSION,
+        ChunkBuildRequest,
+        ChunkExecutionResult,
+        ChunkWorkerResult,
+        write_chunk_result_manifest,
+    )
 
     pipeline_vol.reload()
-    chunk_root = Path(_chunk_root(run_id))
-    state_path = chunk_root / "chunk_build_state.pkl"
+    if request is None:
+        if run_id is None or chunk_ids is None:
+            raise ValueError("request or legacy run_id/chunk_ids are required")
+        chunk_root = Path(_chunk_root(run_id))
+        request_obj = ChunkBuildRequest(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+            run_id=run_id,
+            chunk_ids=tuple(chunk_ids),
+            chunk_root=str(chunk_root),
+            state_path=str(chunk_root / "chunk_build_state.pkl"),
+            resume_chunks=resume_chunks,
+            lineage_signature={},
+        )
+    else:
+        request_obj = ChunkBuildRequest.from_dict(request)
+    chunk_root = Path(request_obj.chunk_root)
+    state_path = Path(request_obj.state_path)
     if not state_path.exists():
-        return {
-            "chunk_ids": list(chunk_ids),
-            "nnz_per_chunk": [],
-            "errors": [
-                {
-                    "chunk_ids": list(chunk_ids),
-                    "error": f"Missing shared state at {state_path}",
-                }
-            ],
-        }
+        chunk_results = tuple(
+            ChunkExecutionResult.failure(
+                run_id=request_obj.run_id,
+                chunk_id=chunk_id,
+                error=f"Missing shared state at {state_path}",
+            )
+            for chunk_id in request_obj.chunk_ids
+        )
+        for result in chunk_results:
+            write_chunk_result_manifest(chunk_root, result)
+        pipeline_vol.commit()
+        return ChunkWorkerResult(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+            run_id=request_obj.run_id,
+            chunk_ids=request_obj.chunk_ids,
+            chunk_results=chunk_results,
+        ).to_dict()
 
     with open(state_path, "rb") as f:
         shared_state = pickle.load(f)
+    if request_obj.lineage_signature:
+        state_lineage_signature = getattr(shared_state, "lineage_signature", {})
+        fatal, _ = signature_mismatches(
+            state_lineage_signature,
+            request_obj.lineage_signature,
+        )
+        if fatal:
+            error = "Chunk request lineage mismatch: " + "; ".join(fatal)
+            chunk_results = tuple(
+                ChunkExecutionResult.failure(
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    error=error,
+                )
+                for chunk_id in request_obj.chunk_ids
+            )
+            for result in chunk_results:
+                write_chunk_result_manifest(chunk_root, result)
+            pipeline_vol.commit()
+            return ChunkWorkerResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id=request_obj.run_id,
+                chunk_ids=request_obj.chunk_ids,
+                chunk_results=chunk_results,
+            ).to_dict()
 
     assembler = ChunkedMatrixAssembler(
         shared_state=shared_state,
         chunk_root=chunk_root,
         chunk_size=shared_state.chunk_size,
-        resume=resume_chunks,
+        resume=request_obj.resume_chunks,
         keep_chunks=False,
     )
 
-    errors: List[Dict] = []
-    nnz_per_chunk: List[int] = []
-    for chunk_id in chunk_ids:
+    chunk_results: List[ChunkExecutionResult] = []
+    for chunk_id in request_obj.chunk_ids:
         try:
             result = assembler.run_single_chunk(chunk_id)
-            nnz_per_chunk.append(result.nnz)
+            chunk_results.append(
+                ChunkExecutionResult.from_chunk_result(
+                    run_id=request_obj.run_id,
+                    result=result,
+                )
+            )
         except Exception as exc:
-            errors.append(
-                {
-                    "chunk_id": chunk_id,
-                    "error": str(exc),
-                    "traceback": traceback.format_exc(),
-                }
+            traceback_text = traceback.format_exc()
+            assembler.record_chunk_error(
+                chunk_id=chunk_id,
+                error=str(exc),
+                traceback=traceback_text,
+            )
+            chunk_results.append(
+                ChunkExecutionResult.failure(
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    error=str(exc),
+                    traceback=traceback_text,
+                )
             )
 
     pipeline_vol.commit()
-    return {
-        "chunk_ids": list(chunk_ids),
-        "nnz_per_chunk": nnz_per_chunk,
-        "errors": errors,
-    }
+    return ChunkWorkerResult(
+        schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+        run_id=request_obj.run_id,
+        chunk_ids=request_obj.chunk_ids,
+        chunk_results=tuple(chunk_results),
+    ).to_dict()

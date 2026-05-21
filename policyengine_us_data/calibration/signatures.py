@@ -152,6 +152,7 @@ def build_chunk_lineage_signature(
     target_names: list[str],
     chunk_size: int,
     rerandomize_takeup: bool,
+    run_id: str | None = None,
 ) -> dict:
     """Build a signature for validating chunk cache lineage."""
     target_columns = [
@@ -170,7 +171,9 @@ def build_chunk_lineage_signature(
     ]
     target_frame = targets_df[target_columns].copy()
     return {
-        "format_version": 1,
+        "format_version": 2,
+        "run_id": run_id or "",
+        "matrix_builder": "chunked",
         "dataset_sha256": compute_file_checksum(Path(dataset_path)),
         "db_sha256": sqlite_checksum(db_uri),
         "time_period": int(time_period),

@@ -10,7 +10,6 @@ Matrix shape: (n_targets, n_records * n_clones)
 Column ordering: index i = clone_idx * n_records + record_idx
 """
 
-import json
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -27,7 +26,6 @@ from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.census import STATE_ABBREV_TO_FIPS, STATE_NAME_TO_FIPS
 from policyengine_us_data.calibration.signatures import (
     build_chunk_lineage_signature,
-    signature_mismatches,
 )
 from policyengine_us_data.calibration.calibration_utils import (
     get_calculated_variables,
@@ -38,6 +36,7 @@ from policyengine_us_data.calibration_package.targets import (
     TargetCatalogReader,
     TargetSelectionResult,
 )
+from policyengine_us_data.calibration_package.matrix import ChunkCacheManifest
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.target_variables import (
@@ -99,15 +98,11 @@ def _current_rss_mb() -> Optional[float]:
 
 
 def _load_chunk_manifest(path: Path) -> dict:
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return ChunkCacheManifest.read(path).to_dict()
 
 
 def _save_chunk_manifest(path: Path, signature: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump({"signature": signature}, f, indent=2, sort_keys=True)
-        f.write("\n")
+    ChunkCacheManifest.from_signature(signature).write(path)
 
 
 def _validate_chunk_manifest(path: Path, expected_signature: dict) -> None:
@@ -115,14 +110,8 @@ def _validate_chunk_manifest(path: Path, expected_signature: dict) -> None:
         raise ValueError(
             f"Cannot resume chunk cache at {path.parent}: missing chunk manifest"
         )
-    stored = _load_chunk_manifest(path)
-    stored_signature = stored.get("signature")
-    if stored_signature is None:
-        raise ValueError(f"Chunk manifest at {path} is missing its signature")
-    fatal, _ = signature_mismatches(stored_signature, expected_signature)
-    if fatal:
-        joined = "; ".join(fatal)
-        raise ValueError(f"Chunk cache lineage mismatch for {path.parent}: {joined}")
+    stored = ChunkCacheManifest.read(path)
+    stored.validate_lineage(expected_signature, cache_root=path.parent)
 
 
 def _has_existing_chunk_cache(coo_dir: Path) -> bool:
@@ -3370,6 +3359,7 @@ class UnifiedMatrixBuilder:
             target_names=target_names,
             chunk_size=chunk_size,
             rerandomize_takeup=rerandomize_takeup,
+            run_id=run_id,
         )
         if resume_chunks:
             if chunk_manifest_path.exists():
@@ -3404,6 +3394,7 @@ class UnifiedMatrixBuilder:
             cd_geoid=np.asarray(geography.cd_geoid, dtype=str),
             county_fips=np.asarray(geography.county_fips, dtype=str),
             state_fips=np.asarray(geography.state_fips),
+            lineage_signature=chunk_signature,
         )
         assembler = ChunkedMatrixAssembler(
             shared_state=shared_state,

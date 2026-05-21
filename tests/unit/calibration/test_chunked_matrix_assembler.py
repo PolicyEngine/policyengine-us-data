@@ -10,6 +10,7 @@ profile), and resume-skip behaviour on pre-staged shards.
 from __future__ import annotations
 
 import gc
+import json
 from pathlib import Path
 from typing import List
 from unittest import mock
@@ -24,6 +25,10 @@ from policyengine_us_data.calibration.chunked_matrix_assembler import (
     SharedBuildState,
     partition_chunks,
     stream_csr_from_shards,
+)
+from policyengine_us_data.calibration_package.matrix import (
+    ChunkExecutionResult,
+    chunk_result_manifest_path,
 )
 
 
@@ -76,6 +81,7 @@ def _make_shared_state(
         cd_geoid=np.zeros(n_total, dtype="U4"),
         county_fips=np.zeros(n_total, dtype="U5"),
         state_fips=np.zeros(n_total, dtype=np.int32),
+        lineage_signature={"run_id": "run-test", "chunk_size": 10},
     )
 
 
@@ -274,6 +280,11 @@ def test_assembler_skips_existing_shards_when_resume(tmp_path: Path) -> None:
     assert result.cached is True
     assert result.nnz == 2
     assert result.chunk_id == 0
+    manifest = ChunkExecutionResult.from_dict(
+        json.loads(chunk_result_manifest_path(tmp_path, 0).read_text(encoding="utf-8"))
+    )
+    assert manifest.status == "cached"
+    assert manifest.run_id == "run-test"
 
 
 def test_assembler_rejects_shard_with_mismatched_range(tmp_path: Path) -> None:
@@ -330,6 +341,7 @@ def test_shared_build_state_roundtrips_pickle() -> None:
     assert np.array_equal(restored.cd_geoid, state.cd_geoid)
     assert np.array_equal(restored.county_fips, state.county_fips)
     assert np.array_equal(restored.state_fips, state.state_fips)
+    assert restored.lineage_signature == state.lineage_signature
 
 
 def test_assembler_run_chunks_dispatches_each_id(tmp_path: Path) -> None:
@@ -354,3 +366,28 @@ def test_assembler_run_chunks_dispatches_each_id(tmp_path: Path) -> None:
 
     assert observed == [0, 2]
     assert [r.chunk_id for r in results] == [0, 2]
+
+
+def test_assembler_records_chunk_error_manifest(tmp_path: Path) -> None:
+    state = _make_shared_state(n_records=10, n_clones=2, n_targets=3)
+    assembler = ChunkedMatrixAssembler(
+        shared_state=state,
+        chunk_root=tmp_path,
+        chunk_size=10,
+        resume=False,
+        keep_chunks=False,
+    )
+
+    manifest_path = assembler.record_chunk_error(
+        chunk_id=1,
+        error="worker failed",
+        traceback="traceback text",
+    )
+
+    assert manifest_path == chunk_result_manifest_path(tmp_path, 1)
+    manifest = ChunkExecutionResult.from_dict(
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+    )
+    assert manifest.status == "failed"
+    assert manifest.error == "worker failed"
+    assert manifest.traceback == "traceback text"

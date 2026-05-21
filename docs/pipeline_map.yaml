@@ -816,6 +816,8 @@ stages:
     - stage2_geography_assignment_result
     - stage2_matrix_build_spec
     - stage2_matrix_build_service
+    - stage2_chunk_build_request
+    - stage2_chunk_worker_result
     - stage2_matrix_build_result
     - target_resolve
     - stage2_target_config_apply
@@ -838,6 +840,7 @@ stages:
     - out_targets
     - out_target_facets
     - out_geography_summary
+    - out_chunk_result_manifests
     - out_matrix_summary
     - stage2_calibration_package_contract_writer
     - out_contract
@@ -911,6 +914,18 @@ stages:
     label: matrix_summary.json
     node_type: artifact
     description: Compact Stage 2 matrix shape, sparsity, target order, builder mode, and chunk lineage summary
+  - id: out_chunk_result_manifests
+    label: chunk_results/*.json
+    node_type: artifact
+    description: Per-chunk structured progress, cache, and error metadata for chunked matrix execution
+  - id: stage2_chunk_build_request
+    label: Chunk Build Request
+    node_type: library
+    description: Typed Modal worker request carrying run, chunk, state path, resume flag, and lineage signature material
+  - id: stage2_chunk_worker_result
+    label: Chunk Worker Result
+    node_type: library
+    description: Typed Modal worker result carrying per-chunk completion, cache, and error metadata
   - id: out_contract
     label: calibration_package_contract.json
     node_type: artifact
@@ -1024,6 +1039,10 @@ stages:
     target: stage2_matrix_build_service
     edge_type: data_flow
     label: builder mode and chunk settings
+  - source: stage2_matrix_build_service
+    target: stage2_chunk_build_request
+    edge_type: data_flow
+    label: chunk ids and lineage signature
   - source: stage2_target_catalog_load
     target: stage2_target_config_apply
     edge_type: data_flow
@@ -1077,6 +1096,22 @@ stages:
     target: stage2_matrix_build_result
     edge_type: data_flow
     label: chunk manifest and shards
+  - source: stage2_chunk_build_request
+    target: build_matrix_chunked
+    edge_type: data_flow
+    label: typed worker request
+  - source: build_matrix_chunked
+    target: stage2_chunk_worker_result
+    edge_type: data_flow
+    label: typed worker result
+  - source: stage2_chunk_worker_result
+    target: out_chunk_result_manifests
+    edge_type: produces_artifact
+    label: per-chunk progress and error metadata
+  - source: out_chunk_result_manifests
+    target: stage2_matrix_build_result
+    edge_type: data_flow
+    label: chunk execution diagnostics
   - source: stage2_matrix_build_service
     target: build_matrix
     edge_type: uses_library

@@ -5,9 +5,15 @@ import pytest
 from scipy import sparse
 
 from policyengine_us_data.calibration_package.matrix import (
+    CHUNK_EXECUTION_SCHEMA_VERSION,
+    ChunkBuildRequest,
+    ChunkCacheManifest,
+    ChunkExecutionResult,
+    ChunkWorkerResult,
     MatrixBuildResult,
     MatrixBuildService,
     MatrixBuildSpec,
+    write_chunk_result_manifest,
 )
 from policyengine_us_data.stage_contracts.calibration_package_schema import (
     MatrixBuildSummary,
@@ -196,3 +202,128 @@ def test_matrix_build_service_normalizes_standard_and_chunked_outputs(tmp_path):
     assert standard.summary().matrix_builder == "precompute"
     assert chunked.summary().matrix_builder == "chunked"
     assert chunked.summary().chunk_shard_count == 1
+
+
+def test_chunk_cache_manifest_round_trips_and_rejects_lineage_mismatch(tmp_path):
+    signature = {
+        "format_version": 2,
+        "run_id": "run-a",
+        "matrix_builder": "chunked",
+        "dataset_sha256": "dataset-a",
+        "db_sha256": "db-a",
+        "target_names_sha256": "targets-a",
+        "targets_sha256": "target-frame-a",
+        "state_fips_sha256": "states-a",
+        "county_fips_sha256": "counties-a",
+        "cd_geoid_sha256": "districts-a",
+        "block_geoid_sha256": "blocks-a",
+        "chunk_size": 10,
+    }
+    manifest_path = ChunkCacheManifest.from_signature(signature).write(
+        tmp_path / "chunk_manifest.json"
+    )
+
+    restored = ChunkCacheManifest.read(manifest_path)
+    restored.validate_lineage(signature)
+
+    for key in (
+        "run_id",
+        "dataset_sha256",
+        "db_sha256",
+        "target_names_sha256",
+        "targets_sha256",
+        "state_fips_sha256",
+        "county_fips_sha256",
+        "cd_geoid_sha256",
+        "block_geoid_sha256",
+        "chunk_size",
+    ):
+        expected = dict(signature)
+        expected[key] = "different" if key != "chunk_size" else 25
+        with pytest.raises(ValueError, match=key):
+            restored.validate_lineage(expected)
+
+
+def test_chunk_build_request_round_trips():
+    request = ChunkBuildRequest(
+        schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+        run_id="run-a",
+        chunk_ids=(0, 2),
+        chunk_root="/pipeline/artifacts/run-a/matrix_build",
+        state_path="/pipeline/artifacts/run-a/matrix_build/chunk_build_state.pkl",
+        resume_chunks=True,
+        lineage_signature={"run_id": "run-a", "chunk_size": 10},
+    )
+
+    restored = ChunkBuildRequest.from_dict(request.to_dict())
+
+    assert restored == request
+    assert restored.to_dict()["chunk_ids"] == [0, 2]
+
+
+def test_chunk_execution_result_manifest_round_trips(tmp_path):
+    result = ChunkExecutionResult(
+        schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+        run_id="run-a",
+        chunk_id=3,
+        status="completed",
+        nnz=12,
+        n_households=5,
+        n_persons=9,
+        unique_states=2,
+    )
+
+    manifest_path = write_chunk_result_manifest(tmp_path, result)
+    restored = ChunkExecutionResult.from_dict(
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+    )
+
+    assert restored == result
+
+
+def test_chunk_worker_result_round_trips_errors():
+    worker_result = ChunkWorkerResult(
+        schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+        run_id="run-a",
+        chunk_ids=(0, 1),
+        chunk_results=(
+            ChunkExecutionResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id="run-a",
+                chunk_id=0,
+                status="completed",
+                nnz=3,
+            ),
+            ChunkExecutionResult.failure(
+                run_id="run-a",
+                chunk_id=1,
+                error="boom",
+                traceback="traceback",
+            ),
+        ),
+    )
+
+    restored = ChunkWorkerResult.from_dict(worker_result.to_dict())
+
+    assert restored == worker_result
+    assert restored.completed_count == 1
+    assert len(restored.errors) == 1
+    assert restored.to_dict()["errors"][0]["error"] == "boom"
+
+
+def test_chunk_worker_result_rejects_missing_chunk_result():
+    with pytest.raises(ValueError, match="one result per requested chunk"):
+        ChunkWorkerResult(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+            run_id="run-a",
+            chunk_ids=(0, 1),
+            chunk_results=(
+                ChunkExecutionResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id="run-a",
+                    chunk_id=0,
+                    status="completed",
+                    nnz=3,
+                ),
+            ),
+        )

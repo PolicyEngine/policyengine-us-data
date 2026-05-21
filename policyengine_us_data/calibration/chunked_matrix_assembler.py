@@ -14,10 +14,15 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import numpy as np
 from scipy import sparse
+
+from policyengine_us_data.calibration_package.matrix import (
+    ChunkExecutionResult,
+    write_chunk_result_manifest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +86,7 @@ class SharedBuildState:
     cd_geoid: np.ndarray
     county_fips: np.ndarray
     state_fips: np.ndarray
+    lineage_signature: Dict[str, Any]
 
     @property
     def n_total(self) -> int:
@@ -190,6 +196,26 @@ def stream_csr_from_shards(
     return X
 
 
+def _format_duration(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m {seconds:02d}s"
+    if minutes:
+        return f"{minutes}m {seconds:02d}s"
+    return f"{seconds}s"
+
+
+def _current_rss_mb() -> Optional[float]:
+    try:
+        import psutil
+
+        return psutil.Process().memory_info().rss / 1024**2
+    except Exception:
+        return None
+
+
 class ChunkedMatrixAssembler:
     """Coordinate partitioning, per-chunk execution, and streaming assembly.
 
@@ -267,11 +293,6 @@ class ChunkedMatrixAssembler:
                     cached_chunks,
                 )
             else:
-                from policyengine_us_data.calibration.unified_matrix_builder import (
-                    _current_rss_mb,
-                    _format_duration,
-                )
-
                 rss = _current_rss_mb()
                 rss_part = f", rss={rss:,.0f} MB" if rss is not None else ""
                 logger.info(
@@ -322,7 +343,9 @@ class ChunkedMatrixAssembler:
                     f"{cached_col_start}-{cached_col_end - 1}, "
                     f"expected {plan.col_start}-{plan.col_end - 1}"
                 )
-            return ChunkResult(chunk_id=chunk_id, nnz=cached_nnz, cached=True)
+            result = ChunkResult(chunk_id=chunk_id, nnz=cached_nnz, cached=True)
+            self.write_result_manifest(result)
+            return result
 
         # Imports are local so the module is import-safe in lightweight
         # environments (e.g., cold Modal containers that haven't yet
@@ -520,7 +543,7 @@ class ChunkedMatrixAssembler:
         if not self.keep_chunks and plan.h5_path.exists():
             plan.h5_path.unlink()
 
-        return ChunkResult(
+        result = ChunkResult(
             chunk_id=chunk_id,
             nnz=int(vals.shape[0]),
             cached=False,
@@ -530,6 +553,42 @@ class ChunkedMatrixAssembler:
             unique_counties=getattr(summary, "unique_counties", None),
             unique_cds=getattr(summary, "unique_cds", None),
         )
+        self.write_result_manifest(result)
+        return result
+
+    def write_result_manifest(self, result: ChunkResult) -> Path:
+        """Persist structured progress metadata for one chunk."""
+
+        return write_chunk_result_manifest(
+            self.chunk_root,
+            ChunkExecutionResult.from_chunk_result(
+                run_id=self._manifest_run_id(),
+                result=result,
+            ),
+        )
+
+    def record_chunk_error(
+        self,
+        *,
+        chunk_id: int,
+        error: str,
+        traceback: str | None = None,
+    ) -> Path:
+        """Persist structured error metadata for one chunk."""
+
+        return write_chunk_result_manifest(
+            self.chunk_root,
+            ChunkExecutionResult.failure(
+                run_id=self._manifest_run_id(),
+                chunk_id=chunk_id,
+                error=error,
+                traceback=traceback,
+            ),
+        )
+
+    def _manifest_run_id(self) -> str:
+        lineage_signature = getattr(self.shared_state, "lineage_signature", {})
+        return str(lineage_signature.get("run_id", ""))
 
     def assemble_final(self) -> sparse.csr_matrix:
         """Stream-assemble the final CSR matrix from all shards on disk."""

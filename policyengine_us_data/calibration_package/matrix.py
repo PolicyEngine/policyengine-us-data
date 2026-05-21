@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Mapping
 
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -20,8 +20,421 @@ if TYPE_CHECKING:
     )
 
 MATRIX_BUILD_SCHEMA_VERSION = 1
+CHUNK_CACHE_MANIFEST_SCHEMA_VERSION = 2
+CHUNK_EXECUTION_SCHEMA_VERSION = 1
 MatrixBuilderMode = Literal["precompute", "chunked"]
 MATRIX_BUILDER_MODES = frozenset({"precompute", "chunked"})
+ChunkExecutionStatus = Literal["completed", "cached", "failed"]
+CHUNK_EXECUTION_STATUSES = frozenset({"completed", "cached", "failed"})
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChunkCacheManifest:
+    """Structured lineage manifest for resumable chunked matrix shards."""
+
+    schema_version: int
+    lineage_signature: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
+        if not isinstance(self.lineage_signature, Mapping):
+            raise ValueError("lineage_signature must be a mapping")
+
+    @classmethod
+    def from_signature(cls, signature: Mapping[str, Any]) -> "ChunkCacheManifest":
+        """Create a cache manifest from a computed chunk lineage signature."""
+
+        return cls(
+            schema_version=CHUNK_CACHE_MANIFEST_SCHEMA_VERSION,
+            lineage_signature=dict(signature),
+        )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ChunkCacheManifest":
+        """Parse a chunk cache manifest from JSON-compatible material."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("chunk cache manifest must be a mapping")
+        if "signature" in data and "lineage_signature" not in data:
+            # PR-2f caches wrote {"signature": ...}; preserve compatibility
+            # while the schema name becomes explicit.
+            lineage = data["signature"]
+        else:
+            lineage = data.get("lineage_signature")
+        return cls(
+            schema_version=int(data.get("schema_version", 1)),
+            lineage_signature=_mapping_value(lineage, "lineage_signature"),
+        )
+
+    @classmethod
+    def read(cls, path: str | Path) -> "ChunkCacheManifest":
+        """Read a structured chunk cache manifest from disk."""
+
+        return cls.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+    def validate_lineage(
+        self,
+        expected_signature: Mapping[str, Any],
+        *,
+        cache_root: str | Path | None = None,
+    ) -> None:
+        """Reject resume when stored lineage differs from expected lineage."""
+
+        fatal = _lineage_mismatches(self.lineage_signature, expected_signature)
+        if fatal:
+            root = Path(cache_root) if cache_root is not None else "chunk cache"
+            joined = "; ".join(fatal)
+            raise ValueError(f"Chunk cache lineage mismatch for {root}: {joined}")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible cache manifest material."""
+
+        return {
+            "lineage_signature": dict(self.lineage_signature),
+            "schema_version": self.schema_version,
+        }
+
+    def write(self, path: str | Path) -> Path:
+        """Write the cache manifest and return the path."""
+
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+        return output_path
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChunkBuildRequest:
+    """Typed request consumed by a chunked matrix worker."""
+
+    schema_version: int
+    run_id: str
+    chunk_ids: tuple[int, ...]
+    chunk_root: str
+    state_path: str
+    resume_chunks: bool
+    lineage_signature: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
+        _validate_string(self.run_id, "run_id")
+        _validate_string(self.chunk_root, "chunk_root")
+        _validate_string(self.state_path, "state_path")
+        _validate_bool(self.resume_chunks, "resume_chunks")
+        if not isinstance(self.lineage_signature, Mapping):
+            raise ValueError("lineage_signature must be a mapping")
+        if not isinstance(self.chunk_ids, tuple) or not self.chunk_ids:
+            raise ValueError("chunk_ids must be a non-empty tuple")
+        for chunk_id in self.chunk_ids:
+            _validate_non_negative_int(chunk_id, "chunk_ids")
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ChunkBuildRequest":
+        """Parse a chunk worker request from JSON-compatible material."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("chunk build request must be a mapping")
+        return cls(
+            schema_version=int(data.get("schema_version", 1)),
+            run_id=_string_value(data.get("run_id"), "run_id"),
+            chunk_ids=tuple(
+                _non_negative_int_value(chunk_id, "chunk_ids")
+                for chunk_id in data.get("chunk_ids", ())
+            ),
+            chunk_root=_string_value(data.get("chunk_root"), "chunk_root"),
+            state_path=_string_value(data.get("state_path"), "state_path"),
+            resume_chunks=_bool_value(data.get("resume_chunks"), "resume_chunks"),
+            lineage_signature=_mapping_value(
+                data.get("lineage_signature"),
+                "lineage_signature",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible worker request material."""
+
+        return {
+            "chunk_ids": list(self.chunk_ids),
+            "chunk_root": self.chunk_root,
+            "lineage_signature": dict(self.lineage_signature),
+            "resume_chunks": self.resume_chunks,
+            "run_id": self.run_id,
+            "schema_version": self.schema_version,
+            "state_path": self.state_path,
+        }
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChunkExecutionResult:
+    """Structured per-chunk progress or error metadata."""
+
+    schema_version: int
+    run_id: str
+    chunk_id: int
+    status: ChunkExecutionStatus
+    nnz: int | None = None
+    cached: bool = False
+    error: str | None = None
+    traceback: str | None = None
+    n_households: int | None = None
+    n_persons: int | None = None
+    unique_states: int | None = None
+    unique_counties: int | None = None
+    unique_cds: int | None = None
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
+        _validate_string(self.run_id, "run_id")
+        _validate_non_negative_int(self.chunk_id, "chunk_id")
+        _validate_bool(self.cached, "cached")
+        if self.status not in CHUNK_EXECUTION_STATUSES:
+            raise ValueError(
+                f"status must be one of {sorted(CHUNK_EXECUTION_STATUSES)}"
+            )
+        _validate_optional_non_negative_int(self.nnz, "nnz")
+        for key in (
+            "n_households",
+            "n_persons",
+            "unique_states",
+            "unique_counties",
+            "unique_cds",
+        ):
+            _validate_optional_non_negative_int(getattr(self, key), key)
+        for key in ("error", "traceback"):
+            value = getattr(self, key)
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f"{key} must be a string or None")
+        if self.status == "failed":
+            if not self.error:
+                raise ValueError("failed chunk results require error")
+            if self.nnz is not None:
+                raise ValueError("failed chunk results must not report nnz")
+        else:
+            _validate_non_negative_int(self.nnz, "nnz")
+            if self.error is not None or self.traceback is not None:
+                raise ValueError("successful chunk results must not report errors")
+        if self.status == "cached" and not self.cached:
+            raise ValueError("cached chunk results require cached=True")
+        if self.status == "completed" and self.cached:
+            raise ValueError("completed chunk results require cached=False")
+
+    @classmethod
+    def from_chunk_result(
+        cls,
+        *,
+        run_id: str,
+        result: Any,
+    ) -> "ChunkExecutionResult":
+        """Normalize an assembler `ChunkResult` into manifest metadata."""
+
+        cached = bool(getattr(result, "cached"))
+        return cls(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+            run_id=run_id,
+            chunk_id=int(getattr(result, "chunk_id")),
+            status="cached" if cached else "completed",
+            nnz=int(getattr(result, "nnz")),
+            cached=cached,
+            n_households=getattr(result, "n_households", None),
+            n_persons=getattr(result, "n_persons", None),
+            unique_states=getattr(result, "unique_states", None),
+            unique_counties=getattr(result, "unique_counties", None),
+            unique_cds=getattr(result, "unique_cds", None),
+        )
+
+    @classmethod
+    def failure(
+        cls,
+        *,
+        run_id: str,
+        chunk_id: int,
+        error: str,
+        traceback: str | None = None,
+    ) -> "ChunkExecutionResult":
+        """Create failure metadata for a chunk worker error."""
+
+        return cls(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+            run_id=run_id,
+            chunk_id=chunk_id,
+            status="failed",
+            cached=False,
+            error=error,
+            traceback=traceback,
+        )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ChunkExecutionResult":
+        """Parse per-chunk result metadata."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("chunk execution result must be a mapping")
+        return cls(
+            schema_version=int(data.get("schema_version", 1)),
+            run_id=_string_value(data.get("run_id"), "run_id"),
+            chunk_id=_non_negative_int_value(data.get("chunk_id"), "chunk_id"),
+            status=_string_value(data.get("status"), "status"),
+            nnz=_optional_non_negative_int_value(data.get("nnz"), "nnz"),
+            cached=_bool_value(data.get("cached", False), "cached"),
+            error=data.get("error"),
+            traceback=data.get("traceback"),
+            n_households=_optional_non_negative_int_value(
+                data.get("n_households"),
+                "n_households",
+            ),
+            n_persons=_optional_non_negative_int_value(
+                data.get("n_persons"),
+                "n_persons",
+            ),
+            unique_states=_optional_non_negative_int_value(
+                data.get("unique_states"),
+                "unique_states",
+            ),
+            unique_counties=_optional_non_negative_int_value(
+                data.get("unique_counties"),
+                "unique_counties",
+            ),
+            unique_cds=_optional_non_negative_int_value(
+                data.get("unique_cds"),
+                "unique_cds",
+            ),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible chunk result material."""
+
+        return {
+            "cached": self.cached,
+            "chunk_id": self.chunk_id,
+            "error": self.error,
+            "n_households": self.n_households,
+            "n_persons": self.n_persons,
+            "nnz": self.nnz,
+            "run_id": self.run_id,
+            "schema_version": self.schema_version,
+            "status": self.status,
+            "traceback": self.traceback,
+            "unique_cds": self.unique_cds,
+            "unique_counties": self.unique_counties,
+            "unique_states": self.unique_states,
+        }
+
+
+@dataclass(frozen=True, kw_only=True)
+class ChunkWorkerResult:
+    """Structured result returned by one chunked matrix worker."""
+
+    schema_version: int
+    run_id: str
+    chunk_ids: tuple[int, ...]
+    chunk_results: tuple[ChunkExecutionResult, ...]
+
+    def __post_init__(self) -> None:
+        _validate_positive_int(self.schema_version, "schema_version")
+        _validate_string(self.run_id, "run_id")
+        if not isinstance(self.chunk_ids, tuple):
+            raise ValueError("chunk_ids must be a tuple")
+        for chunk_id in self.chunk_ids:
+            _validate_non_negative_int(chunk_id, "chunk_ids")
+        if not isinstance(self.chunk_results, tuple) or not all(
+            isinstance(result, ChunkExecutionResult) for result in self.chunk_results
+        ):
+            raise ValueError("chunk_results must contain ChunkExecutionResult entries")
+        result_ids = tuple(result.chunk_id for result in self.chunk_results)
+        if sorted(result_ids) != sorted(self.chunk_ids):
+            raise ValueError(
+                "chunk_results must include one result per requested chunk"
+            )
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "ChunkWorkerResult":
+        """Parse worker result material."""
+
+        if not isinstance(data, Mapping):
+            raise ValueError("chunk worker result must be a mapping")
+        chunk_results = tuple(
+            ChunkExecutionResult.from_dict(item)
+            for item in data.get("chunk_results", ())
+        )
+        return cls(
+            schema_version=int(data.get("schema_version", 1)),
+            run_id=_string_value(data.get("run_id"), "run_id"),
+            chunk_ids=tuple(
+                _non_negative_int_value(chunk_id, "chunk_ids")
+                for chunk_id in data.get("chunk_ids", ())
+            ),
+            chunk_results=chunk_results,
+        )
+
+    @property
+    def errors(self) -> tuple[ChunkExecutionResult, ...]:
+        """Return failed per-chunk results."""
+
+        return tuple(
+            result for result in self.chunk_results if result.status == "failed"
+        )
+
+    @property
+    def completed_count(self) -> int:
+        """Return the number of completed or cached chunks."""
+
+        return len(self.chunk_results) - len(self.errors)
+
+    @property
+    def cached_count(self) -> int:
+        """Return the number of cached chunks."""
+
+        return sum(1 for result in self.chunk_results if result.status == "cached")
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return deterministic JSON-compatible worker result material."""
+
+        errors = [
+            {
+                "chunk_id": result.chunk_id,
+                "error": result.error,
+                "traceback": result.traceback,
+            }
+            for result in self.errors
+        ]
+        return {
+            "cached_count": self.cached_count,
+            "chunk_ids": list(self.chunk_ids),
+            "chunk_results": [result.to_dict() for result in self.chunk_results],
+            "completed_count": self.completed_count,
+            "error_count": len(errors),
+            "errors": errors,
+            "nnz_per_chunk": [
+                result.nnz for result in self.chunk_results if result.status != "failed"
+            ],
+            "run_id": self.run_id,
+            "schema_version": self.schema_version,
+        }
+
+
+def chunk_result_manifest_path(chunk_root: str | Path, chunk_id: int) -> Path:
+    """Return the per-chunk result manifest path for a chunk root."""
+
+    _validate_non_negative_int(chunk_id, "chunk_id")
+    return Path(chunk_root) / "chunk_results" / f"chunk_{chunk_id:06d}.json"
+
+
+def write_chunk_result_manifest(
+    chunk_root: str | Path,
+    result: ChunkExecutionResult,
+) -> Path:
+    """Write one structured chunk result manifest and return the path."""
+
+    output_path = chunk_result_manifest_path(chunk_root, result.chunk_id)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return output_path
 
 
 @pipeline_node(
@@ -402,9 +815,19 @@ def _validate_bool(value: Any, key: str) -> None:
         raise ValueError(f"{key} must be a boolean")
 
 
+def _validate_string(value: Any, key: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+
+
 def _validate_positive_int(value: Any, key: str) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{key} must be a positive integer")
+
+
+def _validate_non_negative_int(value: Any, key: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{key} must be a non-negative integer")
 
 
 def _validate_optional_positive_int(value: Any, key: str) -> None:
@@ -412,11 +835,68 @@ def _validate_optional_positive_int(value: Any, key: str) -> None:
         _validate_positive_int(value, key)
 
 
+def _validate_optional_non_negative_int(value: Any, key: str) -> None:
+    if value is not None:
+        _validate_non_negative_int(value, key)
+
+
+def _string_value(value: Any, key: str) -> str:
+    _validate_string(value, key)
+    return value
+
+
+def _bool_value(value: Any, key: str) -> bool:
+    _validate_bool(value, key)
+    return value
+
+
+def _non_negative_int_value(value: Any, key: str) -> int:
+    _validate_non_negative_int(value, key)
+    return value
+
+
+def _optional_non_negative_int_value(value: Any, key: str) -> int | None:
+    if value is None:
+        return None
+    _validate_non_negative_int(value, key)
+    return value
+
+
+def _mapping_value(value: Any, key: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{key} must be a mapping")
+    return value
+
+
+def _lineage_mismatches(
+    stored_signature: Mapping[str, Any],
+    expected_signature: Mapping[str, Any],
+) -> list[str]:
+    mismatches: list[str] = []
+    for key, expected_value in expected_signature.items():
+        stored_value = stored_signature.get(key)
+        if stored_value is None:
+            mismatches.append(f"{key} missing from stored signature")
+        elif stored_value != expected_value:
+            mismatches.append(f"{key} expected {stored_value}, got {expected_value}")
+    return mismatches
+
+
 __all__ = [
+    "CHUNK_CACHE_MANIFEST_SCHEMA_VERSION",
+    "CHUNK_EXECUTION_SCHEMA_VERSION",
+    "CHUNK_EXECUTION_STATUSES",
     "MATRIX_BUILD_SCHEMA_VERSION",
     "MATRIX_BUILDER_MODES",
+    "ChunkBuildRequest",
+    "ChunkCacheManifest",
+    "ChunkExecutionResult",
+    "ChunkExecutionStatus",
+    "ChunkWorkerResult",
     "MatrixBuilderMode",
     "MatrixBuildResult",
     "MatrixBuildService",
     "MatrixBuildSpec",
+    "chunk_result_manifest_path",
+    "write_chunk_result_manifest",
 ]

@@ -25,6 +25,11 @@ from policyengine_us_data.calibration.chunked_matrix_assembler import (
     ChunkedMatrixAssembler,
     SharedBuildState,
 )
+from policyengine_us_data.calibration_package.matrix import (
+    CHUNK_EXECUTION_SCHEMA_VERSION,
+    ChunkBuildRequest,
+    ChunkWorkerResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,10 +183,17 @@ def dispatch_chunks_modal(
     t_dispatch = time.time()
     handles = []
     for batch_idx, chunk_ids in enumerate(batches):
-        handle = worker_function.spawn(
+        request = ChunkBuildRequest(
+            schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
             run_id=run_id,
-            chunk_ids=chunk_ids,
+            chunk_ids=tuple(chunk_ids),
+            chunk_root=str(chunk_root),
+            state_path=str(state_path),
             resume_chunks=resume_chunks,
+            lineage_signature=shared_state.lineage_signature,
+        )
+        handle = worker_function.spawn(
+            request=request.to_dict(),
         )
         logger.info(
             "Worker %d/%d: %d chunks (%d-%d), fc=%s",
@@ -212,16 +224,26 @@ def dispatch_chunks_modal(
                 {"batch": batch_idx, "error": "Worker returned None"}
             )
             continue
-        errors = result.get("errors", [])
+        try:
+            worker_result = ChunkWorkerResult.from_dict(result)
+        except ValueError as exc:
+            aggregated_errors.append(
+                {
+                    "batch": batch_idx,
+                    "error": f"Worker returned invalid result: {exc}",
+                }
+            )
+            continue
+        errors = worker_result.errors
         if errors:
             for err in errors:
-                err_copy = dict(err)
+                err_copy = err.to_dict()
                 err_copy["batch"] = batch_idx
                 aggregated_errors.append(err_copy)
         logger.info(
             "Worker %d done: %d chunks completed, %d errors",
             batch_idx,
-            len(result.get("chunk_ids", [])) - len(errors),
+            worker_result.completed_count,
             len(errors),
         )
 

@@ -19,6 +19,12 @@ import pytest
 from policyengine_us_data.calibration.chunked_matrix_assembler import (
     SharedBuildState,
 )
+from policyengine_us_data.calibration_package.matrix import (
+    CHUNK_EXECUTION_SCHEMA_VERSION,
+    ChunkBuildRequest,
+    ChunkExecutionResult,
+    ChunkWorkerResult,
+)
 from policyengine_us_data.calibration.chunked_matrix_modal import (
     _lookup_worker_function,
     dispatch_chunks_modal,
@@ -112,6 +118,7 @@ def _minimal_shared_state(
         cd_geoid=np.zeros(n_total, dtype="U4"),
         county_fips=np.zeros(n_total, dtype="U5"),
         state_fips=np.zeros(n_total, dtype=np.int32),
+        lineage_signature={"run_id": "run-test", "chunk_size": chunk_size},
     )
 
 
@@ -162,26 +169,37 @@ def test_dispatch_spawns_per_batch_and_assembles(tmp_path: Path) -> None:
     # by the time assemble_final() runs, the shard files exist.
     spawn_calls: List[Dict] = []
 
-    def fake_spawn(
-        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
-    ) -> _FakeHandle:
+    def fake_spawn(*, request: Dict) -> _FakeHandle:
+        request_obj = ChunkBuildRequest.from_dict(request)
         spawn_calls.append(
             {
-                "run_id": run_id,
-                "chunk_ids": list(chunk_ids),
-                "resume_chunks": resume_chunks,
+                "run_id": request_obj.run_id,
+                "chunk_ids": list(request_obj.chunk_ids),
+                "resume_chunks": request_obj.resume_chunks,
+                "lineage_signature": dict(request_obj.lineage_signature),
             }
         )
-        for chunk_id in chunk_ids:
+        results = []
+        for chunk_id in request_obj.chunk_ids:
             col_start = chunk_id * state.chunk_size
             col_end = col_start + state.chunk_size
             _write_fake_shard(tmp_path / "coo", chunk_id, col_start, col_end)
+            results.append(
+                ChunkExecutionResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    status="completed",
+                    nnz=1,
+                )
+            )
         return _FakeHandle(
-            {
-                "chunk_ids": list(chunk_ids),
-                "nnz_per_chunk": [1] * len(chunk_ids),
-                "errors": [],
-            }
+            ChunkWorkerResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id=request_obj.run_id,
+                chunk_ids=request_obj.chunk_ids,
+                chunk_results=tuple(results),
+            ).to_dict()
         )
 
     fake_worker = mock.MagicMock()
@@ -201,6 +219,7 @@ def test_dispatch_spawns_per_batch_and_assembles(tmp_path: Path) -> None:
     assert [c["chunk_ids"] for c in spawn_calls] == [[0, 1], [2, 3]]
     # Every spawn carried the run_id.
     assert all(c["run_id"] == "run-test" for c in spawn_calls)
+    assert all(c["lineage_signature"] == state.lineage_signature for c in spawn_calls)
     # Fresh dispatch must not let workers trust stale shards.
     assert all(c["resume_chunks"] is False for c in spawn_calls)
     # Final CSR covers all 4 chunks' nnz.
@@ -227,12 +246,28 @@ def test_dispatch_uses_run_scoped_v2_volume(monkeypatch, tmp_path: Path) -> None
     )
     monkeypatch.setenv("US_DATA_PIPELINE_VOLUME_NAME", "pipeline-artifacts-run")
 
-    def fake_spawn(
-        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
-    ) -> _FakeHandle:
-        for chunk_id in chunk_ids:
+    def fake_spawn(*, request: Dict) -> _FakeHandle:
+        request_obj = ChunkBuildRequest.from_dict(request)
+        results = []
+        for chunk_id in request_obj.chunk_ids:
             _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
-        return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
+            results.append(
+                ChunkExecutionResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    status="completed",
+                    nnz=1,
+                )
+            )
+        return _FakeHandle(
+            ChunkWorkerResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id=request_obj.run_id,
+                chunk_ids=request_obj.chunk_ids,
+                chunk_results=tuple(results),
+            ).to_dict()
+        )
 
     fake_worker = mock.MagicMock()
     fake_worker.spawn.side_effect = fake_spawn
@@ -274,17 +309,23 @@ def test_dispatch_aggregates_worker_errors(tmp_path: Path) -> None:
     state = _minimal_shared_state(n_records=10, n_clones=2, chunk_size=10)
     # n_total=20, chunk_size=10 -> 2 chunks, 2 workers.
 
-    def fake_spawn(
-        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
-    ) -> _FakeHandle:
+    def fake_spawn(*, request: Dict) -> _FakeHandle:
+        request_obj = ChunkBuildRequest.from_dict(request)
         # First worker returns a per-chunk error; second crashes in .get().
-        if chunk_ids == [0]:
+        if request_obj.chunk_ids == (0,):
             return _FakeHandle(
-                {
-                    "chunk_ids": chunk_ids,
-                    "nnz_per_chunk": [],
-                    "errors": [{"chunk_id": 0, "error": "boom"}],
-                }
+                ChunkWorkerResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id=request_obj.run_id,
+                    chunk_ids=request_obj.chunk_ids,
+                    chunk_results=(
+                        ChunkExecutionResult.failure(
+                            run_id=request_obj.run_id,
+                            chunk_id=0,
+                            error="boom",
+                        ),
+                    ),
+                ).to_dict()
             )
         return _FakeHandle(None, raise_on_get=RuntimeError("worker oom"))
 
@@ -309,12 +350,28 @@ def test_dispatch_writes_shared_state_pickle(tmp_path: Path) -> None:
     state = _minimal_shared_state(n_records=5, n_clones=1, chunk_size=10)
     # n_total=5, chunk_size=10 -> 1 chunk, 1 worker.
 
-    def fake_spawn(
-        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
-    ) -> _FakeHandle:
-        for chunk_id in chunk_ids:
+    def fake_spawn(*, request: Dict) -> _FakeHandle:
+        request_obj = ChunkBuildRequest.from_dict(request)
+        results = []
+        for chunk_id in request_obj.chunk_ids:
             _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
-        return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
+            results.append(
+                ChunkExecutionResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    status="completed",
+                    nnz=1,
+                )
+            )
+        return _FakeHandle(
+            ChunkWorkerResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id=request_obj.run_id,
+                chunk_ids=request_obj.chunk_ids,
+                chunk_results=tuple(results),
+            ).to_dict()
+        )
 
     fake_worker = mock.MagicMock()
     fake_worker.spawn.side_effect = fake_spawn
@@ -342,19 +399,35 @@ def test_dispatch_forwards_resume_chunks_to_workers(tmp_path: Path) -> None:
     state = _minimal_shared_state(n_records=5, n_clones=1, chunk_size=10)
     spawn_calls: List[Dict] = []
 
-    def fake_spawn(
-        *, run_id: str, chunk_ids: List[int], resume_chunks: bool
-    ) -> _FakeHandle:
+    def fake_spawn(*, request: Dict) -> _FakeHandle:
+        request_obj = ChunkBuildRequest.from_dict(request)
         spawn_calls.append(
             {
-                "run_id": run_id,
-                "chunk_ids": list(chunk_ids),
-                "resume_chunks": resume_chunks,
+                "run_id": request_obj.run_id,
+                "chunk_ids": list(request_obj.chunk_ids),
+                "resume_chunks": request_obj.resume_chunks,
             }
         )
-        for chunk_id in chunk_ids:
+        results = []
+        for chunk_id in request_obj.chunk_ids:
             _write_fake_shard(tmp_path / "coo", chunk_id, 0, 5)
-        return _FakeHandle({"chunk_ids": chunk_ids, "nnz_per_chunk": [1], "errors": []})
+            results.append(
+                ChunkExecutionResult(
+                    schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                    run_id=request_obj.run_id,
+                    chunk_id=chunk_id,
+                    status="completed",
+                    nnz=1,
+                )
+            )
+        return _FakeHandle(
+            ChunkWorkerResult(
+                schema_version=CHUNK_EXECUTION_SCHEMA_VERSION,
+                run_id=request_obj.run_id,
+                chunk_ids=request_obj.chunk_ids,
+                chunk_results=tuple(results),
+            ).to_dict()
+        )
 
     fake_worker = mock.MagicMock()
     fake_worker.spawn.side_effect = fake_spawn

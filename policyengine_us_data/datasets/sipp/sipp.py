@@ -710,7 +710,7 @@ def train_ssi_disability_model(time_period: int = 2024):
 
 def get_ssi_disability_model(time_period: int = 2024) -> QRF:
     """Get or train the SSI disability criteria imputation model."""
-    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v1_{time_period}.pkl"
+    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v2_{time_period}.pkl"
 
     if not model_path.exists():
         model = train_ssi_disability_model(time_period=time_period)

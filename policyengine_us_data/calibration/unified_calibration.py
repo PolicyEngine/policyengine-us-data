@@ -508,10 +508,10 @@ def parse_args(argv=None):
 
 @pipeline_node(
     PipelineNode(
-        id="stage2_target_catalog_load",
+        id="stage2_target_config_load",
         label="Load Stage 2 Target Config",
         node_type="library",
-        description="Load the include/exclude target-selection catalog used by Stage 2 package construction.",
+        description="Load the YAML include/exclude target-selection config used by Stage 2 package construction.",
         source_file="policyengine_us_data/calibration/unified_calibration.py",
         status="current",
         stability="moving",

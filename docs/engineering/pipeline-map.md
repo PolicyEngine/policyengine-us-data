@@ -384,7 +384,7 @@ Build sparse calibration matrix (targets x households x clones)
 | `util_takeup_s5` compute_block_takeup_for_entities() | `utility` | `unknown` | `unknown` |  |
 | `util_scipy` scipy.sparse | `utility` | `unknown` | `unknown` |  |
 | `stage2_target_config_identity` Stage 2 Target Config Identity | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.resolve_target_config_identity` |
-| `stage2_target_catalog_load` Load Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.load_target_config` |
+| `stage2_target_config_load` Load Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.load_target_config` |
 | `stage2_target_config_apply` Apply Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets` |
 | `state_precomp` Per-State Simulation Precomputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._compute_single_state` |
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
@@ -400,8 +400,8 @@ Build sparse calibration matrix (targets x households x clones)
 - `in_cps_s5` -> `target_resolve` `data_flow`
 - `in_db_s5` -> `target_resolve` `external_source` (SQL targets)
 - `in_config_s5` -> `stage2_target_config_identity` `data_flow` (config file)
-- `stage2_target_config_identity` -> `stage2_target_catalog_load` `data_flow` (resolved path and checksum)
-- `stage2_target_catalog_load` -> `stage2_target_config_apply` `data_flow` (include/exclude rules)
+- `stage2_target_config_identity` -> `stage2_target_config_load` `data_flow` (resolved path and checksum)
+- `stage2_target_config_load` -> `stage2_target_config_apply` `data_flow` (include/exclude rules)
 - `target_resolve` -> `stage2_target_config_apply` `data_flow` (candidate targets)
 - `stage2_target_config_apply` -> `target_uprate` `data_flow` (selected targets)
 - `target_uprate` -> `geo_build` `data_flow`

@@ -806,7 +806,7 @@ stages:
     description: 'Build phase: resolve targets and constraints, assemble clone values, and package the sparse calibration matrix'
     node_ids:
     - stage2_target_config_identity
-    - stage2_target_catalog_load
+    - stage2_target_config_load
     - target_resolve
     - stage2_target_config_apply
     - target_uprate
@@ -902,10 +902,10 @@ stages:
     edge_type: data_flow
     label: config file
   - source: stage2_target_config_identity
-    target: stage2_target_catalog_load
+    target: stage2_target_config_load
     edge_type: data_flow
     label: resolved path and checksum
-  - source: stage2_target_catalog_load
+  - source: stage2_target_config_load
     target: stage2_target_config_apply
     edge_type: data_flow
     label: include/exclude rules

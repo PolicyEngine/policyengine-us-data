@@ -3831,12 +3831,12 @@
           "edge_type": "data_flow",
           "label": "resolved path and checksum",
           "source": "stage2_target_config_identity",
-          "target": "stage2_target_catalog_load"
+          "target": "stage2_target_config_load"
         },
         {
           "edge_type": "data_flow",
           "label": "include/exclude rules",
-          "source": "stage2_target_catalog_load",
+          "source": "stage2_target_config_load",
           "target": "stage2_target_config_apply"
         },
         {
@@ -3990,7 +3990,7 @@
           "label": "run_calibration()",
           "node_ids": [
             "stage2_target_config_identity",
-            "stage2_target_catalog_load",
+            "stage2_target_config_load",
             "target_resolve",
             "stage2_target_config_apply",
             "target_uprate",
@@ -4138,8 +4138,8 @@
             "policyengine_us_data.calibration.unified_calibration.load_target_config"
           ],
           "artifacts_in": "[DEFAULT_TARGET_CONFIG_RELATIVE_PATH]",
-          "description": "Load the include/exclude target-selection catalog used by Stage 2 package construction.",
-          "id": "stage2_target_catalog_load",
+          "description": "Load the YAML include/exclude target-selection config used by Stage 2 package construction.",
+          "id": "stage2_target_config_load",
           "label": "Load Stage 2 Target Config",
           "node_type": "library",
           "pathways": [

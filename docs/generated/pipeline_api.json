@@ -3822,34 +3822,6 @@
     "signature": "def save_calibration_package(path: str, X_sparse, targets_df: 'pd.DataFrame', target_names: list, metadata: dict, initial_weights: np.ndarray = None, cd_geoid: np.ndarray = None, block_geoid: np.ndarray = None) -> None",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
-  "stage2_target_catalog_load": {
-    "docstring": "Load target include/exclude config from YAML.\n\nArgs:\n    path: Path to YAML config file.\n\nReturns:\n    Parsed config dict with include and exclude lists.",
-    "id": "stage2_target_catalog_load",
-    "kind": "function",
-    "line": 525,
-    "metadata": {
-      "api_refs": [
-        "policyengine_us_data.calibration.unified_calibration.load_target_config"
-      ],
-      "artifacts_in": "[DEFAULT_TARGET_CONFIG_RELATIVE_PATH]",
-      "description": "Load the include/exclude target-selection catalog used by Stage 2 package construction.",
-      "id": "stage2_target_catalog_load",
-      "label": "Load Stage 2 Target Config",
-      "node_type": "library",
-      "pathways": [
-        "calibration_package"
-      ],
-      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_target_config.py"
-      ]
-    },
-    "object_path": "policyengine_us_data.calibration.unified_calibration.load_target_config",
-    "signature": "def load_target_config(path: str) -> dict",
-    "source_file": "policyengine_us_data/calibration/unified_calibration.py"
-  },
   "stage2_target_config_apply": {
     "docstring": "Filter target rows before matrix construction.",
     "id": "stage2_target_config_apply",
@@ -3904,6 +3876,34 @@
     "object_path": "policyengine_us_data.calibration_package.specs.resolve_target_config_identity",
     "signature": "def resolve_target_config_identity(target_config_path: str | Path | None = None, *, all_active_targets: bool = False, repo_root: str | Path | None = None) -> TargetConfigIdentity",
     "source_file": "policyengine_us_data/calibration_package/specs.py"
+  },
+  "stage2_target_config_load": {
+    "docstring": "Load target include/exclude config from YAML.\n\nArgs:\n    path: Path to YAML config file.\n\nReturns:\n    Parsed config dict with include and exclude lists.",
+    "id": "stage2_target_config_load",
+    "kind": "function",
+    "line": 525,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_calibration.load_target_config"
+      ],
+      "artifacts_in": "[DEFAULT_TARGET_CONFIG_RELATIVE_PATH]",
+      "description": "Load the YAML include/exclude target-selection config used by Stage 2 package construction.",
+      "id": "stage2_target_config_load",
+      "label": "Load Stage 2 Target Config",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_target_config.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.unified_calibration.load_target_config",
+    "signature": "def load_target_config(path: str) -> dict",
+    "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
   "stage4_release_candidate_bundle_builder": {
     "docstring": "Build a candidate bundle from a Stage 4 output contract shape.",

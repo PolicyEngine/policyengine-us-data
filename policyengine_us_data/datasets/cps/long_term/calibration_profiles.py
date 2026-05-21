@@ -54,6 +54,18 @@ class CalibrationProfile:
 
 DEFAULT_LONG_RUN_APPROXIMATE_WINDOWS = (
     ApproximateCalibrationWindow(
+        start_year=2026,
+        end_year=2074,
+        max_constraint_error_pct=1.0,
+        max_age_error_pct=1.0,
+        max_negative_weight_pct=0.0,
+        age_bucket_size=5,
+        min_positive_household_count=1000,
+        min_effective_sample_size=75.0,
+        max_top_10_weight_share_pct=25.0,
+        max_top_100_weight_share_pct=95.0,
+    ),
+    ApproximateCalibrationWindow(
         start_year=2075,
         end_year=2078,
         max_constraint_error_pct=0.5,

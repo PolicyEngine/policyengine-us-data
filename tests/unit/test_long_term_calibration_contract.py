@@ -1063,6 +1063,34 @@ def test_approximate_window_none_selects_open_ended_tail():
     assert window.end_year is None
 
 
+def test_long_run_approximate_window_boundaries():
+    profile = get_profile("ss-payroll-tob")
+
+    assert approximate_window_for_year(profile, 2025) is None
+
+    window_2026 = approximate_window_for_year(profile, 2026)
+    assert window_2026 is not None
+    assert window_2026.end_year == 2074
+    assert window_2026.max_constraint_error_pct == pytest.approx(1.0)
+    assert window_2026.age_bucket_size == 5
+
+    window_2074 = approximate_window_for_year(profile, 2074)
+    assert window_2074 is window_2026
+
+    window_2075 = approximate_window_for_year(profile, 2075)
+    assert window_2075 is not None
+    assert window_2075.start_year == 2075
+    assert window_2075.max_constraint_error_pct == pytest.approx(0.5)
+    assert window_2075.age_bucket_size == 5
+
+    window_2100 = approximate_window_for_year(profile, 2100)
+    assert window_2100 is not None
+    assert window_2100.start_year == 2096
+    assert window_2100.end_year is None
+    assert window_2100.max_constraint_error_pct == pytest.approx(35.0)
+    assert window_2100.age_bucket_size == 5
+
+
 def test_strict_greg_failure_raises():
     X = np.array([[1.0, 0.0], [0.0, 1.0]])
     y_target = np.array([1.0, 1.0])
@@ -1234,11 +1262,34 @@ def test_approximate_window_is_year_bounded():
     quality = classify_calibration_quality(
         {
             "fell_back_to_ipf": False,
-            "age_max_pct_error": 3.0,
+            "age_max_pct_error": 0.0,
             "negative_weight_pct": 0.0,
+            "positive_weight_count": 1200,
+            "effective_sample_size": 100.0,
+            "top_10_weight_share_pct": 20.0,
+            "top_100_weight_share_pct": 90.0,
             "constraints": {
                 "ss_total": {"pct_error": 0.0},
-                "payroll_total": {"pct_error": 3.0},
+                "payroll_total": {"pct_error": 0.5},
+            },
+        },
+        profile,
+        year=2035,
+    )
+    assert quality == "approximate"
+
+    quality = classify_calibration_quality(
+        {
+            "fell_back_to_ipf": False,
+            "age_max_pct_error": 0.0,
+            "negative_weight_pct": 0.0,
+            "positive_weight_count": 1200,
+            "effective_sample_size": 100.0,
+            "top_10_weight_share_pct": 20.0,
+            "top_100_weight_share_pct": 90.0,
+            "constraints": {
+                "ss_total": {"pct_error": 0.0},
+                "payroll_total": {"pct_error": 1.5},
             },
         },
         profile,
@@ -1522,7 +1573,7 @@ def test_entropy_calibration_uses_lp_exact_fallback_even_before_approximate_wind
     assert audit["approximation_method"] == "lp_minimax_exact"
 
 
-def test_entropy_calibration_rejects_large_constraint_error_without_exception(
+def test_entropy_calibration_rejects_misreported_lp_exact_fallback(
     monkeypatch,
 ):
     monkeypatch.setattr(
@@ -1540,21 +1591,17 @@ def test_entropy_calibration_rejects_large_constraint_error_without_exception(
         ),
     )
 
-    weights, _, audit = calibrate_weights(
-        X=np.array([[1.0], [0.0]]),
-        y_target=np.array([1.0]),
-        baseline_weights=np.array([1.0, 1.0]),
-        method="entropy",
-        payroll_values=np.array([1.0, 0.0]),
-        payroll_target=10.0,
-        n_ages=1,
-        allow_approximate_entropy=False,
-    )
-
-    np.testing.assert_allclose(weights, np.array([10.0, 2.0]))
-    assert audit["lp_fallback_used"] is True
-    assert audit["approximation_method"] == "lp_minimax_exact"
-    assert "above allowable" in audit["entropy_error"]
+    with pytest.raises(RuntimeError):
+        calibrate_weights(
+            X=np.array([[1.0], [0.0]]),
+            y_target=np.array([1.0]),
+            baseline_weights=np.array([1.0, 1.0]),
+            method="entropy",
+            payroll_values=np.array([1.0, 0.0]),
+            payroll_target=10.0,
+            n_ages=1,
+            allow_approximate_entropy=False,
+        )
 
 
 def test_nonnegative_feasibility_diagnostic_distinguishes_feasible_and_infeasible():

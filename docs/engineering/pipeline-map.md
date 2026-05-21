@@ -845,7 +845,7 @@ Compatibility wrapper over the extracted pure partitioning seam.
 ### `modal_app.data_build.run_cps_then_puf_phase`
 
 ```python
-def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None) -> None
+def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None, coordinator: Stage1Coordinator | None = None) -> None
 ```
 
 Build CPS before PUF because PUF pension imputation loads CPS_2024.

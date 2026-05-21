@@ -474,7 +474,7 @@
     "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    skip_stage_5: Skip source-imputed CPS and small enhanced CPS after\n        enhanced_cps_2024.h5 is built.\n    stage_only: Upload to HF staging only, without promoting a release.\n    version: policyengine-us-data package version used for staging and\n        dataset-build contracts.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 547,
+    "line": 642,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
@@ -1004,7 +1004,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 406,
+    "line": 499,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -1024,7 +1024,7 @@
       ]
     },
     "object_path": "modal_app.data_build.run_cps_then_puf_phase",
-    "signature": "def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None) -> None",
+    "signature": "def run_cps_then_puf_phase(branch: str, volume: modal.Volume, *, env: dict, log_file: IO = None, checkpoint_stats: CheckpointStats | None = None, coordinator: Stage1Coordinator | None = None) -> None",
     "source_file": "modal_app/data_build.py"
   },
   "create_stratified": {

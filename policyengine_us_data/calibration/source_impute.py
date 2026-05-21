@@ -368,7 +368,6 @@ def _impute_acs(
     acs_df = acs.calculate_dataframe(
         ACS_PREDICTORS + ACS_CALCULATED_IMPUTED_VARIABLES,
         map_to="person",
-        use_weights=False,
     )
     acs_df["state_fips"] = acs.calculate("state_fips", map_to="person").values.astype(
         np.float32
@@ -388,7 +387,6 @@ def _impute_acs(
         cps_df = cps_sim.calculate_dataframe(
             ACS_PREDICTORS,
             map_to="person",
-            use_weights=False,
         )
         del cps_sim
     else:

@@ -405,7 +405,6 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     train_df = acs.calculate_dataframe(
         PREDICTORS + ACS_CALCULATED_IMPUTED_VARIABLES,
         map_to="person",
-        use_weights=False,
     )
     # TODO(PolicyEngine/policyengine-core#482): policyengine-core 3.24.0+
     # silently drops user-supplied ETERNITY inputs on dataset reload because
@@ -434,7 +433,6 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     inference_df = cps_sim.calculate_dataframe(
         PREDICTORS,
         map_to="person",
-        use_weights=False,
     )
     inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values

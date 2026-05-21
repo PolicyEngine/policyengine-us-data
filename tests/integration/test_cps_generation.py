@@ -364,8 +364,8 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
     add_rent(dataset, cps, person, household)
 
     assert [(call[2], call[3]) for call in FakeMicrosimulation.calls] == [
-        ("person", False),
-        ("person", False),
+        ("person", True),
+        ("person", True),
     ]
     np.testing.assert_array_equal(cps["rent"], np.array([1200, 0, 0], dtype=np.int32))
     np.testing.assert_array_equal(

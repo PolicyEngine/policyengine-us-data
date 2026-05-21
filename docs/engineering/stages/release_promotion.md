@@ -61,6 +61,19 @@ or step manifests. Release-specific details such as missing staged artifacts,
 missing validation reports, finalized-release conflicts, version mismatches, or
 destination conflicts should live in canonical finding metadata.
 
+Use `ReleaseCandidateValidator` for the `5a_validate_outputs` library seam.
+It wraps `policyengine_us_data.validation_core` and calls existing release
+guards through injected dependencies, including staged-artifact presence,
+release-manifest preflight, matching finalized-manifest checks, and release
+completion marker checks. It should require all base dataset artifacts plus the
+regional/national H5 artifact families. By default, canonical
+`validation_report.json` files must parse as shared `ValidationReport` payloads
+with release-acceptable statuses. Manual overrides may set the validator's
+`validation_report_policy` to `presence_only`, but that override only relaxes
+report parsing/status checks; report files must still exist. Keep dependencies
+injectable so unit tests do not need Hugging Face, GCS, Modal, or production
+credentials.
+
 ## Rerun Comparison Material
 
 Before public writes, rerun and reuse decisions should compare semantic

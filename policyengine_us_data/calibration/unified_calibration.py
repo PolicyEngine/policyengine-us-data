@@ -158,7 +158,10 @@ def _target_config_identity_for_metadata(
             resolved_path=None,
         )
     if target_config_path is None:
-        return None
+        raise ValueError(
+            "target_config_path or target_config_identity is required when "
+            "target_config is parsed"
+        )
     return resolve_target_config_identity(target_config_path)
 
 

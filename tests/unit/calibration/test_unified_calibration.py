@@ -42,6 +42,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
 )
 from policyengine_us_data.calibration.unified_calibration import (
     _calibration_package_contract_parameters,
+    _target_config_identity_for_metadata,
     check_package_staleness,
 )
 from policyengine_us_data.stage_contracts.calibration_package import (
@@ -102,6 +103,17 @@ def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
     assert params.to_dict()["chunk_size"] is None
     assert params.to_dict()["parallel_matrix"] is False
     assert params.to_dict()["num_matrix_workers"] is None
+
+
+def test_target_config_identity_for_metadata_requires_identity_for_parsed_config():
+    with pytest.raises(
+        ValueError, match="target_config_path or target_config_identity"
+    ):
+        _target_config_identity_for_metadata(
+            target_config={"include": []},
+            target_config_path=None,
+            target_config_identity=None,
+        )
 
 
 def test_check_package_staleness_warns_for_old_utc_timestamp(

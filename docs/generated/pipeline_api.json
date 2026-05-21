@@ -727,7 +727,7 @@
     "docstring": "",
     "id": "calibration_diagnostics",
     "kind": "function",
-    "line": 1144,
+    "line": 1249,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_diagnostics"
@@ -1091,7 +1091,7 @@
     "docstring": "Fit L0-regularized calibration weights.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets: Target values array.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    verbose_freq: Print frequency. Defaults to 10%.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n        None disables logging.\n    log_path: Path for the per-target calibration log CSV.\n    target_names: Human-readable target names for the log.\n    initial_weights: Pre-computed initial weights. If None,\n        computed from targets_df age targets.\n    targets_df: Targets DataFrame, used to compute\n        initial_weights when not provided.\n    target_groups: Optional group ID per target row for balanced loss.\n    resume_from: Path to a `.checkpoint.pt` file or `.npy`\n        weights file to continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "fit_model",
     "kind": "function",
-    "line": 788,
+    "line": 893,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.fit_l0_weights"
@@ -1410,7 +1410,7 @@
     "docstring": "Compute population-based initial weights from age targets.\n\nFor each congressional district, sums person_count targets where\ndomain_variable == \"age\" to get district population, then divides\nby the number of columns (households) active in that district.\n\nArgs:\n    X_sparse: Sparse matrix (targets x records).\n    targets_df: Targets DataFrame with columns: variable,\n        domain_variable, geo_level, geographic_id, value.\n\nReturns:\n    Weight array of shape (n_records,).",
     "id": "init_weights",
     "kind": "function",
-    "line": 709,
+    "line": 814,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.compute_initial_weights"
@@ -3086,7 +3086,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1898,
+    "line": 1910,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3435,10 +3435,10 @@
     "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
   },
   "run_calibration": {
-    "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
+    "docstring": "Run unified calibration pipeline.\n\nArgs:\n    dataset_path: Path to CPS h5 file.\n    db_path: Path to policy_data.db.\n    n_clones: Number of dataset clones.\n    lambda_l0: L0 regularization strength.\n    epochs: Training epochs.\n    device: Torch device.\n    seed: Random seed.\n    domain_variables: Filter targets by domain variable.\n    hierarchical_domains: Domains for hierarchical\n        uprating + CD reconciliation.\n    skip_takeup_rerandomize: Skip takeup step.\n    skip_source_impute: Skip ACS/SIPP/SCF imputations.\n    target_config: Parsed target config dict.\n    target_config_path: Path to target config, for provenance.\n    target_config_identity: Resolved target config path/checksum identity.\n    build_only: If True, save package and skip fitting.\n    package_path: Load pre-built package (skip build).\n    package_output_path: Where to save calibration package.\n    beta: L0 gate temperature.\n    lambda_l2: L2 regularization strength.\n    learning_rate: Optimizer learning rate.\n    log_freq: Epochs between per-target CSV logs.\n    log_path: Path for per-target calibration log CSV.\n    resume_from: Path to a checkpoint or weights file to\n        continue fitting from.\n    checkpoint_path: Where to save resumable fit checkpoints.\n    chunked_matrix: Build matrix in clone-household chunks.\n    chunk_size: Clone-household columns per chunk.\n    chunk_dir: Directory for chunked COO/H5 artifacts.\n    keep_chunks: Keep temporary chunk H5 files.\n    resume_chunks: Reuse existing chunk COO files.\n\nReturns:\n    (weights, targets_df, X_sparse, target_names, geography_info)\n    weights is None when build_only=True.\n    geography_info is a dict with cd_geoid and base_n_records.",
     "id": "run_calibration",
     "kind": "function",
-    "line": 1270,
+    "line": 1375,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_calibration.run_calibration"
@@ -3470,7 +3470,7 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration.unified_calibration.run_calibration",
-    "signature": "def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')",
+    "signature": "def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, target_config_identity: TargetConfigIdentity | None = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
   "run_local_h5_phase": {
@@ -3507,7 +3507,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 931,
+    "line": 943,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3704,6 +3704,206 @@
     "object_path": "policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents",
     "signature": "def reconcile_ss_subcomponents(data: Dict[str, Dict[int, np.ndarray]], n_cps: int, time_period: int) -> None",
     "source_file": "policyengine_us_data/calibration/puf_impute.py"
+  },
+  "stage2_artifact_specs": {
+    "docstring": "Return canonical Stage 2 paths rooted in an artifacts directory.",
+    "id": "stage2_artifact_specs",
+    "kind": "function",
+    "line": 96,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths"
+      ],
+      "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+      "description": "Centralize calibration package, contract, metadata, and matrix-build artifact paths.",
+      "id": "stage2_artifact_specs",
+      "label": "Stage 2 Artifact Specs",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths",
+    "signature": "def calibration_package_artifact_paths(artifacts_dir: str | Path) -> CalibrationPackageArtifactPaths",
+    "source_file": "policyengine_us_data/calibration_package/specs.py"
+  },
+  "stage2_calibration_package_contract_validator": {
+    "docstring": "Validate that a Stage 2 sidecar describes the calibration package.",
+    "id": "stage2_calibration_package_contract_validator",
+    "kind": "function",
+    "line": 379,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract"
+      ],
+      "artifacts_in": "['calibration_package.pkl', CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+      "description": "Validate that the persisted Stage 2 contract describes the calibration package and inputs.",
+      "id": "stage2_calibration_package_contract_validator",
+      "label": "Stage 2 Contract Validator",
+      "node_type": "validation",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/stage_contracts/calibration_package.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract",
+    "signature": "def validate_calibration_package_contract(*, package_path: Path, contract_path: Path | None = None, package: Mapping[str, Any] | None = None, dataset_path: Path | None = None, db_path: Path | None = None) -> StageContract",
+    "source_file": "policyengine_us_data/stage_contracts/calibration_package.py"
+  },
+  "stage2_calibration_package_contract_writer": {
+    "docstring": "Write and return the Stage 2 calibration-package contract.",
+    "id": "stage2_calibration_package_contract_writer",
+    "kind": "function",
+    "line": 322,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract"
+      ],
+      "artifacts_in": [
+        "calibration_package.pkl"
+      ],
+      "artifacts_out": "[CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+      "description": "Write the Stage 2 calibration-package handoff contract next to the package artifact.",
+      "id": "stage2_calibration_package_contract_writer",
+      "label": "Stage 2 Contract Writer",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/stage_contracts/calibration_package.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract",
+    "signature": "def write_calibration_package_contract(*, package_path: Path, dataset_path: Path, db_path: Path, package: Mapping[str, Any], parameters: CalibrationPackageParameters | Mapping[str, Any], run_id: str | None, completed_at: str, started_at: str | None = None, duration_s: float | None = None, code_sha: str | None = None, package_version: str | None = None, contract_path: Path | None = None) -> StageContract",
+    "source_file": "policyengine_us_data/stage_contracts/calibration_package.py"
+  },
+  "stage2_calibration_package_writer": {
+    "docstring": "Save calibration package to pickle.\n\nArgs:\n    path: Output file path.\n    X_sparse: Sparse matrix.\n    targets_df: Targets DataFrame.\n    target_names: Target name list.\n    metadata: Run metadata dict.\n    initial_weights: Pre-computed initial weight array.\n    cd_geoid: CD GEOID array from geography assignment.\n    block_geoid: Block GEOID array from geography assignment.",
+    "id": "stage2_calibration_package_writer",
+    "kind": "function",
+    "line": 661,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_calibration.save_calibration_package"
+      ],
+      "artifacts_out": [
+        "calibration_package.pkl"
+      ],
+      "description": "Persist the Stage 2 sparse matrix, target rows, target names, geography arrays, and provenance metadata.",
+      "id": "stage2_calibration_package_writer",
+      "label": "Stage 2 Package Writer",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.unified_calibration.save_calibration_package",
+    "signature": "def save_calibration_package(path: str, X_sparse, targets_df: 'pd.DataFrame', target_names: list, metadata: dict, initial_weights: np.ndarray = None, cd_geoid: np.ndarray = None, block_geoid: np.ndarray = None) -> None",
+    "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+  },
+  "stage2_target_catalog_load": {
+    "docstring": "Load target include/exclude config from YAML.\n\nArgs:\n    path: Path to YAML config file.\n\nReturns:\n    Parsed config dict with include and exclude lists.",
+    "id": "stage2_target_catalog_load",
+    "kind": "function",
+    "line": 525,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_calibration.load_target_config"
+      ],
+      "artifacts_in": "[DEFAULT_TARGET_CONFIG_RELATIVE_PATH]",
+      "description": "Load the include/exclude target-selection catalog used by Stage 2 package construction.",
+      "id": "stage2_target_catalog_load",
+      "label": "Load Stage 2 Target Config",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_target_config.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.unified_calibration.load_target_config",
+    "signature": "def load_target_config(path: str) -> dict",
+    "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+  },
+  "stage2_target_config_apply": {
+    "docstring": "Filter target rows before matrix construction.",
+    "id": "stage2_target_config_apply",
+    "kind": "function",
+    "line": 631,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets"
+      ],
+      "description": "Apply Stage 2 target include/exclude rules before matrix construction.",
+      "id": "stage2_target_config_apply",
+      "label": "Apply Stage 2 Target Config",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration/test_target_config.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets",
+    "signature": "def apply_target_config_to_targets(targets_df: 'pd.DataFrame', config: dict) -> 'pd.DataFrame'",
+    "source_file": "policyengine_us_data/calibration/unified_calibration.py"
+  },
+  "stage2_target_config_identity": {
+    "docstring": "Resolve the target config identity used by Stage 2 package construction.",
+    "id": "stage2_target_config_identity",
+    "kind": "function",
+    "line": 127,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.specs.resolve_target_config_identity"
+      ],
+      "artifacts_in": "[DEFAULT_TARGET_CONFIG_PATH]",
+      "description": "Resolve the effective Stage 2 target config path and checksum before package reuse or rebuild.",
+      "id": "stage2_target_config_identity",
+      "label": "Stage 2 Target Config Identity",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.specs.resolve_target_config_identity",
+    "signature": "def resolve_target_config_identity(target_config_path: str | Path | None = None, *, all_active_targets: bool = False, repo_root: str | Path | None = None) -> TargetConfigIdentity",
+    "source_file": "policyengine_us_data/calibration_package/specs.py"
   },
   "stage4_release_candidate_bundle_builder": {
     "docstring": "Build a candidate bundle from a Stage 4 output contract shape.",
@@ -4187,7 +4387,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 558,
+    "line": 569,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

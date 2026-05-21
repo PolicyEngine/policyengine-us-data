@@ -87,6 +87,49 @@ def test_calibration_package_parameters_parse_runtime_args():
     }
 
 
+def test_calibration_package_parameters_require_identity_for_config_modes():
+    try:
+        CalibrationPackageParameters.from_runtime_args(
+            workers=8,
+            n_clones=430,
+            target_config_path=TARGET_CONFIG_PATH,
+            target_config_sha256=None,
+            target_config_mode="explicit",
+            skip_county=True,
+            skip_source_impute=True,
+            skip_takeup_rerandomize=False,
+            chunked_matrix=False,
+            chunk_size=25_000,
+            parallel=False,
+            num_matrix_workers=50,
+        )
+    except ValueError as exc:
+        assert "target_config and target_config_sha256" in str(exc)
+    else:
+        raise AssertionError("Explicit target config mode should require checksum")
+
+
+def test_calibration_package_parameters_accept_legacy_identity_fields_missing():
+    params = CalibrationPackageParameters.from_dict(
+        {
+            "chunk_size": None,
+            "chunked_matrix": False,
+            "n_clones": 430,
+            "num_matrix_workers": None,
+            "parallel_matrix": False,
+            "skip_county": True,
+            "skip_source_impute": True,
+            "skip_takeup_rerandomize": False,
+            "target_config": TARGET_CONFIG_PATH,
+            "workers": 8,
+        }
+    )
+
+    assert params.target_config == TARGET_CONFIG_PATH
+    assert params.target_config_mode is None
+    assert params.target_config_sha256 is None
+
+
 def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
     try:
         CalibrationPackageParameters(

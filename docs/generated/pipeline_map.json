@@ -52,51 +52,6 @@
     },
     {
       "api_refs": [
-        "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
-      ],
-      "artifacts_out": [
-        "X_sparse",
-        "targets_df",
-        "target_names"
-      ],
-      "description": "Build the in-memory sparse matrix for calibration targets and clone households.",
-      "id": "build_matrix",
-      "label": "Build Calibration Matrix",
-      "node_type": "library",
-      "pathways": [
-        "calibration_package"
-      ],
-      "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
-      "stability": "moving",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
-      ]
-    },
-    {
-      "api_refs": [
-        "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
-      ],
-      "artifacts_out": [
-        "chunked COO shards",
-        "X_sparse"
-      ],
-      "description": "Stream matrix construction through clone-household chunks with resumable shard caches.",
-      "id": "build_matrix_chunked",
-      "label": "Build Calibration Matrix In Chunks",
-      "node_type": "library",
-      "pathways": [
-        "calibration_package"
-      ],
-      "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
-      "stability": "experimental",
-      "status": "current",
-      "validation_commands": [
-        "uv run pytest tests/integration/test_chunked_matrix_builder.py"
-      ]
-    },
-    {
-      "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.PublishingInputBundle",
         "modal_app.local_area._build_publishing_input_bundle"
       ],
@@ -2016,10 +1971,10 @@
     }
   ],
   "metadata": {
-    "api_node_count": 97,
+    "api_node_count": 95,
     "canonical_stage_count": 5,
-    "decorated_object_count": 146,
-    "mapped_decorated_node_count": 49,
+    "decorated_object_count": 153,
+    "mapped_decorated_node_count": 58,
     "stage_count": 17,
     "substage_count": 17
   },
@@ -3868,13 +3823,32 @@
         },
         {
           "edge_type": "data_flow",
-          "label": "include list",
+          "label": "config file",
           "source": "in_config_s5",
-          "target": "target_resolve"
+          "target": "stage2_target_config_identity"
         },
         {
           "edge_type": "data_flow",
+          "label": "resolved path and checksum",
+          "source": "stage2_target_config_identity",
+          "target": "stage2_target_catalog_load"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "include/exclude rules",
+          "source": "stage2_target_catalog_load",
+          "target": "stage2_target_config_apply"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "candidate targets",
           "source": "target_resolve",
+          "target": "stage2_target_config_apply"
+        },
+        {
+          "edge_type": "data_flow",
+          "label": "selected targets",
+          "source": "stage2_target_config_apply",
           "target": "target_uprate"
         },
         {
@@ -3920,9 +3894,73 @@
           "target": "sparse_build"
         },
         {
-          "edge_type": "produces_artifact",
+          "edge_type": "uses_library",
+          "label": "non-chunked path",
           "source": "sparse_build",
+          "target": "build_matrix"
+        },
+        {
+          "edge_type": "uses_library",
+          "label": "chunked path",
+          "source": "sparse_build",
+          "target": "build_matrix_chunked"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "build_matrix",
+          "target": "stage2_calibration_package_writer"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "build_matrix_chunked",
+          "target": "stage2_calibration_package_writer"
+        },
+        {
+          "edge_type": "uses_utility",
+          "label": "package path",
+          "source": "stage2_artifact_specs",
+          "target": "stage2_calibration_package_writer"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "stage2_calibration_package_writer",
           "target": "out_pkg"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "out_pkg",
+          "target": "stage2_calibration_package_contract_writer"
+        },
+        {
+          "edge_type": "uses_utility",
+          "label": "contract path",
+          "source": "stage2_artifact_specs",
+          "target": "stage2_calibration_package_contract_writer"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "stage2_calibration_package_contract_writer",
+          "target": "out_contract"
+        },
+        {
+          "edge_type": "validates",
+          "source": "out_pkg",
+          "target": "stage2_calibration_package_contract_validator"
+        },
+        {
+          "edge_type": "validates",
+          "source": "out_contract",
+          "target": "stage2_calibration_package_contract_validator"
+        },
+        {
+          "edge_type": "validates",
+          "source": "in_cps_s5",
+          "target": "stage2_calibration_package_contract_validator"
+        },
+        {
+          "edge_type": "validates",
+          "source": "in_db_s5",
+          "target": "stage2_calibration_package_contract_validator"
         },
         {
           "edge_type": "uses_utility",
@@ -3951,7 +3989,10 @@
           "id": "run_calibration_build",
           "label": "run_calibration()",
           "node_ids": [
+            "stage2_target_config_identity",
+            "stage2_target_catalog_load",
             "target_resolve",
+            "stage2_target_config_apply",
             "target_uprate",
             "geo_build",
             "constraint_resolve",
@@ -3959,7 +4000,14 @@
             "clone_assembly",
             "takeup_rerand",
             "sparse_build",
-            "out_pkg"
+            "build_matrix",
+            "build_matrix_chunked",
+            "stage2_artifact_specs",
+            "stage2_calibration_package_writer",
+            "out_pkg",
+            "stage2_calibration_package_contract_writer",
+            "out_contract",
+            "stage2_calibration_package_contract_validator"
           ]
         }
       ],
@@ -4037,6 +4085,12 @@
           "node_type": "artifact"
         },
         {
+          "description": "Stage 2 package handoff contract written next to calibration_package.pkl",
+          "id": "out_contract",
+          "label": "calibration_package_contract.json",
+          "node_type": "artifact"
+        },
+        {
           "description": "Database queries",
           "id": "util_sql",
           "label": "sqlalchemy",
@@ -4059,6 +4113,62 @@
           "id": "util_scipy",
           "label": "scipy.sparse",
           "node_type": "utility"
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration_package.specs.resolve_target_config_identity"
+          ],
+          "artifacts_in": "[DEFAULT_TARGET_CONFIG_PATH]",
+          "description": "Resolve the effective Stage 2 target config path and checksum before package reuse or rebuild.",
+          "id": "stage2_target_config_identity",
+          "label": "Stage 2 Target Config Identity",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration_package/specs.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration_package/test_specs.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.load_target_config"
+          ],
+          "artifacts_in": "[DEFAULT_TARGET_CONFIG_RELATIVE_PATH]",
+          "description": "Load the include/exclude target-selection catalog used by Stage 2 package construction.",
+          "id": "stage2_target_catalog_load",
+          "label": "Load Stage 2 Target Config",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_target_config.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets"
+          ],
+          "description": "Apply Stage 2 target include/exclude rules before matrix construction.",
+          "id": "stage2_target_config_apply",
+          "label": "Apply Stage 2 Target Config",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_target_config.py"
+          ]
         },
         {
           "api_refs": [
@@ -4098,6 +4208,132 @@
           "validation_commands": [
             "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py",
             "uv run pytest tests/integration/test_chunked_matrix_builder.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
+          ],
+          "artifacts_out": [
+            "X_sparse",
+            "targets_df",
+            "target_names"
+          ],
+          "description": "Build the in-memory sparse matrix for calibration targets and clone households.",
+          "id": "build_matrix",
+          "label": "Build Calibration Matrix",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_matrix_builder.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
+          ],
+          "artifacts_out": [
+            "chunked COO shards",
+            "X_sparse"
+          ],
+          "description": "Stream matrix construction through clone-household chunks with resumable shard caches.",
+          "id": "build_matrix_chunked",
+          "label": "Build Calibration Matrix In Chunks",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_matrix_builder.py",
+          "stability": "experimental",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/integration/test_chunked_matrix_builder.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration.unified_calibration.save_calibration_package"
+          ],
+          "artifacts_out": [
+            "calibration_package.pkl"
+          ],
+          "description": "Persist the Stage 2 sparse matrix, target rows, target names, geography arrays, and provenance metadata.",
+          "id": "stage2_calibration_package_writer",
+          "label": "Stage 2 Package Writer",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration/unified_calibration.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths"
+          ],
+          "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+          "description": "Centralize calibration package, contract, metadata, and matrix-build artifact paths.",
+          "id": "stage2_artifact_specs",
+          "label": "Stage 2 Artifact Specs",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/calibration_package/specs.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/calibration_package/test_specs.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract"
+          ],
+          "artifacts_in": [
+            "calibration_package.pkl"
+          ],
+          "artifacts_out": "[CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+          "description": "Write the Stage 2 calibration-package handoff contract next to the package artifact.",
+          "id": "stage2_calibration_package_contract_writer",
+          "label": "Stage 2 Contract Writer",
+          "node_type": "library",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/stage_contracts/calibration_package.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
+          ]
+        },
+        {
+          "api_refs": [
+            "policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract"
+          ],
+          "artifacts_in": "['calibration_package.pkl', CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+          "description": "Validate that the persisted Stage 2 contract describes the calibration package and inputs.",
+          "id": "stage2_calibration_package_contract_validator",
+          "label": "Stage 2 Contract Validator",
+          "node_type": "validation",
+          "pathways": [
+            "calibration_package"
+          ],
+          "source_file": "policyengine_us_data/stage_contracts/calibration_package.py",
+          "stability": "moving",
+          "status": "current",
+          "validation_commands": [
+            "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
           ]
         }
       ],

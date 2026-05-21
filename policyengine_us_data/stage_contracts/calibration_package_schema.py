@@ -257,6 +257,13 @@ class CalibrationPackageParameters:
                     "all_active_targets target config parameters cannot include "
                     "a path or checksum"
                 )
+        if self.target_config_mode in {"default", "explicit"} and (
+            self.target_config is None or self.target_config_sha256 is None
+        ):
+            raise ValueError(
+                "default and explicit target config parameters require "
+                "target_config and target_config_sha256"
+            )
         if self.chunked_matrix:
             if self.workers is not None:
                 raise ValueError("workers must be None when chunked_matrix is true")
@@ -334,17 +341,20 @@ class CalibrationPackageParameters:
             ),
         )
         target_config = _optional_string_field(data, "target_config")
+        target_config_sha256 = _optional_string_field(data, "target_config_sha256")
         target_config_mode = _optional_string_field(data, "target_config_mode")
+        if "target_config_mode" not in data and "target_config_sha256" not in data:
+            resolved_mode = None
+        else:
+            resolved_mode = target_config_mode or (
+                "all_active_targets" if target_config is None else "explicit"
+            )
         return cls(
             workers=_optional_int_field(data, "workers"),
             n_clones=_required_int_field(data, "n_clones"),
             target_config=target_config,
-            target_config_sha256=_optional_string_field(
-                data,
-                "target_config_sha256",
-            ),
-            target_config_mode=target_config_mode
-            or ("all_active_targets" if target_config is None else "explicit"),
+            target_config_sha256=target_config_sha256,
+            target_config_mode=resolved_mode,
             skip_county=_required_bool_field(data, "skip_county"),
             skip_source_impute=_required_bool_field(data, "skip_source_impute"),
             skip_takeup_rerandomize=_required_bool_field(

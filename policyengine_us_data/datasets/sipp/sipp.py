@@ -33,6 +33,25 @@ VEHICLE_MODEL_PREDICTORS = [
     "is_homeowner",
 ]
 
+SSI_DISABILITY_MODEL_VARIABLE = "meets_ssi_disability_criteria"
+
+SSI_DISABILITY_MODEL_PREDICTORS = [
+    "age",
+    "is_female",
+    "is_married",
+    "employment_income",
+    "interest_income",
+    "dividend_income",
+    "rental_income",
+    "bank_account_assets",
+    "stock_assets",
+    "bond_assets",
+    "count_under_18",
+    "is_disabled",
+    "social_security_disability",
+    "has_disability_income",
+]
+
 
 def train_tip_model():
     DOWNLOAD_FULL_SIPP = False
@@ -209,6 +228,33 @@ ASSET_COLUMNS = [
     "RSSI_YRYN",  # Received SSI in at least one month
 ]
 
+SSI_DISABILITY_INCOME_AMOUNT_COLUMNS = [
+    "TDIS1AMT",
+    "TDIS2AMT",
+    "TDIS3AMT",
+    "TDIS4AMT",
+    "TDIS5AMT",
+    "TDIS7AMT",
+    "TDIS10AMT",
+]
+
+SSI_DISABILITY_COLUMNS = sorted(
+    set(
+        ASSET_COLUMNS
+        + [
+            "EDISABL",
+            "EHLTHCOND",
+            "RDIS",
+            "RDIS_ALT",
+            "EDISANY",
+            "ENJ_NOWRK3",
+            "ESSRSN2YN",
+            "ESSI_BRSN",
+            *SSI_DISABILITY_INCOME_AMOUNT_COLUMNS,
+        ]
+    )
+)
+
 VEHICLE_COLUMNS = [
     "SSUID",
     "PNUM",
@@ -226,6 +272,181 @@ VEHICLE_COLUMNS = [
     "THVAL_VEH",
     "THVAL_HOME",
 ]
+
+
+def _yes(df: pd.DataFrame, column: str) -> pd.Series:
+    values = df[column] if column in df else pd.Series(0, index=df.index)
+    return values.fillna(0).astype(float).eq(1)
+
+
+def _ssi_financial_candidate_mask(
+    df: pd.DataFrame, time_period: int = 2024
+) -> pd.Series:
+    """Approximate non-disability SSI financial eligibility in SIPP.
+
+    This is only a training-frame screen. It avoids treating people whose
+    resources or income make SSI receipt structurally unlikely as clean
+    non-disabled labels.
+    """
+    try:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        p = CountryTaxBenefitSystem().parameters(f"{time_period}-01-01").gov.ssa.ssi
+        individual_resource_limit = float(p.eligibility.resources.limit.individual)
+        couple_resource_limit = float(p.eligibility.resources.limit.couple)
+        individual_fbr = float(p.amount.individual)
+        couple_fbr = float(p.amount.couple)
+    except Exception:
+        individual_resource_limit = 2_000.0
+        couple_resource_limit = 3_000.0
+        individual_fbr = 943.0
+        couple_fbr = 1_415.0
+
+    resource_limit = np.where(
+        df["is_married"].astype(bool),
+        couple_resource_limit,
+        individual_resource_limit,
+    )
+    monthly_income_limit = np.where(
+        df["is_married"].astype(bool),
+        couple_fbr,
+        individual_fbr,
+    )
+    liquid_resources = (
+        df["bank_account_assets"].fillna(0)
+        + df["stock_assets"].fillna(0)
+        + df["bond_assets"].fillna(0)
+    )
+    monthly_income = df["TPTOTINC"].fillna(0)
+    return (liquid_resources <= resource_limit) & (
+        monthly_income <= monthly_income_limit * 2
+    )
+
+
+def build_ssi_disability_training_frame(
+    df: pd.DataFrame, time_period: int = 2024
+) -> pd.DataFrame:
+    """Build SIPP training rows for latent SSI disability criteria."""
+    df = df[df.MONTHCODE == 12].copy()
+
+    df["bank_account_assets"] = df["TVAL_BANK"].fillna(0)
+    df["stock_assets"] = df["TVAL_STMF"].fillna(0)
+    df["bond_assets"] = df["TVAL_BOND"].fillna(0)
+    df["age"] = df.TAGE
+    df["is_female"] = df.ESEX == 2
+    df["is_married"] = df.EMS == 1
+    df["employment_income"] = df.TPTOTINC.fillna(0) * 12
+    df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
+    df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
+    df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
+    df["household_weight"] = df.WPFINWGT.fillna(0)
+    df["is_under_18"] = df.TAGE < 18
+    df["count_under_18"] = (
+        df.groupby("SSUID")["is_under_18"].sum().loc[df.SSUID.values].values
+    )
+
+    disability_income_amount = pd.Series(0.0, index=df.index)
+    for column in SSI_DISABILITY_INCOME_AMOUNT_COLUMNS:
+        if column in df:
+            disability_income_amount += df[column].fillna(0)
+
+    df["is_disabled"] = (
+        _yes(df, "RDIS_ALT")
+        | _yes(df, "RDIS")
+        | _yes(df, "EDISABL")
+        | _yes(df, "EHLTHCOND")
+        | _yes(df, "ENJ_NOWRK3")
+    )
+    df["social_security_disability"] = _yes(df, "ESSRSN2YN")
+    df["has_disability_income"] = _yes(df, "EDISANY") | disability_income_amount.gt(0)
+
+    received_ssi = _yes(df, "RSSI_YRYN")
+    under_65 = df["age"] < 65
+    disabled_or_blind_reason = (
+        df.get("ESSI_BRSN", pd.Series(-9, index=df.index))
+        .fillna(-9)
+        .astype(float)
+        .eq(1)
+    )
+    aged_reason = (
+        df.get("ESSI_BRSN", pd.Series(-9, index=df.index))
+        .fillna(-9)
+        .astype(float)
+        .eq(2)
+    )
+    df[SSI_DISABILITY_MODEL_VARIABLE] = (
+        received_ssi & under_65 & (disabled_or_blind_reason | ~aged_reason)
+    )
+
+    financial_candidate = _ssi_financial_candidate_mask(df, time_period=time_period)
+    df["ssi_disability_training_candidate"] = (financial_candidate & under_65) | df[
+        SSI_DISABILITY_MODEL_VARIABLE
+    ]
+
+    columns = SSI_DISABILITY_MODEL_PREDICTORS + [
+        SSI_DISABILITY_MODEL_VARIABLE,
+        "ssi_disability_training_candidate",
+        "household_weight",
+    ]
+    return df[columns].dropna()
+
+
+def prepare_ssi_disability_receiver(df: pd.DataFrame) -> pd.DataFrame:
+    """Return receiver predictors expected by the SSI disability model."""
+    df = df.copy()
+    for predictor in SSI_DISABILITY_MODEL_PREDICTORS:
+        if predictor not in df:
+            df[predictor] = 0
+    return df[SSI_DISABILITY_MODEL_PREDICTORS].fillna(0)
+
+
+def apply_ssi_sga_screen(
+    meets_ssi_disability_criteria: np.ndarray,
+    employment_income: np.ndarray,
+    time_period: int = 2024,
+) -> np.ndarray:
+    """Exclude people above the non-blind SSI substantial gainful activity limit."""
+    try:
+        from policyengine_us import CountryTaxBenefitSystem
+
+        sga_limit = float(
+            CountryTaxBenefitSystem()
+            .parameters(f"{time_period}-01-01")
+            .gov.ssa.sga.non_blind
+        )
+    except Exception:
+        sga_limit = 1_550.0
+
+    monthly_employment_income = np.asarray(employment_income, dtype=float) / 12
+    return np.asarray(meets_ssi_disability_criteria, dtype=bool) & (
+        monthly_employment_income <= sga_limit
+    )
+
+
+def apply_ssi_disability_signal_screen(
+    meets_ssi_disability_criteria: np.ndarray,
+    is_disabled: np.ndarray,
+    social_security_disability: np.ndarray,
+    has_disability_income: np.ndarray,
+) -> np.ndarray:
+    """Require at least one observed disability signal before accepting imputation."""
+    disability_signal = (
+        np.asarray(is_disabled, dtype=bool)
+        | np.asarray(social_security_disability, dtype=bool)
+        | np.asarray(has_disability_income, dtype=bool)
+    )
+    return np.asarray(meets_ssi_disability_criteria, dtype=bool) & disability_signal
+
+
+def coerce_ssi_disability_predictions(values) -> np.ndarray:
+    """Convert classifier labels to booleans without treating 'False' as true."""
+    series = pd.Series(values)
+    if series.dtype == bool:
+        return series.to_numpy(dtype=bool)
+    if np.issubdtype(series.dtype, np.number):
+        return series.fillna(0).astype(float).ne(0).to_numpy(dtype=bool)
+    normalized = series.fillna("").astype(str).str.strip().str.lower()
+    return normalized.isin(["true", "1", "yes"]).to_numpy(dtype=bool)
 
 
 def train_asset_model():
@@ -341,6 +562,68 @@ def get_asset_model() -> QRF:
 
     if not model_path.exists():
         model = train_asset_model()
+
+        with open(model_path, "wb") as f:
+            pickle.dump(model, f)
+    else:
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+
+    return model
+
+
+def train_ssi_disability_model(time_period: int = 2024):
+    """Train a boolean model for likely SSI disability criteria."""
+    hf_hub_download(
+        repo_id="PolicyEngine/policyengine-us-data",
+        filename="pu2023.csv",
+        repo_type="model",
+        local_dir=STORAGE_FOLDER,
+    )
+
+    df = pd.read_csv(
+        STORAGE_FOLDER / "pu2023.csv",
+        delimiter="|",
+        usecols=SSI_DISABILITY_COLUMNS,
+    )
+    sipp = build_ssi_disability_training_frame(df, time_period=time_period)
+    sipp = sipp[sipp["ssi_disability_training_candidate"]].drop(
+        columns=["ssi_disability_training_candidate"]
+    )
+
+    if sipp[SSI_DISABILITY_MODEL_VARIABLE].nunique() < 2:
+        raise ValueError(
+            "SIPP SSI disability training frame must contain both positive "
+            "and negative labels."
+        )
+
+    ssi_rng = seeded_rng("sipp_ssi_disability_model_training_sample")
+    weights = sipp.household_weight / sipp.household_weight.sum()
+    sipp = sipp.loc[
+        ssi_rng.choice(
+            sipp.index,
+            size=min(20_000, len(sipp)),
+            replace=True,
+            p=weights,
+        )
+    ]
+
+    model = QRF()
+    model = model.fit(
+        X_train=sipp,
+        predictors=SSI_DISABILITY_MODEL_PREDICTORS,
+        imputed_variables=[SSI_DISABILITY_MODEL_VARIABLE],
+    )
+
+    return model
+
+
+def get_ssi_disability_model(time_period: int = 2024) -> QRF:
+    """Get or train the SSI disability criteria imputation model."""
+    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v1_{time_period}.pkl"
+
+    if not model_path.exists():
+        model = train_ssi_disability_model(time_period=time_period)
 
         with open(model_path, "wb") as f:
             pickle.dump(model, f)

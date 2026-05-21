@@ -14,6 +14,7 @@ from policyengine_us_data.calibration.source_impute import (
     SCF_PREDICTORS,
     SIPP_ASSETS_PREDICTORS,
     SIPP_IMPUTED_VARIABLES,
+    SSI_DISABILITY_MODEL_VARIABLE,
     SIPP_TIPS_PREDICTORS,
     _impute_acs,
     _impute_org,
@@ -80,6 +81,7 @@ class TestConstants:
         assert "bank_account_assets" in SIPP_IMPUTED_VARIABLES
         assert "stock_assets" in SIPP_IMPUTED_VARIABLES
         assert "bond_assets" in SIPP_IMPUTED_VARIABLES
+        assert SSI_DISABILITY_MODEL_VARIABLE in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_owned" in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_value" in SIPP_IMPUTED_VARIABLES
 

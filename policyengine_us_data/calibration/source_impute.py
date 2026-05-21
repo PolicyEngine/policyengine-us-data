@@ -36,8 +36,15 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_is_tipped_occupation,
 )
 from policyengine_us_data.datasets.sipp.sipp import (
+    SSI_DISABILITY_MODEL_PREDICTORS,
+    SSI_DISABILITY_MODEL_VARIABLE,
     VEHICLE_MODEL_PREDICTORS,
+    apply_ssi_disability_signal_screen,
+    apply_ssi_sga_screen,
     build_vehicle_training_frame,
+    coerce_ssi_disability_predictions,
+    get_ssi_disability_model,
+    prepare_ssi_disability_receiver,
 )
 
 from policyengine_us_data.datasets.org import (
@@ -79,6 +86,7 @@ SIPP_IMPUTED_VARIABLES = [
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
+    SSI_DISABILITY_MODEL_VARIABLE,
     "household_vehicles_owned",
     "household_vehicles_value",
 ]
@@ -701,6 +709,94 @@ def _impute_sipp(
         gc.collect()
 
         logger.info("SIPP asset imputation complete")
+
+        cps_ssi_df = _build_cps_receiver(
+            data,
+            time_period,
+            dataset_path,
+            [
+                "employment_income",
+                "interest_income",
+                "dividend_income",
+                "rental_income",
+                "age",
+                "is_male",
+                "is_disabled",
+                "social_security_disability",
+                "disability_benefits",
+            ],
+        )
+        if "is_male" in cps_ssi_df.columns:
+            cps_ssi_df["is_female"] = (~cps_ssi_df["is_male"].astype(bool)).astype(
+                np.float32
+            )
+        else:
+            cps_ssi_df["is_female"] = 0.0
+        if "is_married" in data:
+            cps_ssi_df["is_married"] = data["is_married"][time_period].astype(
+                np.float32
+            )
+        else:
+            cps_ssi_df["is_married"] = 0.0
+        cps_ssi_df["count_under_18"] = (
+            cps_tip_df["count_under_18"]
+            if "count_under_18" in cps_tip_df.columns
+            else 0.0
+        )
+        for var in asset_vars:
+            cps_ssi_df[var] = data[var][time_period].astype(np.float32)
+        for var in [
+            "interest_income",
+            "dividend_income",
+            "rental_income",
+            "is_disabled",
+            "social_security_disability",
+        ]:
+            if var not in cps_ssi_df.columns:
+                cps_ssi_df[var] = data.get(var, {}).get(
+                    time_period, np.zeros(len(cps_ssi_df))
+                )
+        if "disability_benefits" in cps_ssi_df.columns:
+            disability_benefits = cps_ssi_df["disability_benefits"]
+        else:
+            disability_benefits = data.get("disability_benefits", {}).get(
+                time_period, np.zeros(len(cps_ssi_df))
+            )
+        cps_ssi_df["has_disability_income"] = (
+            np.asarray(disability_benefits).astype(float) > 0
+        )
+
+        ssi_disability_model = get_ssi_disability_model(time_period=time_period)
+        ssi_disability_receiver = prepare_ssi_disability_receiver(cps_ssi_df)
+        ssi_disability_predictions = ssi_disability_model.predict(
+            X_test=ssi_disability_receiver[SSI_DISABILITY_MODEL_PREDICTORS]
+        )
+        meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
+            ssi_disability_predictions[SSI_DISABILITY_MODEL_VARIABLE]
+        )
+        meets_ssi_disability_criteria = apply_ssi_disability_signal_screen(
+            meets_ssi_disability_criteria,
+            cps_ssi_df["is_disabled"],
+            cps_ssi_df["social_security_disability"],
+            cps_ssi_df["has_disability_income"],
+        )
+        meets_ssi_disability_criteria = apply_ssi_sga_screen(
+            meets_ssi_disability_criteria,
+            cps_ssi_df["employment_income"],
+            time_period=time_period,
+        )
+        if "ssi_reported" in data:
+            reported_under_65 = (data["ssi_reported"][time_period] > 0) & (
+                data["age"][time_period] < 65
+            )
+            meets_ssi_disability_criteria = (
+                meets_ssi_disability_criteria | reported_under_65
+            )
+        data[SSI_DISABILITY_MODEL_VARIABLE] = {
+            time_period: meets_ssi_disability_criteria
+        }
+
+        logger.info("SIPP SSI disability criteria imputation complete")
 
         vehicle_train = build_vehicle_training_frame()
         vehicle_train = vehicle_train.loc[

@@ -56,16 +56,41 @@ HOUSEHOLD_COLUMNS = [
     "GASP",  # Gas monthly cost
     "RMSP",  # Number of rooms
     "RNTP",  # Monthly rent
+    "FRNTP",  # Monthly rent allocation flag
     "TEN",  # Tenure
     "VEH",  # Number of vehicles
     "FINCP",  # Total income
     "GRNTP",  # Gross rent
     "TAXAMT",  # Property taxes
+    "FTAXP",  # Property taxes allocation flag
 ]
+
+RAW_HOUSEHOLD_SOURCE_QUALITY_COLUMNS = ("FRNTP", "FTAXP")
 
 
 class CensusACS(Dataset):
     data_format = Dataset.TABLES
+
+    @property
+    def exists(self) -> bool:
+        """Treat stale raw ACS caches without allocation flags as absent."""
+        if not self.file_path.exists():
+            return False
+        try:
+            with pd.HDFStore(self.file_path, mode="r") as storage:
+                if "/household" not in storage.keys():
+                    return False
+                storer = storage.get_storer("household")
+                columns = [
+                    column
+                    for _, axis_columns in getattr(storer, "non_index_axes", [])
+                    for column in axis_columns
+                ]
+                if not columns:
+                    columns = list(storage["household"].columns)
+        except (OSError, KeyError, ValueError):
+            return False
+        return set(RAW_HOUSEHOLD_SOURCE_QUALITY_COLUMNS) <= set(columns)
 
     def generate(self) -> None:
         person_url = f"https://www2.census.gov/programs-surveys/acs/data/pums/{self.time_period}/1-Year/csv_pus.zip"

@@ -26,11 +26,13 @@ Usage in unified calibration pipeline:
 """
 
 import gc
+import h5py
 import logging
 from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+from microimpute.models.qrf import QRF
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
@@ -38,6 +40,12 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 from policyengine_us_data.datasets.sipp.sipp import (
     ASSET_JOB_EARNINGS_COLUMNS,
     ASSET_PREDICTORS,
+    SIPP_ASSET_ALLOCATION_COLUMNS,
+    SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+    SIPP_ASSET_TARGET_SOURCE_COLUMNS,
+    SIPP_TIP_AMOUNT_COLUMNS,
+    SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN,
+    SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
     SSI_DISABILITY_MODEL_VARIABLE,
     VEHICLE_MODEL_PREDICTORS,
     build_vehicle_training_frame,
@@ -72,6 +80,11 @@ from policyengine_us_data.utils.asset_imputation import (
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
+from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
+    require_columns_present,
+    target_observed_source_masks,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +92,10 @@ ACS_IMPUTED_VARIABLES = [
     "rent",
     "real_estate_taxes",
 ]
+ACS_TARGET_ALLOCATION_COLUMNS = {
+    "rent": ["rent_is_allocated"],
+    "real_estate_taxes": ["real_estate_taxes_is_allocated"],
+}
 
 SIPP_IMPUTED_VARIABLES = [
     "tip_income",
@@ -504,7 +521,6 @@ def _impute_acs(
     Returns:
         Updated data dict.
     """
-    from microimpute.models.qrf import QRF
     from policyengine_us import Microsimulation
 
     from policyengine_us_data.datasets.acs.acs import ACS_2022
@@ -518,8 +534,22 @@ def _impute_acs(
     acs_df["state_fips"] = acs.calculate("state_fips", map_to="person").values.astype(
         np.float32
     )
+    required_acs_flags = [
+        column
+        for columns in ACS_TARGET_ALLOCATION_COLUMNS.values()
+        for column in columns
+    ]
+    with h5py.File(ACS_2022.file_path, "r") as acs_h5:
+        require_columns_present(
+            acs_h5,
+            required_acs_flags,
+            source_name="ACS_2022 artifact",
+        )
+        for flag_columns in ACS_TARGET_ALLOCATION_COLUMNS.values():
+            for flag_column in flag_columns:
+                acs_df[flag_column] = np.asarray(acs_h5[flag_column], dtype=bool)
 
-    train_df = acs_df[acs_df.is_household_head].sample(10_000, random_state=42)
+    train_df = acs_df[acs_df.is_household_head].copy()
     train_df = _encode_tenure_type(train_df)
     del acs
 
@@ -545,17 +575,28 @@ def _impute_acs(
     )
     cps_heads = cps_df[mask]
 
-    qrf = QRF()
     logger.info(
         "ACS QRF: %d train, %d test, %d predictors",
         len(train_df),
         len(cps_heads),
         len(predictors),
     )
-    fitted = qrf.fit(
+    acs_target_filters = target_observed_source_masks(
+        train_df,
+        targets=ACS_IMPUTED_VARIABLES,
+        target_allocation_flag_columns=ACS_TARGET_ALLOCATION_COLUMNS,
+    )
+    train_df, acs_target_filters = cap_training_sample(
+        train_df,
+        max_train_samples=10_000,
+        seed_name="calibration_acs_source_imputation_training_sample",
+        target_filters=acs_target_filters,
+    )
+    fitted = QRF().fit(
         X_train=train_df,
         predictors=predictors,
         imputed_variables=ACS_IMPUTED_VARIABLES,
+        target_filters=acs_target_filters,
     )
     predictions = fitted.predict(X_test=cps_heads)
 
@@ -606,11 +647,7 @@ def _impute_sipp(
         Updated data dict.
     """
     from huggingface_hub import hf_hub_download
-    from microimpute.models.qrf import QRF
-
     from policyengine_us_data.storage import STORAGE_FOLDER
-
-    rng = np.random.default_rng(seed=88)
 
     hf_hub_download(
         repo_id="PolicyEngine/policyengine-us-data",
@@ -620,12 +657,18 @@ def _impute_sipp(
     )
     sipp_df = pd.read_csv(STORAGE_FOLDER / "pu2023_slim.csv")
 
-    sipp_df["tip_income"] = (
-        sipp_df[sipp_df.columns[sipp_df.columns.str.contains("TXAMT")]]
-        .fillna(0)
-        .sum(axis=1)
-        * 12
+    tip_amount_columns = [
+        column for column in SIPP_TIP_AMOUNT_COLUMNS if column in sipp_df
+    ]
+    tip_allocation_columns = [
+        SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN[column] for column in tip_amount_columns
+    ]
+    require_columns_present(
+        sipp_df.columns,
+        tip_allocation_columns,
+        source_name="SIPP slim tip donor file",
     )
+    sipp_df["tip_income"] = sipp_df[tip_amount_columns].fillna(0).sum(axis=1) * 12
     sipp_df["employment_income"] = sipp_df.TPTOTINC * 12
     sipp_df["age"] = sipp_df.TAGE
     sipp_df["household_weight"] = sipp_df.WPFINWGT
@@ -637,6 +680,8 @@ def _impute_sipp(
         sipp_df["treasury_tipped_occupation_code"]
     )
 
+    if "MONTHCODE" in sipp_df:
+        sipp_df = sipp_df[sipp_df["MONTHCODE"] == 12].copy()
     sipp_df["is_under_18"] = sipp_df.TAGE < 18
     sipp_df["is_under_6"] = sipp_df.TAGE < 6
     sipp_df["count_under_18"] = (
@@ -644,6 +689,14 @@ def _impute_sipp(
     )
     sipp_df["count_under_6"] = (
         sipp_df.groupby("SSUID")["is_under_6"].sum().loc[sipp_df.SSUID.values].values
+    )
+
+    tip_target_filters = target_observed_source_masks(
+        sipp_df,
+        targets=["tip_income"],
+        target_source_columns={"tip_income": tip_amount_columns},
+        target_allocation_flag_columns={"tip_income": tip_allocation_columns},
+        require_nonmissing_source=False,
     )
 
     tip_cols = [
@@ -657,14 +710,12 @@ def _impute_sipp(
         "household_weight",
     ]
     tip_train = sipp_df[tip_cols].dropna()
-    tip_train = tip_train.loc[
-        rng.choice(
-            tip_train.index,
-            size=min(10_000, len(tip_train)),
-            replace=True,
-            p=(tip_train.household_weight / tip_train.household_weight.sum()),
-        )
-    ]
+    tip_train, tip_target_filters = cap_training_sample(
+        tip_train,
+        max_train_samples=10_000,
+        seed_name="calibration_sipp_tip_training_sample",
+        target_filters=tip_target_filters,
+    )
 
     cps_tip_df = _build_cps_receiver(
         data, time_period, dataset_path, ["employment_income", "age"]
@@ -691,16 +742,17 @@ def _impute_sipp(
     else:
         cps_tip_df["is_tipped_occupation"] = 0.0
 
-    qrf = QRF()
     logger.info(
         "SIPP tips QRF: %d train, %d test",
         len(tip_train),
         len(cps_tip_df),
     )
-    fitted = qrf.fit(
+    fitted = QRF().fit(
         X_train=tip_train,
         predictors=SIPP_TIPS_PREDICTORS,
         imputed_variables=["tip_income"],
+        target_filters=tip_target_filters,
+        weight_col="household_weight",
     )
     tip_preds = fitted.predict(X_test=cps_tip_df)
     data["tip_income"] = {
@@ -719,24 +771,28 @@ def _impute_sipp(
             repo_type="model",
             local_dir=STORAGE_FOLDER,
         )
-        asset_cols = [
-            "SSUID",
-            "PNUM",
-            "MONTHCODE",
-            "WPFINWGT",
-            "TAGE",
-            "ESEX",
-            "EMS",
-            "TSSSAMT",
-            "TRETINCAMT",
-            "TVAL_BANK",
-            "TVAL_STMF",
-            "TVAL_BOND",
-            "TINC_BANK",
-            "TINC_STMF",
-            "TINC_BOND",
-            "TINC_RENT",
-        ] + ASSET_JOB_EARNINGS_COLUMNS
+        asset_cols = (
+            [
+                "SSUID",
+                "PNUM",
+                "MONTHCODE",
+                "WPFINWGT",
+                "TAGE",
+                "ESEX",
+                "EMS",
+                "TSSSAMT",
+                "TRETINCAMT",
+                "TVAL_BANK",
+                "TVAL_STMF",
+                "TVAL_BOND",
+                "TINC_BANK",
+                "TINC_STMF",
+                "TINC_BOND",
+                "TINC_RENT",
+            ]
+            + ASSET_JOB_EARNINGS_COLUMNS
+            + SIPP_ASSET_ALLOCATION_COLUMNS
+        )
         asset_df = pd.read_csv(
             STORAGE_FOLDER / "pu2023.csv",
             delimiter="|",
@@ -751,16 +807,14 @@ def _impute_sipp(
             "bond_assets",
             "household_weight",
             *SIPP_ASSETS_PREDICTORS,
+            *[
+                column
+                for columns in SIPP_ASSET_TARGET_SOURCE_COLUMNS.values()
+                for column in columns
+            ],
+            *SIPP_ASSET_ALLOCATION_COLUMNS,
         ]
-        asset_train = asset_df[asset_train_cols].dropna()
-        asset_train = asset_train.loc[
-            rng.choice(
-                asset_train.index,
-                size=min(20_000, len(asset_train)),
-                replace=True,
-                p=(asset_train.household_weight / asset_train.household_weight.sum()),
-            )
-        ]
+        asset_train = asset_df[asset_train_cols].copy()
 
         cps_asset_df = _build_cps_receiver(
             data,
@@ -789,16 +843,29 @@ def _impute_sipp(
             "stock_assets",
             "bond_assets",
         ]
-        qrf = QRF()
+        asset_target_filters = target_observed_source_masks(
+            asset_train,
+            targets=asset_vars,
+            target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
+            target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+        )
+        asset_train, asset_target_filters = cap_training_sample(
+            asset_train,
+            max_train_samples=20_000,
+            seed_name="calibration_sipp_asset_training_sample",
+            target_filters=asset_target_filters,
+        )
         logger.info(
             "SIPP assets QRF: %d train, %d test",
             len(asset_train),
             len(cps_asset_df),
         )
-        fitted = qrf.fit(
+        fitted = QRF().fit(
             X_train=asset_train,
             predictors=SIPP_ASSETS_PREDICTORS,
             imputed_variables=asset_vars,
+            target_filters=asset_target_filters,
+            weight_col="household_weight",
         )
         asset_preds = fitted.predict(X_test=cps_asset_df)
 
@@ -889,17 +956,6 @@ def _impute_sipp(
         logger.info("SIPP SSI disability criteria imputation complete")
 
         vehicle_train = build_vehicle_training_frame()
-        vehicle_train = vehicle_train.loc[
-            rng.choice(
-                vehicle_train.index,
-                size=min(20_000, len(vehicle_train)),
-                replace=True,
-                p=(
-                    vehicle_train.household_weight
-                    / vehicle_train.household_weight.sum()
-                ),
-            )
-        ]
 
         cps_vehicle_df = _build_cps_receiver(
             data,
@@ -943,19 +999,32 @@ def _impute_sipp(
             tenure_type=data.get("tenure_type", {}).get(time_period),
         )
 
-        qrf = QRF()
         logger.info(
             "SIPP vehicle QRF: %d train, %d test",
             len(vehicle_train),
             len(vehicle_receiver),
         )
-        fitted = qrf.fit(
+        vehicle_vars = [
+            "household_vehicles_owned",
+            "household_vehicles_value",
+        ]
+        vehicle_target_filters = target_observed_source_masks(
+            vehicle_train,
+            targets=vehicle_vars,
+            target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+        )
+        vehicle_train, vehicle_target_filters = cap_training_sample(
+            vehicle_train,
+            max_train_samples=20_000,
+            seed_name="calibration_sipp_vehicle_training_sample",
+            target_filters=vehicle_target_filters,
+        )
+        fitted = QRF().fit(
             X_train=vehicle_train,
             predictors=VEHICLE_MODEL_PREDICTORS,
-            imputed_variables=[
-                "household_vehicles_owned",
-                "household_vehicles_value",
-            ],
+            imputed_variables=vehicle_vars,
+            target_filters=vehicle_target_filters,
+            weight_col="household_weight",
         )
         vehicle_preds = fitted.predict(X_test=vehicle_receiver)
         data["household_vehicles_owned"] = {

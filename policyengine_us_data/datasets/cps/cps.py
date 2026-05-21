@@ -72,6 +72,16 @@ from policyengine_us_data.utils.asset_imputation import (
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
+from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
+    require_columns_present,
+    target_observed_source_masks,
+)
+
+ACS_RENT_TARGET_ALLOCATION_COLUMNS = {
+    "rent": ["rent_is_allocated"],
+    "real_estate_taxes": ["real_estate_taxes_is_allocated"],
+}
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -409,28 +419,52 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # H5; for CPS we use the in-memory dict (already populated upstream in
     # add_id_variables). Remove both overrides once pyproject.toml's
     # policyengine-core upper bound is lifted.
+    required_acs_flags = [
+        column
+        for columns in ACS_RENT_TARGET_ALLOCATION_COLUMNS.values()
+        for column in columns
+    ]
     with h5py.File(ACS_2022.file_path, "r") as acs_h5:
         train_df["is_household_head"] = np.asarray(
             acs_h5["is_household_head"], dtype=bool
         )
+        require_columns_present(
+            acs_h5,
+            required_acs_flags,
+            source_name="ACS_2022 artifact",
+        )
+        for flag_columns in ACS_RENT_TARGET_ALLOCATION_COLUMNS.values():
+            for flag_column in flag_columns:
+                train_df[flag_column] = np.asarray(acs_h5[flag_column], dtype=bool)
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",
         },
         na_action="ignore",
     ).fillna(train_df.tenure_type)
-    train_df = train_df[train_df.is_household_head].sample(10_000)
+    train_df = train_df[train_df.is_household_head].copy()
     inference_df = cps_sim.calculate_dataframe(PREDICTORS, map_to="person")
     inference_df["is_household_head"] = np.asarray(cps["is_household_head"], dtype=bool)
     mask = inference_df.is_household_head.values
     inference_df = inference_df[mask]
 
-    qrf = QRF()
     logging.info("Training imputation model for rent and real estate taxes.")
-    fitted_model = qrf.fit(
+    rent_target_filters = target_observed_source_masks(
+        train_df,
+        targets=IMPUTATIONS,
+        target_allocation_flag_columns=ACS_RENT_TARGET_ALLOCATION_COLUMNS,
+    )
+    train_df, rent_target_filters = cap_training_sample(
+        train_df,
+        max_train_samples=10_000,
+        seed_name="legacy_acs_rent_training_sample",
+        target_filters=rent_target_filters,
+    )
+    fitted_model = QRF().fit(
         X_train=train_df,
         predictors=PREDICTORS,
         imputed_variables=IMPUTATIONS,
+        target_filters=rent_target_filters,
     )
     logging.info("Imputing rent and real estate taxes.")
     imputed_values = fitted_model.predict(X_test=inference_df)

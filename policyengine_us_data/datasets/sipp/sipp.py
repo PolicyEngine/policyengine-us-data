@@ -9,9 +9,21 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
+from policyengine_us_data.utils.source_quality import (
+    cap_training_sample,
+    filter_observed_source_rows,
+    require_columns_present,
+    sipp_allocation_flag_for,
+    target_observed_source_masks,
+)
 
 
 SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
+SIPP_TIP_AMOUNT_COLUMNS = [f"TJB{i}_TXAMT" for i in range(1, 8)]
+SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN = {
+    column: sipp_allocation_flag_for(column) for column in SIPP_TIP_AMOUNT_COLUMNS
+}
+SIPP_TIP_ALLOCATION_COLUMNS = list(SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN.values())
 TIP_MODEL_PREDICTORS = [
     "employment_income",
     "age",
@@ -114,9 +126,16 @@ def train_tip_model():
     # Previously used `str.contains("TXAMT")`, which also picked up
     # AJB*_TXAMT Census allocation flags (small ints 0/1/2 indicating
     # imputation status) and added them to the dollar totals.
-    df["tip_income"] = (
-        df[df.columns[df.columns.str.match(r"TJB\d_TXAMT")]].fillna(0).sum(axis=1) * 12
+    tip_amount_columns = [column for column in SIPP_TIP_AMOUNT_COLUMNS if column in df]
+    tip_allocation_columns = [
+        SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN[column] for column in tip_amount_columns
+    ]
+    require_columns_present(
+        df.columns,
+        tip_allocation_columns,
+        source_name="SIPP tip donor file",
     )
+    df["tip_income"] = df[tip_amount_columns].fillna(0).sum(axis=1) * 12
     df["employment_income"] = df.TPTOTINC * 12
     df["is_under_18"] = (df.TAGE < 18) & (df.MONTHCODE == 12)
     df["is_under_6"] = (df.TAGE < 6) & (df.MONTHCODE == 12)
@@ -147,6 +166,13 @@ def train_tip_model():
     # December (end of year) so every training row represents one
     # person-year.
     df = df[df["MONTHCODE"] == 12]
+    tip_target_filters = target_observed_source_masks(
+        df,
+        targets=["tip_income"],
+        target_source_columns={"tip_income": tip_amount_columns},
+        target_allocation_flag_columns={"tip_income": tip_allocation_columns},
+        require_nonmissing_source=False,
+    )
 
     sipp = df[
         [
@@ -162,18 +188,12 @@ def train_tip_model():
     ]
 
     sipp = sipp[~sipp.isna().any(axis=1)]
-
-    # Seed the weighted resample so the tip-model training frame (and
-    # the pickled QRF) is deterministic across rebuilds of the cache.
-    tip_rng = seeded_rng("sipp_tip_model_training_sample")
-    sipp = sipp.loc[
-        tip_rng.choice(
-            sipp.index,
-            size=10_000,
-            replace=True,
-            p=sipp.household_weight / sipp.household_weight.sum(),
-        )
-    ]
+    sipp, tip_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=10_000,
+        seed_name="sipp_tip_model_training_sample",
+        target_filters=tip_target_filters,
+    )
 
     model = QRF()
 
@@ -181,13 +201,15 @@ def train_tip_model():
         X_train=sipp,
         predictors=TIP_MODEL_PREDICTORS,
         imputed_variables=["tip_income"],
+        target_filters=tip_target_filters,
+        weight_col="household_weight",
     )
 
     return model
 
 
 def get_tip_model() -> QRF:
-    model_path = STORAGE_FOLDER / "tips_tipped_occ_v2.pkl"
+    model_path = STORAGE_FOLDER / "tips_tipped_occ_v3.pkl"
 
     if not model_path.exists():
         model = train_tip_model()
@@ -205,29 +227,49 @@ def get_tip_model() -> QRF:
 # Imputes asset categories separately for policy flexibility
 
 ASSET_JOB_EARNINGS_COLUMNS = [f"TJB{i}_MSUM" for i in range(1, 8)]
+SIPP_ASSET_TARGET_SOURCE_COLUMNS = {
+    "bank_account_assets": ["TVAL_BANK"],
+    "stock_assets": ["TVAL_STMF"],
+    "bond_assets": ["TVAL_BOND"],
+}
+SIPP_ASSET_TARGET_ALLOCATION_COLUMNS = {
+    target: [sipp_allocation_flag_for(column) for column in columns]
+    for target, columns in SIPP_ASSET_TARGET_SOURCE_COLUMNS.items()
+}
+SIPP_ASSET_ALLOCATION_COLUMNS = sorted(
+    {
+        column
+        for columns in SIPP_ASSET_TARGET_ALLOCATION_COLUMNS.values()
+        for column in columns
+    }
+)
 
-ASSET_COLUMNS = [
-    "SSUID",
-    "PNUM",
-    "MONTHCODE",
-    "SPANEL",
-    "SWAVE",
-    "WPFINWGT",
-    "TAGE",
-    "ESEX",
-    "EMS",
-    "TSSSAMT",
-    "TRETINCAMT",
-    # Asset values (person-level sums from SIPP)
-    "TVAL_BANK",  # Checking, savings, money market
-    "TVAL_STMF",  # Stocks and mutual funds
-    "TVAL_BOND",  # Bonds and government securities
-    # Income from assets (monthly, person-level)
-    "TINC_BANK",  # Interest from bank accounts
-    "TINC_STMF",  # Dividends from stocks/mutual funds
-    "TINC_BOND",  # Interest from bonds
-    "TINC_RENT",  # Rental income
-] + ASSET_JOB_EARNINGS_COLUMNS
+ASSET_COLUMNS = (
+    [
+        "SSUID",
+        "PNUM",
+        "MONTHCODE",
+        "SPANEL",
+        "SWAVE",
+        "WPFINWGT",
+        "TAGE",
+        "ESEX",
+        "EMS",
+        "TSSSAMT",
+        "TRETINCAMT",
+        # Asset values (person-level sums from SIPP)
+        "TVAL_BANK",  # Checking, savings, money market
+        "TVAL_STMF",  # Stocks and mutual funds
+        "TVAL_BOND",  # Bonds and government securities
+        # Income from assets (monthly, person-level)
+        "TINC_BANK",  # Interest from bank accounts
+        "TINC_STMF",  # Dividends from stocks/mutual funds
+        "TINC_BOND",  # Interest from bonds
+        "TINC_RENT",  # Rental income
+    ]
+    + ASSET_JOB_EARNINGS_COLUMNS
+    + SIPP_ASSET_ALLOCATION_COLUMNS
+)
 
 ASSET_PREDICTORS = [
     "employment_income",
@@ -257,6 +299,10 @@ SSI_DISABILITY_INCOME_AMOUNT_COLUMNS = [
     "TDIS9AMT",
     "TDIS10AMT",
 ]
+SSI_DISABILITY_LABEL_SOURCE_COLUMNS = ["RSSI_YRYN", "ESSI_BRSN"]
+SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS = [
+    sipp_allocation_flag_for(column) for column in SSI_DISABILITY_LABEL_SOURCE_COLUMNS
+]
 
 SSI_DISABILITY_COLUMNS = sorted(
     set(
@@ -273,9 +319,15 @@ SSI_DISABILITY_COLUMNS = sorted(
             "ESSRSN2YN",
             "ESSI_BRSN",
             *SSI_DISABILITY_INCOME_AMOUNT_COLUMNS,
+            *SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
         ]
     )
 )
+
+SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS = {
+    "household_vehicles_owned": [sipp_allocation_flag_for("TVEH_NUM")],
+    "household_vehicles_value": [sipp_allocation_flag_for("THVAL_VEH")],
+}
 
 VEHICLE_COLUMNS = [
     "SSUID",
@@ -293,6 +345,8 @@ VEHICLE_COLUMNS = [
     "TVEH_NUM",
     "THVAL_VEH",
     "THVAL_HOME",
+    "AVEH_NUM",
+    "AHVAL_VEH",
 ]
 
 
@@ -440,6 +494,12 @@ def build_ssi_disability_training_frame(
     df["ssi_disability_training_candidate"] = (financial_candidate & under_65) | df[
         SSI_DISABILITY_MODEL_VARIABLE
     ]
+    df = filter_observed_source_rows(
+        df,
+        target_name=SSI_DISABILITY_MODEL_VARIABLE,
+        source_columns=SSI_DISABILITY_LABEL_SOURCE_COLUMNS,
+        allocation_flag_columns=SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
+    )
 
     columns = SSI_DISABILITY_MODEL_PREDICTORS + [
         SSI_DISABILITY_MODEL_VARIABLE,
@@ -572,33 +632,39 @@ def train_asset_model():
             "bond_assets",
             "household_weight",
             *ASSET_PREDICTORS,
+            *[
+                column
+                for columns in SIPP_ASSET_TARGET_SOURCE_COLUMNS.values()
+                for column in columns
+            ],
+            *SIPP_ASSET_ALLOCATION_COLUMNS,
         ]
     ]
 
-    sipp = sipp[~sipp.isna().any(axis=1)]
-
-    # Seed the weighted resample so the asset-model training frame
-    # (and the pickled QRF) is deterministic across rebuilds.
-    asset_rng = seeded_rng("sipp_asset_model_training_sample")
-    sipp = sipp.loc[
-        asset_rng.choice(
-            sipp.index,
-            size=min(20_000, len(sipp)),
-            replace=True,
-            p=sipp.household_weight / sipp.household_weight.sum(),
-        )
+    asset_vars = [
+        "bank_account_assets",
+        "stock_assets",
+        "bond_assets",
     ]
-
+    asset_target_filters = target_observed_source_masks(
+        sipp,
+        targets=asset_vars,
+        target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
+        target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+    )
+    sipp, asset_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=20_000,
+        seed_name="sipp_asset_model_training_sample",
+        target_filters=asset_target_filters,
+    )
     model = QRF()
-
     model = model.fit(
         X_train=sipp,
         predictors=ASSET_PREDICTORS,
-        imputed_variables=[
-            "bank_account_assets",
-            "stock_assets",
-            "bond_assets",
-        ],
+        imputed_variables=asset_vars,
+        target_filters=asset_target_filters,
+        weight_col="household_weight",
     )
 
     return model
@@ -606,7 +672,7 @@ def train_asset_model():
 
 def get_asset_model() -> QRF:
     """Get or train the liquid asset imputation model."""
-    model_path = STORAGE_FOLDER / "liquid_assets_v2.pkl"
+    model_path = STORAGE_FOLDER / "liquid_assets_v3.pkl"
 
     if not model_path.exists():
         model = train_asset_model()
@@ -668,7 +734,7 @@ def train_ssi_disability_model(time_period: int = 2024):
 
 def get_ssi_disability_model(time_period: int = 2024) -> QRF:
     """Get or train the SSI disability criteria imputation model."""
-    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v1_{time_period}.pkl"
+    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v2_{time_period}.pkl"
 
     if not model_path.exists():
         model = train_ssi_disability_model(time_period=time_period)
@@ -731,6 +797,8 @@ def build_vehicle_training_frame() -> pd.DataFrame:
             "household_size": grouped.size(),
             "household_vehicles_owned": grouped["TVEH_NUM"].max().fillna(0),
             "household_vehicles_value": grouped["THVAL_VEH"].first().fillna(0),
+            "AVEH_NUM": grouped["AVEH_NUM"].max().fillna(0),
+            "AHVAL_VEH": grouped["AHVAL_VEH"].first().fillna(0),
             "is_homeowner": (grouped["THVAL_HOME"].first().fillna(0) > 0).astype(
                 np.float32
             ),
@@ -762,33 +830,35 @@ def train_vehicle_model():
     """Train a household-level vehicle asset model from SIPP 2023."""
     sipp = build_vehicle_training_frame()
     sipp = sipp[~sipp.isna().any(axis=1)]
-    # Seed the weighted resample so the vehicle-model training frame (and
-    # the pickled QRF) is deterministic across rebuilds of the cache.
-    vehicle_rng = seeded_rng("sipp_vehicle_model_training_sample")
-    sipp = sipp.loc[
-        vehicle_rng.choice(
-            sipp.index,
-            size=min(20_000, len(sipp)),
-            replace=True,
-            p=sipp.household_weight / sipp.household_weight.sum(),
-        )
+    vehicle_vars = [
+        "household_vehicles_owned",
+        "household_vehicles_value",
     ]
-
+    vehicle_target_filters = target_observed_source_masks(
+        sipp,
+        targets=vehicle_vars,
+        target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+    )
+    sipp, vehicle_target_filters = cap_training_sample(
+        sipp,
+        max_train_samples=20_000,
+        seed_name="sipp_vehicle_model_training_sample",
+        target_filters=vehicle_target_filters,
+    )
     model = QRF()
     model = model.fit(
         X_train=sipp,
         predictors=VEHICLE_MODEL_PREDICTORS,
-        imputed_variables=[
-            "household_vehicles_owned",
-            "household_vehicles_value",
-        ],
+        imputed_variables=vehicle_vars,
+        target_filters=vehicle_target_filters,
+        weight_col="household_weight",
     )
     return model
 
 
 def get_vehicle_model() -> QRF:
     """Get or train the household vehicle imputation model."""
-    model_path = STORAGE_FOLDER / "household_vehicle_assets.pkl"
+    model_path = STORAGE_FOLDER / "household_vehicle_assets_v2.pkl"
 
     if not model_path.exists():
         model = train_vehicle_model()

@@ -296,6 +296,14 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
             "is_household_head",
             data=np.ones(10_050, dtype=bool),
         )
+        fake_acs_h5.create_dataset(
+            "rent_is_allocated",
+            data=np.zeros(10_050, dtype=bool),
+        )
+        fake_acs_h5.create_dataset(
+            "real_estate_taxes_is_allocated",
+            data=np.zeros(10_050, dtype=bool),
+        )
 
     class FakeACSDataset:
         file_path = fake_acs_path
@@ -366,10 +374,16 @@ def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):
             )
 
     class FakeQRF:
-        def fit(self, X_train, predictors, imputed_variables):
+        def __init__(self, *args, **kwargs):
+            self.init_kwargs = kwargs
+
+        def fit(self, X_train, predictors, imputed_variables, target_filters=None):
+            assert self.init_kwargs == {}
             assert len(X_train) == 10_000
             assert predictors[-1] == "household_size"
             assert imputed_variables == ["rent", "real_estate_taxes"]
+            assert set(target_filters) == {"rent", "real_estate_taxes"}
+            assert all(len(mask) == 10_000 for mask in target_filters.values())
             return FakeQRFModel()
 
     monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)

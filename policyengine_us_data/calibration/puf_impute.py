@@ -325,6 +325,29 @@ def _qrf_ss_shares(
     for sub in shares:
         shares[sub] = np.where(total > 0, shares[sub] / total, 0.0)
 
+    if (
+        "age" in data
+        and "social_security_retirement" in shares
+        and "social_security_disability" in shares
+    ):
+        # Preserve QRF survivor/dependent predictions, but anchor the
+        # retirement-vs-disability split to the same age rule as the fallback.
+        age = data["age"][time_period][:n_cps][puf_has_ss]
+        is_old = age >= MINIMUM_RETIREMENT_AGE
+        retirement_or_disability = (
+            shares["social_security_retirement"] + shares["social_security_disability"]
+        )
+        shares["social_security_retirement"] = np.where(
+            is_old,
+            retirement_or_disability,
+            0.0,
+        )
+        shares["social_security_disability"] = np.where(
+            is_old,
+            0.0,
+            retirement_or_disability,
+        )
+
     del fitted, predictions
     gc.collect()
 

@@ -5,15 +5,32 @@ from policyengine_us_data.datasets.acs.tax_unit_construction import (
     construct_tax_units_acs,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.source_quality import require_columns_present
 from pandas import DataFrame
 import numpy as np
 import pandas as pd
+
+ACS_SOURCE_QUALITY_DATASETS = (
+    "rent_is_allocated",
+    "real_estate_taxes_is_allocated",
+)
 
 
 class ACS(Dataset):
     data_format = Dataset.ARRAYS
     time_period = None
     census_acs = None
+
+    @property
+    def exists(self) -> bool:
+        """Treat stale ACS artifacts without source-quality flags as absent."""
+        if not self.file_path.exists():
+            return False
+        try:
+            with h5py.File(self.file_path, mode="r") as acs:
+                return all(column in acs for column in ACS_SOURCE_QUALITY_DATASETS)
+        except OSError:
+            return False
 
     def generate(self) -> None:
         """Generates the ACS dataset."""
@@ -76,12 +93,34 @@ class ACS(Dataset):
             .loc[person["household_id"]][["RNTP", "TAXAMT"]]
             .values
         )
+        allocation_flag_columns = [
+            ("FRNTP", "rent_is_allocated"),
+            ("FTAXP", "real_estate_taxes_is_allocated"),
+        ]
+        require_columns_present(
+            household.columns,
+            [source_flag for source_flag, _ in allocation_flag_columns],
+            source_name="raw Census ACS household table",
+        )
+        for source_flag, output_flag in allocation_flag_columns:
+            person[output_flag] = (
+                household.set_index("household_id")
+                .loc[person["household_id"]][source_flag]
+                .fillna(0)
+                .astype(int)
+                .ne(0)
+                .values
+            )
         acs["is_household_head"] = person.SPORDER == 1
         factor = person.SPORDER == 1
         person.rent *= factor * 12
         person.real_estate_taxes *= factor
         acs["rent"] = person.rent
         acs["real_estate_taxes"] = person.real_estate_taxes
+        acs["rent_is_allocated"] = person.rent_is_allocated & factor
+        acs["real_estate_taxes_is_allocated"] = (
+            person.real_estate_taxes_is_allocated & factor
+        )
         acs["tenure_type"] = (
             household.TEN.astype(int)
             .map(
@@ -107,7 +146,7 @@ class ACS_2022(ACS):
     time_period = 2022
     file_path = STORAGE_FOLDER / "acs_2022.h5"
     census_acs = CensusACS_2022
-    url = "release://PolicyEngine/policyengine-us-data/1.13.0/acs_2022.h5"
+    url = None
 
 
 if __name__ == "__main__":

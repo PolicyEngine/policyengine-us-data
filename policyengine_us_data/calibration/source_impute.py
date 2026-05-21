@@ -36,15 +36,11 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_is_tipped_occupation,
 )
 from policyengine_us_data.datasets.sipp.sipp import (
-    SSI_DISABILITY_MODEL_PREDICTORS,
     SSI_DISABILITY_MODEL_VARIABLE,
     VEHICLE_MODEL_PREDICTORS,
-    apply_ssi_disability_signal_screen,
-    apply_ssi_sga_screen,
     build_vehicle_training_frame,
-    coerce_ssi_disability_predictions,
     get_ssi_disability_model,
-    prepare_ssi_disability_receiver,
+    predict_ssi_disability_criteria,
 )
 
 from policyengine_us_data.datasets.org import (
@@ -767,23 +763,9 @@ def _impute_sipp(
         )
 
         ssi_disability_model = get_ssi_disability_model(time_period=time_period)
-        ssi_disability_receiver = prepare_ssi_disability_receiver(cps_ssi_df)
-        ssi_disability_predictions = ssi_disability_model.predict(
-            X_test=ssi_disability_receiver[SSI_DISABILITY_MODEL_PREDICTORS]
-        )
-        meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
-            ssi_disability_predictions[SSI_DISABILITY_MODEL_VARIABLE]
-        )
-        meets_ssi_disability_criteria = apply_ssi_disability_signal_screen(
-            meets_ssi_disability_criteria,
-            cps_ssi_df["is_disabled"],
-            cps_ssi_df["social_security_disability"],
-            cps_ssi_df["has_disability_income"],
-        )
-        meets_ssi_disability_criteria = apply_ssi_sga_screen(
-            meets_ssi_disability_criteria,
-            cps_ssi_df["employment_income"],
-            time_period=time_period,
+        meets_ssi_disability_criteria = predict_ssi_disability_criteria(
+            ssi_disability_model,
+            cps_ssi_df,
         )
         if "ssi_reported" in data:
             reported_under_65 = (data["ssi_reported"][time_period] > 0) & (

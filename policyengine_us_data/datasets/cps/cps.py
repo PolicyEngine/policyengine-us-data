@@ -2649,13 +2649,9 @@ def add_tips(self, cps: h5py.File):
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
     from policyengine_us_data.datasets.sipp import (
-        SSI_DISABILITY_MODEL_PREDICTORS,
         SSI_DISABILITY_MODEL_VARIABLE,
-        apply_ssi_disability_signal_screen,
-        apply_ssi_sga_screen,
-        coerce_ssi_disability_predictions,
         get_ssi_disability_model,
-        prepare_ssi_disability_receiver,
+        predict_ssi_disability_criteria,
     )
 
     n_persons = len(cps)
@@ -2671,22 +2667,9 @@ def add_tips(self, cps: h5py.File):
     )
     cps["has_disability_income"] = disability_benefits > 0
     ssi_disability_model = get_ssi_disability_model()
-    ssi_disability_receiver = prepare_ssi_disability_receiver(cps)
-    ssi_disability_predictions = ssi_disability_model.predict(
-        X_test=ssi_disability_receiver[SSI_DISABILITY_MODEL_PREDICTORS],
-    )
-    meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
-        ssi_disability_predictions[SSI_DISABILITY_MODEL_VARIABLE]
-    )
-    meets_ssi_disability_criteria = apply_ssi_disability_signal_screen(
-        meets_ssi_disability_criteria,
-        cps["is_disabled"],
-        cps["social_security_disability"],
-        cps["has_disability_income"],
-    )
-    meets_ssi_disability_criteria = apply_ssi_sga_screen(
-        meets_ssi_disability_criteria,
-        cps["employment_income"],
+    meets_ssi_disability_criteria = predict_ssi_disability_criteria(
+        ssi_disability_model,
+        cps,
     )
     if "ssi_reported" in existing_data:
         reported_under_65 = (np.asarray(existing_data["ssi_reported"]) > 0) & (

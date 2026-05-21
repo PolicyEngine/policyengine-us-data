@@ -5,9 +5,9 @@ from policyengine_us_data.datasets.sipp import (
     SSI_DISABILITY_MODEL_PREDICTORS,
     SSI_DISABILITY_MODEL_VARIABLE,
     apply_ssi_disability_signal_screen,
-    apply_ssi_sga_screen,
     build_ssi_disability_training_frame,
     coerce_ssi_disability_predictions,
+    predict_ssi_disability_criteria,
     prepare_ssi_disability_receiver,
 )
 
@@ -56,6 +56,15 @@ def test_build_ssi_disability_training_frame_screens_financially():
     )
 
 
+def test_build_ssi_disability_training_frame_uses_all_disability_amounts():
+    frame = _base_sipp_frame().iloc[[2]].copy()
+    frame["TDIS6AMT"] = 100
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert result["has_disability_income"].iloc[0]
+
+
 def test_prepare_ssi_disability_receiver_fills_missing_predictors():
     result = prepare_ssi_disability_receiver(
         pd.DataFrame(
@@ -72,15 +81,6 @@ def test_prepare_ssi_disability_receiver_fills_missing_predictors():
     assert result["is_disabled"].iloc[0] == 0
 
 
-def test_apply_ssi_sga_screen_excludes_high_earners():
-    result = apply_ssi_sga_screen(
-        np.array([True, True, False]),
-        np.array([0, 60_000, 0]),
-    )
-
-    np.testing.assert_array_equal(result, np.array([True, False, False]))
-
-
 def test_apply_ssi_disability_signal_screen_excludes_records_without_signal():
     result = apply_ssi_disability_signal_screen(
         np.array([True, True, True, False]),
@@ -92,6 +92,17 @@ def test_apply_ssi_disability_signal_screen_excludes_records_without_signal():
     np.testing.assert_array_equal(result, np.array([True, True, False, False]))
 
 
+def test_apply_ssi_disability_signal_screen_treats_missing_as_false():
+    result = apply_ssi_disability_signal_screen(
+        np.array([True, True, True]),
+        is_disabled=np.array([np.nan, 0, 0]),
+        social_security_disability=np.array([0, np.nan, 0]),
+        has_disability_income=np.array([0, 0, np.nan]),
+    )
+
+    np.testing.assert_array_equal(result, np.array([False, False, False]))
+
+
 def test_coerce_ssi_disability_predictions_handles_string_false():
     result = coerce_ssi_disability_predictions(
         pd.Series(["False", "True", "0", "1", False, True, 0, 1])
@@ -101,3 +112,25 @@ def test_coerce_ssi_disability_predictions_handles_string_false():
         result,
         np.array([False, True, False, True, False, True, False, True]),
     )
+
+
+def test_predict_ssi_disability_criteria_does_not_apply_sga_screen():
+    class AlwaysTrueModel:
+        def predict(self, X_test):
+            return pd.DataFrame(
+                {SSI_DISABILITY_MODEL_VARIABLE: np.ones(len(X_test), dtype=bool)}
+            )
+
+    receiver = pd.DataFrame(
+        {
+            "age": [40],
+            "employment_income": [60_000],
+            "is_disabled": [True],
+            "social_security_disability": [False],
+            "has_disability_income": [False],
+        }
+    )
+
+    result = predict_ssi_disability_criteria(AlwaysTrueModel(), receiver)
+
+    np.testing.assert_array_equal(result, np.array([True]))

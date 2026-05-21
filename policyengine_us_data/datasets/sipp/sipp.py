@@ -234,7 +234,10 @@ SSI_DISABILITY_INCOME_AMOUNT_COLUMNS = [
     "TDIS3AMT",
     "TDIS4AMT",
     "TDIS5AMT",
+    "TDIS6AMT",
     "TDIS7AMT",
+    "TDIS8AMT",
+    "TDIS9AMT",
     "TDIS10AMT",
 ]
 
@@ -400,27 +403,13 @@ def prepare_ssi_disability_receiver(df: pd.DataFrame) -> pd.DataFrame:
     return df[SSI_DISABILITY_MODEL_PREDICTORS].fillna(0)
 
 
-def apply_ssi_sga_screen(
-    meets_ssi_disability_criteria: np.ndarray,
-    employment_income: np.ndarray,
-    time_period: int = 2024,
-) -> np.ndarray:
-    """Exclude people above the non-blind SSI substantial gainful activity limit."""
-    try:
-        from policyengine_us import CountryTaxBenefitSystem
+def _coerce_ssi_disability_signal(values) -> np.ndarray:
+    series = pd.Series(values)
+    if np.issubdtype(series.dtype, np.number):
+        return series.fillna(0).astype(float).gt(0).to_numpy(dtype=bool)
 
-        sga_limit = float(
-            CountryTaxBenefitSystem()
-            .parameters(f"{time_period}-01-01")
-            .gov.ssa.sga.non_blind
-        )
-    except Exception:
-        sga_limit = 1_550.0
-
-    monthly_employment_income = np.asarray(employment_income, dtype=float) / 12
-    return np.asarray(meets_ssi_disability_criteria, dtype=bool) & (
-        monthly_employment_income <= sga_limit
-    )
+    normalized = series.fillna("").astype(str).str.strip().str.lower()
+    return normalized.isin(["true", "1", "yes"]).to_numpy(dtype=bool)
 
 
 def apply_ssi_disability_signal_screen(
@@ -431,9 +420,9 @@ def apply_ssi_disability_signal_screen(
 ) -> np.ndarray:
     """Require at least one observed disability signal before accepting imputation."""
     disability_signal = (
-        np.asarray(is_disabled, dtype=bool)
-        | np.asarray(social_security_disability, dtype=bool)
-        | np.asarray(has_disability_income, dtype=bool)
+        _coerce_ssi_disability_signal(is_disabled)
+        | _coerce_ssi_disability_signal(social_security_disability)
+        | _coerce_ssi_disability_signal(has_disability_income)
     )
     return np.asarray(meets_ssi_disability_criteria, dtype=bool) & disability_signal
 
@@ -447,6 +436,21 @@ def coerce_ssi_disability_predictions(values) -> np.ndarray:
         return series.fillna(0).astype(float).ne(0).to_numpy(dtype=bool)
     normalized = series.fillna("").astype(str).str.strip().str.lower()
     return normalized.isin(["true", "1", "yes"]).to_numpy(dtype=bool)
+
+
+def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndarray:
+    """Predict SSI disability criteria before applying dynamic policy screens."""
+    receiver = prepare_ssi_disability_receiver(receiver_df)
+    predictions = model.predict(X_test=receiver[SSI_DISABILITY_MODEL_PREDICTORS])
+    meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
+        predictions[SSI_DISABILITY_MODEL_VARIABLE]
+    )
+    return apply_ssi_disability_signal_screen(
+        meets_ssi_disability_criteria,
+        receiver["is_disabled"],
+        receiver["social_security_disability"],
+        receiver["has_disability_income"],
+    )
 
 
 def train_asset_model():

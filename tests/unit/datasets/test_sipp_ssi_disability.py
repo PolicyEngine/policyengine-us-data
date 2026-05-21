@@ -11,6 +11,7 @@ from policyengine_us_data.datasets.sipp import (
     preserve_under_65_ssi_disability_criteria,
     prepare_ssi_disability_receiver,
 )
+from policyengine_us_data.datasets.sipp.sipp import SSI_DISABILITY_COLUMNS
 
 
 def _base_sipp_frame() -> pd.DataFrame:
@@ -64,6 +65,10 @@ def test_build_ssi_disability_training_frame_uses_all_disability_amounts():
     result = build_ssi_disability_training_frame(frame)
 
     assert result["has_disability_income"].iloc[0]
+
+
+def test_ssi_disability_training_usecols_include_label_and_income_columns():
+    assert {"TPTOTINC", "RSSI_YRYN"} <= set(SSI_DISABILITY_COLUMNS)
 
 
 def test_prepare_ssi_disability_receiver_fills_missing_predictors():

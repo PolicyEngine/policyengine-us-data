@@ -235,3 +235,45 @@ def test_acs_add_id_variables_writes_related_to_head_or_spouse():
 
     assert person_tax_unit_id.tolist() == [1, 1]
     assert is_related_to_head_or_spouse.tolist() == [True, False]
+
+
+def test_acs_add_person_variables_requires_raw_allocation_flags():
+    person = _acs_person_fixture(household_id=[0])
+    household = pd.DataFrame(
+        {
+            "household_id": [0],
+            "RNTP": [1_200],
+            "TAXAMT": [500],
+            "TEN": [3],
+        }
+    )
+
+    with h5py.File("memory", mode="w", driver="core", backing_store=False) as acs:
+        with pytest.raises(KeyError, match="FRNTP"):
+            ACS.add_person_variables(acs, person, household)
+
+
+def test_acs_add_person_variables_writes_allocation_flags_for_heads_only():
+    person = _acs_person_fixture(
+        household_id=[0, 0],
+        SPORDER=[1, 2],
+        AGEP=[40, 10],
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [0],
+            "RNTP": [1_200],
+            "TAXAMT": [500],
+            "FRNTP": [1],
+            "FTAXP": [0],
+            "TEN": [3],
+        }
+    )
+
+    with h5py.File("memory", mode="w", driver="core", backing_store=False) as acs:
+        ACS.add_person_variables(acs, person, household)
+        rent_is_allocated = acs["rent_is_allocated"][:]
+        real_estate_taxes_is_allocated = acs["real_estate_taxes_is_allocated"][:]
+
+    assert rent_is_allocated.tolist() == [True, False]
+    assert real_estate_taxes_is_allocated.tolist() == [False, False]

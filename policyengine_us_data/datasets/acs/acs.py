@@ -5,6 +5,7 @@ from policyengine_us_data.datasets.acs.tax_unit_construction import (
     construct_tax_units_acs,
 )
 from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.source_quality import require_columns_present
 from pandas import DataFrame
 import numpy as np
 import pandas as pd
@@ -76,21 +77,24 @@ class ACS(Dataset):
             .loc[person["household_id"]][["RNTP", "TAXAMT"]]
             .values
         )
-        for source_flag, output_flag in [
+        allocation_flag_columns = [
             ("FRNTP", "rent_is_allocated"),
             ("FTAXP", "real_estate_taxes_is_allocated"),
-        ]:
-            if source_flag in household:
-                person[output_flag] = (
-                    household.set_index("household_id")
-                    .loc[person["household_id"]][source_flag]
-                    .fillna(0)
-                    .astype(int)
-                    .ne(0)
-                    .values
-                )
-            else:
-                person[output_flag] = False
+        ]
+        require_columns_present(
+            household.columns,
+            [source_flag for source_flag, _ in allocation_flag_columns],
+            source_name="raw Census ACS household table",
+        )
+        for source_flag, output_flag in allocation_flag_columns:
+            person[output_flag] = (
+                household.set_index("household_id")
+                .loc[person["household_id"]][source_flag]
+                .fillna(0)
+                .astype(int)
+                .ne(0)
+                .values
+            )
         acs["is_household_head"] = person.SPORDER == 1
         factor = person.SPORDER == 1
         person.rent *= factor * 12

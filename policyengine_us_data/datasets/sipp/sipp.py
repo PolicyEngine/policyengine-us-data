@@ -427,6 +427,29 @@ def apply_ssi_disability_signal_screen(
     return np.asarray(meets_ssi_disability_criteria, dtype=bool) & disability_signal
 
 
+def preserve_under_65_ssi_disability_criteria(
+    meets_ssi_disability_criteria: np.ndarray,
+    age: np.ndarray,
+    ssi_reported: np.ndarray | None = None,
+    existing_meets_ssi_disability_criteria: np.ndarray | None = None,
+) -> np.ndarray:
+    """Preserve observed under-65 SSI disability criteria anchors."""
+    result = np.asarray(meets_ssi_disability_criteria, dtype=bool).copy()
+    under_65 = pd.Series(age).fillna(np.inf).astype(float).lt(65).to_numpy()
+
+    if ssi_reported is not None:
+        reported_ssi = pd.Series(ssi_reported).fillna(0).astype(float).gt(0).to_numpy()
+        result |= reported_ssi & under_65
+
+    if existing_meets_ssi_disability_criteria is not None:
+        result |= (
+            _coerce_ssi_disability_signal(existing_meets_ssi_disability_criteria)
+            & under_65
+        )
+
+    return result
+
+
 def coerce_ssi_disability_predictions(values) -> np.ndarray:
     """Convert classifier labels to booleans without treating 'False' as true."""
     series = pd.Series(values)

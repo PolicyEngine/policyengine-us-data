@@ -8,6 +8,7 @@ from policyengine_us_data.datasets.sipp import (
     build_ssi_disability_training_frame,
     coerce_ssi_disability_predictions,
     predict_ssi_disability_criteria,
+    preserve_under_65_ssi_disability_criteria,
     prepare_ssi_disability_receiver,
 )
 
@@ -101,6 +102,17 @@ def test_apply_ssi_disability_signal_screen_treats_missing_as_false():
     )
 
     np.testing.assert_array_equal(result, np.array([False, False, False]))
+
+
+def test_preserve_under_65_ssi_disability_criteria_keeps_observed_anchors():
+    result = preserve_under_65_ssi_disability_criteria(
+        np.array([False, False, False, False]),
+        age=np.array([40, 64, 70, 30]),
+        ssi_reported=np.array([0, 100, 100, np.nan]),
+        existing_meets_ssi_disability_criteria=np.array([True, False, True, np.nan]),
+    )
+
+    np.testing.assert_array_equal(result, np.array([True, True, False, False]))
 
 
 def test_coerce_ssi_disability_predictions_handles_string_false():

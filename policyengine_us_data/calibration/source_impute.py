@@ -41,6 +41,7 @@ from policyengine_us_data.datasets.sipp.sipp import (
     build_vehicle_training_frame,
     get_ssi_disability_model,
     predict_ssi_disability_criteria,
+    preserve_under_65_ssi_disability_criteria,
 )
 
 from policyengine_us_data.datasets.org import (
@@ -767,13 +768,16 @@ def _impute_sipp(
             ssi_disability_model,
             cps_ssi_df,
         )
-        if "ssi_reported" in data:
-            reported_under_65 = (data["ssi_reported"][time_period] > 0) & (
-                data["age"][time_period] < 65
-            )
-            meets_ssi_disability_criteria = (
-                meets_ssi_disability_criteria | reported_under_65
-            )
+        existing_meets_ssi_disability_criteria = data.get(
+            SSI_DISABILITY_MODEL_VARIABLE, {}
+        ).get(time_period)
+        ssi_reported = data.get("ssi_reported", {}).get(time_period)
+        meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
+            meets_ssi_disability_criteria,
+            age=data["age"][time_period],
+            ssi_reported=ssi_reported,
+            existing_meets_ssi_disability_criteria=existing_meets_ssi_disability_criteria,
+        )
         data[SSI_DISABILITY_MODEL_VARIABLE] = {
             time_period: meets_ssi_disability_criteria
         }

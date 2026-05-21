@@ -2652,6 +2652,7 @@ def add_tips(self, cps: h5py.File):
         SSI_DISABILITY_MODEL_VARIABLE,
         get_ssi_disability_model,
         predict_ssi_disability_criteria,
+        preserve_under_65_ssi_disability_criteria,
     )
 
     n_persons = len(cps)
@@ -2671,13 +2672,14 @@ def add_tips(self, cps: h5py.File):
         ssi_disability_model,
         cps,
     )
-    if "ssi_reported" in existing_data:
-        reported_under_65 = (np.asarray(existing_data["ssi_reported"]) > 0) & (
-            np.asarray(existing_data["age"]) < 65
-        )
-        meets_ssi_disability_criteria = (
-            meets_ssi_disability_criteria | reported_under_65
-        )
+    meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
+        meets_ssi_disability_criteria,
+        age=existing_data.get("age", np.full(n_persons, 65)),
+        ssi_reported=existing_data.get("ssi_reported"),
+        existing_meets_ssi_disability_criteria=existing_data.get(
+            SSI_DISABILITY_MODEL_VARIABLE
+        ),
+    )
     cps[SSI_DISABILITY_MODEL_VARIABLE] = meets_ssi_disability_criteria
 
     from policyengine_us_data.datasets.sipp import get_vehicle_model

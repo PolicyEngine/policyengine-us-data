@@ -22,6 +22,7 @@ from policyengine_us_data.calibration.source_impute import (
     _impute_sipp,
     _person_state_fips,
     impute_source_variables,
+    preserve_under_65_ssi_disability_criteria,
 )
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
@@ -248,6 +249,17 @@ class TestSubfunctions:
 
     def test_impute_scf_exists(self):
         assert callable(_impute_scf)
+
+    def test_source_impute_preserves_existing_under_65_ssi_criteria(self):
+        fake_model_predictions = np.array([False, False, False])
+
+        result = preserve_under_65_ssi_disability_criteria(
+            fake_model_predictions,
+            age=np.array([40, 64, 70]),
+            existing_meets_ssi_disability_criteria=np.array([True, False, True]),
+        )
+
+        np.testing.assert_array_equal(result, np.array([True, False, False]))
 
 
 class TestTippedOccupationHelpers:

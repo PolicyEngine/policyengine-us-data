@@ -34,6 +34,19 @@ STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset(
     }
 )
 
+# These variables have fallback formulas in policyengine-us for hand-authored
+# simulations, but enhanced datasets intentionally export stronger source-data
+# inputs that should override the fallback.
+DATA_OVERRIDABLE_COMPUTED_EXPORT_VARIABLES = frozenset(
+    {
+        "meets_ssi_disability_criteria",
+    }
+)
+
+ALLOWED_COMPUTED_EXPORT_VARIABLES = (
+    STRUCTURAL_COMPUTED_EXPORT_VARIABLES | DATA_OVERRIDABLE_COMPUTED_EXPORT_VARIABLES
+)
+
 AUXILIARY_ENTITY_PREFIXES = {
     "person_": "person",
     "tax_unit_": "tax_unit",
@@ -101,7 +114,7 @@ def computed_policyengine_us_variables_for_period(
 
     computed = set()
     for variable_name in variable_names:
-        if variable_name in STRUCTURAL_COMPUTED_EXPORT_VARIABLES:
+        if variable_name in ALLOWED_COMPUTED_EXPORT_VARIABLES:
             continue
         variable = tax_benefit_system.variables.get(variable_name)
         if variable is None:

@@ -51,6 +51,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
                 "receives_wic": [False, False],
                 "hud_income_level": ["VERY_LOW"],
                 "spm_unit_tenure_type": ["RENTER"],
+                "is_eligible_for_housing_assistance": [True],
                 "tax_unit_child_dependents": [0],
                 "age_head": [40],
             }
@@ -223,9 +224,27 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
                 }
             )
 
+    class FakeSsiDisabilityModel:
+        pass
+
+    def fake_predict_ssi_disability_criteria(model, receiver_df):
+        assert isinstance(model, FakeSsiDisabilityModel)
+        assert receiver_df["employment_income"].tolist() == [25_000.0, 30_000.0]
+        return np.array([True, False])
+
     monkeypatch.setattr(sipp_module, "get_tip_model", lambda: FakeTipModel())
     monkeypatch.setattr(sipp_module, "get_asset_model", lambda: FakeAssetModel())
     monkeypatch.setattr(sipp_module, "get_vehicle_model", lambda: FakeVehicleModel())
+    monkeypatch.setattr(
+        sipp_module,
+        "get_ssi_disability_model",
+        lambda: FakeSsiDisabilityModel(),
+    )
+    monkeypatch.setattr(
+        sipp_module,
+        "predict_ssi_disability_criteria",
+        fake_predict_ssi_disability_criteria,
+    )
 
     dataset = FakeDataset()
     add_tips(
@@ -244,6 +263,10 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch):
     assert dataset.saved_dataset["household_vehicles_value"].tolist() == [
         18_000.0,
         7_500.0,
+    ]
+    assert dataset.saved_dataset["meets_ssi_disability_criteria"].tolist() == [
+        True,
+        False,
     ]
 
 

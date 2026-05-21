@@ -2680,6 +2680,40 @@ def add_tips(self, cps: h5py.File):
     cps["stock_assets"] = asset_predictions.stock_assets.values
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
+    from policyengine_us_data.datasets.sipp import (
+        SSI_DISABILITY_MODEL_VARIABLE,
+        get_ssi_disability_model,
+        predict_ssi_disability_criteria,
+        preserve_under_65_ssi_disability_criteria,
+    )
+
+    n_persons = len(cps)
+    for variable in [
+        "is_disabled",
+        "social_security_disability",
+    ]:
+        cps[variable] = np.asarray(
+            existing_data.get(variable, np.zeros(n_persons)),
+        )
+    disability_benefits = np.asarray(
+        existing_data.get("disability_benefits", np.zeros(n_persons)),
+    )
+    cps["has_disability_income"] = disability_benefits > 0
+    ssi_disability_model = get_ssi_disability_model()
+    meets_ssi_disability_criteria = predict_ssi_disability_criteria(
+        ssi_disability_model,
+        cps,
+    )
+    meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
+        meets_ssi_disability_criteria,
+        age=existing_data.get("age", np.full(n_persons, 65)),
+        ssi_reported=existing_data.get("ssi_reported"),
+        existing_meets_ssi_disability_criteria=existing_data.get(
+            SSI_DISABILITY_MODEL_VARIABLE
+        ),
+    )
+    cps[SSI_DISABILITY_MODEL_VARIABLE] = meets_ssi_disability_criteria
+
     from policyengine_us_data.datasets.sipp import get_vehicle_model
 
     vehicle_model = get_vehicle_model()
@@ -2717,6 +2751,7 @@ def add_tips(self, cps: h5py.File):
             "is_under_18",
             "is_under_6",
             "is_household_head",
+            "has_disability_income",
             "household_size",
             "retirement_income",
             "non_ssi_income",

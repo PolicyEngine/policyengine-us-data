@@ -14,6 +14,7 @@ from policyengine_us_data.calibration.source_impute import (
     SCF_PREDICTORS,
     SIPP_ASSETS_PREDICTORS,
     SIPP_IMPUTED_VARIABLES,
+    SSI_DISABILITY_MODEL_VARIABLE,
     SIPP_TIPS_PREDICTORS,
     _add_cps_asset_predictors,
     _impute_acs,
@@ -23,6 +24,7 @@ from policyengine_us_data.calibration.source_impute import (
     _person_is_married,
     _person_state_fips,
     impute_source_variables,
+    preserve_under_65_ssi_disability_criteria,
 )
 from policyengine_us_data.datasets.sipp.sipp import ASSET_PREDICTORS
 from policyengine_us_data.datasets.cps.tipped_occupation import (
@@ -83,6 +85,7 @@ class TestConstants:
         assert "bank_account_assets" in SIPP_IMPUTED_VARIABLES
         assert "stock_assets" in SIPP_IMPUTED_VARIABLES
         assert "bond_assets" in SIPP_IMPUTED_VARIABLES
+        assert SSI_DISABILITY_MODEL_VARIABLE in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_owned" in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_value" in SIPP_IMPUTED_VARIABLES
 
@@ -329,6 +332,17 @@ class TestSubfunctions:
 
     def test_impute_scf_exists(self):
         assert callable(_impute_scf)
+
+    def test_source_impute_preserves_existing_under_65_ssi_criteria(self):
+        fake_model_predictions = np.array([False, False, False])
+
+        result = preserve_under_65_ssi_disability_criteria(
+            fake_model_predictions,
+            age=np.array([40, 64, 70]),
+            existing_meets_ssi_disability_criteria=np.array([True, False, True]),
+        )
+
+        np.testing.assert_array_equal(result, np.array([True, False, False]))
 
 
 class TestTippedOccupationHelpers:

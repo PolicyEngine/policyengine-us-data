@@ -380,6 +380,207 @@ def test_data_release_version_check_flags_stale_package(tmp_path):
     assert any("1.115.3" in violation for violation in violations)
 
 
+@pytest.mark.parametrize(
+    ("package_version", "finalized_release_version", "expected_relation"),
+    [
+        ("1.115.3", "1.115.3", "current"),
+        ("1.115.2", "1.115.3", "behind"),
+        ("1.115.4", "1.115.3", "ahead"),
+        ("1.115.3rc1", "1.115.3", "current"),
+    ],
+)
+def test_data_release_version_state_relations(
+    tmp_path,
+    package_version,
+    finalized_release_version,
+    expected_relation,
+):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        f"check_data_release_version_{expected_relation}_state_test",
+    )
+    _write_pyproject(tmp_path, package_version)
+
+    state = module.check_repository_state(
+        tmp_path,
+        finalized_release_version=finalized_release_version,
+    )
+
+    assert state.package_version == package_version
+    assert state.finalized_release_version == finalized_release_version
+    assert state.release_version_relation == expected_relation
+
+
+def test_data_release_version_check_emits_github_outputs(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        "check_data_release_version_outputs_test",
+    )
+    _write_pyproject(tmp_path, "1.115.2")
+    github_output = tmp_path / "github_output"
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setattr(module, "latest_hf_release_version", lambda url: "1.115.3")
+
+    assert module.main(["--mode", "warn"]) == 0
+
+    outputs = dict(
+        line.split("=", 1) for line in github_output.read_text().splitlines()
+    )
+    assert outputs == {
+        "package_version": "1.115.2",
+        "finalized_release_version": "1.115.3",
+        "release_version_relation": "behind",
+    }
+
+
+def test_data_release_version_check_emits_unknown_on_manifest_error(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        "check_data_release_version_unknown_outputs_test",
+    )
+    _write_pyproject(tmp_path, "1.115.2")
+    github_output = tmp_path / "github_output"
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setattr(
+        module,
+        "latest_hf_release_version",
+        lambda url: (_ for _ in ()).throw(OSError("manifest unavailable")),
+    )
+
+    assert module.main(["--mode", "warn"]) == 0
+
+    outputs = dict(
+        line.split("=", 1) for line in github_output.read_text().splitlines()
+    )
+    assert outputs == {
+        "package_version": "1.115.2",
+        "finalized_release_version": "",
+        "release_version_relation": "unknown",
+    }
+    assert "manifest unavailable" in capsys.readouterr().err
+
+
+def test_data_release_version_check_fails_on_invalid_local_version(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    module = _load_script(
+        ".github/scripts/check_data_release_version.py",
+        "check_data_release_version_invalid_local_test",
+    )
+    _write_pyproject(tmp_path, "1.115")
+    github_output = tmp_path / "github_output"
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(github_output))
+    monkeypatch.setattr(module, "latest_hf_release_version", lambda url: "1.115.3")
+
+    assert module.main(["--mode", "warn"]) == 1
+
+    outputs = dict(
+        line.split("=", 1) for line in github_output.read_text().splitlines()
+    )
+    assert outputs["release_version_relation"] == "unknown"
+    assert "Unsupported version format: 1.115" in capsys.readouterr().err
+
+
+def test_sync_finalized_data_release_version_updates_stale_pyproject(tmp_path):
+    module = _load_script(
+        ".github/scripts/sync_finalized_data_release_version.py",
+        "sync_finalized_data_release_version_update_test",
+    )
+    _write_pyproject(tmp_path, "1.115.2")
+
+    changed = module.sync_finalized_data_release_version(
+        tmp_path,
+        finalized_release_version="1.115.3",
+    )
+
+    assert changed is True
+    assert 'version = "1.115.3"' in (tmp_path / "pyproject.toml").read_text()
+
+
+def test_sync_finalized_data_release_version_leaves_current_pyproject(tmp_path):
+    module = _load_script(
+        ".github/scripts/sync_finalized_data_release_version.py",
+        "sync_finalized_data_release_version_current_test",
+    )
+    _write_pyproject(tmp_path, "1.115.3")
+    before = (tmp_path / "pyproject.toml").read_text()
+
+    changed = module.sync_finalized_data_release_version(
+        tmp_path,
+        finalized_release_version="1.115.3",
+    )
+
+    assert changed is False
+    assert (tmp_path / "pyproject.toml").read_text() == before
+
+
+def test_sync_finalized_data_release_version_treats_matching_rc_as_current(
+    tmp_path,
+):
+    module = _load_script(
+        ".github/scripts/sync_finalized_data_release_version.py",
+        "sync_finalized_data_release_version_rc_test",
+    )
+    _write_pyproject(tmp_path, "1.115.3rc1")
+    before = (tmp_path / "pyproject.toml").read_text()
+
+    changed = module.sync_finalized_data_release_version(
+        tmp_path,
+        finalized_release_version="1.115.3",
+    )
+
+    assert changed is False
+    assert (tmp_path / "pyproject.toml").read_text() == before
+
+
+def test_sync_then_bump_version_uses_synced_base_release(
+    tmp_path,
+    monkeypatch,
+):
+    sync_module = _load_script(
+        ".github/scripts/sync_finalized_data_release_version.py",
+        "sync_finalized_data_release_version_workflow_test",
+    )
+    bump_module = _load_script(
+        ".github/bump_version.py",
+        "bump_version_after_sync_script_test",
+    )
+    _write_pyproject(tmp_path, "1.115.4")
+    changelog_dir = tmp_path / "changelog.d"
+    changelog_dir.mkdir()
+    (changelog_dir / "123.fixed").write_text("Fixed a thing.\n")
+    monkeypatch.setattr(bump_module, "_REPO_ROOT", tmp_path)
+    monkeypatch.setenv("US_DATA_RUN_ID", "run-123")
+
+    assert (
+        sync_module.sync_finalized_data_release_version(
+            tmp_path,
+            finalized_release_version="1.115.5",
+        )
+        is True
+    )
+    bump_module.main()
+
+    assert (
+        json.loads((tmp_path / ".github" / "publication_scope.json").read_text())[
+            "base_release_version"
+        ]
+        == "1.115.5"
+    )
+
+
 def test_restore_publication_changelog_restores_candidate_snapshot(
     tmp_path,
     monkeypatch,
@@ -660,7 +861,7 @@ def test_promote_publication_script_derives_release_from_status(
         ".github/scripts/promote_publication_pipeline.py",
         "promote_publication_pipeline_script_test",
     )
-    _write_pyproject(tmp_path, "1.73.0")
+    _write_pyproject(tmp_path, "9.9.9")
     github_env = tmp_path / "github_env"
     monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
     monkeypatch.setenv("GITHUB_ENV", str(github_env))
@@ -684,6 +885,48 @@ def test_promote_publication_script_derives_release_from_status(
     ]
     assert "US_DATA_RELEASE_VERSION=1.74.0" in github_env.read_text()
     assert "VERSION_OVERRIDE" not in json.dumps(captured["calls"])
+
+
+def test_promote_publication_script_fallback_release_uses_manifest_base(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setitem(
+        sys.modules,
+        "modal",
+        types.SimpleNamespace(Function=types.SimpleNamespace()),
+    )
+    module = _load_script(
+        ".github/scripts/promote_publication_pipeline.py",
+        "promote_publication_pipeline_manifest_base_test",
+    )
+    _write_pyproject(tmp_path, "9.9.9")
+    monkeypatch.setattr(module, "_REPO_ROOT", tmp_path)
+    context = module.RunContext.from_mapping(
+        {"run_id": "run-123"},
+        modal_app_name="app",
+        modal_environment="main",
+    )
+
+    promoted_context = module._promotion_context_from_status(
+        context,
+        {
+            "run_manifest": {
+                "run_id": "run-123",
+                "candidate_version": "1.73.0-minor",
+                "base_release_version": "1.73.0",
+                "release_bump": "minor",
+                "run_context": {
+                    "run_id": "run-123",
+                    "candidate_version": "1.73.0-minor",
+                    "base_release_version": "1.73.0",
+                    "release_bump": "minor",
+                },
+            }
+        },
+    )
+
+    assert promoted_context.release_version == "1.74.0"
 
 
 def test_promote_publication_script_prefers_manifest_release_version(

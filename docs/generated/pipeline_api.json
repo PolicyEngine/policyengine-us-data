@@ -3229,7 +3229,7 @@
     "docstring": "Describe candidate-bundle shape using the shared validation schema.",
     "id": "release_candidate_shape_report",
     "kind": "function",
-    "line": 28,
+    "line": 103,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report"
@@ -3250,6 +3250,40 @@
     },
     "object_path": "policyengine_us_data.release_promotion.validation.build_release_candidate_shape_report",
     "signature": "def build_release_candidate_shape_report(bundle: ReleaseCandidateInputBundle) -> ValidationReport",
+    "source_file": "policyengine_us_data/release_promotion/validation.py"
+  },
+  "release_candidate_validator": {
+    "docstring": "Validate a Stage 5 release candidate before public release writes.",
+    "id": "release_candidate_validator",
+    "kind": "class",
+    "line": 166,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.validation.ReleaseCandidateValidator"
+      ],
+      "artifacts_in": [
+        "ReleaseCandidateInputBundle",
+        "staged release artifacts"
+      ],
+      "artifacts_out": [
+        "ValidationReport"
+      ],
+      "description": "Stage 5 validation-core adapter for release candidates before promotion side effects.",
+      "id": "release_candidate_validator",
+      "label": "ReleaseCandidateValidator",
+      "node_type": "validation",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/validation.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_validation.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.validation.ReleaseCandidateValidator",
+    "signature": "class ReleaseCandidateValidator",
     "source_file": "policyengine_us_data/release_promotion/validation.py"
   },
   "release_promotion_context": {

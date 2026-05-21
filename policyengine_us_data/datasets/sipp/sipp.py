@@ -185,6 +185,8 @@ def get_tip_model() -> QRF:
 # Asset imputation from SIPP 2023
 # Imputes asset categories separately for policy flexibility
 
+ASSET_JOB_EARNINGS_COLUMNS = [f"TJB{i}_MSUM" for i in range(1, 8)]
+
 ASSET_COLUMNS = [
     "SSUID",
     "PNUM",
@@ -195,7 +197,8 @@ ASSET_COLUMNS = [
     "TAGE",
     "ESEX",
     "EMS",
-    "TPTOTINC",
+    "TSSSAMT",
+    "TRETINCAMT",
     # Asset values (person-level sums from SIPP)
     "TVAL_BANK",  # Checking, savings, money market
     "TVAL_STMF",  # Stocks and mutual funds
@@ -205,8 +208,22 @@ ASSET_COLUMNS = [
     "TINC_STMF",  # Dividends from stocks/mutual funds
     "TINC_BOND",  # Interest from bonds
     "TINC_RENT",  # Rental income
-    # SSI receipt (for validation)
-    "RSSI_YRYN",  # Received SSI in at least one month
+] + ASSET_JOB_EARNINGS_COLUMNS
+
+ASSET_PREDICTORS = [
+    "employment_income",
+    "interest_income",
+    "dividend_income",
+    "rental_income",
+    "social_security",
+    "retirement_income",
+    "non_ssi_income",
+    "age",
+    "is_female",
+    "is_married",
+    "count_under_18",
+    "count_under_6",
+    "household_size",
 ]
 
 VEHICLE_COLUMNS = [
@@ -226,6 +243,42 @@ VEHICLE_COLUMNS = [
     "THVAL_VEH",
     "THVAL_HOME",
 ]
+
+
+def _add_asset_predictors(df: pd.DataFrame) -> pd.DataFrame:
+    """Add SIPP predictors shared by legacy and source-impute asset models."""
+    df = df.copy()
+    df["age"] = df.TAGE
+    df["is_female"] = df.ESEX == 2
+    df["is_married"] = df.EMS == 1
+    df["household_weight"] = df.WPFINWGT
+    df["household_id"] = df.SSUID
+
+    job_cols = [col for col in ASSET_JOB_EARNINGS_COLUMNS if col in df]
+    if job_cols:
+        df["employment_income"] = df[job_cols].fillna(0).sum(axis=1) * 12
+    elif "TPTOTINC" in df:
+        df["employment_income"] = df.TPTOTINC.fillna(0) * 12
+    else:
+        df["employment_income"] = 0.0
+
+    df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
+    df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
+    df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
+    df["social_security"] = df["TSSSAMT"].fillna(0) * 12
+    df["retirement_income"] = df["TRETINCAMT"].fillna(0) * 12
+    df["non_ssi_income"] = (
+        df["employment_income"] + df["social_security"] + df["retirement_income"]
+    )
+
+    df["is_under_18"] = df.TAGE < 18
+    df["is_under_6"] = df.TAGE < 6
+    grouped = df.groupby("SSUID")
+    df["count_under_18"] = grouped["is_under_18"].transform("sum")
+    df["count_under_6"] = grouped["is_under_6"].transform("sum")
+    df["household_size"] = grouped["PNUM"].transform("count")
+
+    return df
 
 
 def train_asset_model():
@@ -259,41 +312,16 @@ def train_asset_model():
     df["stock_assets"] = df["TVAL_STMF"].fillna(0)
     df["bond_assets"] = df["TVAL_BOND"].fillna(0)
 
-    # Prepare predictors
-    df["age"] = df.TAGE
-    df["is_female"] = df.ESEX == 2
-    df["is_married"] = df.EMS == 1
-    df["employment_income"] = df.TPTOTINC * 12
-    df["household_weight"] = df.WPFINWGT
-    df["household_id"] = df.SSUID
-
-    # Capital income predictors (annualized from monthly SIPP)
-    # Maps to CPS: interest_income, dividend_income, rental_income
-    df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
-    df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
-    df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
-
-    # Calculate household-level counts
-    df["is_under_18"] = df.TAGE < 18
-    df["count_under_18"] = (
-        df.groupby("SSUID")["is_under_18"].sum().loc[df.SSUID.values].values
-    )
+    df = _add_asset_predictors(df)
 
     sipp = df[
         [
             "household_id",
-            "employment_income",
-            "interest_income",
-            "dividend_income",
-            "rental_income",
             "bank_account_assets",
             "stock_assets",
             "bond_assets",
-            "age",
-            "is_female",
-            "is_married",
-            "count_under_18",
             "household_weight",
+            *ASSET_PREDICTORS,
         ]
     ]
 
@@ -315,16 +343,7 @@ def train_asset_model():
 
     model = model.fit(
         X_train=sipp,
-        predictors=[
-            "employment_income",
-            "interest_income",
-            "dividend_income",
-            "rental_income",
-            "age",
-            "is_female",
-            "is_married",
-            "count_under_18",
-        ],
+        predictors=ASSET_PREDICTORS,
         imputed_variables=[
             "bank_account_assets",
             "stock_assets",
@@ -337,7 +356,7 @@ def train_asset_model():
 
 def get_asset_model() -> QRF:
     """Get or train the liquid asset imputation model."""
-    model_path = STORAGE_FOLDER / "liquid_assets.pkl"
+    model_path = STORAGE_FOLDER / "liquid_assets_v2.pkl"
 
     if not model_path.exists():
         model = train_asset_model()

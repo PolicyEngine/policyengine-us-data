@@ -26,6 +26,12 @@ from policyengine_us_data.utils.db import (
     etl_argparser,
     get_geographic_strata,
 )
+from policyengine_us_data.utils.ssi_targets import (
+    SSI_RECIPIENT_TARGET_NOTES,
+    SSI_RECIPIENT_TARGET_SOURCE,
+    SSI_RECIPIENT_TARGET_YEAR,
+    SSI_RECIPIENT_TARGETS_2024,
+)
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
 )
@@ -148,6 +154,47 @@ WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
     "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
 )
 MEDICARE_PART_B_AGE_TARGET_YEAR = 2024
+
+
+def _target_notes(target_data: dict) -> str:
+    notes_parts = []
+    if pd.notna(target_data.get("notes")):
+        notes_parts.append(target_data["notes"])
+    notes_parts.append(f"Source: {target_data.get('source', 'Unknown')}")
+    return " | ".join(notes_parts)
+
+
+def _ssi_recipient_count_targets() -> list[dict]:
+    targets = []
+    for spec in SSI_RECIPIENT_TARGETS_2024.values():
+        constraints = [
+            {
+                "constraint_variable": "ssi",
+                "operation": ">",
+                "value": "0",
+            }
+        ]
+        constraints.extend(
+            {
+                "constraint_variable": "age",
+                "operation": operation,
+                "value": value,
+            }
+            for operation, value in spec["age_constraints"]
+        )
+        targets.append(
+            {
+                "constraint_variable": "ssi",
+                "target_variable": "person_count",
+                "person_count": spec["person_count"],
+                "source": SSI_RECIPIENT_TARGET_SOURCE,
+                "notes": SSI_RECIPIENT_TARGET_NOTES,
+                "year": SSI_RECIPIENT_TARGET_YEAR,
+                "stratum_notes": spec["stratum_notes"],
+                "constraints": constraints,
+            }
+        )
+    return targets
 
 
 def _best_available_yeared_csv(stem: str, requested_year: int):
@@ -654,6 +701,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
     ]
+    conditional_count_targets.extend(_ssi_recipient_count_targets())
 
     # Add SSN card type NONE targets for multiple years
     # Based on loss.py lines 445-460
@@ -1057,32 +1105,44 @@ def load_national_targets(
             target_year = cond_target["year"]
             target_variable = cond_target.get("target_variable", "person_count")
             target_value = cond_target.get(target_variable)
+            combined_notes = _target_notes(cond_target)
 
             # Determine constraint details
-            if constraint_var == "medicaid_enrolled":
-                stratum_notes = "National Medicaid Enrollment"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "aca_ptc":
-                stratum_notes = "National ACA Premium Tax Credit Recipients"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "spm_unit_energy_subsidy":
-                stratum_notes = "National LIHEAP Recipient Households"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "wic":
-                stratum_notes = "National WIC Recipients"
-                constraint_operation = ">"
-                constraint_value = "0"
-            elif constraint_var == "ssn_card_type":
-                stratum_notes = "National Undocumented Population"
-                constraint_operation = "=="
-                constraint_value = cond_target.get("constraint_value", "NONE")
+            if "constraints" in cond_target:
+                stratum_notes = cond_target["stratum_notes"]
+                constraints = cond_target["constraints"]
             else:
-                stratum_notes = f"National {constraint_var} Recipients"
-                constraint_operation = ">"
-                constraint_value = "0"
+                if constraint_var == "medicaid_enrolled":
+                    stratum_notes = "National Medicaid Enrollment"
+                    constraint_operation = ">"
+                    constraint_value = "0"
+                elif constraint_var == "aca_ptc":
+                    stratum_notes = "National ACA Premium Tax Credit Recipients"
+                    constraint_operation = ">"
+                    constraint_value = "0"
+                elif constraint_var == "spm_unit_energy_subsidy":
+                    stratum_notes = "National LIHEAP Recipient Households"
+                    constraint_operation = ">"
+                    constraint_value = "0"
+                elif constraint_var == "wic":
+                    stratum_notes = "National WIC Recipients"
+                    constraint_operation = ">"
+                    constraint_value = "0"
+                elif constraint_var == "ssn_card_type":
+                    stratum_notes = "National Undocumented Population"
+                    constraint_operation = "=="
+                    constraint_value = cond_target.get("constraint_value", "NONE")
+                else:
+                    stratum_notes = f"National {constraint_var} Recipients"
+                    constraint_operation = ">"
+                    constraint_value = "0"
+                constraints = [
+                    {
+                        "constraint_variable": constraint_var,
+                        "operation": constraint_operation,
+                        "value": constraint_value,
+                    }
+                ]
 
             # Check if this stratum already exists
             existing_stratum = session.exec(
@@ -1105,6 +1165,8 @@ def load_national_targets(
                 if existing_target:
                     existing_target.value = target_value
                     existing_target.source = "PolicyEngine"
+                    existing_target.notes = combined_notes
+                    existing_target.active = True
                     print(f"Updated enrollment target for {constraint_var}")
                 else:
                     # Add new target to existing stratum
@@ -1115,7 +1177,7 @@ def load_national_targets(
                         value=target_value,
                         active=True,
                         source="PolicyEngine",
-                        notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
+                        notes=combined_notes,
                     )
                     session.add(new_target)
                     print(f"Added enrollment target for {constraint_var}")
@@ -1129,10 +1191,11 @@ def load_national_targets(
                 # Add constraint
                 new_stratum.constraints_rel = [
                     StratumConstraint(
-                        constraint_variable=constraint_var,
-                        operation=constraint_operation,
-                        value=constraint_value,
+                        constraint_variable=constraint["constraint_variable"],
+                        operation=constraint["operation"],
+                        value=constraint["value"],
                     )
+                    for constraint in constraints
                 ]
 
                 # Add target
@@ -1143,7 +1206,7 @@ def load_national_targets(
                         value=target_value,
                         active=True,
                         source="PolicyEngine",
-                        notes=f"{cond_target['notes']} | Source: {cond_target['source']}",
+                        notes=combined_notes,
                     )
                 ]
 

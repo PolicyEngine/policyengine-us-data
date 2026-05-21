@@ -26,6 +26,7 @@ from policyengine_us_data.db.etl_irs_soi import (
 )
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi, get_tracked_soi_row
+from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
 )
@@ -201,6 +202,34 @@ def _add_medicare_enrollment_target(loss_matrix, targets_array, sim, time_period
     ).values
     loss_matrix[label] = sim.map_result(enrolled.astype(float), "person", "household")
     targets_array.append(get_medicare_enrollment_target(time_period))
+    return targets_array, loss_matrix
+
+
+def _add_ssi_recipient_targets(loss_matrix, targets_array, sim, time_period):
+    """Add SSA SSI recipient count controls by age group."""
+    ssi = sim.calculate("ssi", map_to="person", period=time_period).values
+    age = sim.calculate("age", map_to="person", period=time_period).values
+    receives_ssi = ssi > 0
+
+    for key, target in SSI_RECIPIENT_TARGETS_2024.items():
+        in_group = receives_ssi.copy()
+        for operation, value in target["age_constraints"]:
+            threshold = float(value)
+            if operation == "<":
+                in_group &= age < threshold
+            elif operation == ">=":
+                in_group &= age >= threshold
+            else:
+                raise ValueError(f"Unsupported SSI age constraint {operation!r}")
+
+        label = f"nation/ssa/ssi_recipients/{key}"
+        loss_matrix[label] = sim.map_result(
+            in_group.astype(float),
+            "person",
+            "household",
+        )
+        targets_array.append(target["person_count"])
+
     return targets_array, loss_matrix
 
 
@@ -1311,6 +1340,13 @@ def build_loss_matrix(dataset: type, time_period):
                 time_period
             ).calibration.gov.cbo._children[param_name]
         )
+
+    targets_array, loss_matrix = _add_ssi_recipient_targets(
+        loss_matrix,
+        targets_array,
+        sim,
+        time_period,
+    )
 
     # CBO's detailed AGI-by-source targets are tax-return concepts,
     # so keep them restricted to filing tax units.

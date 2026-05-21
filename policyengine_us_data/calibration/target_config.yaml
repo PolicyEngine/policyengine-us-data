@@ -207,6 +207,12 @@ include:
     geo_level: national
   - variable: ssi
     geo_level: national
+  - variable: person_count
+    geo_level: national
+    domain_variable: ssi
+  - variable: person_count
+    geo_level: national
+    domain_variable: age,ssi
   - variable: tanf
     geo_level: national
   - variable: spm_unit_count

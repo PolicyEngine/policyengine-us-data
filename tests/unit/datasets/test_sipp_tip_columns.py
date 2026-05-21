@@ -5,10 +5,14 @@ amounts) and `AJB*_TXAMT` (Census allocation flags). The fix narrows
 to explicit `TJB*_TXAMT` dollar-amount columns only.
 """
 
+import numpy as np
 import pandas as pd
 import pytest
 
-from policyengine_us_data.datasets.sipp.sipp import SIPP_TIP_AMOUNT_COLUMNS
+from policyengine_us_data.datasets.sipp.sipp import (
+    SIPP_JOB_OCCUPATION_COLUMNS,
+    SIPP_TIP_AMOUNT_COLUMNS,
+)
 import policyengine_us_data.datasets.sipp.sipp as sipp_module
 
 
@@ -66,3 +70,47 @@ def test_train_tip_model_requires_allocation_flags_for_present_tip_columns(
 
     with pytest.raises(KeyError, match="AJB1_TXAMT"):
         sipp_module.train_tip_model()
+
+
+def test_train_tip_model_drops_non_positive_weights(monkeypatch):
+    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+
+    data = {
+        "SSUID": [1, 2, 3, 4],
+        "MONTHCODE": [12, 12, 12, 12],
+        "TAGE": [30, 31, 32, 33],
+        "WPFINWGT": [100.0, 0.0, -5.0, 200.0],
+        "TPTOTINC": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+        "TJB1_TXAMT": [10.0, 20.0, 30.0, 40.0],
+        "AJB1_TXAMT": [0, 0, 0, 0],
+    }
+    for column in SIPP_JOB_OCCUPATION_COLUMNS:
+        data[column] = [0, 0, 0, 0]
+    monkeypatch.setattr(
+        sipp_module.pd,
+        "read_csv",
+        lambda *args, **kwargs: pd.DataFrame(data),
+    )
+
+    captured = {}
+
+    class FakeQRF:
+        def fit(
+            self,
+            *,
+            X_train,
+            predictors,
+            imputed_variables,
+            target_filters,
+            weight_col,
+        ):
+            captured["weights"] = X_train[weight_col].to_numpy()
+            captured["target_filter"] = target_filters["tip_income"].to_numpy()
+            return self
+
+    monkeypatch.setattr(sipp_module, "QRF", FakeQRF)
+
+    sipp_module.train_tip_model()
+
+    np.testing.assert_array_equal(captured["weights"], [100.0, 200.0])
+    np.testing.assert_array_equal(captured["target_filter"], [True, True])

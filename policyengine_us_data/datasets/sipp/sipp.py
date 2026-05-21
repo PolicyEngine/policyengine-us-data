@@ -11,6 +11,7 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 )
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
+    filter_positive_finite_weight_rows,
     filter_observed_source_rows,
     require_columns_present,
     sipp_allocation_flag_for,
@@ -188,6 +189,12 @@ def train_tip_model():
     ]
 
     sipp = sipp[~sipp.isna().any(axis=1)]
+    sipp, tip_target_filters = filter_positive_finite_weight_rows(
+        sipp,
+        weight_col="household_weight",
+        target_filters=tip_target_filters,
+        context_name="SIPP tip donor",
+    )
     sipp, tip_target_filters = cap_training_sample(
         sipp,
         max_train_samples=10_000,
@@ -652,6 +659,12 @@ def train_asset_model():
         target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
         target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
     )
+    sipp, asset_target_filters = filter_positive_finite_weight_rows(
+        sipp,
+        weight_col="household_weight",
+        target_filters=asset_target_filters,
+        context_name="SIPP asset donor",
+    )
     sipp, asset_target_filters = cap_training_sample(
         sipp,
         max_train_samples=20_000,
@@ -838,6 +851,12 @@ def train_vehicle_model():
         sipp,
         targets=vehicle_vars,
         target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+    )
+    sipp, vehicle_target_filters = filter_positive_finite_weight_rows(
+        sipp,
+        weight_col="household_weight",
+        target_filters=vehicle_target_filters,
+        context_name="SIPP vehicle donor",
     )
     sipp, vehicle_target_filters = cap_training_sample(
         sipp,

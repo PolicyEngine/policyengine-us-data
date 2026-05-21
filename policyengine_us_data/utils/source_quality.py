@@ -225,3 +225,52 @@ def cap_training_sample(
         for target, mask in filters.items()
     }
     return sampled_df, sampled_filters
+
+
+def filter_positive_finite_weight_rows(
+    df: pd.DataFrame,
+    *,
+    weight_col: str,
+    target_filters: Mapping[str, pd.Series] | None = None,
+    context_name: str = "donor training frame",
+) -> tuple[pd.DataFrame, dict[str, pd.Series]]:
+    """Drop rows whose fit weight cannot be passed to microimpute."""
+    if weight_col not in df:
+        raise KeyError(f"{context_name} is missing weight column {weight_col!r}")
+
+    filters = {}
+    for target, mask in (target_filters or {}).items():
+        aligned = mask.reindex(df.index)
+        if aligned.isna().any():
+            raise ValueError(f"target_filters[{target!r}] contains missing values")
+        filters[target] = aligned.astype(bool)
+
+    weights = pd.to_numeric(df[weight_col], errors="coerce")
+    valid_weight = np.isfinite(weights) & weights.gt(0)
+    dropped = int((~valid_weight).sum())
+    if dropped:
+        logger.info(
+            "Dropped %d/%d %s rows with non-positive or non-finite %s",
+            dropped,
+            len(df),
+            context_name,
+            weight_col,
+        )
+
+    filtered_df = df.loc[valid_weight].copy().reset_index(drop=True)
+    filtered_filters = {
+        target: pd.Series(
+            mask.loc[valid_weight].to_numpy(dtype=bool),
+            index=filtered_df.index,
+        )
+        for target, mask in filters.items()
+    }
+
+    for target, mask in filtered_filters.items():
+        if not mask.any():
+            raise ValueError(
+                f"No observed donor rows with positive finite {weight_col} "
+                f"available for {target}"
+            )
+
+    return filtered_df, filtered_filters

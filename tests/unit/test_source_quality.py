@@ -3,6 +3,7 @@ import pandas as pd
 
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
+    filter_positive_finite_weight_rows,
     observed_source_mask,
     require_columns_present,
     sipp_allocation_flag_for,
@@ -201,3 +202,54 @@ def test_cap_training_sample_rejects_misaligned_filters():
         raise AssertionError("Expected misaligned target filters to fail")
 
     assert "target_filters['value']" in message
+
+
+def test_filter_positive_finite_weight_rows_reindexes_target_filters():
+    df = pd.DataFrame(
+        {
+            "value": [10, 20, 30, 40, 50],
+            "household_weight": [1.0, 0.0, np.nan, np.inf, 5.0],
+        },
+        index=[10, 11, 12, 13, 14],
+    )
+    filters = {
+        "value": pd.Series(
+            [True, True, False, True, True],
+            index=df.index,
+        )
+    }
+
+    filtered, filtered_filters = filter_positive_finite_weight_rows(
+        df,
+        weight_col="household_weight",
+        target_filters=filters,
+        context_name="unit-test donor",
+    )
+
+    assert filtered["value"].tolist() == [10, 50]
+    assert filtered.index.tolist() == [0, 1]
+    np.testing.assert_array_equal(filtered_filters["value"].values, [True, True])
+    assert filtered_filters["value"].index.tolist() == [0, 1]
+
+
+def test_filter_positive_finite_weight_rows_requires_observed_target_rows():
+    df = pd.DataFrame(
+        {
+            "value": [10, 20],
+            "household_weight": [0.0, 1.0],
+        }
+    )
+    filters = {"value": pd.Series([True, False], index=df.index)}
+
+    try:
+        filter_positive_finite_weight_rows(
+            df,
+            weight_col="household_weight",
+            target_filters=filters,
+        )
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("Expected all invalid observed weights to fail")
+
+    assert "No observed donor rows with positive finite household_weight" in message

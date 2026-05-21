@@ -82,6 +82,7 @@ from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
+    filter_positive_finite_weight_rows,
     require_columns_present,
     target_observed_source_masks,
 )
@@ -710,6 +711,12 @@ def _impute_sipp(
         "household_weight",
     ]
     tip_train = sipp_df[tip_cols].dropna()
+    tip_train, tip_target_filters = filter_positive_finite_weight_rows(
+        tip_train,
+        weight_col="household_weight",
+        target_filters=tip_target_filters,
+        context_name="SIPP source tip donor",
+    )
     tip_train, tip_target_filters = cap_training_sample(
         tip_train,
         max_train_samples=10_000,
@@ -848,6 +855,12 @@ def _impute_sipp(
             targets=asset_vars,
             target_source_columns=SIPP_ASSET_TARGET_SOURCE_COLUMNS,
             target_allocation_flag_columns=SIPP_ASSET_TARGET_ALLOCATION_COLUMNS,
+        )
+        asset_train, asset_target_filters = filter_positive_finite_weight_rows(
+            asset_train,
+            weight_col="household_weight",
+            target_filters=asset_target_filters,
+            context_name="SIPP source asset donor",
         )
         asset_train, asset_target_filters = cap_training_sample(
             asset_train,
@@ -1012,6 +1025,12 @@ def _impute_sipp(
             vehicle_train,
             targets=vehicle_vars,
             target_allocation_flag_columns=SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+        )
+        vehicle_train, vehicle_target_filters = filter_positive_finite_weight_rows(
+            vehicle_train,
+            weight_col="household_weight",
+            target_filters=vehicle_target_filters,
+            context_name="SIPP source vehicle donor",
         )
         vehicle_train, vehicle_target_filters = cap_training_sample(
             vehicle_train,

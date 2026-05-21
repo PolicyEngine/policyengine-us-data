@@ -76,12 +76,31 @@ class ACS(Dataset):
             .loc[person["household_id"]][["RNTP", "TAXAMT"]]
             .values
         )
+        for source_flag, output_flag in [
+            ("FRNTP", "rent_is_allocated"),
+            ("FTAXP", "real_estate_taxes_is_allocated"),
+        ]:
+            if source_flag in household:
+                person[output_flag] = (
+                    household.set_index("household_id")
+                    .loc[person["household_id"]][source_flag]
+                    .fillna(0)
+                    .astype(int)
+                    .ne(0)
+                    .values
+                )
+            else:
+                person[output_flag] = False
         acs["is_household_head"] = person.SPORDER == 1
         factor = person.SPORDER == 1
         person.rent *= factor * 12
         person.real_estate_taxes *= factor
         acs["rent"] = person.rent
         acs["real_estate_taxes"] = person.real_estate_taxes
+        acs["rent_is_allocated"] = person.rent_is_allocated & factor
+        acs["real_estate_taxes_is_allocated"] = (
+            person.real_estate_taxes_is_allocated & factor
+        )
         acs["tenure_type"] = (
             household.TEN.astype(int)
             .map(

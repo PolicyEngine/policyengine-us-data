@@ -23,6 +23,9 @@ read `docs/engineering/skills/pipeline_operations.md`.
 When adding, changing, or reviewing calibration target definitions, read
 `docs/engineering/skills/calibration_targets.md`.
 
+When adding, changing, or reviewing donor-survey imputations, read
+`docs/engineering/skills/imputation.md`.
+
 ## Calibration targets
 
 Manually sourced national or local-file calibration targets must be registered

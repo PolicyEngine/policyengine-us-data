@@ -69,6 +69,22 @@ def test_build_ssi_disability_training_frame_uses_all_disability_amounts():
 
 def test_ssi_disability_training_usecols_include_label_and_income_columns():
     assert {"TPTOTINC", "RSSI_YRYN"} <= set(SSI_DISABILITY_COLUMNS)
+    assert {"ASSI_YRYN", "ASSI_BRSN"} <= set(SSI_DISABILITY_COLUMNS)
+
+
+def test_build_ssi_disability_training_frame_excludes_allocated_label_source():
+    frame = _base_sipp_frame()
+    frame.loc[0, "ASSI_YRYN"] = 1
+    frame.loc[1:, "ASSI_YRYN"] = 0
+    frame["ASSI_BRSN"] = 0
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert len(result) == 3
+    np.testing.assert_array_equal(
+        result[SSI_DISABILITY_MODEL_VARIABLE].values,
+        np.array([False, False, False]),
+    )
 
 
 def test_prepare_ssi_disability_receiver_fills_missing_predictors():

@@ -2,10 +2,12 @@
 
 Previously `str.contains("TXAMT")` matched both `TJB*_TXAMT` (dollar
 amounts) and `AJB*_TXAMT` (Census allocation flags). The fix narrows
-to `TJB\\d_TXAMT` (dollar-amount columns only).
+to explicit `TJB*_TXAMT` dollar-amount columns only.
 """
 
 import pandas as pd
+
+from policyengine_us_data.datasets.sipp.sipp import SIPP_TIP_AMOUNT_COLUMNS
 
 
 def test_tip_regex_matches_dollar_amounts_only():
@@ -24,7 +26,7 @@ def test_tip_regex_matches_dollar_amounts_only():
         ]
     )
 
-    matches = columns[columns.str.match(r"TJB\d_TXAMT")]
+    matches = [column for column in SIPP_TIP_AMOUNT_COLUMNS if column in columns]
 
     assert list(matches) == ["TJB1_TXAMT", "TJB2_TXAMT"]
 
@@ -39,9 +41,8 @@ def test_tip_sum_excludes_allocation_flags():
         }
     )
     # Mirror the sipp.py computation using the new regex.
-    tip_income_monthly = (
-        df[df.columns[df.columns.str.match(r"TJB\d_TXAMT")]].fillna(0).sum(axis=1)
-    )
+    tip_cols = [column for column in SIPP_TIP_AMOUNT_COLUMNS if column in df]
+    tip_income_monthly = df[tip_cols].fillna(0).sum(axis=1)
     assert list(tip_income_monthly) == [150.0, 275.0]
 
     # Sanity check: the buggy regex would have included AJB flags.

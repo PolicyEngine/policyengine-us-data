@@ -403,7 +403,11 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
         return real_h5py_file(path, mode=mode, *args, **kwargs)
 
     class FakeQRF:
-        def fit(self, X_train, predictors, imputed_variables):
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fit(self, X_train, predictors, imputed_variables, **kwargs):
+            assert set(kwargs["target_filters"]) == set(imputed_variables)
             return self
 
         def predict(self, X_test):

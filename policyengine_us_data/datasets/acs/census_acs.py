@@ -56,11 +56,13 @@ HOUSEHOLD_COLUMNS = [
     "GASP",  # Gas monthly cost
     "RMSP",  # Number of rooms
     "RNTP",  # Monthly rent
+    "FRNTP",  # Monthly rent allocation flag
     "TEN",  # Tenure
     "VEH",  # Number of vehicles
     "FINCP",  # Total income
     "GRNTP",  # Gross rent
     "TAXAMT",  # Property taxes
+    "FTAXP",  # Property taxes allocation flag
 ]
 
 

@@ -9,6 +9,7 @@ import pandas as pd
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
     ACS_PREDICTORS,
+    ACS_TARGET_ALLOCATION_COLUMNS,
     ALL_SOURCE_VARIABLES,
     SCF_IMPUTED_VARIABLES,
     SCF_PREDICTORS,
@@ -79,6 +80,10 @@ class TestConstants:
     def test_acs_variables_defined(self):
         assert "rent" in ACS_IMPUTED_VARIABLES
         assert "real_estate_taxes" in ACS_IMPUTED_VARIABLES
+        assert ACS_TARGET_ALLOCATION_COLUMNS == {
+            "rent": ["rent_is_allocated"],
+            "real_estate_taxes": ["real_estate_taxes_is_allocated"],
+        }
 
     def test_sipp_variables_defined(self):
         assert "tip_income" in SIPP_IMPUTED_VARIABLES

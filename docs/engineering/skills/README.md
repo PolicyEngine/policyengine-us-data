@@ -14,6 +14,8 @@ Current skills:
   notes.
 - `github-prs.md`: same-repository PR workflow, PR head verification, and title
   conventions.
+- `imputation.md`: donor-survey imputation provenance rules, including
+  target-level exclusion of allocated source values.
 - `pipeline_docs.md`: decorator-backed pipeline map maintenance and generated
   pydoc-style artifacts.
 - `pipeline_operations.md`: model-neutral workflow for diagnosing deployed Modal

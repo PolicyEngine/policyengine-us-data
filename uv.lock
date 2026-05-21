@@ -2199,7 +2199,7 @@ requires-dist = [
     { name = "google-cloud-storage", specifier = ">=2.0.0" },
     { name = "l0-python", marker = "extra == 'l0'" },
     { name = "microdf-python", specifier = ">=1.2.1" },
-    { name = "microimpute", specifier = ">=2.0.5" },
+    { name = "microimpute", specifier = ">=2.1.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },

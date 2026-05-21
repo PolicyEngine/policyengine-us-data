@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Container, Mapping, Sequence
 
 import pandas as pd
 
@@ -15,6 +15,24 @@ def sipp_allocation_flag_for(source_column: str) -> str:
     if not source_column:
         raise ValueError("source_column must be non-empty")
     return f"A{source_column[1:]}"
+
+
+def require_columns_present(
+    available_columns: Container[str],
+    required_columns: Sequence[str],
+    *,
+    source_name: str,
+) -> None:
+    """Raise if required donor-source provenance columns are unavailable."""
+    missing_columns = sorted(
+        {column for column in required_columns if column not in available_columns}
+    )
+    if missing_columns:
+        raise KeyError(
+            f"{source_name} is missing required source-quality columns: "
+            f"{', '.join(missing_columns)}. Regenerate the donor artifact with "
+            "allocation flag columns before fitting source imputations."
+        )
 
 
 def observed_source_mask(

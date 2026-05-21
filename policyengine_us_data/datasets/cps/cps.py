@@ -72,7 +72,10 @@ from policyengine_us_data.utils.asset_imputation import (
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
-from policyengine_us_data.utils.source_quality import target_observed_source_masks
+from policyengine_us_data.utils.source_quality import (
+    require_columns_present,
+    target_observed_source_masks,
+)
 
 ACS_RENT_TARGET_ALLOCATION_COLUMNS = {
     "rent": ["rent_is_allocated"],
@@ -415,14 +418,23 @@ def add_rent(self, cps: h5py.File, person: DataFrame, household: DataFrame):
     # H5; for CPS we use the in-memory dict (already populated upstream in
     # add_id_variables). Remove both overrides once pyproject.toml's
     # policyengine-core upper bound is lifted.
+    required_acs_flags = [
+        column
+        for columns in ACS_RENT_TARGET_ALLOCATION_COLUMNS.values()
+        for column in columns
+    ]
     with h5py.File(ACS_2022.file_path, "r") as acs_h5:
         train_df["is_household_head"] = np.asarray(
             acs_h5["is_household_head"], dtype=bool
         )
+        require_columns_present(
+            acs_h5,
+            required_acs_flags,
+            source_name="ACS_2022 artifact",
+        )
         for flag_columns in ACS_RENT_TARGET_ALLOCATION_COLUMNS.values():
             for flag_column in flag_columns:
-                if flag_column in acs_h5:
-                    train_df[flag_column] = np.asarray(acs_h5[flag_column], dtype=bool)
+                train_df[flag_column] = np.asarray(acs_h5[flag_column], dtype=bool)
     train_df.tenure_type = train_df.tenure_type.map(
         {
             "OWNED_OUTRIGHT": "OWNED_WITH_MORTGAGE",

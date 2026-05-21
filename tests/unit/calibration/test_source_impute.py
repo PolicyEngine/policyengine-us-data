@@ -5,7 +5,9 @@ Uses skip flags to avoid loading real donor data.
 
 import numpy as np
 import pandas as pd
+import huggingface_hub
 
+from policyengine_us_data.calibration import source_impute
 from policyengine_us_data.calibration.source_impute import (
     ACS_IMPUTED_VARIABLES,
     ACS_PREDICTORS,
@@ -331,6 +333,62 @@ class TestSubfunctions:
 
     def test_impute_sipp_exists(self):
         assert callable(_impute_sipp)
+
+    def test_calibration_sipp_tip_counts_use_reference_month(self, monkeypatch):
+        captured = {}
+
+        columns = {
+            "SSUID": [1, 1, 1, 2],
+            "MONTHCODE": [1, 12, 12, 12],
+            "TAGE": [5, 40, 10, 30],
+            "TPTOTINC": [1_000.0, 2_000.0, 0.0, 3_000.0],
+            "WPFINWGT": [1.0, 1.0, 1.0, 1.0],
+        }
+        for column in source_impute.SIPP_TIP_AMOUNT_COLUMNS:
+            columns[column] = [0.0, 10.0, 0.0, 5.0]
+        for column in source_impute.SIPP_TIP_ALLOCATION_COLUMNS:
+            columns[column] = [0, 0, 0, 0]
+        for column in source_impute.SIPP_JOB_OCCUPATION_COLUMNS:
+            columns[column] = [0, 0, 0, 0]
+        tip_source = pd.DataFrame(columns)
+
+        read_count = {"count": 0}
+
+        def fake_read_csv(*args, **kwargs):
+            read_count["count"] += 1
+            if read_count["count"] == 1:
+                return tip_source.copy()
+            raise FileNotFoundError("stop after tip imputation")
+
+        class FakeQRF:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def fit(self, X_train, **kwargs):
+                captured["train"] = X_train.copy()
+                return self
+
+            def predict(self, X_test):
+                return pd.DataFrame({"tip_income": np.zeros(len(X_test))})
+
+        monkeypatch.setattr(
+            huggingface_hub,
+            "hf_hub_download",
+            lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(source_impute.pd, "read_csv", fake_read_csv)
+        monkeypatch.setattr(source_impute, "QRF", FakeQRF)
+
+        data = _make_data_dict(n_persons=4)
+        _impute_sipp(
+            data=data,
+            state_fips=np.array([1, 1], dtype=np.int32),
+            time_period=2024,
+        )
+
+        household_one = captured["train"][captured["train"]["household_id"] == 1]
+        np.testing.assert_array_equal(household_one["count_under_18"], [1, 1])
+        np.testing.assert_array_equal(household_one["count_under_6"], [0, 0])
 
     def test_impute_org_exists(self):
         assert callable(_impute_org)

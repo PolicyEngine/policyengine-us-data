@@ -390,6 +390,8 @@ def test_add_rent_replaces_existing_hdf_using_read_only_hdfstore(tmp_path, monke
     acs_fixture_path = tmp_path / "acs_fixture.h5"
     with h5py.File(acs_fixture_path, "w") as acs_fixture:
         acs_fixture["is_household_head"] = np.ones(10_000, dtype=bool)
+        acs_fixture["rent_is_allocated"] = np.zeros(10_000, dtype=bool)
+        acs_fixture["real_estate_taxes_is_allocated"] = np.zeros(10_000, dtype=bool)
 
     real_h5py_file = cps_module.h5py.File
     opened_h5_paths = []

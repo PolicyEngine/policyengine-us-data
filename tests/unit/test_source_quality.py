@@ -3,6 +3,7 @@ import pandas as pd
 
 from policyengine_us_data.utils.source_quality import (
     observed_source_mask,
+    require_columns_present,
     sipp_allocation_flag_for,
     target_observed_source_masks,
 )
@@ -12,6 +13,30 @@ def test_sipp_allocation_flag_for_source_column():
     assert sipp_allocation_flag_for("TVAL_BANK") == "AVAL_BANK"
     assert sipp_allocation_flag_for("RSSI_YRYN") == "ASSI_YRYN"
     assert sipp_allocation_flag_for("TJB1_TXAMT") == "AJB1_TXAMT"
+
+
+def test_require_columns_present_accepts_available_columns():
+    require_columns_present(
+        {"rent_is_allocated", "real_estate_taxes_is_allocated"},
+        ["rent_is_allocated", "real_estate_taxes_is_allocated"],
+        source_name="ACS",
+    )
+
+
+def test_require_columns_present_raises_for_missing_columns():
+    try:
+        require_columns_present(
+            {"rent_is_allocated"},
+            ["rent_is_allocated", "real_estate_taxes_is_allocated"],
+            source_name="ACS",
+        )
+    except KeyError as error:
+        message = str(error)
+    else:
+        raise AssertionError("Expected missing source-quality columns to fail")
+
+    assert "real_estate_taxes_is_allocated" in message
+    assert "Regenerate the donor artifact" in message
 
 
 def test_observed_source_mask_excludes_nonzero_allocation_flags():

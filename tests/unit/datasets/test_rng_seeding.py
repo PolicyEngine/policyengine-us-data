@@ -130,7 +130,7 @@ def test_select_random_subset_uses_local_generator_only():
 
 def test_sipp_training_samples_use_seeded_rng():
     """N5: the weighted resample for tip and asset training frames
-    must come from a seeded Generator, not the global ``np.random``."""
+    must come from a deterministic sampler, not the global ``np.random``."""
     src = SIPP_SOURCE.read_text()
     assert "seeded_rng(" in src, "sipp.py must import/use seeded_rng()"
     tree = ast.parse(src)
@@ -149,8 +149,9 @@ def test_sipp_training_samples_use_seeded_rng():
         assert "np.random.choice" not in fn_src, (
             f"{fn_name} must not use np.random.choice (use a seeded_rng Generator)"
         )
-        assert "seeded_rng(" in fn_src, (
-            f"{fn_name} must derive its resampler from a seeded generator"
+        assert "seeded_rng(" in fn_src or "max_train_samples=" in fn_src, (
+            f"{fn_name} must derive its resampler from a seeded generator or "
+            "delegate capped sampling to microimpute's deterministic QRF sampler"
         )
 
 

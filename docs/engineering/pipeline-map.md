@@ -1362,6 +1362,14 @@ def build_release_candidate_shape_report(bundle: ReleaseCandidateInputBundle) ->
 
 Describe candidate-bundle shape using the shared validation schema.
 
+### `policyengine_us_data.release_promotion.validation.ReleaseCandidateValidator`
+
+```python
+class ReleaseCandidateValidator
+```
+
+Validate a Stage 5 release candidate before public release writes.
+
 ### `policyengine_us_data.release_promotion.context.ReleasePromotionContext`
 
 ```python

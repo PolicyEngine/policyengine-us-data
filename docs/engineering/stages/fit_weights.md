@@ -8,6 +8,9 @@ builds. The public identity boundary lives in `policyengine_us_data.fit_weights`
   step manifests for reuse decisions.
 - `ScopedFitArtifacts` defines the artifact filenames written by the Modal fit
   step and consumed by downstream H5 builders.
+- `FittedWeightsInputBundle`, `FitResultBytes`, and
+  `FittedWeightsOutputBundle` keep Stage 3 package inputs and remote result
+  bytes typed before they become files.
 
 The current artifact names remain behavior-compatible:
 
@@ -21,3 +24,9 @@ The current artifact names remain behavior-compatible:
 When changing Stage 3 fitting parameters, artifact names, or scope behavior,
 update the central specs first and then adapt Modal callers to consume those
 specs. Do not add parallel filename constants in orchestration code.
+
+When changing remote result handling, keep `_collect_outputs(...)` as the
+compatibility adapter for subprocess stdout markers and convert its dictionary
+shape into `FittedWeightsOutputBundle` before writing artifacts to the pipeline
+volume. Fit step manifests should attach diagnostics from the matching output
+scope rather than all run diagnostics.

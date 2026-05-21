@@ -39,7 +39,6 @@ import sys
 import time
 import traceback
 from datetime import datetime, timezone
-from io import BytesIO
 from pathlib import Path
 
 import modal
@@ -110,6 +109,8 @@ from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.fit_weights import (  # noqa: E402
     FitScope,
+    FittedWeightsInputBundle,
+    FittedWeightsOutputBundle,
     NATIONAL_FIT_LAMBDA_L0 as _NATIONAL_FIT_LAMBDA_L0,
     fit_artifacts_for_scope,
     fitted_weights_spec_for_scope,
@@ -279,13 +280,14 @@ def archive_diagnostics(
     vol: modal.Volume,
     prefix: str = "",
     scope: FitScope | str | None = None,
-) -> None:
+) -> list[ArtifactReference]:
     """Archive calibration diagnostics to the run directory."""
     diag_dir = Path(RUNS_DIR) / run_id / "diagnostics"
     diag_dir.mkdir(parents=True, exist_ok=True)
 
     scope = scope or (FitScope.NATIONAL if prefix == "national_" else FitScope.REGIONAL)
     file_map = fit_artifacts_for_scope(scope).diagnostic_result_filenames()
+    written_paths: list[Path] = []
 
     for key, filename in file_map.items():
         data = result_bytes.get(key)
@@ -293,9 +295,15 @@ def archive_diagnostics(
             path = diag_dir / filename
             with open(path, "wb") as f:
                 f.write(data)
+            written_paths.append(path)
             print(f"  Archived {filename} ({len(data):,} bytes)")
 
     vol.commit()
+    return collect_artifacts(
+        written_paths,
+        role="diagnostic",
+        missing_ok=True,
+    )
 
 
 # ── Include other Modal apps ─────────────────────────────────────
@@ -1315,12 +1323,11 @@ def run_pipeline(
             print(f"  Completed in {completed_package_manifest.duration_s}s")
 
         # ── Step 3: Fit weights (parallel) ──
-        fit_inputs = _artifact_identities(
-            {
-                "calibration_package": _artifacts_dir(run_id)
-                / "calibration_package.pkl",
-            }
+        regional_fit_input = FittedWeightsInputBundle(
+            scope=FitScope.REGIONAL,
+            calibration_package_path=_artifacts_dir(run_id) / "calibration_package.pkl",
         )
+        fit_inputs = _artifact_identities(regional_fit_input.artifact_identity_paths())
         regional_fit_spec = fitted_weights_spec_for_scope(FitScope.REGIONAL)
         national_fit_spec = fitted_weights_spec_for_scope(FitScope.NATIONAL)
         regional_fit_artifacts = fit_artifacts_for_scope(FitScope.REGIONAL)
@@ -1425,34 +1432,26 @@ def run_pipeline(
             # Collect regional results
             print("  Waiting for regional fit...")
             regional_result = regional_handle.get()
+            regional_output = FittedWeightsOutputBundle.from_result_bytes(
+                scope=FitScope.REGIONAL,
+                result_bytes=regional_result,
+                run_id=run_id,
+            )
             print("  Regional fit complete. Writing to volume...")
 
             # Write regional results to pipeline volume (run-scoped)
             artifacts_rel = f"artifacts/{run_id}" if run_id else "artifacts"
             with pipeline_volume.batch_upload(force=True) as batch:
-                batch.put_file(
-                    BytesIO(regional_result["weights"]),
-                    f"{artifacts_rel}/{regional_fit_artifacts.weights.filename}",
-                )
-                if regional_result.get("geography"):
-                    batch.put_file(
-                        BytesIO(regional_result["geography"]),
-                        f"{artifacts_rel}/{regional_fit_artifacts.geography.filename}",
-                    )
-                if regional_result.get("config"):
-                    batch.put_file(
-                        BytesIO(regional_result["config"]),
-                        f"{artifacts_rel}/{regional_fit_artifacts.run_config.filename}",
-                    )
+                regional_output.write_artifacts(batch, artifacts_rel)
 
-            archive_diagnostics(
+            regional_diagnostics = archive_diagnostics(
                 run_id,
-                regional_result,
+                regional_output.diagnostic_result_bytes(),
                 pipeline_volume,
-                scope=FitScope.REGIONAL,
+                scope=regional_output.scope,
             )
             regional_outputs = collect_artifacts(
-                regional_fit_artifacts.artifact_paths(_artifacts_dir(run_id)),
+                regional_output.artifact_paths(_artifacts_dir(run_id)),
                 missing_ok=True,
             )
             regional_fit_reuse_measurement = ReuseMeasurement(
@@ -1462,7 +1461,7 @@ def run_pipeline(
             _complete_step_manifest(
                 regional_fit_manifest,
                 outputs=regional_outputs,
-                diagnostics=_collect_diagnostics(run_id),
+                diagnostics=regional_diagnostics,
                 reuse_decision="computed",
                 reuse_measurement=regional_fit_reuse_measurement,
                 vol=pipeline_volume,
@@ -1473,38 +1472,30 @@ def run_pipeline(
             if national_handle is not None:
                 print("  Waiting for national fit...")
                 national_result = national_handle.get()
+                national_output = FittedWeightsOutputBundle.from_result_bytes(
+                    scope=FitScope.NATIONAL,
+                    result_bytes=national_result,
+                    run_id=run_id,
+                )
                 print("  National fit complete. Writing to volume...")
 
                 with pipeline_volume.batch_upload(force=True) as batch:
-                    batch.put_file(
-                        BytesIO(national_result["weights"]),
-                        f"{artifacts_rel}/{national_fit_artifacts.weights.filename}",
-                    )
-                    if national_result.get("geography"):
-                        batch.put_file(
-                            BytesIO(national_result["geography"]),
-                            f"{artifacts_rel}/{national_fit_artifacts.geography.filename}",
-                        )
-                    if national_result.get("config"):
-                        batch.put_file(
-                            BytesIO(national_result["config"]),
-                            f"{artifacts_rel}/{national_fit_artifacts.run_config.filename}",
-                        )
+                    national_output.write_artifacts(batch, artifacts_rel)
 
-                archive_diagnostics(
+                national_diagnostics = archive_diagnostics(
                     run_id,
-                    national_result,
+                    national_output.diagnostic_result_bytes(),
                     pipeline_volume,
-                    scope=FitScope.NATIONAL,
+                    scope=national_output.scope,
                 )
                 national_outputs = collect_artifacts(
-                    national_fit_artifacts.artifact_paths(_artifacts_dir(run_id)),
+                    national_output.artifact_paths(_artifacts_dir(run_id)),
                     missing_ok=True,
                 )
                 _complete_step_manifest(
                     national_fit_manifest,
                     outputs=national_outputs,
-                    diagnostics=_collect_diagnostics(run_id),
+                    diagnostics=national_diagnostics,
                     reuse_decision="computed",
                     reuse_measurement=ReuseMeasurement(
                         expected_outputs=len(national_outputs),

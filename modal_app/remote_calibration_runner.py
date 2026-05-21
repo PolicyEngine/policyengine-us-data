@@ -13,6 +13,7 @@ for _p in (_baked, _local):
 
 from modal_app.images import gpu_image as image  # noqa: E402
 from policyengine_us_data.fit_weights import (  # noqa: E402
+    FitResultBytes,
     FitScope,
     NATIONAL_FIT_LAMBDA_L0,
     fit_artifacts_for_scope,
@@ -139,13 +140,13 @@ def _collect_outputs(cal_lines):
         with open(config_path, "rb") as f:
             config_bytes = f.read()
 
-    return {
-        "weights": weights_bytes,
-        "geography": geography_bytes,
-        "log": log_bytes,
-        "cal_log": cal_log_bytes,
-        "config": config_bytes,
-    }
+    return FitResultBytes(
+        weights=weights_bytes,
+        geography=geography_bytes,
+        diagnostics=log_bytes,
+        epoch_log=cal_log_bytes,
+        run_config=config_bytes,
+    ).to_result_dict()
 
 
 def _fit_output_filenames(

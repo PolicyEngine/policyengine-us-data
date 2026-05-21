@@ -53,8 +53,8 @@ def test_calibration_package_parameters_track_matrix_mode():
     assert params["chunked_matrix"] is True
     assert "workers" not in params
     assert params["target_config"] == DEFAULT_TARGET_CONFIG_PATH
-    assert params["target_config_sha256"] == compute_file_checksum(
-        DEFAULT_TARGET_CONFIG_PATH
+    assert params["target_config_sha256"] == (
+        f"sha256:{compute_file_checksum(DEFAULT_TARGET_CONFIG_PATH)}"
     )
     assert params["target_config_mode"] == "default"
     assert params["chunk_size"] == 10_000
@@ -77,8 +77,8 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
     assert params["chunked_matrix"] is False
     assert params["workers"] == 50
     assert params["target_config"] == DEFAULT_TARGET_CONFIG_PATH
-    assert params["target_config_sha256"] == compute_file_checksum(
-        DEFAULT_TARGET_CONFIG_PATH
+    assert params["target_config_sha256"] == (
+        f"sha256:{compute_file_checksum(DEFAULT_TARGET_CONFIG_PATH)}"
     )
     assert params["target_config_mode"] == "default"
     assert "chunk_size" not in params

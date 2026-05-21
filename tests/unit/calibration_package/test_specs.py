@@ -12,7 +12,14 @@ from policyengine_us_data.calibration_package.specs import (
     calibration_package_artifact_paths,
     resolve_target_config_identity,
 )
+from policyengine_us_data.stage_contracts.calibration_package import (
+    CalibrationPackageParameters,
+)
 from policyengine_us_data.utils.manifest import compute_file_checksum
+
+
+def _sha256_digest(path: Path) -> str:
+    return f"sha256:{compute_file_checksum(path)}"
 
 
 def _write_default_target_config(repo_root: Path, body: str = "include: []\n") -> Path:
@@ -29,13 +36,13 @@ def test_default_target_config_identity_resolution(tmp_path):
 
     assert identity == TargetConfigIdentity(
         path=DEFAULT_TARGET_CONFIG_PATH,
-        sha256=compute_file_checksum(config_path),
+        sha256=_sha256_digest(config_path),
         mode="default",
         resolved_path=str(config_path.resolve()),
     )
     assert identity.to_parameters() == {
         "target_config": DEFAULT_TARGET_CONFIG_PATH,
-        "target_config_sha256": compute_file_checksum(config_path),
+        "target_config_sha256": _sha256_digest(config_path),
         "target_config_mode": "default",
     }
 
@@ -49,9 +56,31 @@ def test_explicit_target_config_identity_resolution(tmp_path):
     )
 
     assert identity.path == DEFAULT_TARGET_CONFIG_PATH
-    assert identity.sha256 == compute_file_checksum(config_path)
+    assert identity.sha256 == _sha256_digest(config_path)
     assert identity.mode == "explicit"
     assert identity.resolved_path == str(config_path.resolve())
+
+
+def test_resolved_target_config_identity_is_contract_compatible(tmp_path):
+    _write_default_target_config(tmp_path)
+    identity = resolve_target_config_identity(repo_root=tmp_path)
+
+    params = CalibrationPackageParameters.from_runtime_args(
+        workers=8,
+        n_clones=430,
+        target_config_path=identity.path,
+        target_config_sha256=identity.sha256,
+        target_config_mode=identity.mode,
+        skip_county=True,
+        skip_source_impute=True,
+        skip_takeup_rerandomize=False,
+        chunked_matrix=False,
+        chunk_size=25_000,
+        parallel=False,
+        num_matrix_workers=50,
+    )
+
+    assert params.target_config_sha256 == identity.sha256
 
 
 def test_all_active_targets_identity_resolution():

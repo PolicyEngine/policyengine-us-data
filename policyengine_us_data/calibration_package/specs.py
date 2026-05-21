@@ -155,7 +155,7 @@ def resolve_target_config_identity(
     )
     return TargetConfigIdentity(
         path=logical_path,
-        sha256=compute_file_checksum(resolved_path),
+        sha256=f"sha256:{compute_file_checksum(resolved_path)}",
         mode=mode,
         resolved_path=str(resolved_path),
     )

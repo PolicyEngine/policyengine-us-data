@@ -34,7 +34,7 @@
     "docstring": "Impute rent and real_estate_taxes from ACS with state.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "acs_qrf",
     "kind": "function",
-    "line": 334,
+    "line": 485,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_acs"
@@ -61,7 +61,7 @@
     "docstring": "\"Add auto loan balance, interest and net_worth variable.",
     "id": "add_auto_loan",
     "kind": "function",
-    "line": 2819,
+    "line": 2859,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_auto_loan_interest_and_net_worth"
@@ -142,7 +142,7 @@
     "docstring": "Impute ORG-derived wage and union inputs onto CPS persons.",
     "id": "add_org_inputs",
     "kind": "function",
-    "line": 2703,
+    "line": 2743,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
@@ -572,7 +572,7 @@
     "docstring": "Build sparse calibration matrix.\n\nTwo-phase build: (1) simulate each clone and save\nCOO entries to disk, (2) assemble CSR from caches.\n\nArgs:\n    geography: GeographyAssignment with state_fips,\n        cd_geoid, block_geoid arrays and n_records,\n        n_clones attributes.\n    sim: Microsimulation for parameters and entity\n        relationships.\n    target_filter: Dict for target_overview filtering.\n    hierarchical_domains: Domain names for\n        hierarchical uprating + CD reconciliation.\n    cache_dir: Directory for per-clone COO caches.\n        If None, COO data held in memory.\n    sim_modifier: Optional callback(sim, clone_idx)\n        called per clone after state_fips is set but\n        before cache clearing. Use for takeup\n        re-randomization.\n    rerandomize_takeup: If True, use geo-salted\n        entity-level takeup draws instead of base h5\n        takeup values for takeup-affected targets.\n    county_level: If True (default), iterate counties\n        within each state during precomputation. If\n        False, compute once per state and alias to all\n        counties (faster for county-invariant vars).\n\nReturns:\n    (targets_df, X_sparse, target_names)",
     "id": "build_matrix",
     "kind": "function",
-    "line": 2549,
+    "line": 2567,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix"
@@ -604,7 +604,7 @@
     "docstring": "Build a sparse matrix by materializing mixed-geography chunks.\n\nThin facade: target querying, uprating, constraint extraction,\nand manifest handling live here; chunking, per-chunk execution,\nand streaming final assembly live in\n:class:`ChunkedMatrixAssembler`.",
     "id": "build_matrix_chunked",
     "kind": "function",
-    "line": 3314,
+    "line": 3332,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked"
@@ -3461,7 +3461,7 @@
     "docstring": "Impute net_worth and auto_loan from SCF.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "scf_qrf",
     "kind": "function",
-    "line": 819,
+    "line": 922,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_scf"
@@ -3515,7 +3515,7 @@
     "docstring": "Impute tip_income, liquid assets, and vehicle signals from SIPP.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "sipp_qrf",
     "kind": "function",
-    "line": 435,
+    "line": 586,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_sipp"
@@ -3542,7 +3542,7 @@
     "docstring": "Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.\n\nOverwrites existing imputed values in data. ACS uses\nstate_fips as a QRF predictor; ORG uses state plus labor-market\npredictors; SIPP and SCF use only demographic and financial\npredictors (no state data).\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n    skip_acs: Skip ACS imputation.\n    skip_sipp: Skip SIPP imputation.\n    skip_org: Skip ORG imputation.\n    skip_scf: Skip SCF imputation.\n\nReturns:\n    Updated data dict with re-imputed variables.",
     "id": "source_impute",
     "kind": "function",
-    "line": 187,
+    "line": 180,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute.impute_source_variables"

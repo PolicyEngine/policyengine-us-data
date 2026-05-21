@@ -866,6 +866,14 @@ def fit_artifacts_for_scope(scope: FitScope | str) -> ScopedFitArtifacts
 
 Return canonical fitted-weight artifacts for a regional or national scope.
 
+### `policyengine_us_data.fit_weights.bundles.FittedWeightsOutputBundle`
+
+```python
+class FittedWeightsOutputBundle
+```
+
+Scoped output bundle created before Stage 3 bytes become files.
+
 ### `policyengine_us_data.fit_weights.specs.fitted_weights_spec_for_scope`
 
 ```python

@@ -474,13 +474,18 @@
     "docstring": "Build all datasets with preemption-resilient checkpointing.\n\nArgs:\n    upload: Whether to upload completed datasets.\n    branch: Git branch to build from.\n    sequential: Use sequential (non-parallel) execution.\n    clear_checkpoints: Clear existing checkpoints before starting.\n    skip_tests: Skip running the test suite (useful for calibration runs).\n    skip_enhanced_cps: Skip enhanced_cps.py and small_enhanced_cps.py\n        (useful for calibration runs that only need source_imputed H5).\n    skip_stage_5: Skip source-imputed CPS and small enhanced CPS after\n        enhanced_cps_2024.h5 is built.\n    stage_only: Upload to HF staging only, without promoting a release.\n    version: policyengine-us-data package version used for staging and\n        dataset-build contracts.",
     "id": "build_datasets",
     "kind": "function",
-    "line": 536,
+    "line": 547,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.build_datasets"
       ],
       "artifacts_out": [
-        "source_imputed_*.h5",
+        "dataset_build_output.json",
+        "dataset_inventory.json",
+        "source_dataset_schema_summary.json",
+        "target_database_schema_summary.json",
+        "source_imputed_stratified_extended_cps_2024.h5",
+        "source_imputed_stratified_extended_cps.h5",
         "policy_data.db"
       ],
       "description": "Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
@@ -999,7 +1004,7 @@
     "docstring": "Build CPS before PUF because PUF pension imputation loads CPS_2024.",
     "id": "cps_puf_build_phase",
     "kind": "function",
-    "line": 404,
+    "line": 406,
     "metadata": {
       "api_refs": [
         "modal_app.data_build.run_cps_then_puf_phase"
@@ -1154,6 +1159,40 @@
     "object_path": "policyengine_us_data.fit_weights.artifacts.fit_artifacts_for_scope",
     "signature": "def fit_artifacts_for_scope(scope: FitScope | str) -> ScopedFitArtifacts",
     "source_file": "policyengine_us_data/fit_weights/artifacts.py"
+  },
+  "fitted_weights_output_bundle": {
+    "docstring": "Scoped output bundle created before Stage 3 bytes become files.",
+    "id": "fitted_weights_output_bundle",
+    "kind": "class",
+    "line": 113,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.bundles.FittedWeightsOutputBundle"
+      ],
+      "artifacts_in": [
+        "remote fit result bytes"
+      ],
+      "artifacts_out": [
+        "scoped fitted-weight artifact writes"
+      ],
+      "description": "Scoped Stage 3 result bytes before artifact file writes.",
+      "id": "fitted_weights_output_bundle",
+      "label": "Fitted Weights Output Bundle",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "artifact_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/bundles.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_bundles.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.fit_weights.bundles.FittedWeightsOutputBundle",
+    "signature": "class FittedWeightsOutputBundle",
+    "source_file": "policyengine_us_data/fit_weights/bundles.py"
   },
   "fitted_weights_spec": {
     "docstring": "Return the current fitted-weight spec for a regional or national scope.",
@@ -3013,7 +3052,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 1893,
+    "line": 1884,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3400,7 +3439,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 909,
+    "line": 917,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3656,7 +3695,7 @@
     "docstring": "Return all artifact specs known to the Stage 1 dataset build.",
     "id": "stage_1_dataset_artifact_specs",
     "kind": "function",
-    "line": 231,
+    "line": 285,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.build_datasets.artifacts.stage_1_artifact_specs"
@@ -3676,8 +3715,12 @@
         "small_enhanced_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
         "policy_data.db",
+        "calibration_weights.npy",
         "build_log.txt",
-        "data_build_checkpoint_stats.json"
+        "data_build_checkpoint_stats.json",
+        "dataset_inventory.json",
+        "source_dataset_schema_summary.json",
+        "target_database_schema_summary.json"
       ],
       "description": "Canonical artifact inventory for Stage 1 dataset-build outputs.",
       "id": "stage_1_dataset_artifact_specs",
@@ -4042,7 +4085,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 536,
+    "line": 544,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

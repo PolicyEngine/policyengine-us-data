@@ -27,7 +27,12 @@
         "modal_app.data_build.build_datasets"
       ],
       "artifacts_out": [
-        "source_imputed_*.h5",
+        "dataset_build_output.json",
+        "dataset_inventory.json",
+        "source_dataset_schema_summary.json",
+        "target_database_schema_summary.json",
+        "source_imputed_stratified_extended_cps_2024.h5",
+        "source_imputed_stratified_extended_cps.h5",
         "policy_data.db"
       ],
       "description": "Build base datasets, source-imputed artifacts, and optional uploads inside the Modal runtime.",
@@ -287,6 +292,31 @@
       "status": "current",
       "validation_commands": [
         "uv run pytest tests/unit/fit_weights/test_artifacts.py"
+      ]
+    },
+    {
+      "api_refs": [
+        "policyengine_us_data.fit_weights.bundles.FittedWeightsOutputBundle"
+      ],
+      "artifacts_in": [
+        "remote fit result bytes"
+      ],
+      "artifacts_out": [
+        "scoped fitted-weight artifact writes"
+      ],
+      "description": "Scoped Stage 3 result bytes before artifact file writes.",
+      "id": "fitted_weights_output_bundle",
+      "label": "Fitted Weights Output Bundle",
+      "node_type": "library",
+      "pathways": [
+        "fit_weights",
+        "artifact_identity"
+      ],
+      "source_file": "policyengine_us_data/fit_weights/bundles.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/fit_weights/test_bundles.py"
       ]
     },
     {
@@ -1643,8 +1673,12 @@
         "small_enhanced_cps_2024.h5",
         "source_imputed_stratified_extended_cps.h5",
         "policy_data.db",
+        "calibration_weights.npy",
         "build_log.txt",
-        "data_build_checkpoint_stats.json"
+        "data_build_checkpoint_stats.json",
+        "dataset_inventory.json",
+        "source_dataset_schema_summary.json",
+        "target_database_schema_summary.json"
       ],
       "description": "Canonical artifact inventory for Stage 1 dataset-build outputs.",
       "id": "stage_1_dataset_artifact_specs",
@@ -1907,9 +1941,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 93,
+    "api_node_count": 94,
     "canonical_stage_count": 5,
-    "decorated_object_count": 142,
+    "decorated_object_count": 143,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

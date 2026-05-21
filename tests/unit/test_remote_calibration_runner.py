@@ -5,6 +5,8 @@ import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 
 def _load_remote_calibration_runner_module():
     fake_modal = ModuleType("modal")
@@ -187,6 +189,22 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
         "validate_persisted_calibration_package_contract",
         fake_validate_persisted_contract,
     )
+    from policyengine_us_data.calibration_package import validation
+    from policyengine_us_data.stage_contracts import ValidationReport
+
+    class FakePackageValidator:
+        def validate_and_write(self, **kwargs):
+            captured["package_validation"] = kwargs
+            return ValidationReport(status="pass")
+
+        def raise_for_failure(self, report):
+            captured["validation_status"] = report.status
+
+    monkeypatch.setattr(
+        validation,
+        "CalibrationPackageValidator",
+        lambda: FakePackageValidator(),
+    )
 
     def fake_run_streaming(cmd, env=None, label=""):
         captured["cmd"] = cmd
@@ -241,7 +259,53 @@ def test_build_package_impl_sets_volume_chunk_dir_for_parallel_matrix(
     assert captured["contract_validation"]["db_path"] == (
         artifacts_dir / "policy_data.db"
     )
+    assert captured["package_validation"]["package_path"] == (
+        artifacts_dir / "calibration_package.pkl"
+    )
+    assert captured["package_validation"]["reports_dir"] == (
+        artifacts_dir / "calibration_reports"
+    )
+    assert captured["validation_status"] == "pass"
     ensure_prereqs.assert_called_once()
+    volume.reload.assert_called_once()
+    volume.commit.assert_called_once()
+
+
+def test_build_package_impl_commits_validation_report_before_failing(
+    monkeypatch,
+    tmp_path,
+):
+    remote_runner = _load_remote_calibration_runner_module()
+    artifacts_dir = tmp_path / "artifacts" / "bench-run"
+    artifacts_dir.mkdir(parents=True)
+    (artifacts_dir / "policy_data.db").write_bytes(b"db")
+    (artifacts_dir / "source_imputed_stratified_extended_cps.h5").write_bytes(b"h5")
+
+    volume = SimpleNamespace(reload=Mock(), commit=Mock())
+    monkeypatch.setattr(remote_runner, "PIPELINE_MOUNT", str(tmp_path))
+    monkeypatch.setattr(remote_runner, "pipeline_vol", volume)
+    monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+    monkeypatch.setattr(remote_runner, "_ensure_geography_prerequisites", lambda: None)
+
+    def fake_run_streaming(cmd, env=None, label=""):
+        report_dir = artifacts_dir / "calibration_reports"
+        report_dir.mkdir()
+        (report_dir / "validation_report.json").write_text(
+            '{"status":"fail"}\n',
+            encoding="utf-8",
+        )
+        return 2, []
+
+    monkeypatch.setattr(remote_runner, "_run_streaming", fake_run_streaming)
+
+    with pytest.raises(RuntimeError, match="Package build failed"):
+        remote_runner._build_package_impl(
+            branch="main",
+            workers=1,
+            n_clones=10,
+            run_id="bench-run",
+        )
+
     volume.reload.assert_called_once()
     volume.commit.assert_called_once()
 

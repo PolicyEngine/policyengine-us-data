@@ -56,6 +56,8 @@ from policyengine_us_data.calibration_package.matrix import (
 )
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
+    CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+    CALIBRATION_REPORTS_DIRNAME,
     CALIBRATION_TARGET_FACETS_FILENAME,
     CALIBRATION_TARGETS_FILENAME,
     GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
@@ -1837,20 +1839,46 @@ def run_calibration(
         )
 
     if build_only:
-        from policyengine_us_data.calibration.validate_package import (
-            validate_package,
-            format_report,
-        )
+        if package_output_path:
+            from policyengine_us_data.calibration_package.validation import (
+                CalibrationPackageValidator,
+                format_validation_report,
+            )
 
-        package = {
-            "X_sparse": X_sparse,
-            "targets_df": targets_df,
-            "target_names": target_names,
-            "metadata": metadata,
-            "initial_weights": initial_weights,
-        }
-        result = validate_package(package)
-        print(format_report(result))
+            validator = CalibrationPackageValidator()
+            validation_report = validator.validate_and_write(
+                package_path=package_path,
+                contract_path=package_path.with_name(
+                    CALIBRATION_PACKAGE_CONTRACT_FILENAME
+                ),
+                dataset_path=Path(dataset_path),
+                db_path=Path(db_path),
+                reports_dir=package_path.with_name(CALIBRATION_REPORTS_DIRNAME),
+                targets_path=targets_path,
+                target_facets_path=target_facets_path,
+                geography_summary_path=geography_summary_path,
+                matrix_summary_path=matrix_summary_path,
+                run_id=run_id,
+            )
+            print(
+                format_validation_report(validation_report, package_path=package_path)
+            )
+            validator.raise_for_failure(validation_report)
+        else:
+            from policyengine_us_data.calibration.validate_package import (
+                format_report,
+                validate_package,
+            )
+
+            package = {
+                "X_sparse": X_sparse,
+                "targets_df": targets_df,
+                "target_names": target_names,
+                "metadata": metadata,
+                "initial_weights": initial_weights,
+            }
+            result = validate_package(package)
+            print(format_report(result))
         geography_info = {
             "cd_geoid": geography.cd_geoid,
             "block_geoid": geography.block_geoid,

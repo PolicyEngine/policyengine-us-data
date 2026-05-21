@@ -16,6 +16,9 @@ from policyengine_us_data.calibration_package.specs import (
     MATRIX_BUILD_DIRNAME,
     MATRIX_SUMMARY_FILENAME,
     SOURCE_DATASET_FILENAME,
+    STAGE2_VALIDATION_FINDINGS_FILENAME,
+    STAGE2_VALIDATION_REPORT_FILENAME,
+    STAGE2_VALIDATION_SUMMARY_FILENAME,
     TARGET_DATABASE_FILENAME,
     TargetConfigIdentity,
     calibration_package_artifact_paths,
@@ -115,6 +118,21 @@ def test_calibration_package_artifact_paths():
     assert paths.reports_dir == Path("/pipeline/artifacts/run-a") / (
         CALIBRATION_REPORTS_DIRNAME
     )
+    assert paths.validation_report == (
+        Path("/pipeline/artifacts/run-a")
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_REPORT_FILENAME
+    )
+    assert paths.validation_findings == (
+        Path("/pipeline/artifacts/run-a")
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_FINDINGS_FILENAME
+    )
+    assert paths.validation_summary == (
+        Path("/pipeline/artifacts/run-a")
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_SUMMARY_FILENAME
+    )
     assert paths.matrix_build_dir == Path("/pipeline/artifacts/run-a") / (
         MATRIX_BUILD_DIRNAME
     )
@@ -125,6 +143,9 @@ def test_calibration_package_artifact_paths():
         paths.target_facets,
         paths.geography_summary,
         paths.matrix_summary,
+        paths.validation_report,
+        paths.validation_findings,
+        paths.validation_summary,
     )
 
 

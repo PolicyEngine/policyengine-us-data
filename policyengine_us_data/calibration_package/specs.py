@@ -26,6 +26,9 @@ CALIBRATION_TARGET_FACETS_FILENAME = "calibration_target_facets.json"
 GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME = "geography_assignment_summary.json"
 MATRIX_SUMMARY_FILENAME = "matrix_summary.json"
 CALIBRATION_REPORTS_DIRNAME = "calibration_reports"
+STAGE2_VALIDATION_REPORT_FILENAME = "validation_report.json"
+STAGE2_VALIDATION_FINDINGS_FILENAME = "validation_findings.jsonl"
+STAGE2_VALIDATION_SUMMARY_FILENAME = "validation_summary.json"
 MATRIX_BUILD_DIRNAME = "matrix_build"
 CALIBRATION_PACKAGE_SUBSTAGE_ID = "2a_matrix_build_calibration_target_construction"
 
@@ -194,10 +197,15 @@ class CalibrationPackageOutputBundle:
     geography_summary: Path
     matrix_summary: Path
     reports_dir: Path
+    validation_report: Path
+    validation_findings: Path
+    validation_summary: Path
     matrix_build_dir: Path
 
     @property
-    def manifest_outputs(self) -> tuple[Path, Path, Path, Path, Path, Path]:
+    def manifest_outputs(
+        self,
+    ) -> tuple[Path, Path, Path, Path, Path, Path, Path, Path, Path]:
         """Return the durable Stage 2 outputs recorded in step manifests."""
 
         return (
@@ -207,6 +215,9 @@ class CalibrationPackageOutputBundle:
             self.target_facets,
             self.geography_summary,
             self.matrix_summary,
+            self.validation_report,
+            self.validation_findings,
+            self.validation_summary,
         )
 
 
@@ -331,6 +342,9 @@ def stage2_input_bundle_from_stage1_contract_path(
             CALIBRATION_PACKAGE_CONTRACT_FILENAME,
             GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
             MATRIX_SUMMARY_FILENAME,
+            STAGE2_VALIDATION_REPORT_FILENAME,
+            STAGE2_VALIDATION_FINDINGS_FILENAME,
+            STAGE2_VALIDATION_SUMMARY_FILENAME,
         ],
         validation_commands=[
             "uv run pytest tests/unit/calibration_package/test_specs.py"
@@ -412,6 +426,15 @@ def calibration_package_artifact_paths(
         geography_summary=root / GEOGRAPHY_ASSIGNMENT_SUMMARY_FILENAME,
         matrix_summary=root / MATRIX_SUMMARY_FILENAME,
         reports_dir=root / CALIBRATION_REPORTS_DIRNAME,
+        validation_report=root
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_REPORT_FILENAME,
+        validation_findings=root
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_FINDINGS_FILENAME,
+        validation_summary=root
+        / CALIBRATION_REPORTS_DIRNAME
+        / STAGE2_VALIDATION_SUMMARY_FILENAME,
         matrix_build_dir=root / MATRIX_BUILD_DIRNAME,
     )
 
@@ -528,6 +551,9 @@ __all__ = [
     "MATRIX_BUILD_DIRNAME",
     "MATRIX_SUMMARY_FILENAME",
     "SOURCE_DATASET_FILENAME",
+    "STAGE2_VALIDATION_FINDINGS_FILENAME",
+    "STAGE2_VALIDATION_REPORT_FILENAME",
+    "STAGE2_VALIDATION_SUMMARY_FILENAME",
     "TARGET_CONFIG_IDENTITY_MODES",
     "TARGET_DATABASE_FILENAME",
     "CalibrationPackageArtifactPaths",

@@ -443,6 +443,12 @@ def _build_package_impl(
         label="build",
     )
     if build_rc != 0:
+        if (
+            package_artifacts.validation_report.exists()
+            or package_artifacts.validation_findings.exists()
+            or package_artifacts.validation_summary.exists()
+        ):
+            pipeline_vol.commit()
         raise RuntimeError(f"Package build failed with code {build_rc}")
 
     from policyengine_us_data.stage_contracts.calibration_package import (
@@ -455,6 +461,32 @@ def _build_package_impl(
         dataset_path=Path(dataset_path),
         db_path=Path(db_path),
     )
+
+    from policyengine_us_data.calibration_package.validation import (  # noqa: E402
+        CalibrationPackageValidator,
+        format_validation_report,
+    )
+
+    validator = CalibrationPackageValidator()
+    validation_report = validator.validate_and_write(
+        package_path=package_artifacts.package,
+        contract_path=package_artifacts.contract,
+        dataset_path=Path(dataset_path),
+        db_path=Path(db_path),
+        reports_dir=package_artifacts.reports_dir,
+        targets_path=package_artifacts.targets,
+        target_facets_path=package_artifacts.target_facets,
+        geography_summary_path=package_artifacts.geography_summary,
+        matrix_summary_path=package_artifacts.matrix_summary,
+        run_id=run_id or None,
+    )
+    print(
+        format_validation_report(validation_report, package_path=pkg_path),
+        flush=True,
+    )
+    if validation_report.status == "fail":
+        pipeline_vol.commit()
+    validator.raise_for_failure(validation_report)
 
     sidecar_ok = _write_package_sidecar(pkg_path)
     if not sidecar_ok:

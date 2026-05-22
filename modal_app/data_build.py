@@ -30,6 +30,7 @@ from policyengine_us_data.build_datasets import (  # noqa: E402
     DatasetBuildOutputContractBuilder,
     PipelineArtifactStager,
     Stage1Coordinator,
+    Stage1StatusRecorder,
     stage_1_artifact_specs,
     stage_1_script_outputs,
     stage_1_substep_id_for_script,
@@ -716,6 +717,11 @@ def build_datasets(
     )
     log_file.flush()
     coordinator = Stage1Coordinator()
+    if run_id:
+        coordinator.status_recorder = Stage1StatusRecorder(
+            Path(PIPELINE_MOUNT) / "runs" / run_id,
+            commit_callback=pipeline_volume.commit,
+        )
     recorded_skips: set[tuple[str, str]] = set()
 
     def record_skipped_script(script: str, reason: str) -> None:

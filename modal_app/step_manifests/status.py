@@ -11,6 +11,10 @@ from policyengine_us_data.utils.step_manifest import (
     run_manifest_path,
     step_manifest_dir,
 )
+from policyengine_us_data.build_datasets import (
+    empty_stage_1_status_snapshot,
+    read_stage_1_status_snapshot,
+)
 from policyengine_us_data.utils.error_redaction import (
     DEFAULT_ERROR_MESSAGE_MAX_CHARS,
     bound_error_text,
@@ -24,7 +28,11 @@ from modal_app.step_manifests.errors import (
     read_latest_pipeline_error,
     stage_ids_for_manifest,
 )
-from modal_app.step_manifests.specs import RUN_MANIFEST_STEP_IDS, step_title
+from modal_app.step_manifests.specs import (
+    BUILD_DATASETS,
+    RUN_MANIFEST_STEP_IDS,
+    step_title,
+)
 
 PIPELINE_STATUS_SCHEMA_VERSION = "1"
 DEFAULT_RUNS_LIMIT = 25
@@ -112,6 +120,7 @@ def _message(
     status: str,
     stage_manifests: list[dict[str, Any]],
     error: dict[str, Any] | None,
+    stage_1_status: dict[str, Any] | None = None,
 ) -> str:
     if error:
         location = (
@@ -125,6 +134,19 @@ def _message(
         return "Pipeline run not found."
     if stage_manifests:
         latest = stage_manifests[-1]
+        current_stage_1 = (stage_1_status or {}).get("current") or {}
+        if (
+            latest["step_id"] == BUILD_DATASETS.id
+            and latest["status"] == "running"
+            and current_stage_1
+        ):
+            substep_id = current_stage_1.get("substep_id")
+            title = current_stage_1.get("title") or substep_id
+            substep_status = current_stage_1.get("status", "unknown")
+            return (
+                f"Pipeline {status}; current Stage 1 substep "
+                f"{substep_id} ({title}) is {substep_status}."
+            )
         return (
             f"Pipeline {status}; latest manifest "
             f"{latest['substage_id'] or latest['stage_id']} is {latest['status']}."
@@ -215,6 +237,11 @@ def _latest_manifest_payload(
     }
 
 
+def _stage_1_status_payload(run_dir: Path) -> dict[str, Any]:
+    snapshot = read_stage_1_status_snapshot(run_dir)
+    return _sanitize_error_value(snapshot.to_dict())
+
+
 def _run_index_item(
     run_id: str,
     *,
@@ -241,6 +268,7 @@ def _run_index_item(
         "hf_staging_prefix": run_manifest.get("hf_staging_prefix"),
         "github_run_url": (run_manifest.get("run_context") or {}).get("github_run_url"),
         "latest_manifest": _latest_manifest_payload(stage_manifests),
+        "stage_1_current": (payload.get("stage_1_status") or {}).get("current"),
         "progress": {
             "expected_manifests": len(expected),
             "present_manifests": len(stage_manifests),
@@ -271,6 +299,7 @@ def _unreadable_run_index_item(run_id: str, exc: BaseException) -> dict[str, Any
         "hf_staging_prefix": None,
         "github_run_url": None,
         "latest_manifest": None,
+        "stage_1_current": None,
         "progress": {
             "expected_manifests": 0,
             "present_manifests": 0,
@@ -357,6 +386,7 @@ def build_pipeline_status_payload(
             "stage_manifests": [],
             "missing_expected_manifest_ids": [],
             "error": None,
+            "stage_1_status": empty_stage_1_status_snapshot().to_dict(),
         }
 
     run_dir = _run_dir(run_id, runs_dir)
@@ -371,6 +401,7 @@ def build_pipeline_status_payload(
             "stage_manifests": [],
             "missing_expected_manifest_ids": list(RUN_MANIFEST_STEP_IDS),
             "error": None,
+            "stage_1_status": empty_stage_1_status_snapshot().to_dict(),
         }
 
     run_manifest = read_run_manifest(manifest_path)
@@ -391,6 +422,7 @@ def build_pipeline_status_payload(
         run_manifest.error
     )
     status = run_manifest.status
+    stage_1_status = _stage_1_status_payload(run_dir)
     return {
         "schema_version": PIPELINE_STATUS_SCHEMA_VERSION,
         "run_id": run_id,
@@ -399,11 +431,13 @@ def build_pipeline_status_payload(
             status=status,
             stage_manifests=stage_manifests,
             error=error,
+            stage_1_status=stage_1_status,
         ),
         "run_manifest": _run_manifest_payload(run_manifest),
         "stage_manifests": stage_manifests,
         "missing_expected_manifest_ids": missing_expected,
         "error": error,
+        "stage_1_status": stage_1_status,
         "updated_at": run_manifest.updated_at,
         "modal_app_name": run_manifest.modal_app_name,
         "modal_environment": run_manifest.modal_environment,

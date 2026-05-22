@@ -75,6 +75,7 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
     data_build = _load_data_build_module()
     calls = []
     command_envs = []
+    created_coordinators = []
 
     class FakeVolume:
         def reload(self):
@@ -84,6 +85,11 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
             pass
 
     class FakeCoordinator:
+        def __init__(self):
+            self.status_recorder = None
+            created_coordinators.append(self)
+            calls.append(("coordinator_created", {}))
+
         def run_substep(self, substep_id, title, action, **kwargs):
             calls.append((substep_id, kwargs))
             return action()
@@ -153,10 +159,12 @@ def test_build_datasets_records_stage_base_handoff_substep(tmp_path, monkeypatch
     )
 
     assert [call[0] for call in calls] == [
+        "coordinator_created",
         "1a_raw_data_download",
         "finalize",
         "1g_stage_base_datasets",
     ]
+    assert created_coordinators[0].status_recorder is not None
     stage_base_kwargs = calls[-1][1]
     assert stage_base_kwargs["command_names"] == ("stage_base_datasets",)
     assert any(

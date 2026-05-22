@@ -20,6 +20,7 @@ from .contracts import DatasetBuildOutputContractBuilder
 from .coordinator import (
     CommandBackedSubstepRunner,
     Stage1Coordinator,
+    Stage1StatusSink,
     Stage1SubstepRunner,
     stage_1_substep_id_for_script,
     stage_1_substep_title,
@@ -40,6 +41,12 @@ from .specs import (
 from .results import DatasetCommandResult, DatasetSubstepResult
 from .staging import PipelineArtifactStager
 from .status import Stage1ErrorRecord, Stage1StatusEvent
+from .status_store import (
+    Stage1StatusRecorder,
+    Stage1StatusSnapshot,
+    empty_stage_1_status_snapshot,
+    read_stage_1_status_snapshot,
+)
 
 __all__ = [
     "ARTIFACT_SCHEMA_VERSION",
@@ -61,10 +68,15 @@ __all__ = [
     "SourceDatasetSchemaSummaryWriter",
     "Stage1Coordinator",
     "Stage1ErrorRecord",
+    "Stage1StatusRecorder",
     "Stage1StatusEvent",
+    "Stage1StatusSink",
+    "Stage1StatusSnapshot",
     "Stage1SubstepRunner",
     "SubprocessLogCapture",
     "TargetDatabaseSchemaSummaryWriter",
+    "empty_stage_1_status_snapshot",
+    "read_stage_1_status_snapshot",
     "stage_1_artifact_specs",
     "stage_1_contract_artifact_specs",
     "stage_1_diagnostic_artifact_specs",

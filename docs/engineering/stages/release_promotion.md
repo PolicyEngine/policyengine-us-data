@@ -103,3 +103,21 @@ perform Hugging Face writes, GCS uploads, Modal calls, staging cleanup, or
 release-manifest publication. Keep those operations behind explicit adapters or
 services so tests can exercise candidate shape and validation logic without
 credentials or network access.
+
+Use `FullPromotionResult` and its substep result objects when exposing Stage 5
+promotion outcomes to contracts, status APIs, or orchestration summaries. The
+current compatibility wrapper, `promote_full_release_with_result()`, must keep
+calling the existing transaction engine first and only wrap its dictionary
+output afterward so the promotion order remains unchanged.
+
+Result objects should carry semantic public-output identity, not only counts.
+Keep Hugging Face repo/type, staging prefix, promoted/no-op paths, and commit ID
+when available on `HuggingFacePromotionResult`; GCS bucket, release version,
+object paths, skipped paths, and failures on `GcsPromotionResult`; release
+manifest and TRACE TRO paths on `ReleaseManifestPromotionResult`; version
+manifest path/version/current version on `VersionManifestPromotionResult`;
+completion marker path/tag/validity on `CompletionMarkerPromotionResult`; and
+cleanup `status` as `skipped`, `completed`, or `failed` on
+`CleanupPromotionResult`. Later contract, index, diagnostics, and status
+writers should read this typed material instead of scraping logs or
+reconstructing public paths independently.

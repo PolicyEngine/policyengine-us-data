@@ -1228,6 +1228,40 @@
     "signature": "def fitted_weights_spec_for_scope(scope: FitScope | str) -> FittedWeightsSpec",
     "source_file": "policyengine_us_data/fit_weights/specs.py"
   },
+  "full_promotion_result": {
+    "docstring": "Typed result for a full Stage 5 release promotion transaction.",
+    "id": "full_promotion_result",
+    "kind": "class",
+    "line": 62,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.results.FullPromotionResult",
+        "policyengine_us_data.release_promotion.results.full.FullPromotionResult"
+      ],
+      "artifacts_in": [
+        "release promotion transaction output"
+      ],
+      "artifacts_out": [
+        "typed promotion result"
+      ],
+      "description": "Typed Stage 5 result model for full release promotion outcomes.",
+      "id": "full_promotion_result",
+      "label": "FullPromotionResult",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/results/full.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_results.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.results.full.FullPromotionResult",
+    "signature": "class FullPromotionResult",
+    "source_file": "policyengine_us_data/release_promotion/results/full.py"
+  },
   "geo_assign": {
     "docstring": "Assign random census block geography to cloned\nCPS records.\n\nEach of n_records * n_clones total records gets a\nrandom census block sampled from the global\npopulation-weighted distribution. State and CD are\nderived from the block GEOID.\n\nArgs:\n    n_records: Number of households in the base CPS\n        dataset.\n    n_clones: Number of clones (default 10).\n    seed: Random seed for reproducibility.\n    fixed_state_fips: Optional state FIPS per base record. Positive\n        values constrain every clone of that record to blocks in the\n        requested state; zero or missing values remain unrestricted.\n\nReturns:\n    GeographyAssignment with arrays of length\n    n_records * n_clones.",
     "id": "geo_assign",
@@ -3888,6 +3922,40 @@
     "object_path": "policyengine_us_data.calibration.validate_staging.validate_area",
     "signature": "def validate_area(sim, targets_df: pd.DataFrame, engine, area_type: str, area_id: str, display_id: str, dataset_path: str, period: int, training_mask: np.ndarray, variable_entity_map: dict, constraints_map: Optional[dict] = None) -> list",
     "source_file": "policyengine_us_data/calibration/validate_staging.py"
+  },
+  "typed_full_release_promotion": {
+    "docstring": "Run the existing transaction engine and wrap its output in a typed result.",
+    "id": "typed_full_release_promotion",
+    "kind": "function",
+    "line": 171,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.utils.release_promotion.promote_full_release_with_result"
+      ],
+      "artifacts_in": [
+        "staged release artifacts",
+        "release manifest inputs"
+      ],
+      "artifacts_out": [
+        "FullPromotionResult"
+      ],
+      "description": "Compatibility wrapper that returns typed Stage 5 promotion results from the existing transaction engine.",
+      "id": "typed_full_release_promotion",
+      "label": "Typed Full Release Promotion",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/utils/release_promotion.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_results.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.utils.release_promotion.promote_full_release_with_result",
+    "signature": "def promote_full_release_with_result(config: FullReleasePromotionConfig, deps: FullReleasePromotionDependencies) -> 'FullPromotionResult'",
+    "source_file": "policyengine_us_data/utils/release_promotion.py"
   },
   "unified_matrix_builder": {
     "docstring": "Build sparse calibration matrix for cloned CPS records.\n\nProcesses clone-by-clone: each clone's records get their\nassigned geography, are simulated, and the results fill\nthe corresponding columns.\n\nArgs:\n    db_uri: SQLAlchemy database URI.\n    time_period: Tax year for calibration (e.g. 2024).\n    dataset_path: Path to the base extended CPS h5 file.",

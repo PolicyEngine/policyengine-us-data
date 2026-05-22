@@ -346,6 +346,31 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.release_promotion.results.FullPromotionResult",
+        "policyengine_us_data.release_promotion.results.full.FullPromotionResult"
+      ],
+      "artifacts_in": [
+        "release promotion transaction output"
+      ],
+      "artifacts_out": [
+        "typed promotion result"
+      ],
+      "description": "Typed Stage 5 result model for full release promotion outcomes.",
+      "id": "full_promotion_result",
+      "label": "FullPromotionResult",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/results/full.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_results.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation"
       ],
       "artifacts_in": [
@@ -1743,6 +1768,31 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.utils.release_promotion.promote_full_release_with_result"
+      ],
+      "artifacts_in": [
+        "staged release artifacts",
+        "release manifest inputs"
+      ],
+      "artifacts_out": [
+        "FullPromotionResult"
+      ],
+      "description": "Compatibility wrapper that returns typed Stage 5 promotion results from the existing transaction engine.",
+      "id": "typed_full_release_promotion",
+      "label": "Typed Full Release Promotion",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/utils/release_promotion.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_results.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder"
       ],
       "description": "Database-backed sparse matrix builder for national and local-area calibration.",
@@ -1966,9 +2016,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 95,
+    "api_node_count": 97,
     "canonical_stage_count": 5,
-    "decorated_object_count": 144,
+    "decorated_object_count": 146,
     "mapped_decorated_node_count": 49,
     "stage_count": 17,
     "substage_count": 17

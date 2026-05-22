@@ -4,6 +4,10 @@ import sys
 from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
+from policyengine_us_data.fit_weights import FittedWeightsInputContractError
+
 
 def _load_remote_calibration_runner_module():
     fake_modal = ModuleType("modal")
@@ -49,6 +53,29 @@ def test_remote_runner_does_not_expose_optimizer_checkpoint_contract():
         remote_runner.main,
     ):
         assert "checkpoint_name" not in inspect.signature(func).parameters
+
+
+def test_fit_from_package_impl_requires_stage_2_contract_before_calibration(
+    monkeypatch,
+    tmp_path,
+):
+    remote_runner = _load_remote_calibration_runner_module()
+    package_path = tmp_path / "calibration_package.pkl"
+    package_path.write_bytes(b"package")
+    run_streaming = Mock()
+
+    monkeypatch.setattr(remote_runner, "_setup_repo", lambda: None)
+    monkeypatch.setattr(remote_runner, "_run_streaming", run_streaming)
+
+    with pytest.raises(FittedWeightsInputContractError) as exc_info:
+        remote_runner._fit_from_package_impl(
+            branch="main",
+            epochs=1,
+            volume_package_path=str(package_path),
+        )
+
+    assert exc_info.value.code == "missing_stage2_contract"
+    run_streaming.assert_not_called()
 
 
 def test_collect_outputs_returns_pipeline_artifact_bytes(tmp_path):

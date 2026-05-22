@@ -12,6 +12,15 @@ builds. The public identity boundary lives in `policyengine_us_data.fit_weights`
   `FittedWeightsOutputBundle` keep Stage 3 package inputs and remote result
   bytes typed before they become files.
 
+Normal pipeline runs must fit from a Stage 2 package that has a matching
+`calibration_package_contract.json` sidecar. `FittedWeightsInputBundle` reads
+that contract before GPU fitting starts, checks the contract-declared
+`calibration_package.pkl` checksum and size against the package on the pipeline
+volume, and records both the package checksum and contract checksum in the fit
+step parameters. Manual legacy package runs may proceed without the contract
+only through the explicit no-contract fallback, which emits a warning and
+records that only the package checksum was available.
+
 The current artifact names remain behavior-compatible:
 
 - regional: `calibration_weights.npy`, `geography_assignment.npz`,

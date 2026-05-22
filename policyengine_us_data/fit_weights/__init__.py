@@ -10,7 +10,9 @@ from policyengine_us_data.fit_weights.artifacts import (
 from policyengine_us_data.fit_weights.bundles import (
     FitResultBytes,
     FitWeightsBuildContext,
+    FittedWeightsInputContractError,
     FittedWeightsInputBundle,
+    FittedWeightsInputIdentity,
     FittedWeightsOutputBundle,
     MissingFitWeightsOutputError,
 )
@@ -45,7 +47,9 @@ __all__ = [
     "FitResultBytes",
     "FitScope",
     "FitWeightsBuildContext",
+    "FittedWeightsInputContractError",
     "FittedWeightsInputBundle",
+    "FittedWeightsInputIdentity",
     "FittedWeightsOutputBundle",
     "FittedWeightsSpec",
     "MissingFitWeightsOutputError",

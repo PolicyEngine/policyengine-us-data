@@ -1534,6 +1534,7 @@ def run_pipeline(
             scope=FitScope.REGIONAL,
             calibration_package_path=_artifacts_dir(run_id) / "calibration_package.pkl",
         )
+        fit_stage2_identity = regional_fit_input.stage2_identity_parameters()
         fit_inputs = _artifact_identities(regional_fit_input.artifact_identity_paths())
         regional_fit_spec = fitted_weights_spec_for_scope(FitScope.REGIONAL)
         national_fit_spec = fitted_weights_spec_for_scope(FitScope.NATIONAL)
@@ -1542,11 +1543,12 @@ def run_pipeline(
         regional_fit_parameters = regional_fit_spec.manifest_parameters(
             gpu=gpu,
             epochs=epochs,
+            extra=fit_stage2_identity,
         )
         national_fit_parameters = national_fit_spec.manifest_parameters(
             gpu=national_gpu,
             epochs=national_epochs,
-            extra={"skip_national": skip_national},
+            extra={**fit_stage2_identity, "skip_national": skip_national},
         )
         regional_fit_reuse = _step_reusable(
             meta,
@@ -1587,6 +1589,9 @@ def run_pipeline(
             step_start = time.time()
 
             vol_path = f"{artifacts_dir_for_run(run_id)}/calibration_package.pkl"
+            vol_contract_path = str(
+                regional_fit_input.calibration_package_contract_path
+            )
 
             # Spawn regional fit
             regional_func = PACKAGE_GPU_FUNCTIONS[gpu]
@@ -1595,6 +1600,8 @@ def run_pipeline(
                 branch=branch,
                 epochs=epochs,
                 volume_package_path=vol_path,
+                volume_package_contract_path=vol_contract_path,
+                fit_scope=FitScope.REGIONAL.value,
                 **regional_fit_spec.runtime_kwargs(),
             )
             print(f"    → regional fit fc: {regional_handle.object_id}")
@@ -1623,6 +1630,8 @@ def run_pipeline(
                     branch=branch,
                     epochs=national_epochs,
                     volume_package_path=vol_path,
+                    volume_package_contract_path=vol_contract_path,
+                    fit_scope=FitScope.NATIONAL.value,
                     **national_fit_spec.runtime_kwargs(),
                 )
                 print(f"    → national fit fc: {national_handle.object_id}")

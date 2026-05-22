@@ -13,12 +13,14 @@ for _p in (_baked, _local):
 
 from modal_app.images import gpu_image as image  # noqa: E402
 from policyengine_us_data.calibration_package.specs import (  # noqa: E402
+    CALIBRATION_PACKAGE_CONTRACT_FILENAME,
     calibration_package_artifact_paths,
     stage2_build_context_for_run,
 )
 from policyengine_us_data.fit_weights import (  # noqa: E402
     FitResultBytes,
     FitScope,
+    FittedWeightsInputBundle,
     NATIONAL_FIT_LAMBDA_L0,
     fit_artifacts_for_scope,
 )
@@ -288,6 +290,9 @@ def _fit_from_package_impl(
     branch: str,
     epochs: int,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
     target_config: str = None,
     beta: float = None,
     lambda_l0: float = None,
@@ -300,6 +305,21 @@ def _fit_from_package_impl(
         raise ValueError("volume_package_path is required")
 
     _setup_repo()
+    input_bundle = FittedWeightsInputBundle(
+        scope=fit_scope,
+        calibration_package_path=Path(volume_package_path),
+        calibration_package_contract_path=(
+            Path(volume_package_contract_path) if volume_package_contract_path else None
+        ),
+        allow_legacy_no_contract=allow_legacy_no_contract,
+    )
+    stage2_identity = input_bundle.stage2_identity()
+    if stage2_identity.stage2_contract_mode == "stage2_contract":
+        print(
+            "Validated Stage 2 calibration package contract "
+            f"{stage2_identity.calibration_package_contract_fingerprint}",
+            flush=True,
+        )
 
     pkg_path = "/root/calibration_package.pkl"
     import shutil
@@ -816,11 +836,17 @@ def fit_from_package_t4(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
         epochs,
         volume_package_path=volume_package_path,
+        volume_package_contract_path=volume_package_contract_path,
+        allow_legacy_no_contract=allow_legacy_no_contract,
+        fit_scope=fit_scope,
         target_config=target_config,
         beta=beta,
         lambda_l0=lambda_l0,
@@ -848,11 +874,17 @@ def fit_from_package_a10(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
         epochs,
         volume_package_path=volume_package_path,
+        volume_package_contract_path=volume_package_contract_path,
+        allow_legacy_no_contract=allow_legacy_no_contract,
+        fit_scope=fit_scope,
         target_config=target_config,
         beta=beta,
         lambda_l0=lambda_l0,
@@ -880,11 +912,17 @@ def fit_from_package_a100_40(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
         epochs,
         volume_package_path=volume_package_path,
+        volume_package_contract_path=volume_package_contract_path,
+        allow_legacy_no_contract=allow_legacy_no_contract,
+        fit_scope=fit_scope,
         target_config=target_config,
         beta=beta,
         lambda_l0=lambda_l0,
@@ -912,11 +950,17 @@ def fit_from_package_a100_80(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
         epochs,
         volume_package_path=volume_package_path,
+        volume_package_contract_path=volume_package_contract_path,
+        allow_legacy_no_contract=allow_legacy_no_contract,
+        fit_scope=fit_scope,
         target_config=target_config,
         beta=beta,
         lambda_l0=lambda_l0,
@@ -944,11 +988,17 @@ def fit_from_package_h100(
     learning_rate: float = None,
     log_freq: int = None,
     volume_package_path: str = None,
+    volume_package_contract_path: str = None,
+    allow_legacy_no_contract: bool = False,
+    fit_scope: str = FitScope.REGIONAL.value,
 ) -> dict:
     return _fit_from_package_impl(
         branch,
         epochs,
         volume_package_path=volume_package_path,
+        volume_package_contract_path=volume_package_contract_path,
+        allow_legacy_no_contract=allow_legacy_no_contract,
+        fit_scope=fit_scope,
         target_config=target_config,
         beta=beta,
         lambda_l0=lambda_l0,
@@ -1008,12 +1058,23 @@ def main(
 
     if package_path:
         vol_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
+        local_contract_path = Path(package_path).with_name(
+            CALIBRATION_PACKAGE_CONTRACT_FILENAME
+        )
+        vol_contract_path = (
+            f"{PIPELINE_MOUNT}/artifacts/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}"
+            if local_contract_path.exists()
+            else None
+        )
         print(f"Reading package from {package_path}...", flush=True)
         import json as _json
         import pickle as _pkl
 
         with open(package_path, "rb") as f:
             package_bytes = f.read()
+        contract_bytes = (
+            local_contract_path.read_bytes() if local_contract_path.exists() else None
+        )
         size = len(package_bytes)
         pkg_meta = _pkl.loads(package_bytes).get("metadata", {})
         sidecar_bytes = _json.dumps(pkg_meta, indent=2).encode()
@@ -1032,6 +1093,11 @@ def main(
                 BytesIO(sidecar_bytes),
                 "artifacts/calibration_package_meta.json",
             )
+            if contract_bytes is not None:
+                batch.put_file(
+                    BytesIO(contract_bytes),
+                    f"artifacts/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}",
+                )
         pipeline_vol.commit()
         del package_bytes
         print("Upload complete.", flush=True)
@@ -1047,6 +1113,9 @@ def main(
             learning_rate=learning_rate,
             log_freq=log_freq,
             volume_package_path=vol_path,
+            volume_package_contract_path=vol_contract_path,
+            allow_legacy_no_contract=True,
+            fit_scope=scope.value,
         )
     elif full_pipeline:
         print(
@@ -1080,6 +1149,9 @@ def main(
         )
     else:
         vol_path = f"{PIPELINE_MOUNT}/artifacts/calibration_package.pkl"
+        vol_contract_path = (
+            f"{PIPELINE_MOUNT}/artifacts/{CALIBRATION_PACKAGE_CONTRACT_FILENAME}"
+        )
         vol_info = check_volume_package.remote()
         if not vol_info["exists"]:
             raise SystemExit(
@@ -1134,6 +1206,9 @@ def main(
             learning_rate=learning_rate,
             log_freq=log_freq,
             volume_package_path=vol_path,
+            volume_package_contract_path=vol_contract_path,
+            allow_legacy_no_contract=True,
+            fit_scope=scope.value,
         )
 
     with open(output, "wb") as f:

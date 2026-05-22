@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
+import warnings
 
+from policyengine_us_data.calibration_package.specs import (
+    CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+)
 from policyengine_us_data.fit_weights.artifacts import (
     ScopedFitArtifacts,
     fit_artifacts_for_scope,
@@ -14,10 +18,29 @@ from policyengine_us_data.fit_weights.artifacts import (
 from policyengine_us_data.fit_weights.specs import FitScope
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
+from policyengine_us_data.stage_contracts import StageContract
+from policyengine_us_data.stage_contracts.io import read_contract
+from policyengine_us_data.stage_contracts.stages import (
+    STAGE_2_BUILD_CALIBRATION_PACKAGE,
+    contract_type_for_stage,
+)
+from policyengine_us_data.utils.step_manifest import sha256_file
+
+STAGE_2_CALIBRATION_PACKAGE_CONTRACT_TYPE = contract_type_for_stage(
+    STAGE_2_BUILD_CALIBRATION_PACKAGE
+)
 
 
 class MissingFitWeightsOutputError(ValueError):
     """Raised when remote fit bytes omit required fitted-weight artifacts."""
+
+
+class FittedWeightsInputContractError(ValueError):
+    """Raised when Stage 3 cannot establish Stage 2 package identity."""
+
+    def __init__(self, message: str, *, code: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -30,24 +53,190 @@ class FitWeightsBuildContext:
 
 
 @dataclass(frozen=True)
+class FittedWeightsInputIdentity:
+    """Checksum-backed Stage 2 package identity consumed by Stage 3."""
+
+    calibration_package_sha256: str
+    calibration_package_size_bytes: int
+    stage2_contract_mode: str
+    calibration_package_contract_sha256: str | None = None
+    calibration_package_contract_size_bytes: int | None = None
+    calibration_package_contract_fingerprint: str | None = None
+    calibration_package_contract_run_id: str | None = None
+
+    def to_manifest_parameters(self) -> dict[str, Any]:
+        """Return fit manifest parameters that identify the Stage 2 package."""
+
+        params: dict[str, Any] = {
+            "calibration_package_sha256": self.calibration_package_sha256,
+            "calibration_package_size_bytes": self.calibration_package_size_bytes,
+            "stage2_contract_mode": self.stage2_contract_mode,
+            "calibration_package_contract_sha256": (
+                self.calibration_package_contract_sha256
+            ),
+            "calibration_package_contract_size_bytes": (
+                self.calibration_package_contract_size_bytes
+            ),
+            "calibration_package_contract_fingerprint": (
+                self.calibration_package_contract_fingerprint
+            ),
+            "calibration_package_contract_run_id": (
+                self.calibration_package_contract_run_id
+            ),
+        }
+        return {key: value for key, value in params.items() if value is not None}
+
+
+@dataclass(frozen=True)
 class FittedWeightsInputBundle:
-    """Scoped Stage 3 input paths consumed before fitting starts."""
+    """Scoped Stage 3 input paths and Stage 2 package identity."""
 
     scope: FitScope | str
     calibration_package_path: Path
+    calibration_package_contract_path: Path | None = None
+    allow_legacy_no_contract: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "scope", FitScope.parse(self.scope))
-        object.__setattr__(
-            self,
-            "calibration_package_path",
-            Path(self.calibration_package_path),
+        package_path = Path(self.calibration_package_path)
+        contract_path = (
+            Path(self.calibration_package_contract_path)
+            if self.calibration_package_contract_path is not None
+            else package_path.with_name(CALIBRATION_PACKAGE_CONTRACT_FILENAME)
         )
+        object.__setattr__(self, "calibration_package_path", package_path)
+        object.__setattr__(self, "calibration_package_contract_path", contract_path)
 
     def artifact_identity_paths(self) -> dict[str, Path]:
         """Return paths used for Stage 3 input identity calculation."""
 
-        return {"calibration_package": self.calibration_package_path}
+        paths = {"calibration_package": self.calibration_package_path}
+        contract_path = self.calibration_package_contract_path
+        if contract_path is not None and (
+            not self.allow_legacy_no_contract or contract_path.exists()
+        ):
+            paths["calibration_package_contract"] = contract_path
+        return paths
+
+    def stage2_identity(self) -> FittedWeightsInputIdentity:
+        """Validate and return the Stage 2 package identity for fitting."""
+
+        package_path = self.calibration_package_path
+        if not package_path.exists():
+            raise FittedWeightsInputContractError(
+                f"Missing calibration package artifact: {package_path}",
+                code="missing_calibration_package",
+            )
+        if not package_path.is_file():
+            raise FittedWeightsInputContractError(
+                f"Calibration package artifact is not a file: {package_path}",
+                code="invalid_calibration_package_path",
+            )
+
+        package_sha256 = f"sha256:{sha256_file(package_path)}"
+        package_size_bytes = package_path.stat().st_size
+        contract_path = self.calibration_package_contract_path
+        if contract_path is None or not contract_path.exists():
+            if self.allow_legacy_no_contract:
+                warnings.warn(
+                    "Proceeding with Stage 3 fitting without "
+                    f"{CALIBRATION_PACKAGE_CONTRACT_FILENAME}; this legacy "
+                    "manual fallback records only the package checksum.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                return FittedWeightsInputIdentity(
+                    calibration_package_sha256=package_sha256,
+                    calibration_package_size_bytes=package_size_bytes,
+                    stage2_contract_mode="legacy_no_contract",
+                )
+            raise FittedWeightsInputContractError(
+                "Missing Stage 2 calibration package contract: "
+                f"{contract_path or CALIBRATION_PACKAGE_CONTRACT_FILENAME}",
+                code="missing_stage2_contract",
+            )
+        if not contract_path.is_file():
+            raise FittedWeightsInputContractError(
+                f"Stage 2 calibration package contract is not a file: {contract_path}",
+                code="invalid_stage2_contract_path",
+            )
+
+        contract = _read_stage2_contract(contract_path)
+        _assert_stage2_contract_matches_package(
+            contract=contract,
+            package_path=package_path,
+            package_sha256=package_sha256,
+            package_size_bytes=package_size_bytes,
+        )
+        return FittedWeightsInputIdentity(
+            calibration_package_sha256=package_sha256,
+            calibration_package_size_bytes=package_size_bytes,
+            stage2_contract_mode="stage2_contract",
+            calibration_package_contract_sha256=f"sha256:{sha256_file(contract_path)}",
+            calibration_package_contract_size_bytes=contract_path.stat().st_size,
+            calibration_package_contract_fingerprint=contract.fingerprint.value,
+            calibration_package_contract_run_id=contract.run_id,
+        )
+
+    def stage2_identity_parameters(self) -> dict[str, Any]:
+        """Return manifest parameters for the validated Stage 2 identity."""
+
+        return self.stage2_identity().to_manifest_parameters()
+
+
+def _read_stage2_contract(contract_path: Path) -> StageContract:
+    try:
+        contract = read_contract(contract_path)
+    except Exception as exc:
+        raise FittedWeightsInputContractError(
+            f"Could not read Stage 2 calibration package contract: {contract_path}",
+            code="invalid_stage2_contract",
+        ) from exc
+    if contract.stage_id != STAGE_2_BUILD_CALIBRATION_PACKAGE:
+        raise FittedWeightsInputContractError(
+            f"Invalid Stage 2 contract stage_id: {contract.stage_id!r}",
+            code="invalid_stage2_contract",
+        )
+    if contract.contract_type != STAGE_2_CALIBRATION_PACKAGE_CONTRACT_TYPE:
+        raise FittedWeightsInputContractError(
+            f"Invalid Stage 2 contract type: {contract.contract_type!r}",
+            code="invalid_stage2_contract",
+        )
+    return contract
+
+
+def _assert_stage2_contract_matches_package(
+    *,
+    contract: StageContract,
+    package_path: Path,
+    package_sha256: str,
+    package_size_bytes: int,
+) -> None:
+    package_artifacts = [
+        artifact
+        for artifact in contract.outputs
+        if artifact.logical_name == "calibration_package"
+    ]
+    if len(package_artifacts) != 1:
+        raise FittedWeightsInputContractError(
+            "Stage 2 contract must declare exactly one calibration_package output; "
+            f"found {len(package_artifacts)}.",
+            code="invalid_stage2_contract",
+        )
+    package_artifact = package_artifacts[0]
+    if package_artifact.sha256 != package_sha256:
+        raise FittedWeightsInputContractError(
+            "Stage 2 calibration package contract checksum mismatch for "
+            f"{package_path}: {package_artifact.sha256!r} != {package_sha256!r}",
+            code="stage2_contract_package_mismatch",
+        )
+    if package_artifact.size_bytes != package_size_bytes:
+        raise FittedWeightsInputContractError(
+            "Stage 2 calibration package contract size mismatch for "
+            f"{package_path}: {package_artifact.size_bytes!r} != "
+            f"{package_size_bytes!r}",
+            code="stage2_contract_package_mismatch",
+        )
 
 
 @dataclass(frozen=True)
@@ -182,7 +371,9 @@ class FittedWeightsOutputBundle:
 __all__ = [
     "FitResultBytes",
     "FitWeightsBuildContext",
+    "FittedWeightsInputContractError",
     "FittedWeightsInputBundle",
+    "FittedWeightsInputIdentity",
     "FittedWeightsOutputBundle",
     "MissingFitWeightsOutputError",
 ]

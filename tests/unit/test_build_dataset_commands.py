@@ -1,3 +1,4 @@
+import pickle
 import sys
 
 import pytest
@@ -80,6 +81,22 @@ def test_command_runner_raises_structured_failure():
     assert result.error.metadata["argv"] == list(command.argv)
     assert result.error.metadata["output_tail"] == ["structured failure\n"]
     assert result.combined_output_tail == ("structured failure\n",)
+
+
+def test_dataset_command_error_round_trips_through_pickle():
+    command = DatasetCommand(
+        name="failing command",
+        argv=(sys.executable, "-c", "import sys; sys.exit(7)"),
+    )
+
+    with pytest.raises(DatasetCommandError) as exc_info:
+        CommandRunner().run(command)
+
+    restored = pickle.loads(pickle.dumps(exc_info.value))
+
+    assert str(restored) == "Command failed (7): failing command"
+    assert restored.result.command_name == "failing command"
+    assert restored.result.returncode == 7
 
 
 def test_command_runner_can_return_structured_failure_without_raising():

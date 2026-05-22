@@ -16,6 +16,7 @@ from modal_app.pipeline import (  # noqa: E402
     _new_run_metadata,
     _pipeline_error_summary,
     _run_required_promotion_subprocess,
+    _traceback_text_for_pipeline_failure,
     _try_reload_pipeline_volume_after_h5_builds,
 )
 from modal_app.step_manifests.state import RunMetadata  # noqa: E402
@@ -23,6 +24,9 @@ from modal_app.step_manifests.store import (  # noqa: E402
     read_run_meta,
     write_run_meta,
 )
+from policyengine_us_data.build_datasets.commands import DatasetCommandError  # noqa: E402
+from policyengine_us_data.build_datasets.results import DatasetCommandResult  # noqa: E402
+from policyengine_us_data.build_datasets.status import Stage1ErrorRecord  # noqa: E402
 from policyengine_us_data.utils.run_context import RunContext  # noqa: E402
 from policyengine_us_data.utils.step_manifest import ArtifactReference  # noqa: E402
 
@@ -126,6 +130,43 @@ def test_pipeline_error_summary_falls_back_to_bounded_traceback(monkeypatch):
     assert summary.startswith("\n[truncated older error text; omitted ")
     assert summary.endswith("newest <redacted:API_TOKEN>")
     assert "old traceback" not in summary
+
+
+def test_pipeline_failure_traceback_prefers_stage_1_command_tail():
+    result = DatasetCommandResult(
+        command_name="policyengine_us_data/datasets/cps/extended_cps.py",
+        argv=("python", "-m", "policyengine_us_data.datasets.cps.extended_cps"),
+        status="failed",
+        returncode=1,
+        started_at="2026-05-22T12:00:00Z",
+        completed_at="2026-05-22T12:00:01Z",
+        duration_s=1.0,
+        combined_output_tail=("actual ecps failure\n",),
+        error=Stage1ErrorRecord(
+            substep_id="1c_extended_cps_puf_clone",
+            command_name="policyengine_us_data/datasets/cps/extended_cps.py",
+            error_type="RuntimeError",
+            message="Command failed",
+            returncode=1,
+            metadata={
+                "argv": [
+                    "python",
+                    "-m",
+                    "policyengine_us_data.datasets.cps.extended_cps",
+                ],
+                "output_tail": ["actual ecps failure\n"],
+            },
+        ),
+    )
+
+    traceback_text = _traceback_text_for_pipeline_failure(
+        DatasetCommandError(result),
+        "fallback traceback",
+    )
+
+    assert "fallback traceback" not in traceback_text
+    assert "policyengine_us_data.datasets.cps.extended_cps" in traceback_text
+    assert "actual ecps failure" in traceback_text
 
 
 def test_new_run_metadata_accepts_release_context_fields_once():

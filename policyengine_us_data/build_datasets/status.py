@@ -101,6 +101,11 @@ class Stage1ErrorRecord:
             "metadata": dict(self.metadata),
         }
 
+    def traceback_text(self) -> str:
+        """Return traceback-like text from captured command context."""
+
+        return _pipeline_traceback_text(self)
+
     def to_pipeline_error_record(
         self,
         *,
@@ -126,7 +131,7 @@ class Stage1ErrorRecord:
             stage_id=STAGE_1_BUILD_DATASETS,
             substage_id=self.substep_id,
             surface=surface,
-            traceback_text=_pipeline_traceback_text(self),
+            traceback_text=self.traceback_text(),
             occurred_at=self.created_at,
             env=env,
         )

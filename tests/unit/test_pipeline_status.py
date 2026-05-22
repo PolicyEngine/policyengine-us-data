@@ -361,6 +361,35 @@ def test_status_payload_truncates_oldest_traceback_text(tmp_path):
     assert "oldest" not in payload["error"]["traceback"]
 
 
+def test_status_payload_survives_unreadable_latest_error_record(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="failed",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+            error="fallback manifest error",
+        ),
+    )
+    latest_path = run_dir / "errors" / "latest_error.json"
+    latest_path.parent.mkdir(parents=True)
+    latest_path.write_text("{not-json")
+
+    payload = build_pipeline_status_payload("run-1", runs_dir=runs_dir)
+
+    assert payload["status"] == "failed"
+    assert payload["error"]["source"] == "latest_error.json"
+    assert payload["error"]["surface"] == "error_record_read"
+    assert payload["error"]["traceback_available"] is False
+    assert "JSONDecodeError" in payload["error"]["message"]
+
+
 def test_clear_latest_pipeline_error_is_best_effort(tmp_path):
     run_dir = tmp_path / "runs" / "run-1"
     latest_path = run_dir / "errors" / "latest_error.json"

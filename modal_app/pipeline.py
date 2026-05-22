@@ -90,6 +90,9 @@ from modal_app.step_manifests.store import (  # noqa: E402
     step_reusable as _step_reusable,
     write_run_meta,
 )
+from policyengine_us_data.build_datasets.commands import (  # noqa: E402
+    DatasetCommandError,
+)
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
 from policyengine_us_data.utils.error_redaction import (  # noqa: E402
     redacted_bounded_error_text,
@@ -215,6 +218,17 @@ def _record_pipeline_failure(
     except Exception as record_exc:
         print(f"WARNING: failed to write durable pipeline error record: {record_exc}")
         return None
+
+
+def _traceback_text_for_pipeline_failure(
+    exc: BaseException,
+    fallback_traceback: str,
+) -> str:
+    """Prefer captured Stage 1 command output when available."""
+
+    if isinstance(exc, DatasetCommandError) and exc.result.error is not None:
+        return exc.result.error.traceback_text()
+    return fallback_traceback
 
 
 def _pipeline_error_summary(
@@ -1793,7 +1807,7 @@ def run_pipeline(
         return run_id
 
     except Exception as e:
-        traceback_text = traceback.format_exc()
+        traceback_text = _traceback_text_for_pipeline_failure(e, traceback.format_exc())
         traceback_ref = _record_pipeline_failure(
             e,
             run_id=run_id,
@@ -2029,7 +2043,10 @@ def promote_run(
         )
         write_run_meta(meta, pipeline_volume)
     except Exception as exc:
-        traceback_text = traceback.format_exc()
+        traceback_text = _traceback_text_for_pipeline_failure(
+            exc,
+            traceback.format_exc(),
+        )
         traceback_ref = _record_pipeline_failure(
             exc,
             run_id=run_id,

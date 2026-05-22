@@ -1364,6 +1364,22 @@ def normalize_worker_response(*, worker_index: int, result: object) -> Coordinat
 
 Normalize worker JSON into explicit fatal and nonfatal coordinator issues.
 
+### `policyengine_us_data.release_promotion.published_index.build_published_artifact_index`
+
+```python
+def build_published_artifact_index(*, candidate_bundle: ReleaseCandidateInputBundle, promotion_result: FullPromotionResult, release_manifest: Mapping[str, Any] | None = None, diagnostic_artifacts: Sequence[ArtifactRef] = ()) -> tuple[PublishedArtifactIndexRow, ...]
+```
+
+Build deterministic published artifact rows for a promoted release.
+
+### `policyengine_us_data.release_promotion.published_index.PublishedArtifactIndexRow`
+
+```python
+class PublishedArtifactIndexRow
+```
+
+One row in the Stage 5 published artifact JSONL index.
+
 ### `policyengine_us_data.release_promotion.artifacts.ReleaseArtifactSpec`
 
 ```python

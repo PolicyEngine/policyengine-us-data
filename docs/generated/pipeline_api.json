@@ -3086,7 +3086,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 2091,
+    "line": 2136,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3116,6 +3116,74 @@
     "object_path": "modal_app.pipeline.promote_run",
     "signature": "def promote_run(run_id: str, candidate_version: str = '', release_version: str = '') -> str",
     "source_file": "modal_app/pipeline.py"
+  },
+  "published_artifact_index_builder": {
+    "docstring": "Build deterministic published artifact rows for a promoted release.",
+    "id": "published_artifact_index_builder",
+    "kind": "function",
+    "line": 247,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.published_index.build_published_artifact_index"
+      ],
+      "artifacts_in": [
+        "release candidate bundle",
+        "typed promotion result"
+      ],
+      "artifacts_out": [
+        "published_artifact_index.jsonl"
+      ],
+      "description": "Build the Stage 5 published artifact JSONL index.",
+      "id": "published_artifact_index_builder",
+      "label": "Published Artifact Index Builder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/published_index.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_published_index.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.published_index.build_published_artifact_index",
+    "signature": "def build_published_artifact_index(*, candidate_bundle: ReleaseCandidateInputBundle, promotion_result: FullPromotionResult, release_manifest: Mapping[str, Any] | None = None, diagnostic_artifacts: Sequence[ArtifactRef] = ()) -> tuple[PublishedArtifactIndexRow, ...]",
+    "source_file": "policyengine_us_data/release_promotion/published_index.py"
+  },
+  "published_artifact_index_row": {
+    "docstring": "One row in the Stage 5 published artifact JSONL index.",
+    "id": "published_artifact_index_row",
+    "kind": "class",
+    "line": 95,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.release_promotion.published_index.PublishedArtifactIndexRow"
+      ],
+      "artifacts_in": [
+        "release candidate bundle",
+        "release manifest"
+      ],
+      "artifacts_out": [
+        "published_artifact_index.jsonl"
+      ],
+      "description": "One published HF/GCS artifact row emitted by Stage 5.",
+      "id": "published_artifact_index_row",
+      "label": "PublishedArtifactIndexRow",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/published_index.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_published_index.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.release_promotion.published_index.PublishedArtifactIndexRow",
+    "signature": "class PublishedArtifactIndexRow",
+    "source_file": "policyengine_us_data/release_promotion/published_index.py"
   },
   "puf_qrf_pass": {
     "docstring": "Run QRF imputation for PUF variables.\n\nStratified-subsamples PUF records (top 0.5% by AGI kept,\nrest randomly sampled to ~20K total), trains QRF, and\npredicts on CPS data.\n\nArgs:\n    data: CPS data dict.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path.\n    dataset_path: Path to CPS h5 for computing\n        demographic predictors via Microsimulation.\n\nReturns:\n    Tuple of (y_full_imputations, y_override_imputations)\n    as dicts of {variable: np.ndarray}.",
@@ -3541,7 +3609,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 1113,
+    "line": 1158,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -4479,7 +4547,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 739,
+    "line": 784,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

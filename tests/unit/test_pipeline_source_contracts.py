@@ -58,6 +58,28 @@ def test_run_pipeline_stage_1_stages_datasets_without_promoting() -> None:
     assert keywords["version"].id == "candidate_version"
 
 
+def test_calibration_package_parameters_record_target_config_identity() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    helper = _function_def(tree, "_calibration_package_parameters")
+    source = ast.get_source_segment(source_text, helper)
+
+    assert "resolve_target_config_identity(" in source
+    assert '"target_config": target_config_identity.path' in source
+    assert '"target_config_sha256": target_config_identity.sha256' in source
+    assert '"target_config_mode": target_config_identity.mode' in source
+
+
+def test_stage_2_manifest_records_package_and_contract_outputs() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    source = ast.get_source_segment(source_text, run_pipeline)
+
+    assert "package_artifacts = calibration_package_artifact_paths(" in source
+    assert "package_artifacts.manifest_outputs" in source
+
+
 def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
     tree = ast.parse(PIPELINE_SOURCE.read_text())
     promote_run = _function_def(tree, "promote_run")

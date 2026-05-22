@@ -42,11 +42,15 @@ from policyengine_us_data.calibration.clone_and_assign import (
 )
 from policyengine_us_data.calibration.unified_calibration import (
     _calibration_package_contract_parameters,
+    _target_config_identity_for_metadata,
     check_package_staleness,
+    run_calibration,
 )
 from policyengine_us_data.stage_contracts.calibration_package import (
     CalibrationPackageParameters,
 )
+
+TARGET_CONFIG_SHA256 = "sha256:" + "a" * 64
 
 
 def test_calibration_package_contract_parameters_track_effective_matrix_mode():
@@ -54,6 +58,8 @@ def test_calibration_package_contract_parameters_track_effective_matrix_mode():
         workers=8,
         n_clones=430,
         target_config_path="policyengine_us_data/calibration/target_config.yaml",
+        target_config_sha256=TARGET_CONFIG_SHA256,
+        target_config_mode="default",
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -68,6 +74,8 @@ def test_calibration_package_contract_parameters_track_effective_matrix_mode():
         "workers": None,
         "n_clones": 430,
         "target_config": "policyengine_us_data/calibration/target_config.yaml",
+        "target_config_sha256": TARGET_CONFIG_SHA256,
+        "target_config_mode": "default",
         "skip_county": True,
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,
@@ -83,6 +91,8 @@ def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
         workers=8,
         n_clones=430,
         target_config_path=None,
+        target_config_sha256=None,
+        target_config_mode="all_active_targets",
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -96,6 +106,33 @@ def test_calibration_package_contract_parameters_ignore_unused_chunk_options():
     assert params.to_dict()["chunk_size"] is None
     assert params.to_dict()["parallel_matrix"] is False
     assert params.to_dict()["num_matrix_workers"] is None
+
+
+def test_target_config_identity_for_metadata_requires_identity_for_parsed_config():
+    with pytest.raises(
+        ValueError, match="target_config_path or target_config_identity"
+    ):
+        _target_config_identity_for_metadata(
+            target_config={"include": []},
+            target_config_path=None,
+            target_config_identity=None,
+        )
+
+
+def test_run_calibration_validates_target_identity_before_dataset_loading():
+    with (
+        patch.dict(sys.modules, {"policyengine_us": None}),
+        pytest.raises(
+            ValueError,
+            match="target_config_path or target_config_identity",
+        ),
+    ):
+        run_calibration(
+            dataset_path="/missing/source.h5",
+            db_path="/missing/policy_data.db",
+            target_config={"include": []},
+            target_config_path=None,
+        )
 
 
 def test_check_package_staleness_warns_for_old_utc_timestamp(

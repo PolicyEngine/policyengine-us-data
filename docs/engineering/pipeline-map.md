@@ -378,19 +378,32 @@ Build sparse calibration matrix (targets x households x clones)
 | `takeup_rerand` Block-Level Takeup Re-randomization | `process` | `unknown` | `unknown` |  |
 | `sparse_build` Sparse Matrix Construction | `process` | `unknown` | `unknown` |  |
 | `out_pkg` calibration_package.pkl | `artifact` | `unknown` | `unknown` |  |
+| `out_contract` calibration_package_contract.json | `artifact` | `unknown` | `unknown` |  |
 | `util_sql` sqlalchemy | `utility` | `unknown` | `unknown` |  |
 | `util_pool` ProcessPoolExecutor | `utility` | `unknown` | `unknown` |  |
 | `util_takeup_s5` compute_block_takeup_for_entities() | `utility` | `unknown` | `unknown` |  |
 | `util_scipy` scipy.sparse | `utility` | `unknown` | `unknown` |  |
+| `stage2_target_config_identity` Stage 2 Target Config Identity | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.resolve_target_config_identity` |
+| `stage2_target_config_load` Load Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.load_target_config` |
+| `stage2_target_config_apply` Apply Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets` |
 | `state_precomp` Per-State Simulation Precomputation | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._compute_single_state` |
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
+| `build_matrix` Build Calibration Matrix | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix` |
+| `build_matrix_chunked` Build Calibration Matrix In Chunks | `library` | `current` | `experimental` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked` |
+| `stage2_calibration_package_writer` Stage 2 Package Writer | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.save_calibration_package` |
+| `stage2_artifact_specs` Stage 2 Artifact Specs | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths` |
+| `stage2_calibration_package_contract_writer` Stage 2 Contract Writer | `library` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract` |
+| `stage2_calibration_package_contract_validator` Stage 2 Contract Validator | `validation` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract` |
 
 #### Edges
 
 - `in_cps_s5` -> `target_resolve` `data_flow`
 - `in_db_s5` -> `target_resolve` `external_source` (SQL targets)
-- `in_config_s5` -> `target_resolve` `data_flow` (include list)
-- `target_resolve` -> `target_uprate` `data_flow`
+- `in_config_s5` -> `stage2_target_config_identity` `data_flow` (config file)
+- `stage2_target_config_identity` -> `stage2_target_config_load` `data_flow` (resolved path and checksum)
+- `stage2_target_config_load` -> `stage2_target_config_apply` `data_flow` (include/exclude rules)
+- `target_resolve` -> `stage2_target_config_apply` `data_flow` (candidate targets)
+- `stage2_target_config_apply` -> `target_uprate` `data_flow` (selected targets)
 - `target_uprate` -> `geo_build` `data_flow`
 - `geo_build` -> `constraint_resolve` `data_flow`
 - `constraint_resolve` -> `state_precomp` `data_flow`
@@ -399,7 +412,19 @@ Build sparse calibration matrix (targets x households x clones)
 - `in_blocks_s5` -> `clone_assembly` `data_flow` (block populations)
 - `clone_assembly` -> `takeup_rerand` `data_flow`
 - `takeup_rerand` -> `sparse_build` `data_flow`
-- `sparse_build` -> `out_pkg` `produces_artifact`
+- `sparse_build` -> `build_matrix` `uses_library` (non-chunked path)
+- `sparse_build` -> `build_matrix_chunked` `uses_library` (chunked path)
+- `build_matrix` -> `stage2_calibration_package_writer` `data_flow`
+- `build_matrix_chunked` -> `stage2_calibration_package_writer` `data_flow`
+- `stage2_artifact_specs` -> `stage2_calibration_package_writer` `uses_utility` (package path)
+- `stage2_calibration_package_writer` -> `out_pkg` `produces_artifact`
+- `out_pkg` -> `stage2_calibration_package_contract_writer` `data_flow`
+- `stage2_artifact_specs` -> `stage2_calibration_package_contract_writer` `uses_utility` (contract path)
+- `stage2_calibration_package_contract_writer` -> `out_contract` `produces_artifact`
+- `out_pkg` -> `stage2_calibration_package_contract_validator` `validates`
+- `out_contract` -> `stage2_calibration_package_contract_validator` `validates`
+- `in_cps_s5` -> `stage2_calibration_package_contract_validator` `validates`
+- `in_db_s5` -> `stage2_calibration_package_contract_validator` `validates`
 - `util_sql` -> `target_resolve` `uses_utility`
 - `util_pool` -> `state_precomp` `uses_utility`
 - `util_takeup_s5` -> `takeup_rerand` `uses_utility`
@@ -777,22 +802,6 @@ def build_datasets(upload: bool = False, branch: str = 'main', sequential: bool 
 ```
 
 Build all datasets with preemption-resilient checkpointing.
-
-### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix`
-
-```python
-def build_matrix(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, cache_dir: Optional[str] = None, sim_modifier = None, rerandomize_takeup: bool = True, county_level: bool = True, workers: int = 1) -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]
-```
-
-Build sparse calibration matrix.
-
-### `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked`
-
-```python
-def build_matrix_chunked(self, geography, sim, target_filter: Optional[dict] = None, hierarchical_domains: Optional[List[str]] = None, chunk_size: int = 25000, chunk_dir: Optional[str] = None, keep_chunks: bool = False, resume_chunks: bool = False, rerandomize_takeup: bool = True, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '') -> Tuple[pd.DataFrame, sparse.csr_matrix, List[str]]
-```
-
-Build a sparse matrix by materializing mixed-geography chunks.
 
 ### `modal_app.local_area._build_publishing_input_bundle`
 
@@ -1397,7 +1406,7 @@ Compute the scope fingerprint while preserving pinned resume values.
 ### `policyengine_us_data.calibration.unified_calibration.run_calibration`
 
 ```python
-def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')
+def run_calibration(dataset_path: str, db_path: str, n_clones: int = DEFAULT_N_CLONES, lambda_l0: float = 1e-08, epochs: int = DEFAULT_EPOCHS, device: str = 'cpu', seed: int = 42, domain_variables: list = None, hierarchical_domains: list = None, skip_takeup_rerandomize: bool = False, skip_source_impute: bool = True, skip_county: bool = True, target_config: dict = None, target_config_path: str = None, target_config_identity: TargetConfigIdentity | None = None, build_only: bool = False, package_path: str = None, package_output_path: str = None, beta: float = BETA, lambda_l2: float = LAMBDA_L2, learning_rate: float = LEARNING_RATE, log_freq: int = None, log_path: str = None, workers: int = 1, resume_from: str = None, checkpoint_path: str = None, chunked_matrix: bool = False, chunk_size: int = 25000, chunk_dir: str = None, keep_chunks: bool = False, resume_chunks: bool = False, parallel: bool = False, num_matrix_workers: int = 50, run_id: str = '')
 ```
 
 Run unified calibration pipeline.

@@ -16,6 +16,12 @@ from policyengine_us_data.fit_weights.bundles import (
     FittedWeightsOutputBundle,
     MissingFitWeightsOutputError,
 )
+from policyengine_us_data.fit_weights.contracts import (
+    FITTED_WEIGHTS_CONTRACT_SCHEMA_VERSION,
+    FittedWeightsContractBuilder,
+    fitted_weights_contract_filename,
+    fitted_weights_contract_path,
+)
 from policyengine_us_data.fit_weights.specs import (
     FIT_BETA,
     FIT_LOG_FREQ,
@@ -35,6 +41,7 @@ __all__ = [
     "FIT_BETA",
     "FIT_LOG_FREQ",
     "FIT_TARGET_CONFIG_PATH",
+    "FITTED_WEIGHTS_CONTRACT_SCHEMA_VERSION",
     "FIT_WEIGHTS_SPEC_SCHEMA_VERSION",
     "NATIONAL_FIT_LAMBDA_L0",
     "NATIONAL_FIT_LAMBDA_L2",
@@ -51,9 +58,12 @@ __all__ = [
     "FittedWeightsInputBundle",
     "FittedWeightsInputIdentity",
     "FittedWeightsOutputBundle",
+    "FittedWeightsContractBuilder",
     "FittedWeightsSpec",
     "MissingFitWeightsOutputError",
     "ScopedFitArtifacts",
     "fit_artifacts_for_scope",
+    "fitted_weights_contract_filename",
+    "fitted_weights_contract_path",
     "fitted_weights_spec_for_scope",
 ]

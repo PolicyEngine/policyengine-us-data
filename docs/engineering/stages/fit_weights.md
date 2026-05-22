@@ -21,6 +21,20 @@ step parameters. Manual legacy package runs may proceed without the contract
 only through the explicit no-contract fallback, which emits a warning and
 records that only the package checksum was available.
 
+Each successful scoped fit writes a semantic Stage 3 handoff contract next to
+the primary fitted-weight artifacts:
+
+- regional: `fitted_weights_regional_contract.json`;
+- national: `fitted_weights_national_contract.json`.
+
+These contracts use the canonical `fitted_weights` stage-contract type, include
+the matching Stage 2 package and contract inputs, list the scoped weights,
+geography, run config, legacy diagnostics, and epoch log outputs, and embed the
+solver parameters plus package, geography, weights, and diagnostics summaries.
+The fit step manifests record these contract JSON files as normal outputs so
+Stage 4 can validate a scoped semantic handoff without relying only on filename
+conventions.
+
 The current artifact names remain behavior-compatible:
 
 - regional: `calibration_weights.npy`, `geography_assignment.npz`,

@@ -1164,7 +1164,7 @@
     "docstring": "Scoped output bundle created before Stage 3 bytes become files.",
     "id": "fitted_weights_output_bundle",
     "kind": "class",
-    "line": 113,
+    "line": 302,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.fit_weights.bundles.FittedWeightsOutputBundle"
@@ -3086,7 +3086,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 2091,
+    "line": 2133,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3541,7 +3541,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 1113,
+    "line": 1115,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -4479,7 +4479,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 739,
+    "line": 741,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

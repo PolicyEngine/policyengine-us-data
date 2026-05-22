@@ -4487,6 +4487,21 @@
           "target": "out_config_s6"
         },
         {
+          "edge_type": "documents",
+          "source": "fit_artifacts_regional",
+          "target": "out_fit_contract_regional"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "fit_model",
+          "target": "fit_contract_builder_regional"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_contract_builder_regional",
+          "target": "out_fit_contract_regional"
+        },
+        {
           "edge_type": "data_flow",
           "source": "init_weights",
           "target": "create_model"
@@ -4546,6 +4561,7 @@
           "node_ids": [
             "fit_spec_regional",
             "fit_artifacts_regional",
+            "fit_contract_builder_regional",
             "init_weights",
             "create_model",
             "fit_model",
@@ -4553,7 +4569,8 @@
             "out_weights",
             "out_geo_s6",
             "out_diag",
-            "out_config_s6"
+            "out_config_s6",
+            "out_fit_contract_regional"
           ]
         }
       ],
@@ -4586,6 +4603,12 @@
           "description": "Regional fitted-weight artifact filenames and remote result mapping",
           "id": "fit_artifacts_regional",
           "label": "ScopedFitArtifacts regional",
+          "node_type": "library"
+        },
+        {
+          "description": "Builds the regional fitted_weights stage contract from Stage 2 package identity, fit parameters, artifacts, and diagnostics",
+          "id": "fit_contract_builder_regional",
+          "label": "FittedWeightsContractBuilder regional",
           "node_type": "library"
         },
         {
@@ -4622,6 +4645,12 @@
           "description": "Hyperparameters + SHA256 checksums",
           "id": "out_config_s6",
           "label": "unified_run_config.json",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Scoped Stage 3 contract for regional fitted weights, geography, run config, and legacy diagnostics",
+          "id": "out_fit_contract_regional",
+          "label": "fitted_weights_regional_contract.json",
           "node_type": "artifact"
         },
         {
@@ -4723,6 +4752,21 @@
           "target": "out_national_config_s6"
         },
         {
+          "edge_type": "documents",
+          "source": "fit_artifacts_national",
+          "target": "out_fit_contract_national"
+        },
+        {
+          "edge_type": "data_flow",
+          "source": "fit_model",
+          "target": "fit_contract_builder_national"
+        },
+        {
+          "edge_type": "produces_artifact",
+          "source": "fit_contract_builder_national",
+          "target": "out_fit_contract_national"
+        },
+        {
           "edge_type": "data_flow",
           "source": "init_weights",
           "target": "create_model_national"
@@ -4782,6 +4826,7 @@
           "node_ids": [
             "fit_spec_national",
             "fit_artifacts_national",
+            "fit_contract_builder_national",
             "init_weights",
             "create_model_national",
             "fit_model",
@@ -4789,7 +4834,8 @@
             "out_national_weights",
             "out_national_geo_s6",
             "out_national_diag",
-            "out_national_config_s6"
+            "out_national_config_s6",
+            "out_fit_contract_national"
           ]
         }
       ],
@@ -4822,6 +4868,12 @@
           "description": "National fitted-weight artifact filenames and remote result mapping",
           "id": "fit_artifacts_national",
           "label": "ScopedFitArtifacts national",
+          "node_type": "library"
+        },
+        {
+          "description": "Builds the national fitted_weights stage contract from Stage 2 package identity, fit parameters, artifacts, and diagnostics",
+          "id": "fit_contract_builder_national",
+          "label": "FittedWeightsContractBuilder national",
           "node_type": "library"
         },
         {
@@ -4858,6 +4910,12 @@
           "description": "National hyperparameters + SHA256 checksums",
           "id": "out_national_config_s6",
           "label": "national_unified_run_config.json",
+          "node_type": "artifact"
+        },
+        {
+          "description": "Scoped Stage 3 contract for national fitted weights, geography, run config, and legacy diagnostics",
+          "id": "out_fit_contract_national",
+          "label": "fitted_weights_national_contract.json",
           "node_type": "artifact"
         },
         {

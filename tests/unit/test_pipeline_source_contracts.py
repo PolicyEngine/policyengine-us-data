@@ -187,19 +187,20 @@ def test_run_pipeline_uses_stage_3_fit_specs_for_reuse_and_paths() -> None:
 
     assert "fitted_weights_spec_for_scope(FitScope.REGIONAL)" in source
     assert "fitted_weights_spec_for_scope(FitScope.NATIONAL)" in source
+    assert "FITTED_WEIGHTS_CONTRACT_SCHEMA_VERSION" in source
+    assert "FittedWeightsContractBuilder(" in source
     assert "fit_artifacts_for_scope(FitScope.REGIONAL)" in source
     assert "fit_artifacts_for_scope(FitScope.NATIONAL)" in source
     assert "regional_fit_spec.manifest_parameters(" in source
     assert "national_fit_spec.manifest_parameters(" in source
-    assert (
-        "fit_stage2_identity = regional_fit_input.stage2_identity_parameters()"
-        in source
-    )
+    assert "regional_fit_input.stage2_identity_parameters()" in source
     assert "regional_fit_spec.runtime_kwargs()" in source
     assert "national_fit_spec.runtime_kwargs()" in source
     assert "volume_package_contract_path=vol_contract_path" in source
     assert "fit_scope=FitScope.REGIONAL.value" in source
     assert "fit_scope=FitScope.NATIONAL.value" in source
+    assert "regional_contract_path" in source
+    assert "national_contract_path" in source
     assert "regional_output.artifact_paths(_artifacts_dir(run_id))" in source
     assert "national_output.artifact_paths(_artifacts_dir(run_id))" in source
     assert "diagnostic_result_filenames()" in archive_source

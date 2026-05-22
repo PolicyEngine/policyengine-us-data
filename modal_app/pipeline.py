@@ -116,7 +116,9 @@ from policyengine_us_data.utils.step_manifest import (  # noqa: E402
 from policyengine_us_data.pipeline_metadata import pipeline_node  # noqa: E402
 from policyengine_us_data.pipeline_schema import PipelineNode  # noqa: E402
 from policyengine_us_data.fit_weights import (  # noqa: E402
+    FITTED_WEIGHTS_CONTRACT_SCHEMA_VERSION,
     FitScope,
+    FittedWeightsContractBuilder,
     FittedWeightsInputBundle,
     FittedWeightsOutputBundle,
     NATIONAL_FIT_LAMBDA_L0 as _NATIONAL_FIT_LAMBDA_L0,
@@ -1534,7 +1536,12 @@ def run_pipeline(
             scope=FitScope.REGIONAL,
             calibration_package_path=_artifacts_dir(run_id) / "calibration_package.pkl",
         )
-        fit_stage2_identity = regional_fit_input.stage2_identity_parameters()
+        fit_stage2_identity = {
+            **regional_fit_input.stage2_identity_parameters(),
+            "fitted_weights_contract_schema_version": (
+                FITTED_WEIGHTS_CONTRACT_SCHEMA_VERSION
+            ),
+        }
         fit_inputs = _artifact_identities(regional_fit_input.artifact_identity_paths())
         regional_fit_spec = fitted_weights_spec_for_scope(FitScope.REGIONAL)
         national_fit_spec = fitted_weights_spec_for_scope(FitScope.NATIONAL)
@@ -1666,8 +1673,21 @@ def run_pipeline(
                 pipeline_volume,
                 scope=regional_output.scope,
             )
+            regional_contract_path = FittedWeightsContractBuilder(
+                scope=regional_output.scope,
+                input_bundle=regional_fit_input,
+                parameters=regional_fit_parameters,
+                artifacts_root=_artifacts_dir(run_id),
+                diagnostics_root=Path(RUNS_DIR) / run_id / "diagnostics",
+                run_id=run_id,
+                started_at=regional_fit_manifest.started_at,
+                modal_call_id=regional_handle.object_id,
+            ).write()
             regional_outputs = collect_artifacts(
-                regional_output.artifact_paths(_artifacts_dir(run_id)),
+                [
+                    *regional_output.artifact_paths(_artifacts_dir(run_id)),
+                    regional_contract_path,
+                ],
                 missing_ok=True,
             )
             regional_fit_reuse_measurement = ReuseMeasurement(
@@ -1704,8 +1724,21 @@ def run_pipeline(
                     pipeline_volume,
                     scope=national_output.scope,
                 )
+                national_contract_path = FittedWeightsContractBuilder(
+                    scope=national_output.scope,
+                    input_bundle=regional_fit_input,
+                    parameters=national_fit_parameters,
+                    artifacts_root=_artifacts_dir(run_id),
+                    diagnostics_root=Path(RUNS_DIR) / run_id / "diagnostics",
+                    run_id=run_id,
+                    started_at=national_fit_manifest.started_at,
+                    modal_call_id=national_handle.object_id,
+                ).write()
                 national_outputs = collect_artifacts(
-                    national_output.artifact_paths(_artifacts_dir(run_id)),
+                    [
+                        *national_output.artifact_paths(_artifacts_dir(run_id)),
+                        national_contract_path,
+                    ],
                     missing_ok=True,
                 )
                 _complete_step_manifest(

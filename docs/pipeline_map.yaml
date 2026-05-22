@@ -1047,6 +1047,7 @@ stages:
     node_ids:
     - fit_spec_regional
     - fit_artifacts_regional
+    - fit_contract_builder_regional
     - init_weights
     - create_model
     - fit_model
@@ -1055,6 +1056,7 @@ stages:
     - out_geo_s6
     - out_diag
     - out_config_s6
+    - out_fit_contract_regional
   extra_nodes:
   - id: in_pkg_s6
     label: calibration_package.pkl
@@ -1072,6 +1074,10 @@ stages:
     label: ScopedFitArtifacts regional
     node_type: library
     description: Regional fitted-weight artifact filenames and remote result mapping
+  - id: fit_contract_builder_regional
+    label: FittedWeightsContractBuilder regional
+    node_type: library
+    description: Builds the regional fitted_weights stage contract from Stage 2 package identity, fit parameters, artifacts, and diagnostics
   - id: create_model
     label: Create SparseCalibrationWeights
     node_type: process
@@ -1096,6 +1102,10 @@ stages:
     label: unified_run_config.json
     node_type: artifact
     description: Hyperparameters + SHA256 checksums
+  - id: out_fit_contract_regional
+    label: fitted_weights_regional_contract.json
+    node_type: artifact
+    description: Scoped Stage 3 contract for regional fitted weights, geography, run config, and legacy diagnostics
   - id: util_l0
     label: l0-python
     node_type: utility
@@ -1123,6 +1133,15 @@ stages:
   - source: fit_artifacts_regional
     target: out_config_s6
     edge_type: documents
+  - source: fit_artifacts_regional
+    target: out_fit_contract_regional
+    edge_type: documents
+  - source: fit_model
+    target: fit_contract_builder_regional
+    edge_type: data_flow
+  - source: fit_contract_builder_regional
+    target: out_fit_contract_regional
+    edge_type: produces_artifact
   - source: init_weights
     target: create_model
     edge_type: data_flow
@@ -1172,6 +1191,7 @@ stages:
     node_ids:
     - fit_spec_national
     - fit_artifacts_national
+    - fit_contract_builder_national
     - init_weights
     - create_model_national
     - fit_model
@@ -1180,6 +1200,7 @@ stages:
     - out_national_geo_s6
     - out_national_diag
     - out_national_config_s6
+    - out_fit_contract_national
   extra_nodes:
   - id: in_pkg_national_s6
     label: calibration_package.pkl
@@ -1197,6 +1218,10 @@ stages:
     label: ScopedFitArtifacts national
     node_type: library
     description: National fitted-weight artifact filenames and remote result mapping
+  - id: fit_contract_builder_national
+    label: FittedWeightsContractBuilder national
+    node_type: library
+    description: Builds the national fitted_weights stage contract from Stage 2 package identity, fit parameters, artifacts, and diagnostics
   - id: create_model_national
     label: Create National SparseCalibrationWeights
     node_type: process
@@ -1221,6 +1246,10 @@ stages:
     label: national_unified_run_config.json
     node_type: artifact
     description: National hyperparameters + SHA256 checksums
+  - id: out_fit_contract_national
+    label: fitted_weights_national_contract.json
+    node_type: artifact
+    description: Scoped Stage 3 contract for national fitted weights, geography, run config, and legacy diagnostics
   - id: util_l0_national
     label: l0-python
     node_type: utility
@@ -1248,6 +1277,15 @@ stages:
   - source: fit_artifacts_national
     target: out_national_config_s6
     edge_type: documents
+  - source: fit_artifacts_national
+    target: out_fit_contract_national
+    edge_type: documents
+  - source: fit_model
+    target: fit_contract_builder_national
+    edge_type: data_flow
+  - source: fit_contract_builder_national
+    target: out_fit_contract_national
+    edge_type: produces_artifact
   - source: init_weights
     target: create_model_national
     edge_type: data_flow

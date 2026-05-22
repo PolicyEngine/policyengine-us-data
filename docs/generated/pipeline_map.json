@@ -1506,6 +1506,31 @@
     },
     {
       "api_refs": [
+        "policyengine_us_data.release_promotion.contract.ReleasePromotionContractBuilder"
+      ],
+      "artifacts_in": [
+        "release candidate bundle",
+        "typed promotion result"
+      ],
+      "artifacts_out": [
+        "release_promotion_contract.json"
+      ],
+      "description": "Build the canonical Stage 5 release promotion contract.",
+      "id": "release_promotion_contract_builder",
+      "label": "ReleasePromotionContractBuilder",
+      "node_type": "library",
+      "pathways": [
+        "5_validate_and_promote_release"
+      ],
+      "source_file": "policyengine_us_data/release_promotion/contract.py",
+      "stability": "moving",
+      "status": "transitional",
+      "validation_commands": [
+        "uv run pytest tests/unit/release_promotion/test_contract.py"
+      ]
+    },
+    {
+      "api_refs": [
         "policyengine_us_data.build_outputs.fingerprinting.FingerprintingService",
         "modal_app.local_area._resolve_scope_fingerprint"
       ],
@@ -1971,9 +1996,9 @@
     }
   ],
   "metadata": {
-    "api_node_count": 95,
+    "api_node_count": 96,
     "canonical_stage_count": 5,
-    "decorated_object_count": 153,
+    "decorated_object_count": 154,
     "mapped_decorated_node_count": 58,
     "stage_count": 17,
     "substage_count": 17

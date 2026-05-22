@@ -26,6 +26,16 @@ class Stage1SubstepRunner(Protocol):
         """Run the substep action."""
 
 
+class Stage1StatusSink(Protocol):
+    """Persistence sink for Stage 1 status transitions and results."""
+
+    def record_event(self, event: Stage1StatusEvent) -> None:
+        """Persist one status event."""
+
+    def record_result(self, result: DatasetSubstepResult) -> None:
+        """Persist one substep result."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class CommandBackedSubstepRunner:
     """Run a Stage 1 substep backed by existing side-effecting commands."""
@@ -60,6 +70,7 @@ class _SubstepAggregate:
 class Stage1Coordinator:
     """Collect Stage 1 substep status events, errors, and results."""
 
+    status_recorder: Stage1StatusSink | None = None
     results: list[DatasetSubstepResult] = field(default_factory=list)
     status_events: list[Stage1StatusEvent] = field(default_factory=list)
     error_records: list[Stage1ErrorRecord] = field(default_factory=list)
@@ -244,22 +255,24 @@ class Stage1Coordinator:
         *,
         metadata: Mapping[str, Any] | None,
     ) -> None:
+        event: Stage1StatusEvent | None = None
         with self._lock:
             state = self._aggregate_state(runner)
             if state.started_dt is None:
                 state.started_dt = started_dt
-                self.status_events.append(
-                    Stage1StatusEvent(
-                        substep_id=runner.substep_id,
-                        status="started",
-                        created_at=utc_timestamp(started_dt),
-                        message=f"Started {runner.title}",
-                        metadata=dict(metadata or {}),
-                    )
+                event = Stage1StatusEvent(
+                    substep_id=runner.substep_id,
+                    status="started",
+                    created_at=utc_timestamp(started_dt),
+                    message=f"Started {runner.title}",
+                    metadata=dict(metadata or {}),
                 )
+                self.status_events.append(event)
             elif started_dt < state.started_dt:
                 state.started_dt = started_dt
             state.metadata.update(dict(metadata or {}))
+        if event is not None and self.status_recorder is not None:
+            self.status_recorder.record_event(event)
 
     def _record_aggregate_skip(
         self,
@@ -418,23 +431,27 @@ class Stage1Coordinator:
         )
 
     def _record(self, result: DatasetSubstepResult) -> None:
+        event = Stage1StatusEvent(
+            substep_id=result.substep_id,
+            status=result.status,
+            created_at=result.completed_at,
+            message=f"{result.title}: {result.status}",
+            metadata=dict(result.metadata),
+        )
         with self._lock:
             self.results.append(result)
-            self.status_events.append(
-                Stage1StatusEvent(
-                    substep_id=result.substep_id,
-                    status=result.status,
-                    created_at=result.completed_at,
-                    message=f"{result.title}: {result.status}",
-                    metadata=dict(result.metadata),
-                )
-            )
+            self.status_events.append(event)
             if result.error is not None:
                 self.error_records.append(result.error)
+        if self.status_recorder is not None:
+            self.status_recorder.record_result(result)
+            self.status_recorder.record_event(event)
 
     def _record_event(self, event: Stage1StatusEvent) -> None:
         with self._lock:
             self.status_events.append(event)
+        if self.status_recorder is not None:
+            self.status_recorder.record_event(event)
 
 
 def stage_1_substep_id_for_script(script_path: str) -> str:
@@ -519,6 +536,7 @@ def _error_record_from_exception(
 __all__ = [
     "CommandBackedSubstepRunner",
     "Stage1Coordinator",
+    "Stage1StatusSink",
     "Stage1SubstepRunner",
     "stage_1_substep_id_for_script",
     "stage_1_substep_title",

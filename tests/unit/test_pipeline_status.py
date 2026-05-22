@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from policyengine_us_data.build_datasets import Stage1StatusEvent, Stage1StatusRecorder
 from modal_app.step_manifests.errors import (
     PipelineErrorRecord,
     build_pipeline_error_record,
@@ -266,6 +267,108 @@ def test_status_payload_orders_manifests_and_includes_bounded_traceback(
     assert payload["error"]["traceback_truncated"] is False
     assert "secret-value" not in payload["run_manifest"]["error"]
     assert payload["pipeline_volume_name"] == "pipeline-artifacts-run-1"
+
+
+def test_status_payload_reports_stage_1_current_substep(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="running",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+        ),
+    )
+    write_step_manifest(
+        step_manifest_path(run_dir, BUILD_DATASETS.id),
+        _manifest(BUILD_DATASETS.id),
+    )
+    Stage1StatusRecorder(run_dir).record_event(
+        Stage1StatusEvent(
+            substep_id="1c_extended_cps_puf_clone",
+            status="started",
+            created_at="2026-05-12T12:01:00+00:00",
+            message="Started Extended CPS PUF clone",
+        )
+    )
+
+    payload = build_pipeline_status_payload("run-1", runs_dir=runs_dir)
+
+    assert payload["stage_1_status"]["current"]["substep_id"] == (
+        "1c_extended_cps_puf_clone"
+    )
+    assert payload["stage_1_status"]["current"]["title"] == "Extended CPS PUF clone"
+    assert payload["message"] == (
+        "Pipeline running; current Stage 1 substep "
+        "1c_extended_cps_puf_clone (Extended CPS PUF clone) is started."
+    )
+
+
+def test_runs_payload_includes_stage_1_current_substep(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="running",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+        ),
+    )
+    write_step_manifest(
+        step_manifest_path(run_dir, BUILD_DATASETS.id),
+        _manifest(BUILD_DATASETS.id),
+    )
+    Stage1StatusRecorder(run_dir).record_event(
+        Stage1StatusEvent(
+            substep_id="1a_raw_data_download",
+            status="started",
+            created_at="2026-05-12T12:01:00+00:00",
+        )
+    )
+
+    payload = build_pipeline_runs_payload(runs_dir=runs_dir)
+
+    assert payload["runs"][0]["stage_1_current"]["substep_id"] == (
+        "1a_raw_data_download"
+    )
+
+
+def test_status_payload_survives_unreadable_stage_1_status(tmp_path):
+    runs_dir = tmp_path / "runs"
+    run_dir = runs_dir / "run-1"
+    write_run_manifest(
+        run_manifest_path(run_dir),
+        RunManifest(
+            run_id="run-1",
+            branch="main",
+            sha="abc123",
+            version="1.0.0",
+            status="running",
+            started_at="2026-05-12T12:00:00+00:00",
+            known_step_ids=[BUILD_DATASETS.id],
+        ),
+    )
+    status_dir = run_dir / "stage_1"
+    status_dir.mkdir(parents=True)
+    (status_dir / "current_substep.json").write_text("{not-json")
+
+    payload = build_pipeline_status_payload("run-1", runs_dir=runs_dir)
+
+    assert payload["status"] == "running"
+    assert payload["stage_1_status"]["current"] is None
+    assert payload["stage_1_status"]["read_errors"][0]["error_type"] == (
+        "JSONDecodeError"
+    )
 
 
 def test_status_payload_uses_run_manifest_error_as_last_resort(tmp_path, monkeypatch):

@@ -3575,7 +3575,7 @@
     "docstring": "Run structural integrity checks on an H5 file.\n\nArgs:\n    h5_path: Path to the H5 dataset file.\n    period: Tax year (used for variable keys).\n\nReturns:\n    List of {check, status, detail} dicts.",
     "id": "sanity_checks",
     "kind": "function",
-    "line": 327,
+    "line": 331,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.sanity_checks.run_sanity_checks"

@@ -34,7 +34,7 @@
     "docstring": "Impute rent and real_estate_taxes from ACS with state.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "acs_qrf",
     "kind": "function",
-    "line": 507,
+    "line": 508,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_acs"
@@ -3534,7 +3534,7 @@
     "docstring": "Impute net_worth and auto_loan from SCF.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "scf_qrf",
     "kind": "function",
-    "line": 1073,
+    "line": 1092,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_scf"
@@ -3588,7 +3588,7 @@
     "docstring": "Impute tip_income, liquid assets, and vehicle signals from SIPP.\n\nArgs:\n    data: CPS data dict.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Updated data dict.",
     "id": "sipp_qrf",
     "kind": "function",
-    "line": 632,
+    "line": 633,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute._impute_sipp"
@@ -3615,7 +3615,7 @@
     "docstring": "Re-impute ACS/SIPP/ORG/SCF variables from donor surveys.\n\nOverwrites existing imputed values in data. ACS uses\nstate_fips as a QRF predictor; ORG uses state plus labor-market\npredictors; SIPP and SCF use only demographic and financial\npredictors (no state data).\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n    skip_acs: Skip ACS imputation.\n    skip_sipp: Skip SIPP imputation.\n    skip_org: Skip ORG imputation.\n    skip_scf: Skip SCF imputation.\n\nReturns:\n    Updated data dict with re-imputed variables.",
     "id": "source_impute",
     "kind": "function",
-    "line": 202,
+    "line": 203,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.source_impute.impute_source_variables"

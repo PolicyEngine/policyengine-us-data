@@ -239,9 +239,40 @@ SIPP_ASSET_TARGET_SOURCE_COLUMNS = {
     "stock_assets": ["TVAL_STMF"],
     "bond_assets": ["TVAL_BOND"],
 }
+SIPP_BANK_ACCOUNT_ASSET_ALLOCATION_COLUMNS = [
+    "AJSSAVVAL",
+    "AJOSAVVAL",
+    "AOSAVVAL",
+    "AJSMMVAL",
+    "AJOMMVAL",
+    "AOMMVAL",
+    "AJSCDVAL",
+    "AJOCDVAL",
+    "AOCDVAL",
+    "AJSCHKVAL",
+    "AJOCHKVAL",
+    "AOCHKVAL",
+]
+SIPP_STOCK_ASSET_ALLOCATION_COLUMNS = [
+    "AJSSTVAL",
+    "AJOSTVAL",
+    "AOSTVAL",
+    "AJSMFVAL",
+    "AJOMFVAL",
+    "AOMFVAL",
+]
+SIPP_BOND_ASSET_ALLOCATION_COLUMNS = [
+    "AJSGOVSVAL",
+    "AJOGOVSVAL",
+    "AOGOVSVAL",
+    "AJSMCBDVAL",
+    "AJOMCBDVAL",
+    "AOMCBDVAL",
+]
 SIPP_ASSET_TARGET_ALLOCATION_COLUMNS = {
-    target: [sipp_allocation_flag_for(column) for column in columns]
-    for target, columns in SIPP_ASSET_TARGET_SOURCE_COLUMNS.items()
+    "bank_account_assets": SIPP_BANK_ACCOUNT_ASSET_ALLOCATION_COLUMNS,
+    "stock_assets": SIPP_STOCK_ASSET_ALLOCATION_COLUMNS,
+    "bond_assets": SIPP_BOND_ASSET_ALLOCATION_COLUMNS,
 }
 SIPP_ASSET_ALLOCATION_COLUMNS = sorted(
     {
@@ -333,7 +364,7 @@ SSI_DISABILITY_COLUMNS = sorted(
 
 SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS = {
     "household_vehicles_owned": [sipp_allocation_flag_for("TVEH_NUM")],
-    "household_vehicles_value": [sipp_allocation_flag_for("THVAL_VEH")],
+    "household_vehicles_value": ["AVEH1VAL", "AVEH2VAL", "AVEH3VAL"],
 }
 
 VEHICLE_COLUMNS = [
@@ -354,6 +385,9 @@ VEHICLE_COLUMNS = [
     "THVAL_HOME",
     "AVEH_NUM",
     "AHVAL_VEH",
+    "AVEH1VAL",
+    "AVEH2VAL",
+    "AVEH3VAL",
 ]
 
 
@@ -812,6 +846,9 @@ def build_vehicle_training_frame() -> pd.DataFrame:
             "household_vehicles_value": grouped["THVAL_VEH"].first().fillna(0),
             "AVEH_NUM": grouped["AVEH_NUM"].max().fillna(0),
             "AHVAL_VEH": grouped["AHVAL_VEH"].first().fillna(0),
+            "AVEH1VAL": grouped["AVEH1VAL"].max().fillna(0),
+            "AVEH2VAL": grouped["AVEH2VAL"].max().fillna(0),
+            "AVEH3VAL": grouped["AVEH3VAL"].max().fillna(0),
             "is_homeowner": (grouped["THVAL_HOME"].first().fillna(0) > 0).astype(
                 np.float32
             ),

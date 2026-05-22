@@ -74,7 +74,7 @@ def test_ssi_disability_training_usecols_include_label_and_income_columns():
 
 def test_build_ssi_disability_training_frame_excludes_allocated_label_source():
     frame = _base_sipp_frame()
-    frame.loc[0, "ASSI_YRYN"] = 1
+    frame.loc[0, "ASSI_YRYN"] = 3
     frame.loc[1:, "ASSI_YRYN"] = 0
     frame["ASSI_BRSN"] = 0
 

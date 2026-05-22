@@ -12,12 +12,29 @@ from policyengine_us_data.utils.randomness import seeded_rng
 
 logger = logging.getLogger(__name__)
 
+SIPP_OBSERVED_STATUS_VALUES = frozenset((0, 1, 9))
+SIPP_STATUS_FLAG_PREFIXES = (
+    "AJB",
+    "AJS",
+    "AJO",
+    "AO",
+    "ASSI",
+    "AVAL",
+    "AVEH",
+    "AHVAL",
+)
+
 
 def sipp_allocation_flag_for(source_column: str) -> str:
     """Return the SIPP allocation flag name for a source variable."""
     if not source_column:
         raise ValueError("source_column must be non-empty")
     return f"A{source_column[1:]}"
+
+
+def is_sipp_status_flag_column(column: str) -> bool:
+    """Return whether a column name looks like a Census SIPP status flag."""
+    return column.startswith(SIPP_STATUS_FLAG_PREFIXES)
 
 
 def require_columns_present(
@@ -47,9 +64,13 @@ def observed_source_mask(
 ) -> pd.Series:
     """Mask rows whose donor source values are observed for one target.
 
-    Source-survey allocation flags conventionally use ``0`` for not allocated
-    and non-zero values for allocated/imputed. Missing flag columns are ignored
-    so callers can use this helper across sources with different flag coverage.
+    Generic allocation flags use ``0`` for not allocated and non-zero values
+    for allocated/imputed. Census SIPP ``A*`` status flags instead encode
+    ``0`` as not in universe, ``1`` as reported, and ``9`` as derivable from
+    component flags; values ``2`` through ``8`` indicate imputation.
+
+    Missing flag columns are ignored so callers can use this helper across
+    sources with different flag coverage.
     """
     mask = pd.Series(True, index=df.index)
 
@@ -62,7 +83,10 @@ def observed_source_mask(
         if column not in df:
             continue
         flag = pd.to_numeric(df[column], errors="coerce").fillna(0)
-        mask &= flag.eq(0)
+        if is_sipp_status_flag_column(column):
+            mask &= flag.isin(SIPP_OBSERVED_STATUS_VALUES)
+        else:
+            mask &= flag.eq(0)
 
     return mask
 

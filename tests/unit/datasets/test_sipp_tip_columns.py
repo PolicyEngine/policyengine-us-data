@@ -114,3 +114,47 @@ def test_train_tip_model_drops_non_positive_weights(monkeypatch):
 
     np.testing.assert_array_equal(captured["weights"], [100.0, 200.0])
     np.testing.assert_array_equal(captured["target_filter"], [True, True])
+
+
+def test_train_tip_model_keeps_reported_sipp_status_flags(monkeypatch):
+    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+
+    data = {
+        "SSUID": [1, 2, 3, 4],
+        "MONTHCODE": [12, 12, 12, 12],
+        "TAGE": [30, 31, 32, 33],
+        "WPFINWGT": [100.0, 100.0, 100.0, 100.0],
+        "TPTOTINC": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+        "TJB1_TXAMT": [10.0, 20.0, 30.0, 40.0],
+        "AJB1_TXAMT": [1, 2, 6, 9],
+    }
+    for column in SIPP_JOB_OCCUPATION_COLUMNS:
+        data[column] = [0, 0, 0, 0]
+    monkeypatch.setattr(
+        sipp_module.pd,
+        "read_csv",
+        lambda *args, **kwargs: pd.DataFrame(data),
+    )
+
+    captured = {}
+
+    class FakeQRF:
+        def fit(
+            self,
+            *,
+            X_train,
+            predictors,
+            imputed_variables,
+            target_filters,
+            weight_col,
+        ):
+            captured["tip_income"] = X_train["tip_income"].to_numpy()
+            captured["target_filter"] = target_filters["tip_income"].to_numpy()
+            return self
+
+    monkeypatch.setattr(sipp_module, "QRF", FakeQRF)
+
+    sipp_module.train_tip_model()
+
+    np.testing.assert_array_equal(captured["tip_income"], [120.0, 480.0])
+    np.testing.assert_array_equal(captured["target_filter"], [True, True])

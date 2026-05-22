@@ -1,2 +1,3 @@
 Filter non-positive SIPP donor weights before fitting source imputation models.
+Interpret SIPP status flags with Census status semantics when filtering observed donor targets.
 Bump policyengine-us to 1.703.1.

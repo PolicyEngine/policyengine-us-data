@@ -151,6 +151,33 @@ def _register_target_variable(session: Session, variable: str) -> None:
         session.flush()
 
 
+def _deactivate_replaced_national_target(
+    session: Session,
+    *,
+    stratum_id: int,
+    old_variable: str,
+    new_variable: str,
+    period: int,
+) -> None:
+    old_targets = session.exec(
+        select(Target).where(
+            Target.stratum_id == stratum_id,
+            Target.variable == old_variable,
+            Target.period == period,
+            Target.reform_id == 0,
+            Target.active,
+        )
+    ).all()
+    for target in old_targets:
+        target.active = False
+        replacement_note = (
+            f"Deactivated because {new_variable} replaced this target concept."
+        )
+        target.notes = (
+            f"{target.notes} | {replacement_note}" if target.notes else replacement_note
+        )
+
+
 WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
     "https://www.fns.usda.gov/sites/default/files/resource-files/wisummary-4.xlsx"
 )
@@ -922,6 +949,14 @@ def load_national_targets(
         for _, target_data in direct_targets_df.iterrows():
             target_year = target_data["year"]
             _register_target_variable(session, target_data["variable"])
+            if target_data["variable"] == "ssi_federal_fiscal_year_outlays":
+                _deactivate_replaced_national_target(
+                    session,
+                    stratum_id=us_stratum.stratum_id,
+                    old_variable="ssi",
+                    new_variable="ssi_federal_fiscal_year_outlays",
+                    period=target_year,
+                )
             # Check if target already exists
             existing_target = session.exec(
                 select(Target).where(

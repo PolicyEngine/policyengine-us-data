@@ -495,6 +495,64 @@ def test_extract_national_targets_uses_ssi_fiscal_year_outlays_target(monkeypatc
     assert "federal fiscal-year outlays" in ssi_target["notes"]
 
 
+def test_load_national_targets_deactivates_legacy_ssi_dollar_target(
+    tmp_path, monkeypatch
+):
+    calibration_dir = tmp_path / "calibration"
+    calibration_dir.mkdir()
+    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
+    engine = create_database(db_uri)
+
+    with Session(engine) as session:
+        national = _make_stratum(session, notes="United States")
+        session.add(
+            Target(
+                stratum_id=national.stratum_id,
+                variable="ssi",
+                period=2024,
+                value=57_000_000_000,
+                active=True,
+                notes="legacy SSI dollar target",
+            )
+        )
+        session.commit()
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
+        tmp_path,
+    )
+
+    load_national_targets(
+        direct_targets_df=pd.DataFrame(
+            [
+                {
+                    "variable": "ssi_federal_fiscal_year_outlays",
+                    "value": 57_000_000_000,
+                    "source": SSI_CBO_TARGET_SOURCE,
+                    "notes": "CBO SSI federal fiscal-year outlays",
+                    "year": 2024,
+                }
+            ]
+        ),
+        tax_filer_df=pd.DataFrame(),
+        tax_expenditure_df=pd.DataFrame(),
+        conditional_targets=[],
+    )
+
+    with Session(engine) as session:
+        legacy_target = session.exec(
+            select(Target).where(Target.variable == "ssi")
+        ).one()
+        new_target = session.exec(
+            select(Target).where(Target.variable == "ssi_federal_fiscal_year_outlays")
+        ).one()
+
+    assert legacy_target.active is False
+    assert "replaced this target concept" in legacy_target.notes
+    assert new_target.active is True
+    assert new_target.value == 57_000_000_000
+
+
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(
     tmp_path, monkeypatch
 ):

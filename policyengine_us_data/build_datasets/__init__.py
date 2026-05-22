@@ -43,7 +43,9 @@ from .staging import PipelineArtifactStager
 from .status import Stage1ErrorRecord, Stage1StatusEvent
 from .status_store import (
     Stage1StatusRecorder,
+    Stage1StatusReadError,
     Stage1StatusSnapshot,
+    Stage1StoredStatusEvent,
     empty_stage_1_status_snapshot,
     read_stage_1_status_snapshot,
 )
@@ -69,9 +71,11 @@ __all__ = [
     "Stage1Coordinator",
     "Stage1ErrorRecord",
     "Stage1StatusRecorder",
+    "Stage1StatusReadError",
     "Stage1StatusEvent",
     "Stage1StatusSink",
     "Stage1StatusSnapshot",
+    "Stage1StoredStatusEvent",
     "Stage1SubstepRunner",
     "SubprocessLogCapture",
     "TargetDatabaseSchemaSummaryWriter",

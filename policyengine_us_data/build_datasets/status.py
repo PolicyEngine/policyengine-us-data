@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from modal_app.step_manifests.errors import PipelineErrorRecord
@@ -37,6 +37,19 @@ class Stage1StatusEvent:
     command_name: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "Stage1StatusEvent":
+        """Build a status event from a JSON-compatible payload."""
+
+        return cls(
+            substep_id=str(data["substep_id"]),
+            status=_stage_1_substep_status(data["status"]),
+            created_at=str(data["created_at"]),
+            message=_optional_str(data.get("message")),
+            command_name=_optional_str(data.get("command_name")),
+            metadata=_metadata_mapping(data.get("metadata", {})),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-compatible status event payload."""
 
@@ -66,6 +79,20 @@ class Stage1ErrorRecord:
     returncode: int | None = None
     created_at: str = field(default_factory=utc_timestamp)
     metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> "Stage1ErrorRecord":
+        """Build an error record from a JSON-compatible payload."""
+
+        return cls(
+            substep_id=_optional_str(data.get("substep_id")),
+            command_name=_optional_str(data.get("command_name")),
+            error_type=str(data["error_type"]),
+            message=str(data["message"]),
+            returncode=_optional_int(data.get("returncode")),
+            created_at=str(data.get("created_at") or utc_timestamp()),
+            metadata=_metadata_mapping(data.get("metadata", {})),
+        )
 
     @classmethod
     def from_exception(
@@ -157,6 +184,26 @@ def _pipeline_traceback_text(error: Stage1ErrorRecord) -> str:
     if not parts:
         parts.append(error.message)
     return "\n\n".join(parts)
+
+
+def _stage_1_substep_status(value: Any) -> Stage1SubstepStatus:
+    if value in ("started", "completed", "skipped", "failed"):
+        return cast(Stage1SubstepStatus, value)
+    raise ValueError(f"Invalid Stage 1 substep status: {value!r}")
+
+
+def _optional_str(value: Any) -> str | None:
+    return None if value is None else str(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if value is None else int(value)
+
+
+def _metadata_mapping(value: Any) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypeError("metadata must be a mapping")
+    return dict(value)
 
 
 __all__ = [

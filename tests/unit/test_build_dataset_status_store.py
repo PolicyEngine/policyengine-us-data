@@ -37,7 +37,8 @@ def test_stage_1_status_recorder_persists_events_results_and_current(tmp_path):
     snapshot = read_stage_1_status_snapshot(tmp_path / "runs" / "run-1")
 
     assert commits == ["commit", "commit"]
-    assert snapshot.current == {
+    assert snapshot.current is not None
+    assert snapshot.current.to_dict() == {
         "substep_id": "1c_extended_cps_puf_clone",
         "status": "started",
         "created_at": "2026-05-22T12:00:00Z",
@@ -47,8 +48,8 @@ def test_stage_1_status_recorder_persists_events_results_and_current(tmp_path):
         "title": "Extended CPS PUF clone",
     }
     assert snapshot.events == (snapshot.current,)
-    assert snapshot.results[0]["substep_id"] == "1c_extended_cps_puf_clone"
-    assert snapshot.results[0]["status"] == "completed"
+    assert snapshot.results[0].substep_id == "1c_extended_cps_puf_clone"
+    assert snapshot.results[0].status == "completed"
 
 
 def test_stage_1_status_recorder_is_best_effort_by_default(tmp_path):
@@ -70,7 +71,8 @@ def test_stage_1_status_recorder_is_best_effort_by_default(tmp_path):
 
     snapshot = read_stage_1_status_snapshot(tmp_path / "runs" / "run-1")
 
-    assert snapshot.current["substep_id"] == "1a_raw_data_download"
+    assert snapshot.current is not None
+    assert snapshot.current.substep_id == "1a_raw_data_download"
 
 
 def test_read_stage_1_status_snapshot_survives_malformed_records(tmp_path):
@@ -92,9 +94,10 @@ def test_read_stage_1_status_snapshot_survives_malformed_records(tmp_path):
 
     snapshot = read_stage_1_status_snapshot(run_dir)
 
-    assert snapshot.current["substep_id"] == "1a_raw_data_download"
+    assert snapshot.current is not None
+    assert snapshot.current.substep_id == "1a_raw_data_download"
     assert len(snapshot.events) == 1
-    assert [error["error_type"] for error in snapshot.read_errors] == [
+    assert [error.error_type for error in snapshot.read_errors] == [
         "TypeError",
         "JSONDecodeError",
     ]
@@ -113,12 +116,13 @@ def test_stage_1_coordinator_writes_to_status_recorder(tmp_path):
 
     snapshot = read_stage_1_status_snapshot(tmp_path / "runs" / "run-1")
 
-    assert [event["status"] for event in snapshot.events] == [
+    assert [event.status for event in snapshot.events] == [
         "started",
         "completed",
     ]
-    assert snapshot.current["status"] == "completed"
-    assert snapshot.results[0]["substep_id"] == "1b_base_dataset_construction"
+    assert snapshot.current is not None
+    assert snapshot.current.status == "completed"
+    assert snapshot.results[0].substep_id == "1b_base_dataset_construction"
 
 
 def test_stage_1_coordinator_writes_aggregated_status_on_finalize(tmp_path):
@@ -137,9 +141,9 @@ def test_stage_1_coordinator_writes_aggregated_status_on_finalize(tmp_path):
     coordinator.finalize_results()
     after_finalize = read_stage_1_status_snapshot(tmp_path / "runs" / "run-1")
 
-    assert [event["status"] for event in before_finalize.events] == ["started"]
-    assert [event["status"] for event in after_finalize.events] == [
+    assert [event.status for event in before_finalize.events] == ["started"]
+    assert [event.status for event in after_finalize.events] == [
         "started",
         "completed",
     ]
-    assert after_finalize.results[0]["substep_id"] == "1e_stratified_cps"
+    assert after_finalize.results[0].substep_id == "1e_stratified_cps"

@@ -410,7 +410,7 @@ class TestSubfunctions:
         for column in source_impute.SIPP_TIP_AMOUNT_COLUMNS:
             tip_columns[column] = [10.0, 5.0, 0.0]
         for column in source_impute.SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN.values():
-            tip_columns[column] = [0, 1, 0]
+            tip_columns[column] = [1, 2, 0]
         for column in source_impute.SIPP_JOB_OCCUPATION_COLUMNS:
             tip_columns[column] = [0, 0, 0]
         tip_source = pd.DataFrame(tip_columns)
@@ -437,8 +437,8 @@ class TestSubfunctions:
             asset_columns[column] = [1_000.0, 2_000.0, 0.0]
         for column in source_impute.SIPP_ASSET_ALLOCATION_COLUMNS:
             asset_columns[column] = [0, 0, 0]
-        asset_columns["AVAL_BANK"] = [0, 1, 0]
-        asset_columns["AVAL_STMF"] = [0, 0, 1]
+        asset_columns["AJSSAVVAL"] = [0, 2, 0]
+        asset_columns["AJSSTVAL"] = [0, 0, 6]
         asset_source = pd.DataFrame(asset_columns)
 
         vehicle_train = pd.DataFrame(
@@ -449,8 +449,10 @@ class TestSubfunctions:
                 },
                 "household_vehicles_owned": [1.0, 2.0, 3.0],
                 "household_vehicles_value": [5_000.0, 10_000.0, 15_000.0],
-                "AVEH_NUM": [0, 1, 0],
-                "AHVAL_VEH": [0, 0, 1],
+                "AVEH_NUM": [1, 2, 1],
+                "AVEH1VAL": [1, 1, 5],
+                "AVEH2VAL": [0, 0, 0],
+                "AVEH3VAL": [0, 0, 0],
                 "household_weight": [1.0, 1.0, 1.0],
             }
         )

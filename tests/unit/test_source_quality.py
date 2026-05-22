@@ -3,6 +3,8 @@ import pandas as pd
 
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
+    filter_positive_finite_weight_rows,
+    is_sipp_status_flag_column,
     observed_source_mask,
     require_columns_present,
     sipp_allocation_flag_for,
@@ -40,21 +42,42 @@ def test_require_columns_present_raises_for_missing_columns():
     assert "Regenerate the donor artifact" in message
 
 
-def test_observed_source_mask_excludes_nonzero_allocation_flags():
+def test_observed_source_mask_excludes_nonzero_binary_allocation_flags():
     df = pd.DataFrame(
         {
             "TVAL_BANK": [100.0, 200.0, 300.0],
-            "AVAL_BANK": [0, 1, 2],
+            "asset_is_allocated": [0, 1, 2],
         }
     )
 
     result = observed_source_mask(
         df,
         source_columns=["TVAL_BANK"],
-        allocation_flag_columns=["AVAL_BANK"],
+        allocation_flag_columns=["asset_is_allocated"],
     )
 
     np.testing.assert_array_equal(result.values, [True, False, False])
+
+
+def test_observed_source_mask_uses_sipp_status_flag_semantics():
+    df = pd.DataFrame(
+        {
+            "TJB1_TXAMT": [np.nan, 10.0, 20.0, 30.0, 40.0],
+            "AJB1_TXAMT": [0, 1, 2, 9, 6],
+        }
+    )
+
+    result = observed_source_mask(
+        df,
+        source_columns=["TJB1_TXAMT"],
+        allocation_flag_columns=["AJB1_TXAMT"],
+        require_nonmissing_source=False,
+    )
+
+    assert is_sipp_status_flag_column("AJB1_TXAMT")
+    assert is_sipp_status_flag_column("ASSI_YRYN")
+    assert not is_sipp_status_flag_column("ACS_ALLOCATED")
+    np.testing.assert_array_equal(result.values, [True, True, False, True, False])
 
 
 def test_observed_source_mask_is_target_specific():
@@ -62,20 +85,20 @@ def test_observed_source_mask_is_target_specific():
         {
             "tip_income": [10.0, 20.0],
             "bank_account_assets": [100.0, 200.0],
-            "AJB1_TXAMT": [0, 0],
-            "AVAL_BANK": [1, 0],
+            "tip_is_allocated": [0, 0],
+            "asset_is_allocated": [1, 0],
         }
     )
 
     tip_mask = observed_source_mask(
         df,
         source_columns=["tip_income"],
-        allocation_flag_columns=["AJB1_TXAMT"],
+        allocation_flag_columns=["tip_is_allocated"],
     )
     bank_mask = observed_source_mask(
         df,
         source_columns=["bank_account_assets"],
-        allocation_flag_columns=["AVAL_BANK"],
+        allocation_flag_columns=["asset_is_allocated"],
     )
 
     np.testing.assert_array_equal(tip_mask.values, [True, True])
@@ -86,7 +109,7 @@ def test_observed_source_mask_allows_missing_tip_components_when_requested():
     df = pd.DataFrame(
         {
             "TJB1_TXAMT": [np.nan, 5.0],
-            "AJB1_TXAMT": [0, 0],
+            "AJB1_TXAMT": [0, 1],
         }
     )
 
@@ -105,8 +128,8 @@ def test_target_observed_source_masks_are_target_specific():
         {
             "tip_income": [10.0, 20.0],
             "bank_account_assets": [100.0, 200.0],
-            "AJB1_TXAMT": [0, 0],
-            "AVAL_BANK": [1, 0],
+            "tip_is_allocated": [0, 0],
+            "asset_is_allocated": [1, 0],
         }
     )
 
@@ -114,8 +137,8 @@ def test_target_observed_source_masks_are_target_specific():
         df,
         targets=["tip_income", "bank_account_assets"],
         target_allocation_flag_columns={
-            "tip_income": ["AJB1_TXAMT"],
-            "bank_account_assets": ["AVAL_BANK"],
+            "tip_income": ["tip_is_allocated"],
+            "bank_account_assets": ["asset_is_allocated"],
         },
     )
 
@@ -201,3 +224,54 @@ def test_cap_training_sample_rejects_misaligned_filters():
         raise AssertionError("Expected misaligned target filters to fail")
 
     assert "target_filters['value']" in message
+
+
+def test_filter_positive_finite_weight_rows_reindexes_target_filters():
+    df = pd.DataFrame(
+        {
+            "value": [10, 20, 30, 40, 50],
+            "household_weight": [1.0, 0.0, np.nan, np.inf, 5.0],
+        },
+        index=[10, 11, 12, 13, 14],
+    )
+    filters = {
+        "value": pd.Series(
+            [True, True, False, True, True],
+            index=df.index,
+        )
+    }
+
+    filtered, filtered_filters = filter_positive_finite_weight_rows(
+        df,
+        weight_col="household_weight",
+        target_filters=filters,
+        context_name="unit-test donor",
+    )
+
+    assert filtered["value"].tolist() == [10, 50]
+    assert filtered.index.tolist() == [0, 1]
+    np.testing.assert_array_equal(filtered_filters["value"].values, [True, True])
+    assert filtered_filters["value"].index.tolist() == [0, 1]
+
+
+def test_filter_positive_finite_weight_rows_requires_observed_target_rows():
+    df = pd.DataFrame(
+        {
+            "value": [10, 20],
+            "household_weight": [0.0, 1.0],
+        }
+    )
+    filters = {"value": pd.Series([True, False], index=df.index)}
+
+    try:
+        filter_positive_finite_weight_rows(
+            df,
+            weight_col="household_weight",
+            target_filters=filters,
+        )
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("Expected all invalid observed weights to fail")
+
+    assert "No observed donor rows with positive finite household_weight" in message

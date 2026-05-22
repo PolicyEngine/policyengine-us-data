@@ -12,12 +12,29 @@ from policyengine_us_data.utils.randomness import seeded_rng
 
 logger = logging.getLogger(__name__)
 
+SIPP_OBSERVED_STATUS_VALUES = frozenset((0, 1, 9))
+SIPP_STATUS_FLAG_PREFIXES = (
+    "AJB",
+    "AJS",
+    "AJO",
+    "AO",
+    "ASSI",
+    "AVAL",
+    "AVEH",
+    "AHVAL",
+)
+
 
 def sipp_allocation_flag_for(source_column: str) -> str:
     """Return the SIPP allocation flag name for a source variable."""
     if not source_column:
         raise ValueError("source_column must be non-empty")
     return f"A{source_column[1:]}"
+
+
+def is_sipp_status_flag_column(column: str) -> bool:
+    """Return whether a column name looks like a Census SIPP status flag."""
+    return column.startswith(SIPP_STATUS_FLAG_PREFIXES)
 
 
 def require_columns_present(
@@ -47,9 +64,13 @@ def observed_source_mask(
 ) -> pd.Series:
     """Mask rows whose donor source values are observed for one target.
 
-    Source-survey allocation flags conventionally use ``0`` for not allocated
-    and non-zero values for allocated/imputed. Missing flag columns are ignored
-    so callers can use this helper across sources with different flag coverage.
+    Generic allocation flags use ``0`` for not allocated and non-zero values
+    for allocated/imputed. Census SIPP ``A*`` status flags instead encode
+    ``0`` as not in universe, ``1`` as reported, and ``9`` as derivable from
+    component flags; values ``2`` through ``8`` indicate imputation.
+
+    Missing flag columns are ignored so callers can use this helper across
+    sources with different flag coverage.
     """
     mask = pd.Series(True, index=df.index)
 
@@ -62,7 +83,10 @@ def observed_source_mask(
         if column not in df:
             continue
         flag = pd.to_numeric(df[column], errors="coerce").fillna(0)
-        mask &= flag.eq(0)
+        if is_sipp_status_flag_column(column):
+            mask &= flag.isin(SIPP_OBSERVED_STATUS_VALUES)
+        else:
+            mask &= flag.eq(0)
 
     return mask
 
@@ -225,3 +249,52 @@ def cap_training_sample(
         for target, mask in filters.items()
     }
     return sampled_df, sampled_filters
+
+
+def filter_positive_finite_weight_rows(
+    df: pd.DataFrame,
+    *,
+    weight_col: str,
+    target_filters: Mapping[str, pd.Series] | None = None,
+    context_name: str = "donor training frame",
+) -> tuple[pd.DataFrame, dict[str, pd.Series]]:
+    """Drop rows whose fit weight cannot be passed to microimpute."""
+    if weight_col not in df:
+        raise KeyError(f"{context_name} is missing weight column {weight_col!r}")
+
+    filters = {}
+    for target, mask in (target_filters or {}).items():
+        aligned = mask.reindex(df.index)
+        if aligned.isna().any():
+            raise ValueError(f"target_filters[{target!r}] contains missing values")
+        filters[target] = aligned.astype(bool)
+
+    weights = pd.to_numeric(df[weight_col], errors="coerce")
+    valid_weight = np.isfinite(weights) & weights.gt(0)
+    dropped = int((~valid_weight).sum())
+    if dropped:
+        logger.info(
+            "Dropped %d/%d %s rows with non-positive or non-finite %s",
+            dropped,
+            len(df),
+            context_name,
+            weight_col,
+        )
+
+    filtered_df = df.loc[valid_weight].copy().reset_index(drop=True)
+    filtered_filters = {
+        target: pd.Series(
+            mask.loc[valid_weight].to_numpy(dtype=bool),
+            index=filtered_df.index,
+        )
+        for target, mask in filters.items()
+    }
+
+    for target, mask in filtered_filters.items():
+        if not mask.any():
+            raise ValueError(
+                f"No observed donor rows with positive finite {weight_col} "
+                f"available for {target}"
+            )
+
+    return filtered_df, filtered_filters

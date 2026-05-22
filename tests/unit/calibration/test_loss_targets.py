@@ -42,6 +42,9 @@ from policyengine_us_data.utils.loss import (
 from policyengine_us_data.db import etl_national_targets
 from policyengine_us_data.utils.ssi_targets import (
     SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_fiscal_year_payment_count,
+    get_ssi_single_year_available_payment_count,
+    scale_ssi_fiscal_year_target_for_single_year_data,
 )
 
 
@@ -378,13 +381,28 @@ def test_add_ssi_recipient_targets_adds_total_and_age_counts():
     )
 
 
-def test_legacy_cbo_ssi_target_uses_fiscal_year_outlays_variable():
+def test_ssi_payment_targets_scale_to_single_year_fiscal_year_coverage():
+    assert get_ssi_fiscal_year_payment_count(2024) == 11
+    assert get_ssi_single_year_available_payment_count(2024) == 9
+    assert get_ssi_fiscal_year_payment_count(2025) == 12
+    assert get_ssi_single_year_available_payment_count(2025) == 9
+    assert get_ssi_fiscal_year_payment_count(2028) == 13
+    assert get_ssi_single_year_available_payment_count(2028) == 10
+
+    assert scale_ssi_fiscal_year_target_for_single_year_data(
+        57_000_000_000, 2024
+    ) == pytest.approx(57_000_000_000 * 9 / 11)
+    assert scale_ssi_fiscal_year_target_for_single_year_data(
+        75_400_000_000, 2028
+    ) == pytest.approx(75_400_000_000 * 10 / 13)
+
+
+def test_legacy_cbo_ssi_target_uses_single_year_fiscal_year_coverage():
     sim = _FakeCBOProgramTargetSimulation()
 
-    assert (
-        _cbo_program_target_value(sim, "ssi_federal_fiscal_year_outlays", 2024)
-        == 57_000_000_000
-    )
+    assert _cbo_program_target_value(
+        sim, "ssi_federal_fiscal_year_outlays", 2024
+    ) == pytest.approx(57_000_000_000 * 9 / 11)
     assert _cbo_program_target_value(sim, "snap", 2024) == 1_000.0
 
 

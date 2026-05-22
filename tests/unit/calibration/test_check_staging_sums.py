@@ -31,6 +31,6 @@ def test_staging_sums_use_total_self_employment_income():
     assert "self_employment_income" not in VARIABLES
 
 
-def test_staging_sums_use_ssi_fiscal_year_outlays():
-    assert "ssi_federal_fiscal_year_outlays" in VARIABLES
-    assert "ssi" not in VARIABLES
+def test_staging_sums_use_raw_ssi():
+    assert "ssi" in VARIABLES
+    assert "ssi_federal_fiscal_year_outlays" not in VARIABLES

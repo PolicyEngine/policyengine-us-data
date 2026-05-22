@@ -42,9 +42,9 @@ def test_parse_variables_preserves_requested_order():
     assert parse_variables("snap, eitc, ctc") == ["snap", "eitc", "ctc"]
 
 
-def test_default_h5_comparison_uses_ssi_fiscal_year_outlays():
-    assert "ssi_federal_fiscal_year_outlays" in DEFAULT_VARIABLES
-    assert "ssi" not in DEFAULT_VARIABLES
+def test_default_h5_comparison_uses_raw_ssi():
+    assert "ssi" in DEFAULT_VARIABLES
+    assert "ssi_federal_fiscal_year_outlays" not in DEFAULT_VARIABLES
 
 
 def test_summarize_diagnostics_uses_achievable_target_tail():

@@ -27,11 +27,13 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_CBO_TARGET_SOURCE,
+    SSI_PAYMENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_NOTES,
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_payment_target_notes,
+    scale_ssi_fiscal_year_target_for_single_year_data,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -799,11 +801,11 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             source = "CBO Budget Projections"
             notes = f"CBO projection for {variable_name}"
             if variable_name == "ssi_federal_fiscal_year_outlays":
-                source = SSI_CBO_TARGET_SOURCE
-                notes = (
-                    "CBO SSI federal fiscal-year outlays matched to "
-                    "policyengine-us ssi_federal_fiscal_year_outlays"
+                value = scale_ssi_fiscal_year_target_for_single_year_data(
+                    value, time_period
                 )
+                source = SSI_PAYMENT_TARGET_SOURCE
+                notes = get_ssi_payment_target_notes(time_period)
             cbo_targets.append(
                 {
                     "variable": variable_name,

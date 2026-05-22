@@ -34,7 +34,7 @@ VARIABLES = [
     "taxable_interest_income",
     "social_security",
     "snap",
-    "ssi_federal_fiscal_year_outlays",
+    "ssi",
     "income_tax_before_credits",
     "eitc",
     "non_refundable_ctc",
@@ -59,7 +59,7 @@ def get_reference_summary(reference_year: int = 2024) -> str:
         reference_year,
     )
     return (
-        "  SNAP ~$110B, SSI federal fiscal-year outlays ~$60B, Social Security ~$1.2T\n"
+        "  SNAP ~$110B, SSI ~$60B, Social Security ~$1.2T\n"
         f"  EITC ~$60B, refundable CTC ~${refundable_ctc_target['amount'] / 1e9:.1f}B "
         f"(IRS SOI {refundable_ctc_target['source_year']}), "
         f"non-refundable CTC ~${non_refundable_ctc_target['amount'] / 1e9:.1f}B "

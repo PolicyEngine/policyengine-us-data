@@ -20,7 +20,7 @@ from policyengine_us_data.db.etl_national_targets import (
     load_state_acs_rent_targets,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_CBO_TARGET_SOURCE,
+    SSI_PAYMENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGETS_2024,
 )
 
@@ -490,9 +490,9 @@ def test_extract_national_targets_uses_ssi_fiscal_year_outlays_target(monkeypatc
         if target["variable"] == "ssi_federal_fiscal_year_outlays"
     )
 
-    assert ssi_target["value"] == 57_000_000_000
-    assert ssi_target["source"] == SSI_CBO_TARGET_SOURCE
-    assert "federal fiscal-year outlays" in ssi_target["notes"]
+    assert ssi_target["value"] == 57_000_000_000 * 9 / 11
+    assert ssi_target["source"] == SSI_PAYMENT_TARGET_SOURCE
+    assert "single-year PolicyEngine-US-data H5" in ssi_target["notes"]
 
 
 def test_load_national_targets_deactivates_legacy_ssi_dollar_target(
@@ -527,8 +527,8 @@ def test_load_national_targets_deactivates_legacy_ssi_dollar_target(
             [
                 {
                     "variable": "ssi_federal_fiscal_year_outlays",
-                    "value": 57_000_000_000,
-                    "source": SSI_CBO_TARGET_SOURCE,
+                    "value": 57_000_000_000 * 9 / 11,
+                    "source": SSI_PAYMENT_TARGET_SOURCE,
                     "notes": "CBO SSI federal fiscal-year outlays",
                     "year": 2024,
                 }
@@ -550,7 +550,7 @@ def test_load_national_targets_deactivates_legacy_ssi_dollar_target(
     assert legacy_target.active is False
     assert "replaced this target concept" in legacy_target.notes
     assert new_target.active is True
-    assert new_target.value == 57_000_000_000
+    assert new_target.value == 57_000_000_000 * 9 / 11
 
 
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(

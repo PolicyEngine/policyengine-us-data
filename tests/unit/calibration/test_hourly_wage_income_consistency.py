@@ -60,3 +60,25 @@ def test_run_sanity_checks_adds_hourly_wage_income_consistency(tmp_path):
 
     assert by_check["hourly_wage_income_consistency"]["status"] == "WARN"
     assert by_check["hourly_wage_income_consistency_overtime"]["status"] == "WARN"
+
+
+def test_run_sanity_checks_keeps_raw_ssi_and_checks_computed_outlays(
+    tmp_path, monkeypatch
+):
+    h5_path = tmp_path / "sample.h5"
+    with h5py.File(h5_path, "w") as h5:
+        _write_period_dataset(h5, "household_weight", [1.0, 1.0])
+        _write_period_dataset(h5, "ssi", [100.0, 0.0])
+
+    monkeypatch.setattr(
+        "policyengine_us_data.calibration.sanity_checks._computed_key_monetary_values",
+        lambda h5_path, period: {
+            "ssi_federal_fiscal_year_outlays": np.array([100.0, np.inf])
+        },
+    )
+
+    diagnostics = run_sanity_checks(str(h5_path), period=2024)
+    by_check = {diagnostic["check"]: diagnostic for diagnostic in diagnostics}
+
+    assert by_check["no_nan_inf_ssi"]["status"] == "PASS"
+    assert by_check["no_nan_inf_ssi_federal_fiscal_year_outlays"]["status"] == "FAIL"

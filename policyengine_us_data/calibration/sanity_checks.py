@@ -36,6 +36,10 @@ KEY_MONETARY_VARS = [
     "income_tax_before_credits",
 ]
 
+COMPUTED_KEY_MONETARY_VARS = [
+    "ssi_federal_fiscal_year_outlays",
+]
+
 TAKEUP_VARS = [
     "takes_up_snap_if_eligible",
     "takes_up_ssi_if_eligible",
@@ -375,6 +379,27 @@ def run_sanity_checks(
         except KeyError:
             return None
 
+    def _append_finite_check(var: str, vals) -> None:
+        vals = np.asarray(vals)
+        n_nan = int(np.isnan(vals).sum())
+        n_inf = int(np.isinf(vals).sum())
+        if n_nan > 0 or n_inf > 0:
+            results.append(
+                {
+                    "check": f"no_nan_inf_{var}",
+                    "status": "FAIL",
+                    "detail": f"{n_nan} NaN, {n_inf} Inf",
+                }
+            )
+        else:
+            results.append(
+                {
+                    "check": f"no_nan_inf_{var}",
+                    "status": "PASS",
+                    "detail": "",
+                }
+            )
+
     with h5py.File(h5_path, "r") as f:
         # 1. Weight non-negativity
         w_key = f"household_weight/{period}"
@@ -440,24 +465,7 @@ def run_sanity_checks(
             vals = _get(f, f"{var}/{period}")
             if vals is None:
                 continue
-            n_nan = int(np.isnan(vals).sum())
-            n_inf = int(np.isinf(vals).sum())
-            if n_nan > 0 or n_inf > 0:
-                results.append(
-                    {
-                        "check": f"no_nan_inf_{var}",
-                        "status": "FAIL",
-                        "detail": f"{n_nan} NaN, {n_inf} Inf",
-                    }
-                )
-            else:
-                results.append(
-                    {
-                        "check": f"no_nan_inf_{var}",
-                        "status": "PASS",
-                        "detail": "",
-                    }
-                )
+            _append_finite_check(var, vals)
 
         # 4. Person-to-household mapping
         person_hh_arr = _get(f, f"person_household_id/{period}")
@@ -650,7 +658,33 @@ def run_sanity_checks(
                 )
             )
 
+    for var, vals in _computed_key_monetary_values(h5_path, period).items():
+        _append_finite_check(var, vals)
+
     return results
+
+
+def _computed_key_monetary_values(h5_path: str, period: int) -> dict[str, np.ndarray]:
+    try:
+        from policyengine_us import Microsimulation
+
+        sim = Microsimulation(dataset=h5_path)
+    except Exception as error:
+        logger.info("Skipping computed monetary sanity checks: %s", error)
+        return {}
+
+    values = {}
+    for var in COMPUTED_KEY_MONETARY_VARS:
+        try:
+            result = sim.calculate(var, period)
+            values[var] = np.asarray(
+                result.values if hasattr(result, "values") else result
+            )
+        except Exception as error:
+            logger.info(
+                "Skipping computed monetary sanity check for %s: %s", var, error
+            )
+    return values
 
 
 def main():

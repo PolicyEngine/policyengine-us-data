@@ -27,10 +27,13 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
 )
 from policyengine_us_data.utils.ssi_targets import (
+    SSI_PAYMENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_NOTES,
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_payment_target_notes,
+    scale_ssi_fiscal_year_target_for_single_year_data,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -148,6 +151,33 @@ def _register_target_variable(session: Session, variable: str) -> None:
             )
         )
         session.flush()
+
+
+def _deactivate_replaced_national_target(
+    session: Session,
+    *,
+    stratum_id: int,
+    old_variable: str,
+    new_variable: str,
+    period: int,
+) -> None:
+    old_targets = session.exec(
+        select(Target).where(
+            Target.stratum_id == stratum_id,
+            Target.variable == old_variable,
+            Target.period == period,
+            Target.reform_id == 0,
+            Target.active,
+        )
+    ).all()
+    for target in old_targets:
+        target.active = False
+        replacement_note = (
+            f"Deactivated because {new_variable} replaced this target concept."
+        )
+        target.notes = (
+            f"{target.notes} | {replacement_note}" if target.notes else replacement_note
+        )
 
 
 WIC_NATIONAL_ANNUAL_SUMMARY_SOURCE = (
@@ -751,13 +781,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "income_tax_positive",
         "snap",
         "social_security",
-        "ssi",
+        "ssi_federal_fiscal_year_outlays",
         "unemployment_compensation",
     ]
 
     # Mapping from target variable to CBO parameter name (when different)
     cbo_param_name_map = {
         "income_tax_positive": "income_tax",  # CBO param is income_tax
+        "ssi_federal_fiscal_year_outlays": "ssi",
     }
 
     cbo_targets = []
@@ -767,12 +798,20 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             value = tax_benefit_system.parameters(
                 time_period
             ).calibration.gov.cbo._children[param_name]
+            source = "CBO Budget Projections"
+            notes = f"CBO projection for {variable_name}"
+            if variable_name == "ssi_federal_fiscal_year_outlays":
+                value = scale_ssi_fiscal_year_target_for_single_year_data(
+                    value, time_period
+                )
+                source = SSI_PAYMENT_TARGET_SOURCE
+                notes = get_ssi_payment_target_notes(time_period)
             cbo_targets.append(
                 {
                     "variable": variable_name,
                     "value": float(value),
-                    "source": "CBO Budget Projections",
-                    "notes": f"CBO projection for {variable_name}",
+                    "source": source,
+                    "notes": notes,
                     "year": time_period,
                 }
             )
@@ -912,6 +951,14 @@ def load_national_targets(
         for _, target_data in direct_targets_df.iterrows():
             target_year = target_data["year"]
             _register_target_variable(session, target_data["variable"])
+            if target_data["variable"] == "ssi_federal_fiscal_year_outlays":
+                _deactivate_replaced_national_target(
+                    session,
+                    stratum_id=us_stratum.stratum_id,
+                    old_variable="ssi",
+                    new_variable="ssi_federal_fiscal_year_outlays",
+                    period=target_year,
+                )
             # Check if target already exists
             existing_target = session.exec(
                 select(Target).where(

@@ -47,6 +47,8 @@ def test_reference_values_use_irs_ctc_component_targets(monkeypatch):
         63_622_000.0,
         "IRS Pub. 4801 2022 63.6M",
     )
+    assert "ssi" in VARIABLES
+    assert "ssi_federal_fiscal_year_outlays" not in VARIABLES
 
 
 def test_ctc_diagnostic_outputs_format_all_sections(monkeypatch):

@@ -29,3 +29,8 @@ def test_reference_summary_uses_irs_ctc_component_targets(monkeypatch):
 def test_staging_sums_use_total_self_employment_income():
     assert "total_self_employment_income" in VARIABLES
     assert "self_employment_income" not in VARIABLES
+
+
+def test_staging_sums_use_raw_ssi():
+    assert "ssi" in VARIABLES
+    assert "ssi_federal_fiscal_year_outlays" not in VARIABLES

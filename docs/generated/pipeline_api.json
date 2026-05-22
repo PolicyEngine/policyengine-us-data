@@ -3086,7 +3086,7 @@
     "docstring": "Promote a completed pipeline run to production.\n\n1. Verify run status is \"completed\"\n2. Promote every staged artifact in one Hugging Face commit\n3. Upload/copy every artifact to GCS\n4. Finalize release_manifest.json, tag the release, and update\n   version_manifest.json\n5. Update run status to \"promoted\"\n\nArgs:\n    run_id: The run ID to promote.\n    candidate_version: Candidate staging scope used for staged source files.\n    release_version: Stable version used for final release metadata.\n\nReturns:\n    Summary message.",
     "id": "promote_pipeline_run",
     "kind": "function",
-    "line": 2079,
+    "line": 2091,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.promote_run"
@@ -3541,7 +3541,7 @@
     "docstring": "Run the full pipeline end-to-end.\n\nArgs:\n    branch: Git branch to build from.\n    gpu: GPU type for regional calibration.\n    epochs: Training epochs for regional calibration.\n    national_gpu: GPU type for national calibration.\n    national_epochs: Training epochs for national.\n    num_workers: Number of parallel H5 workers.\n    n_clones: Number of clones for H5 building.\n    skip_national: Skip national calibration/H5.\n    resume_run_id: Resume a previously failed run.\n    clear_checkpoints: Wipe ALL checkpoints before building\n        (default False). Normally not needed \u2014 checkpoints are\n        scoped by commit SHA, so stale ones from other commits\n        are cleaned automatically. Use True only to force a\n        full rebuild of the current commit.\n    candidate_version: Candidate staging scope used for HF staging.\n    release_version: Final stable release version. Usually empty until\n        promotion.\n    base_release_version: Stable release current when this candidate was\n        built.\n    release_bump: Intended SemVer bump for this candidate.\n    sha_override: Exact source SHA deployed by GitHub Actions. When\n        provided, this is recorded instead of reading the current\n        branch tip.\n    run_id: Cross-system run ID created by GitHub.\n    run_context: Serialized run context from the launcher workflow.\n    modal_app_name: Deployed Modal app name for this run.\n    modal_environment: Modal environment used for this run.\n    chunked_matrix: Build the calibration matrix in clone-household\n        chunks instead of the non-chunked path. Opt-in; default off.\n    chunk_size: Clone-household columns per chunk when\n        ``chunked_matrix`` is True.\n    parallel_matrix: Fan chunked matrix building across Modal\n        workers via ``build_matrix_chunk_worker``. Only meaningful\n        when ``chunked_matrix`` is True; ignored otherwise.\n    num_matrix_workers: Number of Modal workers when\n        ``parallel_matrix`` is True.\n\nReturns:\n    The run ID for use with promote.",
     "id": "run_modal_pipeline",
     "kind": "function",
-    "line": 1112,
+    "line": 1113,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.run_pipeline"
@@ -3743,13 +3743,14 @@
     "docstring": "Return canonical Stage 2 paths rooted in an artifacts directory.",
     "id": "stage2_artifact_specs",
     "kind": "function",
-    "line": 96,
+    "line": 488,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths"
       ],
-      "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
-      "description": "Centralize calibration package, contract, metadata, and matrix-build artifact paths.",
+      "artifacts_in": "[SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+      "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_METADATA_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+      "description": "Centralize Stage 2 input, package, contract, metadata, report, and matrix-build artifact names.",
       "id": "stage2_artifact_specs",
       "label": "Stage 2 Artifact Specs",
       "node_type": "library",
@@ -3764,7 +3765,36 @@
       ]
     },
     "object_path": "policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths",
-    "signature": "def calibration_package_artifact_paths(artifacts_dir: str | Path) -> CalibrationPackageArtifactPaths",
+    "signature": "def calibration_package_artifact_paths(artifacts_dir: str | Path) -> CalibrationPackageOutputBundle",
+    "source_file": "policyengine_us_data/calibration_package/specs.py"
+  },
+  "stage2_build_context": {
+    "docstring": "Return Stage 2 run context, preferring the Stage 1 handoff contract.",
+    "id": "stage2_build_context",
+    "kind": "function",
+    "line": 431,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.specs.stage2_build_context_for_run"
+      ],
+      "artifacts_in": "[DATASET_BUILD_OUTPUT_CONTRACT_FILENAME, SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+      "artifacts_out": "[CALIBRATION_PACKAGE_FILENAME, CALIBRATION_PACKAGE_CONTRACT_FILENAME]",
+      "description": "Bind one run_id to canonical Stage 2 input and output bundles before remote package construction starts.",
+      "id": "stage2_build_context",
+      "label": "Stage 2 Build Context",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.specs.stage2_build_context_for_run",
+    "signature": "def stage2_build_context_for_run(pipeline_mount: str | Path, run_id: str | None = '', *, stage1_contract_path: str | Path | None = None) -> Stage2BuildContext",
     "source_file": "policyengine_us_data/calibration_package/specs.py"
   },
   "stage2_calibration_package_contract_validator": {
@@ -3856,6 +3886,34 @@
     "signature": "def save_calibration_package(path: str, X_sparse, targets_df: 'pd.DataFrame', target_names: list, metadata: dict, initial_weights: np.ndarray = None, cd_geoid: np.ndarray = None, block_geoid: np.ndarray = None) -> None",
     "source_file": "policyengine_us_data/calibration/unified_calibration.py"
   },
+  "stage2_input_bundle": {
+    "docstring": "Return a compatibility Stage 2 input bundle from canonical filenames.",
+    "id": "stage2_input_bundle",
+    "kind": "function",
+    "line": 331,
+    "metadata": {
+      "api_refs": [
+        "policyengine_us_data.calibration_package.specs.stage2_input_bundle_from_artifacts_dir"
+      ],
+      "artifacts_in": "[DATASET_BUILD_OUTPUT_CONTRACT_FILENAME, SOURCE_DATASET_FILENAME, TARGET_DATABASE_FILENAME]",
+      "description": "Resolve the source-imputed dataset and policy target database from a Stage 1 contract or compatibility filename fallback.",
+      "id": "stage2_input_bundle",
+      "label": "Stage 2 Input Bundle",
+      "node_type": "library",
+      "pathways": [
+        "calibration_package"
+      ],
+      "source_file": "policyengine_us_data/calibration_package/specs.py",
+      "stability": "moving",
+      "status": "current",
+      "validation_commands": [
+        "uv run pytest tests/unit/calibration_package/test_specs.py"
+      ]
+    },
+    "object_path": "policyengine_us_data.calibration_package.specs.stage2_input_bundle_from_artifacts_dir",
+    "signature": "def stage2_input_bundle_from_artifacts_dir(artifacts_dir: str | Path) -> Stage2InputBundle",
+    "source_file": "policyengine_us_data/calibration_package/specs.py"
+  },
   "stage2_target_config_apply": {
     "docstring": "Filter target rows before matrix construction.",
     "id": "stage2_target_config_apply",
@@ -3887,7 +3945,7 @@
     "docstring": "Resolve the target config identity used by Stage 2 package construction.",
     "id": "stage2_target_config_identity",
     "kind": "function",
-    "line": 127,
+    "line": 520,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration_package.specs.resolve_target_config_identity"
@@ -4421,7 +4479,7 @@
     "docstring": "Verify deployed-image imports and subprocess seams.",
     "id": "verify_runtime_seams",
     "kind": "function",
-    "line": 738,
+    "line": 739,
     "metadata": {
       "api_refs": [
         "modal_app.pipeline.verify_runtime_seams"

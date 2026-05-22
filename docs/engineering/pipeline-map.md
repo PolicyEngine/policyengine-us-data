@@ -367,6 +367,7 @@ Build sparse calibration matrix (targets x households x clones)
 
 | Node | Type | Status | Stability | API refs |
 | --- | --- | --- | --- | --- |
+| `in_stage1_contract_s2` dataset_build_output.json | `artifact` | `unknown` | `unknown` |  |
 | `in_cps_s5` source_imputed_stratified_extended_cps.h5 | `artifact` | `unknown` | `unknown` |  |
 | `in_db_s5` policy_data.db | `external` | `unknown` | `unknown` |  |
 | `in_config_s5` target_config.yaml | `artifact` | `unknown` | `unknown` |  |
@@ -383,6 +384,10 @@ Build sparse calibration matrix (targets x households x clones)
 | `util_pool` ProcessPoolExecutor | `utility` | `unknown` | `unknown` |  |
 | `util_takeup_s5` compute_block_takeup_for_entities() | `utility` | `unknown` | `unknown` |  |
 | `util_scipy` scipy.sparse | `utility` | `unknown` | `unknown` |  |
+| `stage2_input_bundle` Stage 2 Input Bundle | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.stage2_input_bundle_from_artifacts_dir` |
+| `stage2_build_context` Stage 2 Build Context | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.stage2_build_context_for_run` |
+| `stage2_artifact_specs` Stage 2 Artifact Specs | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths` |
+| `stage2_calibration_package_writer` Stage 2 Package Writer | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.save_calibration_package` |
 | `stage2_target_config_identity` Stage 2 Target Config Identity | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.resolve_target_config_identity` |
 | `stage2_target_config_load` Load Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.load_target_config` |
 | `stage2_target_config_apply` Apply Stage 2 Target Config | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.apply_target_config_to_targets` |
@@ -390,14 +395,18 @@ Build sparse calibration matrix (targets x households x clones)
 | `clone_assembly` Clone Value Assembly | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder._assemble_clone_values_standalone` |
 | `build_matrix` Build Calibration Matrix | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix` |
 | `build_matrix_chunked` Build Calibration Matrix In Chunks | `library` | `current` | `experimental` | `policyengine_us_data.calibration.unified_matrix_builder.UnifiedMatrixBuilder.build_matrix_chunked` |
-| `stage2_calibration_package_writer` Stage 2 Package Writer | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.save_calibration_package` |
-| `stage2_artifact_specs` Stage 2 Artifact Specs | `library` | `current` | `moving` | `policyengine_us_data.calibration_package.specs.calibration_package_artifact_paths` |
 | `stage2_calibration_package_contract_writer` Stage 2 Contract Writer | `library` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.write_calibration_package_contract` |
 | `stage2_calibration_package_contract_validator` Stage 2 Contract Validator | `validation` | `current` | `moving` | `policyengine_us_data.stage_contracts.calibration_package.validate_calibration_package_contract` |
 
 #### Edges
 
-- `in_cps_s5` -> `target_resolve` `data_flow`
+- `in_stage1_contract_s2` -> `stage2_input_bundle` `data_flow` (preferred input contract)
+- `in_cps_s5` -> `stage2_input_bundle` `data_flow` (compatibility fallback)
+- `in_db_s5` -> `stage2_input_bundle` `external_source` (compatibility fallback)
+- `stage2_input_bundle` -> `stage2_build_context` `data_flow` (validated inputs)
+- `stage2_artifact_specs` -> `stage2_build_context` `uses_utility` (output bundle paths)
+- `stage2_build_context` -> `target_resolve` `data_flow` (dataset and database paths)
+- `stage2_build_context` -> `stage2_calibration_package_writer` `uses_utility` (package output bundle)
 - `in_db_s5` -> `target_resolve` `external_source` (SQL targets)
 - `in_config_s5` -> `stage2_target_config_identity` `data_flow` (config file)
 - `stage2_target_config_identity` -> `stage2_target_config_load` `data_flow` (resolved path and checksum)

@@ -28,6 +28,7 @@ from policyengine_us_data.utils.loss import (
     _add_real_estate_tax_targets,
     _add_ssi_recipient_targets,
     _add_transfer_balance_targets,
+    _cbo_program_target_value,
     _get_medicaid_national_targets,
     _get_aca_national_targets,
     _load_aca_spending_and_enrollment_targets,
@@ -39,7 +40,11 @@ from policyengine_us_data.utils.loss import (
     get_target_loss_weights,
 )
 from policyengine_us_data.db import etl_national_targets
-from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
+from policyengine_us_data.utils.ssi_targets import (
+    SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_fiscal_year_payment_count,
+    normalize_ssi_payment_target,
+)
 
 
 def test_legacy_loss_targets_include_aggregate_qbi_deduction():
@@ -228,6 +233,27 @@ class _FakeSSIRecipientSimulation:
         return np.asarray(values, dtype=np.float32)
 
 
+class _FakeCBOProgramTargetSimulation:
+    def __init__(self):
+        self.tax_benefit_system = SimpleNamespace(
+            parameters=lambda period: SimpleNamespace(
+                calibration=SimpleNamespace(
+                    gov=SimpleNamespace(
+                        cbo=SimpleNamespace(
+                            _children={
+                                "income_tax": 2_000.0,
+                                "snap": 1_000.0,
+                                "social_security": 3_000.0,
+                                "ssi": 57_000_000_000.0,
+                                "unemployment_compensation": 4_000.0,
+                            }
+                        )
+                    )
+                )
+            )
+        )
+
+
 class _FakeCapitalGainsSimulation:
     def __init__(self):
         self.calculate_calls = []
@@ -352,6 +378,28 @@ def test_add_ssi_recipient_targets_adds_total_and_age_counts():
         loss_matrix["nation/ssa/ssi_recipients/65_plus"],
         np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32),
     )
+
+
+def test_ssi_payment_targets_normalize_fiscal_year_payment_timing():
+    assert get_ssi_fiscal_year_payment_count(2024) == 11
+    assert get_ssi_fiscal_year_payment_count(2025) == 12
+    assert get_ssi_fiscal_year_payment_count(2028) == 13
+
+    assert normalize_ssi_payment_target(57_000_000_000, 2024) == pytest.approx(
+        57_000_000_000 * 12 / 11
+    )
+    assert normalize_ssi_payment_target(75_400_000_000, 2028) == pytest.approx(
+        75_400_000_000 * 12 / 13
+    )
+
+
+def test_legacy_cbo_ssi_target_uses_12_payment_equivalent():
+    sim = _FakeCBOProgramTargetSimulation()
+
+    assert _cbo_program_target_value(sim, "ssi", 2024) == pytest.approx(
+        57_000_000_000 * 12 / 11
+    )
+    assert _cbo_program_target_value(sim, "snap", 2024) == 1_000.0
 
 
 def test_add_ctc_targets(monkeypatch):

@@ -1,6 +1,7 @@
 import inspect
 
 import pandas as pd
+import pytest
 from sqlalchemy import text
 from sqlmodel import Session, select
 
@@ -19,7 +20,10 @@ from policyengine_us_data.db.etl_national_targets import (
     load_national_targets,
     load_state_acs_rent_targets,
 )
-from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
+from policyengine_us_data.utils.ssi_targets import (
+    SSI_PAYMENT_TARGET_SOURCE,
+    SSI_RECIPIENT_TARGETS_2024,
+)
 
 
 def test_national_targets_do_not_extract_treasury_eitc():
@@ -437,6 +441,57 @@ def test_extract_national_targets_includes_ssi_count_targets():
     assert {target["person_count"] for target in ssi_targets} == {
         spec["person_count"] for spec in SSI_RECIPIENT_TARGETS_2024.values()
     }
+
+
+def test_extract_national_targets_normalizes_ssi_cbo_amount_target(monkeypatch):
+    class FakeIncomeBySource:
+        _children = {
+            target["parameter"]: 0
+            for target in etl_national_targets.CBO_INCOME_BY_SOURCE_TARGETS
+        }
+
+    class FakeCBO:
+        income_by_source = FakeIncomeBySource()
+        _children = {
+            "income_tax": 0,
+            "snap": 0,
+            "social_security": 0,
+            "ssi": 57_000_000_000,
+            "unemployment_compensation": 0,
+        }
+
+    class FakeSOI:
+        _children = {"long_term_capital_gains": 0}
+
+    class FakeGov:
+        cbo = FakeCBO()
+        irs = type("FakeIRS", (), {"soi": FakeSOI()})()
+
+    class FakeCalibration:
+        gov = FakeGov()
+
+    class FakeParameters:
+        def __call__(self, year):
+            return self
+
+        calibration = FakeCalibration()
+
+    class FakeTaxBenefitSystem:
+        parameters = FakeParameters()
+
+    monkeypatch.setattr(
+        "policyengine_us.CountryTaxBenefitSystem",
+        FakeTaxBenefitSystem,
+    )
+
+    raw_targets = extract_national_targets(year=2024)
+    ssi_target = next(
+        target for target in raw_targets["cbo_targets"] if target["variable"] == "ssi"
+    )
+
+    assert ssi_target["value"] == pytest.approx(57_000_000_000 * 12 / 11)
+    assert ssi_target["source"] == SSI_PAYMENT_TARGET_SOURCE
+    assert "12-payment-equivalent" in ssi_target["notes"]
 
 
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(

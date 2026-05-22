@@ -26,7 +26,10 @@ from policyengine_us_data.db.etl_irs_soi import (
 )
 from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi, get_tracked_soi_row
-from policyengine_us_data.utils.ssi_targets import SSI_RECIPIENT_TARGETS_2024
+from policyengine_us_data.utils.ssi_targets import (
+    SSI_RECIPIENT_TARGETS_2024,
+    normalize_ssi_payment_target,
+)
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
 )
@@ -92,6 +95,18 @@ CBO_INCOME_BY_SOURCE_TARGETS = [
         "taxable_interest_and_ordinary_dividends",
     ),
 ]
+
+CBO_PROGRAMS = [
+    "income_tax_positive",
+    "snap",
+    "social_security",
+    "ssi",
+    "unemployment_compensation",
+]
+
+CBO_PARAM_NAME_MAP = {
+    "income_tax_positive": "income_tax",
+}
 
 HARD_CODED_TOTALS = {
     MEDICARE_PART_B_PREMIUM_VARIABLE: (
@@ -231,6 +246,16 @@ def _add_ssi_recipient_targets(loss_matrix, targets_array, sim, time_period):
         targets_array.append(target["person_count"])
 
     return targets_array, loss_matrix
+
+
+def _cbo_program_target_value(sim, variable_name: str, time_period):
+    param_name = CBO_PARAM_NAME_MAP.get(variable_name, variable_name)
+    value = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo._children[param_name]
+    if variable_name == "ssi":
+        return normalize_ssi_payment_target(value, time_period)
+    return value
 
 
 ACA_SPENDING_TARGETS = {
@@ -1316,30 +1341,12 @@ def build_loss_matrix(dataset: type, time_period):
     # refundable credit payments in excess of liability are classified as
     # outlays, not negative receipts. See: https://www.cbo.gov/publication/43767
 
-    CBO_PROGRAMS = [
-        "income_tax_positive",
-        "snap",
-        "social_security",
-        "ssi",
-        "unemployment_compensation",
-    ]
-
-    # Mapping from variable name to CBO parameter name (when different)
-    CBO_PARAM_NAME_MAP = {
-        "income_tax_positive": "income_tax",
-    }
-
     for variable_name in CBO_PROGRAMS:
         label = f"nation/cbo/{variable_name}"
         loss_matrix[label] = sim.calculate(variable_name, map_to="household").values
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
-        param_name = CBO_PARAM_NAME_MAP.get(variable_name, variable_name)
-        targets_array.append(
-            sim.tax_benefit_system.parameters(
-                time_period
-            ).calibration.gov.cbo._children[param_name]
-        )
+        targets_array.append(_cbo_program_target_value(sim, variable_name, time_period))
 
     targets_array, loss_matrix = _add_ssi_recipient_targets(
         loss_matrix,

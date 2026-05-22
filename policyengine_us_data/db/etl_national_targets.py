@@ -27,10 +27,13 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
 )
 from policyengine_us_data.utils.ssi_targets import (
+    SSI_PAYMENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_NOTES,
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_payment_target_notes,
+    normalize_ssi_payment_target,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -767,12 +770,18 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             value = tax_benefit_system.parameters(
                 time_period
             ).calibration.gov.cbo._children[param_name]
+            source = "CBO Budget Projections"
+            notes = f"CBO projection for {variable_name}"
+            if variable_name == "ssi":
+                value = normalize_ssi_payment_target(value, time_period)
+                source = SSI_PAYMENT_TARGET_SOURCE
+                notes = get_ssi_payment_target_notes(time_period)
             cbo_targets.append(
                 {
                     "variable": variable_name,
                     "value": float(value),
-                    "source": "CBO Budget Projections",
-                    "notes": f"CBO projection for {variable_name}",
+                    "source": source,
+                    "notes": notes,
                     "year": time_period,
                 }
             )

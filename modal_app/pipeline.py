@@ -90,7 +90,14 @@ from modal_app.step_manifests.store import (  # noqa: E402
     step_reusable as _step_reusable,
     write_run_meta,
 )
+from policyengine_us_data.build_datasets.commands import (  # noqa: E402
+    DatasetCommandError,
+)
 from policyengine_us_data.utils.run_context import RunContext, resolve_run_id  # noqa: E402
+from policyengine_us_data.calibration_package.specs import (  # noqa: E402
+    calibration_package_artifact_paths,
+    resolve_target_config_identity,
+)
 from policyengine_us_data.utils.error_redaction import (  # noqa: E402
     redacted_bounded_error_text,
     redact_error_text,
@@ -169,6 +176,7 @@ def _calibration_package_parameters(
     workers: int,
     n_clones: int,
     target_config: str | None,
+    all_active_targets: bool = False,
     skip_county: bool,
     chunked_matrix: bool,
     chunk_size: int,
@@ -176,11 +184,17 @@ def _calibration_package_parameters(
     num_matrix_workers: int,
 ) -> dict:
     """Return manifest parameters that affect package construction."""
+    target_config_identity = resolve_target_config_identity(
+        target_config,
+        all_active_targets=all_active_targets,
+    )
     effective_parallel = bool(chunked_matrix and parallel_matrix)
     params = {
         "workers": workers if not chunked_matrix else None,
         "n_clones": n_clones,
-        "target_config": target_config,
+        "target_config": target_config_identity.path,
+        "target_config_sha256": target_config_identity.sha256,
+        "target_config_mode": target_config_identity.mode,
         "skip_county": skip_county,
         "chunked_matrix": bool(chunked_matrix),
         "chunk_size": chunk_size if chunked_matrix else None,
@@ -215,6 +229,17 @@ def _record_pipeline_failure(
     except Exception as record_exc:
         print(f"WARNING: failed to write durable pipeline error record: {record_exc}")
         return None
+
+
+def _traceback_text_for_pipeline_failure(
+    exc: BaseException,
+    fallback_traceback: str,
+) -> str:
+    """Prefer captured Stage 1 command output when available."""
+
+    if isinstance(exc, DatasetCommandError) and exc.result.error is not None:
+        return exc.result.error.traceback_text()
+    return fallback_traceback
 
 
 def _pipeline_error_summary(
@@ -524,6 +549,175 @@ print(json.dumps(result, indent=2, sort_keys=True))
     )
 
 
+def _promotion_result_from_stdout(promotion_stdout: str):
+    """Parse typed promotion results from the promotion subprocess output."""
+
+    from policyengine_us_data.release_promotion import parse_full_promotion_result_json
+
+    try:
+        return parse_full_promotion_result_json(promotion_stdout)
+    except ValueError as exc:
+        raise RuntimeError(
+            "Full release promotion subprocess did not return a valid "
+            "typed promotion result."
+        ) from exc
+
+
+def _release_promotion_context_from_run_context(run_context: RunContext):
+    """Build the Stage 5 library context from the orchestration run context."""
+
+    from policyengine_us_data.release_promotion import ReleasePromotionContext
+
+    return ReleasePromotionContext(
+        run_id=run_context.run_id,
+        candidate_version=run_context.candidate_version,
+        release_version=run_context.release_version,
+        hf_repo_name="policyengine/policyengine-us-data",
+        gcs_bucket_name="policyengine-us-data",
+        base_release_version=run_context.base_release_version or None,
+        release_bump=run_context.release_bump or None,
+        modal_app_name=run_context.modal_app_name or None,
+        modal_environment=run_context.modal_environment or None,
+        hf_staging_prefix=run_context.hf_staging_prefix or None,
+        metadata={"run_context": run_context.to_dict()},
+    )
+
+
+def _release_artifact_metadata_by_path(
+    run_id: str,
+    rel_paths: list[str],
+) -> dict[str, dict[str, object]]:
+    """Return local checksum/size metadata for staged release artifacts."""
+
+    metadata: dict[str, dict[str, object]] = {}
+    for local_path, rel_path in _full_release_manifest_files(run_id, rel_paths):
+        path = Path(local_path)
+        if not path.exists() or not path.is_file():
+            continue
+        reference = ArtifactReference.from_path(path)
+        metadata[rel_path] = {
+            "sha256": f"sha256:{reference.sha256}",
+            "size_bytes": reference.size_bytes,
+        }
+    return metadata
+
+
+def _stage4_output_contract_repo_path_if_available(run_id: str) -> str | None:
+    """Return the run-repo path for the Stage 4 contract when it exists locally."""
+
+    run_dir = _run_dir(run_id)
+    candidates = (
+        run_dir / "diagnostics" / "contracts" / "output_build_contract.json",
+        run_dir / "contracts" / "output_build_contract.json",
+        run_dir / "output_build_contract.json",
+    )
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return f"calibration/runs/{run_id}/{path.relative_to(run_dir).as_posix()}"
+    return None
+
+
+RUN_DIAGNOSTICS_VALIDATION_REPORT_FILENAMES = (
+    "validation_report.json",
+    "validation_summary.json",
+    "validation_results.csv",
+    "national_validation.txt",
+)
+RUN_DIAGNOSTICS_MANIFEST_FILENAMES = (
+    "manifest.json",
+    "diagnostics_manifest.json",
+)
+
+
+def _run_diagnostics_repo_path_if_available(run_id: str, filename: str) -> str | None:
+    """Return the repo path for a run-local diagnostics file when present."""
+
+    run_dir = _run_dir(run_id)
+    path = run_dir / "diagnostics" / filename
+    if not path.exists() or not path.is_file():
+        return None
+    return f"calibration/runs/{run_id}/{path.relative_to(run_dir).as_posix()}"
+
+
+def _run_validation_report_repo_paths_if_available(run_id: str) -> list[str]:
+    """Return uploaded-run paths for validation diagnostics available locally."""
+
+    return [
+        repo_path
+        for filename in RUN_DIAGNOSTICS_VALIDATION_REPORT_FILENAMES
+        if (
+            repo_path := _run_diagnostics_repo_path_if_available(
+                run_id,
+                filename,
+            )
+        )
+    ]
+
+
+def _run_diagnostics_manifest_repo_path_if_available(run_id: str) -> str | None:
+    """Return the run diagnostics manifest path when one exists locally."""
+
+    for filename in RUN_DIAGNOSTICS_MANIFEST_FILENAMES:
+        repo_path = _run_diagnostics_repo_path_if_available(run_id, filename)
+        if repo_path is not None:
+            return repo_path
+    return None
+
+
+def _write_release_promotion_contract_for_run(
+    *,
+    meta: RunMetadata,
+    run_context: RunContext,
+    rel_paths: list[str],
+    promotion_result,
+) -> ArtifactReference:
+    """Write Stage 5's run-local contract and return its manifest reference."""
+
+    from policyengine_us_data.release_promotion import (
+        build_legacy_release_candidate_bundle,
+        release_promotion_contract_path,
+        write_release_promotion_contract,
+    )
+
+    run_dir = _run_dir(run_context.run_id)
+    contract_path = release_promotion_contract_path(run_dir)
+    candidate_bundle = build_legacy_release_candidate_bundle(
+        context=_release_promotion_context_from_run_context(run_context),
+        rel_paths=rel_paths,
+        artifact_metadata_by_path=_release_artifact_metadata_by_path(
+            run_context.run_id,
+            rel_paths,
+        ),
+        source_output_contract_path=_stage4_output_contract_repo_path_if_available(
+            run_context.run_id
+        ),
+        validation_report_paths=_run_validation_report_repo_paths_if_available(
+            run_context.run_id
+        ),
+        diagnostics_manifest_path=_run_diagnostics_manifest_repo_path_if_available(
+            run_context.run_id
+        ),
+    )
+    write_release_promotion_contract(
+        contract_path=contract_path,
+        candidate_bundle=candidate_bundle,
+        promotion_result=promotion_result,
+        created_at=datetime.now(timezone.utc).isoformat(),
+        code_sha=meta.sha,
+        package_version=meta.version,
+        metadata={
+            "writer": "modal_app.pipeline.promote_run",
+            "branch": meta.branch,
+        },
+    )
+    return ArtifactReference.from_path(
+        contract_path,
+        role="contract",
+        base_dir=run_dir,
+        media_type="application/json",
+    )
+
+
 @app.function(
     image=image,
     timeout=300,
@@ -559,6 +753,7 @@ def verify_runtime_seams() -> dict:
         "modal_app/step_manifests/errors.py",
         "modal_app/step_manifests/status.py",
         "modal_app/fixtures/h5_cases.py",
+        "policyengine_us_data/calibration_package/specs.py",
         "tests/integration/test_fixture_50hh.h5",
         "policyengine_us_data/calibration/target_config.yaml",
         "policyengine_us_data/calibration/target_config_full.yaml",
@@ -1250,6 +1445,7 @@ def run_pipeline(
                 "database": _artifacts_dir(run_id) / "policy_data.db",
             }
         )
+        package_artifacts = calibration_package_artifact_paths(_artifacts_dir(run_id))
         package_parameters = _calibration_package_parameters(
             workers=num_workers,
             n_clones=n_clones,
@@ -1314,8 +1510,7 @@ def run_pipeline(
             completed_package_manifest = _complete_step_manifest(
                 active_step_manifest,
                 outputs=collect_artifacts(
-                    [_artifacts_dir(run_id) / "calibration_package.pkl"],
-                    missing_ok=True,
+                    package_artifacts.manifest_outputs,
                 ),
                 vol=pipeline_volume,
             )
@@ -1793,7 +1988,7 @@ def run_pipeline(
         return run_id
 
     except Exception as e:
-        traceback_text = traceback.format_exc()
+        traceback_text = _traceback_text_for_pipeline_failure(e, traceback.format_exc())
         traceback_ref = _record_pipeline_failure(
             e,
             run_id=run_id,
@@ -2013,6 +2208,13 @@ def promote_run(
             promotion_context.to_dict(),
         )
         print(f"  {promotion_stdout}")
+        promotion_result = _promotion_result_from_stdout(promotion_stdout)
+        release_promotion_contract_ref = _write_release_promotion_contract_for_run(
+            meta=meta,
+            run_context=promotion_context,
+            rel_paths=rel_paths,
+            promotion_result=promotion_result,
+        )
 
         # Update run status only after all required promotion work succeeds.
         meta.status = "promoted"
@@ -2021,15 +2223,21 @@ def promote_run(
         _complete_step_manifest(
             promote_manifest,
             outputs=[
-                ArtifactReference.from_dict(artifact)
-                for artifact in promote_inputs["validated_step_outputs"]
+                *[
+                    ArtifactReference.from_dict(artifact)
+                    for artifact in promote_inputs["validated_step_outputs"]
+                ],
+                release_promotion_contract_ref,
             ],
             reuse_decision="computed",
             vol=pipeline_volume,
         )
         write_run_meta(meta, pipeline_volume)
     except Exception as exc:
-        traceback_text = traceback.format_exc()
+        traceback_text = _traceback_text_for_pipeline_failure(
+            exc,
+            traceback.format_exc(),
+        )
         traceback_ref = _record_pipeline_failure(
             exc,
             run_id=run_id,

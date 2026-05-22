@@ -41,6 +41,14 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
+from policyengine_us_data.calibration.calibration_utils import (
+    create_target_groups,
+)
+from policyengine_us_data.calibration_package.specs import (
+    DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
+    TargetConfigIdentity,
+    resolve_target_config_identity,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.stage_contracts.calibration_package import (
     CalibrationPackageParameters,
@@ -69,7 +77,9 @@ LAMBDA_L2 = 1e-12
 LEARNING_RATE = 0.15
 DEFAULT_EPOCHS = 100
 DEFAULT_N_CLONES = 430
-DEFAULT_TARGET_CONFIG_PATH = Path(__file__).resolve().parent / "target_config.yaml"
+DEFAULT_TARGET_CONFIG_PATH = (
+    Path(__file__).resolve().parents[2] / DEFAULT_TARGET_CONFIG_RELATIVE_PATH
+)
 
 
 def _utc_now_isoformat() -> str:
@@ -83,6 +93,8 @@ def _calibration_package_contract_parameters(
     workers: int,
     n_clones: int,
     target_config_path: str | None,
+    target_config_sha256: str | None,
+    target_config_mode: str | None,
     skip_county: bool,
     skip_source_impute: bool,
     skip_takeup_rerandomize: bool,
@@ -97,6 +109,8 @@ def _calibration_package_contract_parameters(
         workers=workers,
         n_clones=n_clones,
         target_config_path=target_config_path,
+        target_config_sha256=target_config_sha256,
+        target_config_mode=target_config_mode,
         skip_county=skip_county,
         skip_source_impute=skip_source_impute,
         skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -105,6 +119,50 @@ def _calibration_package_contract_parameters(
         parallel=parallel,
         num_matrix_workers=num_matrix_workers,
     )
+
+
+def _target_config_identity_for_metadata(
+    *,
+    target_config: dict | None,
+    target_config_path: str | None,
+    target_config_identity: TargetConfigIdentity | None,
+) -> TargetConfigIdentity | None:
+    """Return a resolved identity consistent with the parsed target config."""
+
+    if target_config_identity is not None:
+        if (
+            target_config is None
+            and target_config_identity.mode != "all_active_targets"
+        ):
+            raise ValueError(
+                "target_config_identity requires a parsed target_config unless "
+                "all_active_targets is selected"
+            )
+        if (
+            target_config is not None
+            and target_config_identity.mode == "all_active_targets"
+        ):
+            raise ValueError(
+                "all_active_targets identity cannot be paired with a target_config"
+            )
+        return target_config_identity
+    if target_config is None:
+        if target_config_path is not None:
+            raise ValueError(
+                "target_config_path cannot be recorded unless target_config is parsed"
+            )
+        return TargetConfigIdentity(
+            path=None,
+            sha256=None,
+            mode="all_active_targets",
+            resolved_path=None,
+        )
+    if target_config_path is None:
+        raise ValueError(
+            "target_config_path or target_config_identity is required when "
+            "target_config is parsed"
+        )
+    return resolve_target_config_identity(target_config_path)
 
 
 def get_git_provenance() -> dict:
@@ -448,14 +506,30 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+@pipeline_node(
+    PipelineNode(
+        id="stage2_target_config_load",
+        label="Load Stage 2 Target Config",
+        node_type="library",
+        description="Load the YAML include/exclude target-selection config used by Stage 2 package construction.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        artifacts_in=[DEFAULT_TARGET_CONFIG_RELATIVE_PATH],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_target_config.py"
+        ],
+    )
+)
 def load_target_config(path: str) -> dict:
-    """Load target exclusion config from YAML.
+    """Load target include/exclude config from YAML.
 
     Args:
         path: Path to YAML config file.
 
     Returns:
-        Parsed config dict with 'exclude' list.
+        Parsed config dict with include and exclude lists.
     """
     import yaml
 
@@ -539,6 +613,21 @@ def apply_target_config(
     return filtered_df, filtered_X, filtered_names
 
 
+@pipeline_node(
+    PipelineNode(
+        id="stage2_target_config_apply",
+        label="Apply Stage 2 Target Config",
+        node_type="library",
+        description="Apply Stage 2 target include/exclude rules before matrix construction.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_target_config.py"
+        ],
+    )
+)
 def apply_target_config_to_targets(
     targets_df: "pd.DataFrame",
     config: dict,
@@ -553,6 +642,22 @@ def apply_target_config_to_targets(
     return filtered_df
 
 
+@pipeline_node(
+    PipelineNode(
+        id="stage2_calibration_package_writer",
+        label="Stage 2 Package Writer",
+        node_type="library",
+        description="Persist the Stage 2 sparse matrix, target rows, target names, geography arrays, and provenance metadata.",
+        source_file="policyengine_us_data/calibration/unified_calibration.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        artifacts_out=["calibration_package.pkl"],
+        validation_commands=[
+            "uv run pytest tests/unit/calibration/test_unified_calibration.py"
+        ],
+    )
+)
 def save_calibration_package(
     path: str,
     X_sparse,
@@ -1282,6 +1387,7 @@ def run_calibration(
     skip_county: bool = True,
     target_config: dict = None,
     target_config_path: str = None,
+    target_config_identity: TargetConfigIdentity | None = None,
     build_only: bool = False,
     package_path: str = None,
     package_output_path: str = None,
@@ -1319,6 +1425,7 @@ def run_calibration(
         skip_source_impute: Skip ACS/SIPP/SCF imputations.
         target_config: Parsed target config dict.
         target_config_path: Path to target config, for provenance.
+        target_config_identity: Resolved target config path/checksum identity.
         build_only: If True, save package and skip fitting.
         package_path: Load pre-built package (skip build).
         package_output_path: Where to save calibration package.
@@ -1345,6 +1452,11 @@ def run_calibration(
 
     started_at = _utc_now_isoformat()
     t0 = time.time()
+    resolved_target_identity = _target_config_identity_for_metadata(
+        target_config=target_config,
+        target_config_path=target_config_path,
+        target_config_identity=target_config_identity,
+    )
 
     # Early exit: load pre-built package
     if package_path is not None:
@@ -1598,7 +1710,15 @@ def run_calibration(
         "base_n_records": n_records,
         "seed": seed,
         "created_at": _utc_now_isoformat(),
-        "target_config_path": target_config_path,
+        "target_config_path": (
+            resolved_target_identity.path if resolved_target_identity else None
+        ),
+        "target_config_sha256": (
+            resolved_target_identity.sha256 if resolved_target_identity else None
+        ),
+        "target_config_mode": (
+            resolved_target_identity.mode if resolved_target_identity else "explicit"
+        ),
         "package_scope": "minimal" if target_config else "all_active_targets",
         "matrix_builder": "chunked" if chunked_matrix else "precompute",
         "chunk_size": chunk_size if chunked_matrix else None,
@@ -1609,10 +1729,6 @@ def run_calibration(
 
     metadata["dataset_sha256"] = compute_file_checksum(Path(dataset_path))
     metadata["db_sha256"] = compute_file_checksum(Path(db_path))
-    if target_config_path:
-        metadata["target_config_sha256"] = compute_file_checksum(
-            Path(target_config_path)
-        )
 
     initial_weights = compute_initial_weights(X_sparse, targets_df)
     if package_output_path:
@@ -1649,7 +1765,9 @@ def run_calibration(
             parameters=_calibration_package_contract_parameters(
                 workers=workers,
                 n_clones=n_clones,
-                target_config_path=target_config_path,
+                target_config_path=metadata["target_config_path"],
+                target_config_sha256=metadata["target_config_sha256"],
+                target_config_mode=metadata["target_config_mode"],
                 skip_county=skip_county,
                 skip_source_impute=skip_source_impute,
                 skip_takeup_rerandomize=skip_takeup_rerandomize,
@@ -1813,9 +1931,15 @@ def main(argv=None):
 
     target_config = None
     target_config_path = None
+    target_config_identity = resolve_target_config_identity(
+        args.target_config,
+        all_active_targets=args.all_active_targets,
+    )
     if not args.all_active_targets:
-        target_config_path = args.target_config or str(DEFAULT_TARGET_CONFIG_PATH)
-        target_config = load_target_config(target_config_path)
+        target_config_path = target_config_identity.path
+        target_config = load_target_config(
+            target_config_identity.resolved_path or target_config_path
+        )
 
     package_output_path = args.package_output
     if args.build_only and not package_output_path:
@@ -1851,6 +1975,7 @@ def main(argv=None):
         skip_county=not args.county_level,
         target_config=target_config,
         target_config_path=target_config_path,
+        target_config_identity=target_config_identity,
         build_only=args.build_only,
         package_path=args.package_path,
         package_output_path=package_output_path,

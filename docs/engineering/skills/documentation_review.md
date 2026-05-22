@@ -47,6 +47,10 @@ Check that changed pipeline behavior has a durable documentation surface:
 - Generated docs build when decorator, Pydoc, or map source changes. PRs that
   change decorator metadata, Pydoc-facing source, or `docs/pipeline_map.yaml`
   should refresh the checked-in generated artifacts in the same change.
+- Pipeline documentation segment edits require the same treatment: if a PR
+  changes source text that feeds generated pipeline docs or AI-facing pipeline
+  guidance, verify whether `scripts/extract_pipeline_docs.py` output changes and
+  commit the refreshed generated artifacts when it does.
 - Stale architecture names, folder names, and artifact names are not preserved in
   durable documentation sources or generated output.
 

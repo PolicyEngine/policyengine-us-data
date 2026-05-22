@@ -805,7 +805,10 @@ stages:
     label: run_calibration()
     description: 'Build phase: resolve targets and constraints, assemble clone values, and package the sparse calibration matrix'
     node_ids:
+    - stage2_target_config_identity
+    - stage2_target_config_load
     - target_resolve
+    - stage2_target_config_apply
     - target_uprate
     - geo_build
     - constraint_resolve
@@ -813,7 +816,14 @@ stages:
     - clone_assembly
     - takeup_rerand
     - sparse_build
+    - build_matrix
+    - build_matrix_chunked
+    - stage2_artifact_specs
+    - stage2_calibration_package_writer
     - out_pkg
+    - stage2_calibration_package_contract_writer
+    - out_contract
+    - stage2_calibration_package_contract_validator
   extra_nodes:
   - id: in_cps_s5
     label: source_imputed_stratified_extended_cps.h5
@@ -859,6 +869,10 @@ stages:
     label: calibration_package.pkl
     node_type: artifact
     description: X_sparse CSR matrix, targets_df, initial_weights, metadata
+  - id: out_contract
+    label: calibration_package_contract.json
+    node_type: artifact
+    description: Stage 2 package handoff contract written next to calibration_package.pkl
   - id: util_sql
     label: sqlalchemy
     node_type: utility
@@ -884,12 +898,25 @@ stages:
     edge_type: external_source
     label: SQL targets
   - source: in_config_s5
-    target: target_resolve
+    target: stage2_target_config_identity
     edge_type: data_flow
-    label: include list
+    label: config file
+  - source: stage2_target_config_identity
+    target: stage2_target_config_load
+    edge_type: data_flow
+    label: resolved path and checksum
+  - source: stage2_target_config_load
+    target: stage2_target_config_apply
+    edge_type: data_flow
+    label: include/exclude rules
   - source: target_resolve
+    target: stage2_target_config_apply
+    edge_type: data_flow
+    label: candidate targets
+  - source: stage2_target_config_apply
     target: target_uprate
     edge_type: data_flow
+    label: selected targets
   - source: target_uprate
     target: geo_build
     edge_type: data_flow
@@ -917,8 +944,48 @@ stages:
     target: sparse_build
     edge_type: data_flow
   - source: sparse_build
+    target: build_matrix
+    edge_type: uses_library
+    label: non-chunked path
+  - source: sparse_build
+    target: build_matrix_chunked
+    edge_type: uses_library
+    label: chunked path
+  - source: build_matrix
+    target: stage2_calibration_package_writer
+    edge_type: data_flow
+  - source: build_matrix_chunked
+    target: stage2_calibration_package_writer
+    edge_type: data_flow
+  - source: stage2_artifact_specs
+    target: stage2_calibration_package_writer
+    edge_type: uses_utility
+    label: package path
+  - source: stage2_calibration_package_writer
     target: out_pkg
     edge_type: produces_artifact
+  - source: out_pkg
+    target: stage2_calibration_package_contract_writer
+    edge_type: data_flow
+  - source: stage2_artifact_specs
+    target: stage2_calibration_package_contract_writer
+    edge_type: uses_utility
+    label: contract path
+  - source: stage2_calibration_package_contract_writer
+    target: out_contract
+    edge_type: produces_artifact
+  - source: out_pkg
+    target: stage2_calibration_package_contract_validator
+    edge_type: validates
+  - source: out_contract
+    target: stage2_calibration_package_contract_validator
+    edge_type: validates
+  - source: in_cps_s5
+    target: stage2_calibration_package_contract_validator
+    edge_type: validates
+  - source: in_db_s5
+    target: stage2_calibration_package_contract_validator
+    edge_type: validates
   - source: util_sql
     target: target_resolve
     edge_type: uses_utility

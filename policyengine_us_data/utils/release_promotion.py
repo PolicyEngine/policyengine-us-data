@@ -9,13 +9,23 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Callable, Sequence
 
+from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.utils.release_completion import release_completion_marker_path
+
+if TYPE_CHECKING:
+    from policyengine_us_data.release_promotion import FullPromotionResult
 
 
 ManifestFile = tuple[Path, str]
 ReleaseManifest = dict[str, Any]
+RELEASE_MANIFEST_PATH = "release_manifest.json"
+TRACE_TRO_PATH = "trace.tro.jsonld"
+VERSION_MANIFEST_PATH = "version_manifest.json"
+CLEANUP_STATUS_SKIPPED = "skipped"
+CLEANUP_STATUS_COMPLETED = "completed"
+CLEANUP_STATUS_FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -120,7 +130,7 @@ def promote_full_release(
         deps=deps,
     )
 
-    cleaned = _cleanup_staging_after_release(
+    cleaned, cleanup_status = _cleanup_staging_after_release(
         config=config,
         rel_paths=rel_paths,
         deps=deps,
@@ -128,6 +138,7 @@ def promote_full_release(
     )
 
     return {
+        **_promotion_identity_result_fields(config, rel_paths),
         "run_id": config.run_id,
         "candidate_version": config.candidate_version,
         "release_version": config.release_version,
@@ -135,9 +146,37 @@ def promote_full_release(
         "hf_promoted": promoted_hf,
         "gcs_uploaded": uploaded_gcs,
         "release_manifest_artifacts": len(release_manifest["artifacts"]),
+        "version_manifest_updated": True,
         "release_completion_marker": completion_marker.get("marker_path"),
+        "release_completion_tag": config.release_version,
+        "release_completion_valid": True,
         "staging_cleaned": cleaned,
+        "staging_cleanup_attempted": config.cleanup_staging,
+        "staging_cleanup_status": cleanup_status,
     }
+
+
+@pipeline_node(
+    id="typed_full_release_promotion",
+    label="Typed Full Release Promotion",
+    node_type="library",
+    description="Compatibility wrapper that returns typed Stage 5 promotion results from the existing transaction engine.",
+    status="transitional",
+    stability="moving",
+    pathways=["5_validate_and_promote_release"],
+    artifacts_in=["staged release artifacts", "release manifest inputs"],
+    artifacts_out=["FullPromotionResult"],
+    validation_commands=["uv run pytest tests/unit/release_promotion/test_results.py"],
+)
+def promote_full_release_with_result(
+    config: FullReleasePromotionConfig,
+    deps: FullReleasePromotionDependencies,
+) -> "FullPromotionResult":
+    """Run the existing transaction engine and wrap its output in a typed result."""
+
+    from policyengine_us_data.release_promotion import FullPromotionResult
+
+    return FullPromotionResult.from_legacy_dict(promote_full_release(config, deps))
 
 
 def _validated_release_paths(
@@ -215,13 +254,18 @@ def _finish_already_finalized_release(
         config=config,
         deps=deps,
     )
-    cleaned = _cleanup_staging_after_release(
+    cleaned, cleanup_status = _cleanup_staging_after_release(
         config=config,
         rel_paths=rel_paths,
         deps=deps,
         warning="Release %s was already finalized, but staging cleanup failed.",
     )
     return {
+        **_promotion_identity_result_fields(
+            config,
+            rel_paths,
+            already_finalized=True,
+        ),
         "run_id": config.run_id,
         "candidate_version": config.candidate_version,
         "release_version": config.release_version,
@@ -229,8 +273,13 @@ def _finish_already_finalized_release(
         "hf_promoted": 0,
         "gcs_uploaded": 0,
         "release_manifest_artifacts": len(finalized_manifest["artifacts"]),
+        "version_manifest_updated": False,
         "release_completion_marker": completion_marker_path,
+        "release_completion_tag": config.release_version,
+        "release_completion_valid": True,
         "staging_cleaned": cleaned,
+        "staging_cleanup_attempted": config.cleanup_staging,
+        "staging_cleanup_status": cleanup_status,
         "already_finalized": True,
     }
 
@@ -342,25 +391,64 @@ def _cleanup_staging_after_release(
     rel_paths: Sequence[str],
     deps: FullReleasePromotionDependencies,
     warning: str,
-) -> int:
+) -> tuple[int, str]:
     if not config.cleanup_staging:
-        return 0
+        return 0, CLEANUP_STATUS_SKIPPED
 
     cleanup_paths = deps.dedupe_preserving_order(
         [*rel_paths, *config.extra_cleanup_paths]
     )
     try:
-        return deps.cleanup_staging_hf(
+        cleaned = deps.cleanup_staging_hf(
             cleanup_paths,
             candidate_version=config.candidate_version,
             hf_repo_name=config.hf_repo_name,
             hf_repo_type=config.hf_repo_type,
             run_id=config.run_id,
         )
+        return cleaned, CLEANUP_STATUS_COMPLETED
     except Exception:
         logging.warning(
             warning,
             config.release_version,
             exc_info=True,
         )
-        return 0
+        return 0, CLEANUP_STATUS_FAILED
+
+
+def _promotion_identity_result_fields(
+    config: FullReleasePromotionConfig,
+    rel_paths: Sequence[str],
+    *,
+    already_finalized: bool = False,
+) -> dict[str, Any]:
+    paths = tuple(rel_paths)
+    versioned_release_manifest_path = (
+        f"releases/{config.release_version}/{RELEASE_MANIFEST_PATH}"
+    )
+    versioned_trace_tro_path = f"releases/{config.release_version}/{TRACE_TRO_PATH}"
+    return {
+        "rel_paths": paths,
+        "hf_repo_name": config.hf_repo_name,
+        "hf_repo_type": config.hf_repo_type,
+        "hf_staging_prefix": _hf_staging_prefix(config),
+        "hf_promoted_paths": paths,
+        "hf_commit_id": None,
+        "hf_noop_paths": paths if already_finalized else (),
+        "gcs_bucket_name": config.gcs_bucket_name,
+        "gcs_object_paths": paths,
+        "gcs_skipped_paths": paths if already_finalized else (),
+        "gcs_failures": (),
+        "release_manifest_path": RELEASE_MANIFEST_PATH,
+        "versioned_release_manifest_path": versioned_release_manifest_path,
+        "trace_tro_path": TRACE_TRO_PATH,
+        "versioned_trace_tro_path": versioned_trace_tro_path,
+        "release_manifest_sha256": None,
+        "version_manifest_path": VERSION_MANIFEST_PATH,
+        "version_manifest_version": config.release_version,
+        "version_manifest_current_version": config.release_version,
+    }
+
+
+def _hf_staging_prefix(config: FullReleasePromotionConfig) -> str:
+    return f"staging/{config.candidate_version}-{config.run_id}"

@@ -19,7 +19,14 @@ The generated JSON and Markdown files are published artifacts, not hand-authored
 source. PRs should update decorators, docstrings, and `docs/pipeline_map.yaml`,
 then regenerate the checked-in artifacts in the same change so reviewers see the
 pipeline docs that will ship. On pushes to `main`, automation may refresh those
-artifacts again with the version/changelog commit.
+artifacts again with the version/changelog commit, but PR authors and AI agents
+must not rely on that later automation for review correctness.
+
+Any time a PR touches a pipeline documentation segment, a `@pipeline_node`
+decorator, Pydoc-facing text that feeds the extractor, or
+`docs/pipeline_map.yaml`, regenerate and commit the checked-in docs produced by
+`scripts/extract_pipeline_docs.py`. Treat the generated docs as part of the same
+change, even if the source edit is small.
 
 ## Annotation Rules
 

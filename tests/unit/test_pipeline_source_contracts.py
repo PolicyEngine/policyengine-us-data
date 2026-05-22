@@ -29,6 +29,9 @@ def test_promote_run_uses_single_full_release_promotion() -> None:
     assert "_apply_run_context_env(promotion_context)" in source
     assert "_promote_full_release_from_staging(" in source
     assert "promotion_context.to_dict()" in source
+    assert "_promotion_result_from_stdout(promotion_stdout)" in source
+    assert "_write_release_promotion_contract_for_run(" in source
+    assert "release_promotion_contract_ref" in source
     assert "promote_publish.remote(" not in source
     assert "promote_national_publish.remote(" not in source
     assert "upload_datasets(" not in source
@@ -56,6 +59,28 @@ def test_run_pipeline_stage_1_stages_datasets_without_promoting() -> None:
     assert keywords["stage_only"].value is True
     assert isinstance(keywords["version"], ast.Name)
     assert keywords["version"].id == "candidate_version"
+
+
+def test_calibration_package_parameters_record_target_config_identity() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    helper = _function_def(tree, "_calibration_package_parameters")
+    source = ast.get_source_segment(source_text, helper)
+
+    assert "resolve_target_config_identity(" in source
+    assert '"target_config": target_config_identity.path' in source
+    assert '"target_config_sha256": target_config_identity.sha256' in source
+    assert '"target_config_mode": target_config_identity.mode' in source
+
+
+def test_stage_2_manifest_records_package_and_contract_outputs() -> None:
+    source_text = PIPELINE_SOURCE.read_text()
+    tree = ast.parse(source_text)
+    run_pipeline = _function_def(tree, "run_pipeline")
+    source = ast.get_source_segment(source_text, run_pipeline)
+
+    assert "package_artifacts = calibration_package_artifact_paths(" in source
+    assert "package_artifacts.manifest_outputs" in source
 
 
 def test_promote_run_fails_closed_for_required_promotion_steps() -> None:
@@ -98,6 +123,46 @@ def test_promote_run_uses_unified_staged_release_path() -> None:
     assert "run_context=run_context" in source
     assert "files_with_paths=files_with_paths" in source
     assert 'extra_cleanup_paths=["_run_context.json"]' in source
+
+
+def test_promotion_stdout_parser_uses_stage5_result_parser() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    helper = _function_def(tree, "_promotion_result_from_stdout")
+    source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), helper)
+
+    assert "parse_full_promotion_result_json" in source
+    assert "FullPromotionResult.from_legacy_dict" not in source
+    assert "json.loads" not in source
+
+
+def test_promote_run_writes_release_promotion_contract_output() -> None:
+    tree = ast.parse(PIPELINE_SOURCE.read_text())
+    helper = _function_def(tree, "_write_release_promotion_contract_for_run")
+    stage4_helper = _function_def(
+        tree,
+        "_stage4_output_contract_repo_path_if_available",
+    )
+    helper_source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), helper)
+    stage4_source = ast.get_source_segment(PIPELINE_SOURCE.read_text(), stage4_helper)
+
+    assert "release_promotion_contract_path(run_dir)" in helper_source
+    assert "build_legacy_release_candidate_bundle(" in helper_source
+    assert "write_release_promotion_contract(" in helper_source
+    assert 'role="contract"' in helper_source
+    assert 'media_type="application/json"' in helper_source
+    assert "validation_report_paths=_run_validation_report_repo_paths_if_available" in (
+        helper_source
+    )
+    assert (
+        "diagnostics_manifest_path=_run_diagnostics_manifest_repo_path_if_available"
+        in helper_source
+    )
+    assert (
+        "source_output_contract_path=_stage4_output_contract_repo_path_if_available"
+        in (helper_source)
+    )
+    assert 'diagnostics" / "contracts" / "output_build_contract.json"' in stage4_source
+    assert "calibration/runs/{run_id}/" in stage4_source
 
 
 def test_run_pipeline_refreshes_diagnostics_even_when_h5_outputs_reused() -> None:

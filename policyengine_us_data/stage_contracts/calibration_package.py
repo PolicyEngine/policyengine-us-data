@@ -7,6 +7,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from policyengine_us_data.calibration_package.specs import (
+    CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+    CALIBRATION_PACKAGE_SUBSTAGE_ID,
+)
+from policyengine_us_data.pipeline_metadata import pipeline_node
+from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.utils.step_manifest import sha256_file
 from policyengine_us_data.utils.geography_checksum import (
     canonical_geography_checksum,
@@ -26,11 +32,9 @@ from .io import read_contract, write_contract
 from .stages import STAGE_2_BUILD_CALIBRATION_PACKAGE, contract_type_for_stage
 from .substages import SubstageRecord
 
-CALIBRATION_PACKAGE_CONTRACT_FILENAME = "calibration_package_contract.json"
 CALIBRATION_PACKAGE_CONTRACT_TYPE = contract_type_for_stage(
     STAGE_2_BUILD_CALIBRATION_PACKAGE
 )
-CALIBRATION_PACKAGE_SUBSTAGE_ID = "2a_matrix_build_calibration_target_construction"
 
 
 def summarize_geography_assignment(
@@ -200,8 +204,11 @@ def build_calibration_package_contract(
     _require_existing_file(db_path, "target database")
 
     parameter_schema = _calibration_package_parameters(parameters)
-    parameter_payload = parameter_schema.to_dict()
     metadata = _package_metadata(package)
+    parameter_payload = _parameters_with_package_identity(
+        parameter_schema.to_dict(),
+        metadata,
+    )
     package_summary = summarize_calibration_package(package).to_dict()
     geography_summary = summarize_geography_assignment(package).to_dict()
     inputs = (
@@ -295,6 +302,23 @@ def build_calibration_package_contract(
     )
 
 
+@pipeline_node(
+    PipelineNode(
+        id="stage2_calibration_package_contract_writer",
+        label="Stage 2 Contract Writer",
+        node_type="library",
+        description="Write the Stage 2 calibration-package handoff contract next to the package artifact.",
+        source_file="policyengine_us_data/stage_contracts/calibration_package.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        artifacts_in=["calibration_package.pkl"],
+        artifacts_out=[CALIBRATION_PACKAGE_CONTRACT_FILENAME],
+        validation_commands=[
+            "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
+        ],
+    )
+)
 def write_calibration_package_contract(
     *,
     package_path: Path,
@@ -333,6 +357,25 @@ def write_calibration_package_contract(
     return contract
 
 
+@pipeline_node(
+    PipelineNode(
+        id="stage2_calibration_package_contract_validator",
+        label="Stage 2 Contract Validator",
+        node_type="validation",
+        description="Validate that the persisted Stage 2 contract describes the calibration package and inputs.",
+        source_file="policyengine_us_data/stage_contracts/calibration_package.py",
+        status="current",
+        stability="moving",
+        pathways=["calibration_package"],
+        artifacts_in=[
+            "calibration_package.pkl",
+            CALIBRATION_PACKAGE_CONTRACT_FILENAME,
+        ],
+        validation_commands=[
+            "uv run pytest tests/unit/test_calibration_package_stage_contract.py"
+        ],
+    )
+)
 def validate_calibration_package_contract(
     *,
     package_path: Path,
@@ -486,6 +529,46 @@ def _calibration_package_parameters(
     if isinstance(parameters, CalibrationPackageParameters):
         return parameters
     return CalibrationPackageParameters.from_dict(parameters)
+
+
+def _parameters_with_package_identity(
+    parameters: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = dict(parameters)
+    metadata_path = _optional_metadata_string(metadata, "target_config_path")
+    metadata_sha = _optional_metadata_string(metadata, "target_config_sha256")
+    metadata_mode = _optional_metadata_string(metadata, "target_config_mode")
+
+    if metadata_path:
+        if payload.get("target_config") is None:
+            payload["target_config"] = metadata_path
+        if payload["target_config"] != metadata_path:
+            raise ValueError(
+                "Calibration package contract target_config does not match "
+                "package metadata"
+            )
+    if metadata_sha:
+        if payload.get("target_config_sha256") is None:
+            payload["target_config_sha256"] = metadata_sha
+        if payload["target_config_sha256"] != metadata_sha:
+            raise ValueError(
+                "Calibration package contract target_config_sha256 does not match "
+                "package metadata"
+            )
+    if metadata_mode:
+        if payload.get("target_config_mode") is None:
+            payload["target_config_mode"] = metadata_mode
+        if payload["target_config_mode"] != metadata_mode:
+            raise ValueError(
+                "Calibration package contract target_config_mode does not match "
+                "package metadata"
+            )
+    if payload.get("target_config_mode") is None:
+        payload["target_config_mode"] = (
+            "all_active_targets" if payload.get("target_config") is None else "explicit"
+        )
+    return CalibrationPackageParameters.from_dict(payload).to_dict()
 
 
 def _require_existing_file(path: Path, label: str) -> None:

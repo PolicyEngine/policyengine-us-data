@@ -67,6 +67,11 @@ class DatasetCommandError(RuntimeError):
         self.result = result
         super().__init__(f"Command failed ({result.returncode}): {result.command_name}")
 
+    def __reduce__(self):
+        """Preserve the structured result when Modal pickles this exception."""
+
+        return (self.__class__, (self.result,))
+
 
 @dataclass
 class SubprocessLogCapture:

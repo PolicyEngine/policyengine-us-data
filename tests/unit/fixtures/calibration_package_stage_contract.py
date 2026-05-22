@@ -22,6 +22,7 @@ CALIBRATION_STARTED_AT = "2026-05-08T12:00:00Z"
 CALIBRATION_COMPLETED_AT = "2026-05-08T12:02:00Z"
 CALIBRATION_DURATION_S = 120.0
 TARGET_CONFIG_PATH = "policyengine_us_data/calibration/target_config.yaml"
+TARGET_CONFIG_SHA256 = "sha256:" + "a" * 64
 
 CALIBRATION_BLOCK_GEOIDS = ("010010001", "010010002", "020010001")
 CALIBRATION_CD_GEOIDS = ("0101", "0102", "0201")
@@ -66,7 +67,8 @@ def calibration_package_payload() -> dict[str, Any]:
             "dataset_sha256": "sha256:dataset",
             "db_sha256": "sha256:db",
             "target_config_path": TARGET_CONFIG_PATH,
-            "target_config_sha256": "sha256:target-config",
+            "target_config_sha256": TARGET_CONFIG_SHA256,
+            "target_config_mode": "explicit",
             "n_clones": 3,
             "seed": 42,
             "base_n_records": 1,
@@ -148,6 +150,8 @@ def calibration_package_parameters() -> dict[str, Any]:
         "workers": None,
         "n_clones": 3,
         "target_config": TARGET_CONFIG_PATH,
+        "target_config_sha256": TARGET_CONFIG_SHA256,
+        "target_config_mode": "explicit",
         "skip_county": True,
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,

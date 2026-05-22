@@ -52,6 +52,25 @@ def _error_payload(
     return error_record.to_status_dict()
 
 
+def _latest_error_payload(run_dir: Path) -> dict[str, Any] | None:
+    try:
+        return _error_payload(read_latest_pipeline_error(run_dir))
+    except Exception as exc:
+        message = redacted_bounded_error_text(
+            f"{type(exc).__name__}: {exc}",
+            max_chars=DEFAULT_ERROR_MESSAGE_MAX_CHARS,
+        ).text
+        return {
+            "source": "latest_error.json",
+            "surface": "error_record_read",
+            "stage_id": None,
+            "substage_id": None,
+            "error_type": type(exc).__name__,
+            "message": message,
+            "traceback_available": False,
+        }
+
+
 def _run_manifest_error_payload(error_text: str | None) -> dict[str, Any] | None:
     if not error_text:
         return None
@@ -368,9 +387,9 @@ def build_pipeline_status_payload(
     missing_expected = [
         step_id for step_id in expected_ids if step_id not in present_ids
     ]
-    error = _error_payload(
-        read_latest_pipeline_error(run_dir),
-    ) or _run_manifest_error_payload(run_manifest.error)
+    error = _latest_error_payload(run_dir) or _run_manifest_error_payload(
+        run_manifest.error
+    )
     status = run_manifest.status
     return {
         "schema_version": PIPELINE_STATUS_SCHEMA_VERSION,

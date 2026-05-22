@@ -63,6 +63,7 @@ def test_pipeline_image_runtime_seams():
         "modal_app/step_manifests/errors.py": True,
         "modal_app/step_manifests/status.py": True,
         "modal_app/fixtures/h5_cases.py": True,
+        "policyengine_us_data/calibration_package/specs.py": True,
         "tests/integration/test_fixture_50hh.h5": True,
         "policyengine_us_data/calibration/target_config.yaml": True,
         "policyengine_us_data/calibration/target_config_full.yaml": True,

@@ -1,4 +1,5 @@
 from tests.unit.fixtures.calibration_package_stage_contract import (
+    TARGET_CONFIG_SHA256,
     TARGET_CONFIG_PATH,
     calibration_package_contract,
     calibration_package_parameters,
@@ -60,6 +61,8 @@ def test_calibration_package_parameters_parse_runtime_args():
         workers=8,
         n_clones=430,
         target_config_path=TARGET_CONFIG_PATH,
+        target_config_sha256=TARGET_CONFIG_SHA256,
+        target_config_mode="explicit",
         skip_county=True,
         skip_source_impute=True,
         skip_takeup_rerandomize=False,
@@ -79,8 +82,100 @@ def test_calibration_package_parameters_parse_runtime_args():
         "skip_source_impute": True,
         "skip_takeup_rerandomize": False,
         "target_config": TARGET_CONFIG_PATH,
+        "target_config_mode": "explicit",
+        "target_config_sha256": TARGET_CONFIG_SHA256,
         "workers": None,
     }
+
+
+def test_calibration_package_parameters_require_identity_for_config_modes():
+    try:
+        CalibrationPackageParameters.from_runtime_args(
+            workers=8,
+            n_clones=430,
+            target_config_path=TARGET_CONFIG_PATH,
+            target_config_sha256=None,
+            target_config_mode="explicit",
+            skip_county=True,
+            skip_source_impute=True,
+            skip_takeup_rerandomize=False,
+            chunked_matrix=False,
+            chunk_size=25_000,
+            parallel=False,
+            num_matrix_workers=50,
+        )
+    except ValueError as exc:
+        assert "target_config and target_config_sha256" in str(exc)
+    else:
+        raise AssertionError("Explicit target config mode should require checksum")
+
+
+def test_calibration_package_parameters_reject_malformed_target_config_checksum():
+    try:
+        CalibrationPackageParameters.from_runtime_args(
+            workers=8,
+            n_clones=430,
+            target_config_path=TARGET_CONFIG_PATH,
+            target_config_sha256="sha256:target-config",
+            target_config_mode="explicit",
+            skip_county=True,
+            skip_source_impute=True,
+            skip_takeup_rerandomize=False,
+            chunked_matrix=False,
+            chunk_size=25_000,
+            parallel=False,
+            num_matrix_workers=50,
+        )
+    except ValueError as exc:
+        assert "SHA-256 digest" in str(exc)
+    else:
+        raise AssertionError("Malformed target config checksum should fail")
+
+
+def test_calibration_package_parameters_accept_legacy_identity_fields_missing():
+    params = CalibrationPackageParameters.from_dict(
+        {
+            "chunk_size": None,
+            "chunked_matrix": False,
+            "n_clones": 430,
+            "num_matrix_workers": None,
+            "parallel_matrix": False,
+            "skip_county": True,
+            "skip_source_impute": True,
+            "skip_takeup_rerandomize": False,
+            "target_config": TARGET_CONFIG_PATH,
+            "workers": 8,
+        }
+    )
+
+    assert params.target_config == TARGET_CONFIG_PATH
+    assert params.target_config_mode is None
+    assert params.target_config_sha256 is None
+
+
+def test_calibration_package_contract_revalidates_backfilled_identity(tmp_path):
+    dataset_path, db_path, package_path = contract_input_paths(tmp_path)
+    package = calibration_package_payload()
+    package["metadata"].pop("target_config_sha256")
+    write_calibration_package_payload(package_path, package)
+    parameters = calibration_package_parameters()
+    parameters.pop("target_config_mode")
+    parameters.pop("target_config_sha256")
+
+    try:
+        build_calibration_package_contract(
+            package_path=package_path,
+            dataset_path=dataset_path,
+            db_path=db_path,
+            package=package,
+            parameters=parameters,
+            run_id="run-a",
+            completed_at="2026-05-08T12:02:00Z",
+        )
+    except ValueError as exc:
+        assert "target_config and target_config_sha256" in str(exc)
+    else:
+        raise AssertionError("Backfilled target config identity should be revalidated")
 
 
 def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
@@ -89,6 +184,8 @@ def test_calibration_package_parameters_reject_inconsistent_chunk_shape():
             workers=8,
             n_clones=430,
             target_config=None,
+            target_config_sha256=None,
+            target_config_mode="all_active_targets",
             skip_county=True,
             skip_source_impute=True,
             skip_takeup_rerandomize=False,
@@ -203,7 +300,7 @@ def test_calibration_package_contract_records_matrix_summary(tmp_path):
     assert summary["matrix_density"] == 0.5
     assert summary["n_targets"] == 2
     assert summary["target_name_count"] == 2
-    assert summary["target_config_sha256"] == "sha256:target-config"
+    assert summary["target_config_sha256"] == TARGET_CONFIG_SHA256
     assert summary["n_clones"] == 3
     assert summary["seed"] == 42
     assert summary["matrix_builder"] == "chunked"

@@ -1,7 +1,6 @@
 import inspect
 
 import pandas as pd
-import pytest
 from sqlalchemy import text
 from sqlmodel import Session, select
 
@@ -21,7 +20,7 @@ from policyengine_us_data.db.etl_national_targets import (
     load_state_acs_rent_targets,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_PAYMENT_TARGET_SOURCE,
+    SSI_CBO_TARGET_SOURCE,
     SSI_RECIPIENT_TARGETS_2024,
 )
 
@@ -443,7 +442,7 @@ def test_extract_national_targets_includes_ssi_count_targets():
     }
 
 
-def test_extract_national_targets_normalizes_ssi_cbo_amount_target(monkeypatch):
+def test_extract_national_targets_uses_ssi_fiscal_year_outlays_target(monkeypatch):
     class FakeIncomeBySource:
         _children = {
             target["parameter"]: 0
@@ -486,12 +485,14 @@ def test_extract_national_targets_normalizes_ssi_cbo_amount_target(monkeypatch):
 
     raw_targets = extract_national_targets(year=2024)
     ssi_target = next(
-        target for target in raw_targets["cbo_targets"] if target["variable"] == "ssi"
+        target
+        for target in raw_targets["cbo_targets"]
+        if target["variable"] == "ssi_federal_fiscal_year_outlays"
     )
 
-    assert ssi_target["value"] == pytest.approx(57_000_000_000 * 12 / 11)
-    assert ssi_target["source"] == SSI_PAYMENT_TARGET_SOURCE
-    assert "12-payment-equivalent" in ssi_target["notes"]
+    assert ssi_target["value"] == 57_000_000_000
+    assert ssi_target["source"] == SSI_CBO_TARGET_SOURCE
+    assert "federal fiscal-year outlays" in ssi_target["notes"]
 
 
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(

@@ -35,7 +35,7 @@ VARIABLES = [
     "taxable_interest_income",
     "social_security",
     "snap",
-    "ssi",
+    "ssi_federal_fiscal_year_outlays",
     "income_tax_before_credits",
     "ctc",
     "eitc",
@@ -56,7 +56,7 @@ REFERENCES = {
     "employment_income": (10_000_000_000_000, "~$10T"),
     "social_security": (1_200_000_000_000, "~$1.2T"),
     "snap": (110_000_000_000, "~$110B"),
-    "ssi": (60_000_000_000, "~$60B"),
+    "ssi_federal_fiscal_year_outlays": (60_000_000_000, "~$60B"),
     "eitc": (67_000_000_000, "~$67B"),
     "income_tax_before_credits": (4_000_000_000_000, "~$4T"),
 }

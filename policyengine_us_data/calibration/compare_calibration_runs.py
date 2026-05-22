@@ -39,7 +39,7 @@ DEFAULT_VARIABLES = [
     "taxable_interest_income",
     "social_security",
     "snap",
-    "ssi",
+    "ssi_federal_fiscal_year_outlays",
     "income_tax_before_credits",
     "ctc",
     "eitc",

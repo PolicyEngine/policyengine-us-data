@@ -546,7 +546,10 @@ class TestLoadTargetConfig:
         )
 
         include_rules = config["include"]
-        assert {"variable": "ssi", "geo_level": "national"} in include_rules
+        assert {
+            "variable": "ssi_federal_fiscal_year_outlays",
+            "geo_level": "national",
+        } in include_rules
         assert {
             "variable": "person_count",
             "geo_level": "national",

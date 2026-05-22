@@ -42,8 +42,6 @@ from policyengine_us_data.utils.loss import (
 from policyengine_us_data.db import etl_national_targets
 from policyengine_us_data.utils.ssi_targets import (
     SSI_RECIPIENT_TARGETS_2024,
-    get_ssi_fiscal_year_payment_count,
-    normalize_ssi_payment_target,
 )
 
 
@@ -380,24 +378,12 @@ def test_add_ssi_recipient_targets_adds_total_and_age_counts():
     )
 
 
-def test_ssi_payment_targets_normalize_fiscal_year_payment_timing():
-    assert get_ssi_fiscal_year_payment_count(2024) == 11
-    assert get_ssi_fiscal_year_payment_count(2025) == 12
-    assert get_ssi_fiscal_year_payment_count(2028) == 13
-
-    assert normalize_ssi_payment_target(57_000_000_000, 2024) == pytest.approx(
-        57_000_000_000 * 12 / 11
-    )
-    assert normalize_ssi_payment_target(75_400_000_000, 2028) == pytest.approx(
-        75_400_000_000 * 12 / 13
-    )
-
-
-def test_legacy_cbo_ssi_target_uses_12_payment_equivalent():
+def test_legacy_cbo_ssi_target_uses_fiscal_year_outlays_variable():
     sim = _FakeCBOProgramTargetSimulation()
 
-    assert _cbo_program_target_value(sim, "ssi", 2024) == pytest.approx(
-        57_000_000_000 * 12 / 11
+    assert (
+        _cbo_program_target_value(sim, "ssi_federal_fiscal_year_outlays", 2024)
+        == 57_000_000_000
     )
     assert _cbo_program_target_value(sim, "snap", 2024) == 1_000.0
 

@@ -30,7 +30,7 @@ KEY_MONETARY_VARS = [
     "employment_income",
     "adjusted_gross_income",
     "snap",
-    "ssi",
+    "ssi_federal_fiscal_year_outlays",
     "eitc",
     "social_security",
     "income_tax_before_credits",

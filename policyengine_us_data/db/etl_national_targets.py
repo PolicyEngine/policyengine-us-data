@@ -27,13 +27,11 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_PAYMENT_TARGET_SOURCE,
+    SSI_CBO_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_NOTES,
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
-    get_ssi_payment_target_notes,
-    normalize_ssi_payment_target,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -754,13 +752,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "income_tax_positive",
         "snap",
         "social_security",
-        "ssi",
+        "ssi_federal_fiscal_year_outlays",
         "unemployment_compensation",
     ]
 
     # Mapping from target variable to CBO parameter name (when different)
     cbo_param_name_map = {
         "income_tax_positive": "income_tax",  # CBO param is income_tax
+        "ssi_federal_fiscal_year_outlays": "ssi",
     }
 
     cbo_targets = []
@@ -772,10 +771,12 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             ).calibration.gov.cbo._children[param_name]
             source = "CBO Budget Projections"
             notes = f"CBO projection for {variable_name}"
-            if variable_name == "ssi":
-                value = normalize_ssi_payment_target(value, time_period)
-                source = SSI_PAYMENT_TARGET_SOURCE
-                notes = get_ssi_payment_target_notes(time_period)
+            if variable_name == "ssi_federal_fiscal_year_outlays":
+                source = SSI_CBO_TARGET_SOURCE
+                notes = (
+                    "CBO SSI federal fiscal-year outlays matched to "
+                    "policyengine-us ssi_federal_fiscal_year_outlays"
+                )
             cbo_targets.append(
                 {
                     "variable": variable_name,

@@ -849,7 +849,6 @@ def _impute_retirement_contributions(
     limits = _get_retirement_limits(time_period)
     age = X_test["age"].values
     catch_up_eligible = age >= 50
-    limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
     limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
     se_income = X_test["self_employment_income"].values
     se_pension_cap = np.minimum(
@@ -866,10 +865,9 @@ def _impute_retirement_contributions(
         # Non-negativity
         vals = np.maximum(vals, 0)
 
-        # Cap 401k at year-specific limit
+        # Zero 401(k) desired deferrals for records with no wages. The
+        # statutory elective-deferral cap is applied by policyengine-us.
         if "401k" in var:
-            vals = np.minimum(vals, limit_401k)
-            # Zero out for records with no employment income
             vals = np.where(emp_income > 0, vals, 0)
 
         # Cap IRA at year-specific limit

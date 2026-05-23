@@ -558,7 +558,7 @@ def _impute_cps_only_variables(
 
 
 def apply_retirement_constraints(predictions, X_test, time_period):
-    """Enforce IRS contribution limits on retirement variable predictions.
+    """Apply data-side constraints on retirement variable predictions.
 
     Args:
         predictions: DataFrame of QRF predictions for retirement
@@ -578,7 +578,6 @@ def apply_retirement_constraints(predictions, X_test, time_period):
     emp_income = X_test["employment_income"].values
     se_income = X_test["self_employment_income"].values
 
-    limit_401k = limits["401k"] + catch_up * limits["401k_catch_up"]
     limit_ira = limits["ira"] + catch_up * limits["ira_catch_up"]
     se_pension_cap = np.minimum(
         se_income * se_limits["se_pension_rate"],
@@ -587,8 +586,8 @@ def apply_retirement_constraints(predictions, X_test, time_period):
 
     # Explicit mapping: variable -> (cap array, zero_mask or None).
     _CONSTRAINT_MAP = {
-        "traditional_401k_contributions_desired": (limit_401k, emp_income == 0),
-        "roth_401k_contributions_desired": (limit_401k, emp_income == 0),
+        "traditional_401k_contributions_desired": (None, emp_income == 0),
+        "roth_401k_contributions_desired": (None, emp_income == 0),
         "traditional_ira_contributions": (limit_ira, None),
         "roth_ira_contributions": (limit_ira, None),
         "self_employed_pension_contributions": (

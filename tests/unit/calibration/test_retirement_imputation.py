@@ -315,16 +315,15 @@ class TestImputeRetirementContributions:
         for var in CPS_RETIREMENT_VARIABLES:
             assert np.all(result[var] >= 0), f"{var} has negative values"
 
-    def test_401k_capped(self):
+    def test_401k_desired_not_capped(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
-        lim = _get_retirement_limits(self.time_period)
-        max_401k = lim["401k"] + lim["401k_catch_up"]
+        positive_wage = self.puf_imputations["employment_income"] > 0
 
         for var in (
             "traditional_401k_contributions_desired",
             "roth_401k_contributions_desired",
         ):
-            assert np.all(result[var] <= max_401k), f"{var} exceeds 401k limit"
+            assert np.all(result[var][positive_wage] == 50_000)
 
     def test_ira_capped(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
@@ -356,8 +355,8 @@ class TestImputeRetirementContributions:
         assert zero_se.sum() == 20
         assert np.all(result["self_employed_pension_contributions"][zero_se] == 0)
 
-    def test_catch_up_age_threshold(self):
-        """Records age >= 50 get higher caps than younger."""
+    def test_401k_desired_does_not_apply_age_threshold(self):
+        """Desired 401(k) inputs preserve pre-cap values for all ages."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         # All have positive income
         self.puf_imputations["employment_income"] = np.full(self.n, 100_000.0).astype(
@@ -372,10 +371,8 @@ class TestImputeRetirementContributions:
         young_401k = result["traditional_401k_contributions_desired"][:25]
         old_401k = result["traditional_401k_contributions_desired"][25:]
 
-        # Young capped at base limit
-        assert np.all(young_401k == lim["401k"])
-        # Old get full value (within catch-up limit)
         assert np.all(old_401k == val)
+        assert np.all(young_401k == val)
 
     def test_ira_catch_up_threshold(self):
         """IRA catch-up also works for age >= 50."""

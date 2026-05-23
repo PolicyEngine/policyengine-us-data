@@ -906,7 +906,7 @@ class TestStage2PostProcessing:
 
 
 class TestRetirementConstraints:
-    """Post-processing retirement constraints enforce IRS caps."""
+    """Post-processing retirement constraints clean imputed values."""
 
     @pytest.fixture
     def sample_predictions(self):
@@ -941,19 +941,18 @@ class TestRetirementConstraints:
         for var in result.columns:
             assert (result[var] >= 0).all(), f"{var} has negative values"
 
-    def test_401k_capped_at_limit(self, sample_predictions, sample_features):
+    def test_401k_desired_not_capped_at_limit(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
-        from policyengine_us_data.utils.retirement_limits import get_retirement_limits
-
-        limits = get_retirement_limits(2024)
-        age = sample_features["age"].values
-        catch_up = age >= 50
-        cap = limits["401k"] + catch_up * limits["401k_catch_up"]
-        for var in [
-            "traditional_401k_contributions_desired",
-            "roth_401k_contributions_desired",
-        ]:
-            assert (result[var].values <= cap).all(), f"{var} exceeds 401k cap"
+        np.testing.assert_array_equal(
+            result["traditional_401k_contributions_desired"].to_numpy(),
+            np.array([25_000, 0, 0, 10_000, 3_000]),
+        )
+        np.testing.assert_array_equal(
+            result["roth_401k_contributions_desired"].to_numpy(),
+            np.array([30_000, 2_000, 0, 50_000, 1_000]),
+        )
 
     def test_ira_capped_at_limit(self, sample_predictions, sample_features):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)

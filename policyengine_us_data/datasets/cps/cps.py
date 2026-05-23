@@ -1366,13 +1366,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     )
 
     limits = get_retirement_limits(year)
-    LIMIT_401K = limits["401k"]
-    LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
     LIMIT_IRA = limits["ira"]
     LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
     CATCH_UP_AGE = 50
     catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
-    limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
     limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
 
     retirement_contributions = person.RETCB_VAL
@@ -1407,11 +1404,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # earned income (including SE-only filers).
     ira_pool = np.where(has_earned_income, remaining - dc_pool, 0)
 
-    # DC pool: split into traditional/Roth 401(k), cap at combined
-    # 401(k) limit.
-    dc_capped = np.minimum(dc_pool, limit_401k)
-    cps["traditional_401k_contributions_desired"] = dc_capped * (1 - roth_dc_share)
-    cps["roth_401k_contributions_desired"] = dc_capped * roth_dc_share
+    # DC pool: split into desired traditional/Roth 401(k). The statutory
+    # elective-deferral cap is applied by policyengine-us.
+    cps["traditional_401k_contributions_desired"] = dc_pool * (1 - roth_dc_share)
+    cps["roth_401k_contributions_desired"] = dc_pool * roth_dc_share
 
     # IRA pool: split into traditional/Roth IRA, cap at combined
     # IRA limit.

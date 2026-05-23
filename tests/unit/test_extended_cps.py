@@ -299,7 +299,9 @@ class TestVariableListConsistency:
 
         ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
-    def test_finalize_stage2_drops_disability_difficulty_predictors(self):
+    def test_finalize_stage2_preserves_disability_difficulty_predictors_for_source_impute(
+        self,
+    ):
         data = {
             "difficulty_hearing": {2024: np.array([True, False])},
             "would_pass_ssa_disability_screen": {2024: np.array([True, False])},
@@ -307,7 +309,7 @@ class TestVariableListConsistency:
 
         result = ExtendedCPS._finalize_stage2_computed_variables(data)
 
-        assert "difficulty_hearing" not in result
+        assert "difficulty_hearing" in result
         assert "would_pass_ssa_disability_screen" in result
 
     def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):

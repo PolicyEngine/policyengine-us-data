@@ -19,6 +19,7 @@ from policyengine_us_data.calibration.source_impute import (
     SIPP_ASSETS_PREDICTORS,
     SIPP_IMPUTED_VARIABLES,
     SSI_DISABILITY_EXPORT_VARIABLES,
+    SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES,
     SIPP_TIPS_PREDICTORS,
     _add_cps_asset_predictors,
     _impute_acs,
@@ -27,6 +28,7 @@ from policyengine_us_data.calibration.source_impute import (
     _impute_sipp,
     _person_is_married,
     _person_state_fips,
+    drop_source_imputation_construction_variables,
     impute_source_variables,
 )
 from policyengine_us_data.datasets.sipp.sipp import (
@@ -120,6 +122,9 @@ class TestConstants:
             + SCF_IMPUTED_VARIABLES
         )
         assert ALL_SOURCE_VARIABLES == expected
+
+    def test_source_impute_construction_only_variables_defined(self):
+        assert "difficulty_hearing" in SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES
 
 
 class TestPredictorLists:
@@ -235,6 +240,19 @@ class TestImputeSourceVariables:
 
         assert "state_fips" in result
         np.testing.assert_array_equal(result["state_fips"][2024], state_fips)
+
+    def test_drop_source_imputation_construction_variables_removes_difficulty_flags(
+        self,
+    ):
+        data = {
+            "difficulty_hearing": {2024: np.array([True, False])},
+            "would_pass_ssa_disability_screen": {2024: np.array([True, False])},
+        }
+
+        result = drop_source_imputation_construction_variables(data)
+
+        assert "difficulty_hearing" not in result
+        assert "would_pass_ssa_disability_screen" in result
 
 
 class TestPersonStateFips:
@@ -401,6 +419,7 @@ class TestSubfunctions:
 
     def test_calibration_sipp_qrf_passes_target_filters(self, monkeypatch):
         fit_calls = []
+        captured_ssi_receiver = {}
 
         tip_columns = {
             "SSUID": [1, 2, 3],
@@ -501,10 +520,15 @@ class TestSubfunctions:
             "get_ssi_disability_model",
             lambda time_period: object(),
         )
+
+        def fake_predict_ssa_disability_screen(model, receiver):
+            captured_ssi_receiver["receiver"] = receiver.copy()
+            return np.zeros(len(receiver), dtype=bool)
+
         monkeypatch.setattr(
             source_impute,
             "predict_ssa_disability_screen",
-            lambda model, receiver: np.zeros(len(receiver), dtype=bool),
+            fake_predict_ssa_disability_screen,
         )
         monkeypatch.setattr(
             source_impute,
@@ -512,8 +536,13 @@ class TestSubfunctions:
             lambda: vehicle_train.copy(),
         )
 
+        data = _make_data_dict(n_persons=6)
+        data["difficulty_hearing"] = {
+            2024: np.array([False, True, False, False, True, False])
+        }
+
         _impute_sipp(
-            data=_make_data_dict(n_persons=6),
+            data=data,
             state_fips=np.array([1, 1, 1], dtype=np.int32),
             time_period=2024,
         )
@@ -558,6 +587,10 @@ class TestSubfunctions:
         np.testing.assert_array_equal(
             vehicle_filters["household_vehicles_value"].values,
             [True, True, False],
+        )
+        np.testing.assert_array_equal(
+            captured_ssi_receiver["receiver"]["difficulty_hearing"],
+            [False, True, False, False, True, False],
         )
 
     def test_calibration_sipp_tip_requires_allocation_flags(self, monkeypatch):

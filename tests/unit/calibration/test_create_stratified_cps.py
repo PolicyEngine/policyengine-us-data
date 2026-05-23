@@ -1,7 +1,9 @@
 import numpy as np
+import pandas as pd
 import pytest
 
 from policyengine_us_data.calibration.create_stratified_cps import (
+    _construction_only_person_variable_data,
     _split_non_top_strata,
     _top_agi_floor,
 )
@@ -32,3 +34,23 @@ def test_split_non_top_strata_uses_custom_top_floor_without_gap():
         np.array([False, True, True, True, False]),
     )
     assert bottom_25_threshold == pytest.approx(325_000.0)
+
+
+def test_construction_only_person_variable_data_follows_selected_person_order():
+    raw_data = {
+        "person_id": {2024: np.array([30, 10, 20])},
+        "difficulty_hearing": {2024: np.array([True, False, True])},
+    }
+    df_filtered = pd.DataFrame({"person_id__2024": [10, 20]})
+
+    result = _construction_only_person_variable_data(
+        raw_data,
+        df_filtered,
+        2024,
+        variables=("difficulty_hearing",),
+    )
+
+    np.testing.assert_array_equal(
+        result["difficulty_hearing"][2024],
+        np.array([False, True]),
+    )

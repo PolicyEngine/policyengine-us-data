@@ -129,6 +129,20 @@ ALL_SOURCE_VARIABLES = (
     + SCF_IMPUTED_VARIABLES
 )
 
+SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES = tuple(
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS
+)
+
+
+def drop_source_imputation_construction_variables(
+    data: Dict[str, Dict[int, np.ndarray]],
+) -> Dict[str, Dict[int, np.ndarray]]:
+    """Drop predictors needed during source imputation but not final exports."""
+    for variable in SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES:
+        data.pop(variable, None)
+    return data
+
+
 ACS_PREDICTORS = [
     "is_household_head",
     "age",

@@ -30,7 +30,6 @@ from policyengine_us_data.datasets.org import (
 from policyengine_us_data.datasets.sipp import (
     SSA_DISABILITY_SCREEN_VARIABLE,
     SSI_DISABILITY_COMPATIBILITY_VARIABLE,
-    SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SSI_DISABILITY_MODEL_PREDICTORS,
     get_ssi_disability_model,
     predict_ssa_disability_screen,
@@ -850,7 +849,6 @@ _STAGE2_COMPUTED_PREDICTORS = {
 _STAGE2_COMPUTED_OUTPUTS_TO_DROP = {
     "employment_income_last_year",
 }
-_STAGE2_CONSTRUCTION_ONLY_OUTPUTS_TO_DROP = set(SSI_DISABILITY_DIFFICULTY_PREDICTORS)
 
 _COMPUTED_AGGREGATE_INPUT_RENAMES = {
     "employment_income": "employment_income_before_lsr",
@@ -1499,12 +1497,7 @@ class ExtendedCPS(Dataset):
             del data["social_security"]
 
         dropped = sorted(
-            set(data)
-            & (
-                _STAGE2_COMPUTED_PREDICTORS
-                | _STAGE2_COMPUTED_OUTPUTS_TO_DROP
-                | _STAGE2_CONSTRUCTION_ONLY_OUTPUTS_TO_DROP
-            )
+            set(data) & (_STAGE2_COMPUTED_PREDICTORS | _STAGE2_COMPUTED_OUTPUTS_TO_DROP)
         )
         if dropped:
             logger.info(

@@ -493,7 +493,6 @@ TEMPORARY_TAKEUP_SOURCE_ANCHORS = ("snap_reported", "ssi_reported")
 TEMPORARY_IMPUTATION_SOURCE_VARIABLES = (
     "pension_income",
     "retirement_distributions",
-    *CPS_SSI_DISABILITY_DIFFICULTY_COLUMNS.keys(),
 )
 
 
@@ -2808,7 +2807,6 @@ def add_tips(self, cps: h5py.File):
             "is_under_18",
             "is_under_6",
             "is_household_head",
-            *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
             "has_disability_income",
             "household_size",
             "pension_income",

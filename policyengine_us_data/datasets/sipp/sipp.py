@@ -57,9 +57,9 @@ SSI_DISABILITY_EXPORT_VARIABLES = (
 
 # These six CPS/SIPP difficulty items are construction-time predictors for the
 # SIPP model only. PolicyEngine-US variables should generally be concepts that
-# enter the net-income tree, policy formulas, or the public dataset contract; do
-# not add private ML predictors there just because us-data uses them internally.
-# The PE-US-facing output of this model is ``would_pass_ssa_disability_screen``.
+# enter the net-income tree or policy formulas; do not add private ML predictors
+# there just because us-data uses them internally. The PE-US-facing output of
+# this model is ``would_pass_ssa_disability_screen``.
 SSI_DISABILITY_DIFFICULTY_PREDICTORS = [
     "difficulty_dressing_or_bathing",
     "difficulty_hearing",

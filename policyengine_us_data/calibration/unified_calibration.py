@@ -41,9 +41,6 @@ from policyengine_us_data.calibration.signatures import (
     build_checkpoint_signature,
     checkpoint_signature_mismatches,
 )
-from policyengine_us_data.calibration.calibration_utils import (
-    create_target_groups,
-)
 from policyengine_us_data.calibration_package.specs import (
     DEFAULT_TARGET_CONFIG_PATH as DEFAULT_TARGET_CONFIG_RELATIVE_PATH,
     TargetConfigIdentity,
@@ -1601,6 +1598,7 @@ def run_calibration(
                 data_dict[var] = {time_period: val[...]}
 
         from policyengine_us_data.calibration.source_impute import (
+            drop_source_imputation_construction_variables,
             impute_source_variables,
         )
 
@@ -1610,6 +1608,7 @@ def run_calibration(
             time_period=time_period,
             dataset_path=dataset_path,
         )
+        data_dict = drop_source_imputation_construction_variables(data_dict)
 
         source_path = str(
             Path(dataset_path).parent / f"source_imputed_{Path(dataset_path).stem}.h5"

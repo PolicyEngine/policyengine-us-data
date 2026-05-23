@@ -143,8 +143,8 @@ class TestVariableListConsistency:
     def test_retirement_contributions_in_cps_only(self):
         """All 5 retirement contribution vars should be in CPS_ONLY."""
         expected = {
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
             "traditional_ira_contributions",
             "roth_ira_contributions",
             "self_employed_pension_contributions",
@@ -912,8 +912,14 @@ class TestRetirementConstraints:
     def sample_predictions(self):
         return pd.DataFrame(
             {
-                "traditional_401k_contributions": [25000, -500, 5000, 10000, 3000],
-                "roth_401k_contributions": [30000, 2000, 0, 50000, 1000],
+                "traditional_401k_contributions_desired": [
+                    25000,
+                    -500,
+                    5000,
+                    10000,
+                    3000,
+                ],
+                "roth_401k_contributions_desired": [30000, 2000, 0, 50000, 1000],
                 "traditional_ira_contributions": [8000, -100, 3000, 15000, 500],
                 "roth_ira_contributions": [10000, 1000, 0, 20000, 200],
                 "self_employed_pension_contributions": [80000, -200, 5000, 0, 100000],
@@ -943,7 +949,10 @@ class TestRetirementConstraints:
         age = sample_features["age"].values
         catch_up = age >= 50
         cap = limits["401k"] + catch_up * limits["401k_catch_up"]
-        for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
+        for var in [
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+        ]:
             assert (result[var].values <= cap).all(), f"{var} exceeds 401k cap"
 
     def test_ira_capped_at_limit(self, sample_predictions, sample_features):
@@ -962,7 +971,10 @@ class TestRetirementConstraints:
     ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         no_emp = sample_features["employment_income"] == 0
-        for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
+        for var in [
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+        ]:
             assert (result[var].values[no_emp] == 0).all(), (
                 f"{var} should be zero without employment income"
             )

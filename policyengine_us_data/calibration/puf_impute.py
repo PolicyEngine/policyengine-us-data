@@ -160,8 +160,8 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
 ]
 
 CPS_RETIREMENT_VARIABLES = [
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
     "traditional_ira_contributions",
     "roth_ira_contributions",
     "self_employed_pension_contributions",
@@ -886,8 +886,8 @@ def _impute_retirement_contributions(
     logger.info(
         "Imputed retirement contributions for PUF: "
         "401k mean=$%.0f, IRA mean=$%.0f, SE pension mean=$%.0f",
-        result["traditional_401k_contributions"].mean()
-        + result["roth_401k_contributions"].mean(),
+        result["traditional_401k_contributions_desired"].mean()
+        + result["roth_401k_contributions_desired"].mean(),
         result["traditional_ira_contributions"].mean()
         + result["roth_ira_contributions"].mean(),
         result["self_employed_pension_contributions"].mean(),

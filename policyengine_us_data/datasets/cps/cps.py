@@ -1410,8 +1410,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # DC pool: split into traditional/Roth 401(k), cap at combined
     # 401(k) limit.
     dc_capped = np.minimum(dc_pool, limit_401k)
-    cps["traditional_401k_contributions"] = dc_capped * (1 - roth_dc_share)
-    cps["roth_401k_contributions"] = dc_capped * roth_dc_share
+    cps["traditional_401k_contributions_desired"] = dc_capped * (1 - roth_dc_share)
+    cps["roth_401k_contributions_desired"] = dc_capped * roth_dc_share
 
     # IRA pool: split into traditional/Roth IRA, cap at combined
     # IRA limit.

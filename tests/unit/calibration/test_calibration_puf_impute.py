@@ -406,8 +406,8 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
                         "qualified_dividend_income": [0.0, 0.0],
                         "taxable_pension_income": [0.0, 0.0],
                         "social_security": [0.0, 0.0],
-                        "traditional_401k_contributions": [0.0, 0.0],
-                        "roth_401k_contributions": [0.0, 0.0],
+                        "traditional_401k_contributions_desired": [0.0, 0.0],
+                        "roth_401k_contributions_desired": [0.0, 0.0],
                         "traditional_ira_contributions": [0.0, 0.0],
                         "roth_ira_contributions": [0.0, 0.0],
                         "self_employed_pension_contributions": [0.0, 0.0],
@@ -446,8 +446,8 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
             )
             return pd.DataFrame(
                 {
-                    "traditional_401k_contributions": [0.0, 0.0],
-                    "roth_401k_contributions": [0.0, 0.0],
+                    "traditional_401k_contributions_desired": [0.0, 0.0],
+                    "roth_401k_contributions_desired": [0.0, 0.0],
                     "traditional_ira_contributions": [0.0, 0.0],
                     "roth_ira_contributions": [0.0, 0.0],
                     "self_employed_pension_contributions": [50_000.0, 50_000.0],

@@ -159,8 +159,8 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "taxable_sep_distributions",
     "tax_exempt_sep_distributions",
     # Retirement contributions
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
     "traditional_ira_contributions",
     "roth_ira_contributions",
     "self_employed_pension_contributions",
@@ -587,8 +587,8 @@ def apply_retirement_constraints(predictions, X_test, time_period):
 
     # Explicit mapping: variable -> (cap array, zero_mask or None).
     _CONSTRAINT_MAP = {
-        "traditional_401k_contributions": (limit_401k, emp_income == 0),
-        "roth_401k_contributions": (limit_401k, emp_income == 0),
+        "traditional_401k_contributions_desired": (limit_401k, emp_income == 0),
+        "roth_401k_contributions_desired": (limit_401k, emp_income == 0),
         "traditional_ira_contributions": (limit_ira, None),
         "roth_ira_contributions": (limit_ira, None),
         "self_employed_pension_contributions": (
@@ -641,8 +641,8 @@ def reconcile_ss_subcomponents(predictions, total_ss):
 
 
 _RETIREMENT_VARS = {
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
     "traditional_ira_contributions",
     "roth_ira_contributions",
     "self_employed_pension_contributions",

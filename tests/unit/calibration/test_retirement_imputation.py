@@ -89,8 +89,8 @@ def _make_cps_df(n, rng):
             "taxable_pension_income": rng.uniform(0, 20_000, n),
             "social_security": rng.uniform(0, 15_000, n),
             # Targets
-            "traditional_401k_contributions": rng.uniform(0, 5000, n),
-            "roth_401k_contributions": rng.uniform(0, 3000, n),
+            "traditional_401k_contributions_desired": rng.uniform(0, 5000, n),
+            "roth_401k_contributions_desired": rng.uniform(0, 3000, n),
             "traditional_ira_contributions": rng.uniform(0, 2000, n),
             "roth_ira_contributions": rng.uniform(0, 2000, n),
             "self_employed_pension_contributions": rng.uniform(0, 10_000, n),
@@ -142,8 +142,8 @@ class TestConstants:
 
     def test_retirement_variable_names(self):
         expected = {
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
             "traditional_ira_contributions",
             "roth_ira_contributions",
             "self_employed_pension_contributions",
@@ -321,8 +321,8 @@ class TestImputeRetirementContributions:
         max_401k = lim["401k"] + lim["401k_catch_up"]
 
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
             assert np.all(result[var] <= max_401k), f"{var} exceeds 401k limit"
 
@@ -343,8 +343,8 @@ class TestImputeRetirementContributions:
         assert zero_wage.sum() == 10
 
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
             assert np.all(result[var][zero_wage] == 0), (
                 f"{var} should be 0 when employment_income is 0"
@@ -369,8 +369,8 @@ class TestImputeRetirementContributions:
 
         result = self._call_with_mocks(self._uniform_preds(val))
 
-        young_401k = result["traditional_401k_contributions"][:25]
-        old_401k = result["traditional_401k_contributions"][25:]
+        young_401k = result["traditional_401k_contributions_desired"][:25]
+        old_401k = result["traditional_401k_contributions_desired"][25:]
 
         # Young capped at base limit
         assert np.all(young_401k == lim["401k"])
@@ -397,8 +397,8 @@ class TestImputeRetirementContributions:
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         pos_wage = self.puf_imputations["employment_income"] > 0
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
             assert np.all(result[var][pos_wage] > 0)
 

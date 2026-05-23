@@ -175,6 +175,10 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
                     "retirement_distributions",
                     data=np.array([3.0, 4.0]),
                 )
+                h5_file.create_dataset(
+                    "difficulty_hearing",
+                    data=np.array([True, False]),
+                )
             self.saved_dataset = None
             self.base_dataset = {
                 "person_id": [1, 2],
@@ -237,7 +241,7 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
     class FakeSsiDisabilityModel:
         pass
 
-    def fake_predict_ssi_disability_criteria(model, receiver_df):
+    def fake_predict_ssa_disability_screen(model, receiver_df):
         assert isinstance(model, FakeSsiDisabilityModel)
         assert receiver_df["employment_income"].tolist() == [25_000.0, 30_000.0]
         return np.array([True, False])
@@ -252,8 +256,8 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         sipp_module,
-        "predict_ssi_disability_criteria",
-        fake_predict_ssi_disability_criteria,
+        "predict_ssa_disability_screen",
+        fake_predict_ssa_disability_screen,
     )
 
     dataset = FakeDataset()
@@ -278,11 +282,17 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
         True,
         False,
     ]
+    assert dataset.saved_dataset["would_pass_ssa_disability_screen"].tolist() == [
+        True,
+        False,
+    ]
     assert "pension_income" not in dataset.saved_dataset
     assert "retirement_distributions" not in dataset.saved_dataset
+    assert "difficulty_hearing" not in dataset.saved_dataset
     with h5py.File(dataset.file_path, "r") as h5_file:
         assert "pension_income" not in h5_file
         assert "retirement_distributions" not in h5_file
+        assert "difficulty_hearing" not in h5_file
 
 
 def test_add_rent_requests_person_level_frames(monkeypatch, tmp_path):

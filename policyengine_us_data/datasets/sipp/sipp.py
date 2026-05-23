@@ -46,9 +46,20 @@ VEHICLE_MODEL_PREDICTORS = [
     "is_homeowner",
 ]
 
-SSI_DISABILITY_MODEL_VARIABLE = "meets_ssi_disability_criteria"
-SSI_DISABILITY_MODEL_VERSION = 3
+SSA_DISABILITY_SCREEN_VARIABLE = "would_pass_ssa_disability_screen"
+SSI_DISABILITY_COMPATIBILITY_VARIABLE = "meets_ssi_disability_criteria"
+SSI_DISABILITY_MODEL_VARIABLE = SSA_DISABILITY_SCREEN_VARIABLE
+SSI_DISABILITY_MODEL_VERSION = 4
+SSI_DISABILITY_EXPORT_VARIABLES = (
+    SSA_DISABILITY_SCREEN_VARIABLE,
+    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+)
 
+# These six CPS/SIPP difficulty items are construction-time predictors for the
+# SIPP model only. PolicyEngine-US variables should generally be concepts that
+# enter the net-income tree, policy formulas, or the public dataset contract; do
+# not add private ML predictors there just because us-data uses them internally.
+# The PE-US-facing output of this model is ``would_pass_ssa_disability_screen``.
 SSI_DISABILITY_DIFFICULTY_PREDICTORS = [
     "difficulty_dressing_or_bathing",
     "difficulty_hearing",
@@ -504,7 +515,7 @@ def _ssi_financial_candidate_mask(
 def build_ssi_disability_training_frame(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.DataFrame:
-    """Build SIPP training rows for latent SSI disability criteria."""
+    """Build SIPP training rows for the latent SSA disability screen."""
     df = df[df.MONTHCODE == 12].copy()
 
     df["bank_account_assets"] = df["TVAL_BANK"].fillna(0)
@@ -532,8 +543,9 @@ def build_ssi_disability_training_frame(
     social_security_amount = (
         df["TSSSAMT"] if "TSSSAMT" in df else pd.Series(0.0, index=df.index)
     )
-    # SSDI receipt is evidence for disability status, but the training label
-    # below remains SSI receipt reason, not a broad SSA disability determination.
+    # SSDI receipt is evidence for disability status, while the label below is
+    # still anchored to under-65 SSI receipt/reason because SIPP lacks rejected
+    # SSA disability determinations.
     df["social_security_disability"] = np.where(
         _yes(df, "ESSRSN2YN"),
         social_security_amount.fillna(0).astype(float) * 12,
@@ -555,23 +567,23 @@ def build_ssi_disability_training_frame(
         .astype(float)
         .eq(2)
     )
-    df[SSI_DISABILITY_MODEL_VARIABLE] = (
+    df[SSA_DISABILITY_SCREEN_VARIABLE] = (
         received_ssi & under_65 & (disabled_or_blind_reason | ~aged_reason)
     )
 
     financial_candidate = _ssi_financial_candidate_mask(df, time_period=time_period)
     df["ssi_disability_training_candidate"] = (financial_candidate & under_65) | df[
-        SSI_DISABILITY_MODEL_VARIABLE
+        SSA_DISABILITY_SCREEN_VARIABLE
     ]
     df = filter_observed_source_rows(
         df,
-        target_name=SSI_DISABILITY_MODEL_VARIABLE,
+        target_name=SSA_DISABILITY_SCREEN_VARIABLE,
         source_columns=SSI_DISABILITY_LABEL_SOURCE_COLUMNS,
         allocation_flag_columns=SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
     )
 
     columns = SSI_DISABILITY_MODEL_PREDICTORS + [
-        SSI_DISABILITY_MODEL_VARIABLE,
+        SSA_DISABILITY_SCREEN_VARIABLE,
         "ssi_disability_training_candidate",
         "household_weight",
     ]
@@ -596,8 +608,8 @@ def _coerce_ssi_disability_signal(values) -> np.ndarray:
     return normalized.isin(["true", "1", "yes"]).to_numpy(dtype=bool)
 
 
-def apply_ssi_disability_signal_screen(
-    meets_ssi_disability_criteria: np.ndarray,
+def apply_ssa_disability_signal_screen(
+    would_pass_ssa_disability_screen: np.ndarray,
     disability_difficulty_signal: np.ndarray,
     social_security_disability: np.ndarray,
     has_disability_income: np.ndarray,
@@ -608,22 +620,42 @@ def apply_ssi_disability_signal_screen(
         | _coerce_ssi_disability_signal(social_security_disability)
         | _coerce_ssi_disability_signal(has_disability_income)
     )
-    return np.asarray(meets_ssi_disability_criteria, dtype=bool) & disability_signal
+    return np.asarray(would_pass_ssa_disability_screen, dtype=bool) & disability_signal
 
 
-def preserve_under_65_ssi_disability_criteria(
+def apply_ssi_disability_signal_screen(
     meets_ssi_disability_criteria: np.ndarray,
+    disability_difficulty_signal: np.ndarray,
+    social_security_disability: np.ndarray,
+    has_disability_income: np.ndarray,
+) -> np.ndarray:
+    return apply_ssa_disability_signal_screen(
+        meets_ssi_disability_criteria,
+        disability_difficulty_signal,
+        social_security_disability,
+        has_disability_income,
+    )
+
+
+def preserve_under_65_ssa_disability_screen(
+    would_pass_ssa_disability_screen: np.ndarray,
     age: np.ndarray,
     ssi_reported: np.ndarray | None = None,
+    existing_ssa_disability_screen: np.ndarray | None = None,
     existing_meets_ssi_disability_criteria: np.ndarray | None = None,
 ) -> np.ndarray:
     """Preserve observed under-65 SSI disability criteria anchors."""
-    result = np.asarray(meets_ssi_disability_criteria, dtype=bool).copy()
+    result = np.asarray(would_pass_ssa_disability_screen, dtype=bool).copy()
     under_65 = pd.Series(age).fillna(np.inf).astype(float).lt(65).to_numpy()
 
     if ssi_reported is not None:
         reported_ssi = pd.Series(ssi_reported).fillna(0).astype(float).gt(0).to_numpy()
         result |= reported_ssi & under_65
+
+    if existing_ssa_disability_screen is not None:
+        result |= (
+            _coerce_ssi_disability_signal(existing_ssa_disability_screen) & under_65
+        )
 
     if existing_meets_ssi_disability_criteria is not None:
         result |= (
@@ -632,6 +664,20 @@ def preserve_under_65_ssi_disability_criteria(
         )
 
     return result
+
+
+def preserve_under_65_ssi_disability_criteria(
+    meets_ssi_disability_criteria: np.ndarray,
+    age: np.ndarray,
+    ssi_reported: np.ndarray | None = None,
+    existing_meets_ssi_disability_criteria: np.ndarray | None = None,
+) -> np.ndarray:
+    return preserve_under_65_ssa_disability_screen(
+        meets_ssi_disability_criteria,
+        age,
+        ssi_reported=ssi_reported,
+        existing_meets_ssi_disability_criteria=existing_meets_ssi_disability_criteria,
+    )
 
 
 def coerce_ssi_disability_predictions(values) -> np.ndarray:
@@ -655,19 +701,23 @@ def _ssi_disability_difficulty_signal(receiver: pd.DataFrame) -> np.ndarray:
     return np.column_stack(difficulty_signals).any(axis=1)
 
 
-def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndarray:
-    """Predict SSI disability criteria before applying dynamic policy screens."""
+def predict_ssa_disability_screen(model, receiver_df: pd.DataFrame) -> np.ndarray:
+    """Predict the SSA disability screen before dynamic policy screens."""
     receiver = prepare_ssi_disability_receiver(receiver_df)
     predictions = model.predict(X_test=receiver[SSI_DISABILITY_MODEL_PREDICTORS])
-    meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
+    would_pass_ssa_disability_screen = coerce_ssi_disability_predictions(
         predictions[SSI_DISABILITY_MODEL_VARIABLE]
     )
-    return apply_ssi_disability_signal_screen(
-        meets_ssi_disability_criteria,
+    return apply_ssa_disability_signal_screen(
+        would_pass_ssa_disability_screen,
         _ssi_disability_difficulty_signal(receiver),
         receiver["social_security_disability"],
         receiver["has_disability_income"],
     )
+
+
+def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndarray:
+    return predict_ssa_disability_screen(model, receiver_df)
 
 
 def train_asset_model():
@@ -772,7 +822,7 @@ def get_asset_model() -> QRF:
 
 
 def train_ssi_disability_model(time_period: int = 2024):
-    """Train a boolean model for likely SSI disability criteria."""
+    """Train a boolean model for likely SSA disability screen passage."""
     hf_hub_download(
         repo_id="PolicyEngine/policyengine-us-data",
         filename="pu2023.csv",
@@ -818,7 +868,7 @@ def train_ssi_disability_model(time_period: int = 2024):
 
 
 def get_ssi_disability_model(time_period: int = 2024) -> QRF:
-    """Get or train the SSI disability criteria imputation model."""
+    """Get or train the SSA disability-screen imputation model."""
     model_path = _ssi_disability_model_path(time_period)
 
     if not model_path.exists():
@@ -836,7 +886,7 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
 def _ssi_disability_model_path(time_period: int):
     return (
         STORAGE_FOLDER
-        / f"ssi_disability_criteria_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
+        / f"ssa_disability_screen_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
     )
 
 

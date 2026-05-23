@@ -18,7 +18,7 @@ from policyengine_us_data.calibration.source_impute import (
     SCF_PREDICTORS,
     SIPP_ASSETS_PREDICTORS,
     SIPP_IMPUTED_VARIABLES,
-    SSI_DISABILITY_MODEL_VARIABLE,
+    SSI_DISABILITY_EXPORT_VARIABLES,
     SIPP_TIPS_PREDICTORS,
     _add_cps_asset_predictors,
     _impute_acs,
@@ -28,9 +28,11 @@ from policyengine_us_data.calibration.source_impute import (
     _person_is_married,
     _person_state_fips,
     impute_source_variables,
+)
+from policyengine_us_data.datasets.sipp.sipp import (
+    ASSET_PREDICTORS,
     preserve_under_65_ssi_disability_criteria,
 )
-from policyengine_us_data.datasets.sipp.sipp import ASSET_PREDICTORS
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
@@ -93,7 +95,7 @@ class TestConstants:
         assert "bank_account_assets" in SIPP_IMPUTED_VARIABLES
         assert "stock_assets" in SIPP_IMPUTED_VARIABLES
         assert "bond_assets" in SIPP_IMPUTED_VARIABLES
-        assert SSI_DISABILITY_MODEL_VARIABLE in SIPP_IMPUTED_VARIABLES
+        assert set(SSI_DISABILITY_EXPORT_VARIABLES) <= set(SIPP_IMPUTED_VARIABLES)
         assert "household_vehicles_owned" in SIPP_IMPUTED_VARIABLES
         assert "household_vehicles_value" in SIPP_IMPUTED_VARIABLES
 
@@ -501,7 +503,7 @@ class TestSubfunctions:
         )
         monkeypatch.setattr(
             source_impute,
-            "predict_ssi_disability_criteria",
+            "predict_ssa_disability_screen",
             lambda model, receiver: np.zeros(len(receiver), dtype=bool),
         )
         monkeypatch.setattr(

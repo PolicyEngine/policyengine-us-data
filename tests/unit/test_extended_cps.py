@@ -206,7 +206,8 @@ class TestVariableListConsistency:
     def test_weeks_worked_is_cps_only_imputed_for_clone_records(self):
         assert "weeks_worked" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
-    def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
+    def test_ssa_disability_screen_is_cps_only_imputed_for_clone_records(self):
+        assert "would_pass_ssa_disability_screen" in set(CPS_ONLY_IMPUTED_VARIABLES)
         assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
     def test_clone_feature_candidates_include_person_level_cps_only_flags(self):
@@ -224,6 +225,9 @@ class TestVariableListConsistency:
             "meets_ssi_disability_criteria": {
                 2024: np.array([True, False, True, False])
             },
+            "would_pass_ssa_disability_screen": {
+                2024: np.array([True, False, True, False])
+            },
         }
 
         result = _cps_clone_feature_variables_for_data(data, 2024)
@@ -238,6 +242,7 @@ class TestVariableListConsistency:
         assert "is_household_head" not in result
         assert "is_tax_unit_head" not in result
         assert "meets_ssi_disability_criteria" not in result
+        assert "would_pass_ssa_disability_screen" not in result
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -284,12 +289,26 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
-    def test_final_export_contract_allows_data_overridden_ssi_disability_criteria(
+    def test_final_export_contract_allows_data_overridden_disability_screen(
         self,
     ):
-        data = {"meets_ssi_disability_criteria": {2024: np.array([True, False])}}
+        data = {
+            "would_pass_ssa_disability_screen": {2024: np.array([True, False])},
+            "meets_ssi_disability_criteria": {2024: np.array([True, False])},
+        }
 
         ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_finalize_stage2_drops_disability_difficulty_predictors(self):
+        data = {
+            "difficulty_hearing": {2024: np.array([True, False])},
+            "would_pass_ssa_disability_screen": {2024: np.array([True, False])},
+        }
+
+        result = ExtendedCPS._finalize_stage2_computed_variables(data)
+
+        assert "difficulty_hearing" not in result
+        assert "would_pass_ssa_disability_screen" in result
 
     def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):
         data = {"medicare_enrolled": {2024: np.array([True, False])}}
@@ -919,7 +938,7 @@ class TestStage2PostProcessing:
             def predict(self, X_test):
                 return pd.DataFrame(
                     {
-                        "meets_ssi_disability_criteria": np.ones(
+                        "would_pass_ssa_disability_screen": np.ones(
                             len(X_test),
                             dtype=bool,
                         )
@@ -962,8 +981,12 @@ class TestStage2PostProcessing:
             result["meets_ssi_disability_criteria"],
             np.array([True, True, False]),
         )
+        np.testing.assert_array_equal(
+            result["would_pass_ssa_disability_screen"],
+            np.array([True, True, False]),
+        )
 
-    def test_splice_replaces_clone_half_ssi_disability_criteria(self, monkeypatch):
+    def test_splice_replaces_clone_half_ssa_disability_screen(self, monkeypatch):
         import policyengine_us
 
         class FakeMicrosimulation:
@@ -974,11 +997,19 @@ class TestStage2PostProcessing:
 
         data = {
             "person_id": {2024: np.array([1, 2, 101, 102])},
+            "would_pass_ssa_disability_screen": {
+                2024: np.array([True, False, True, False])
+            },
             "meets_ssi_disability_criteria": {
                 2024: np.array([True, False, True, False])
             },
         }
-        predictions = pd.DataFrame({"meets_ssi_disability_criteria": [False, True]})
+        predictions = pd.DataFrame(
+            {
+                "would_pass_ssa_disability_screen": [False, True],
+                "meets_ssi_disability_criteria": [False, True],
+            }
+        )
 
         result = _splice_cps_only_predictions(
             data,
@@ -987,6 +1018,10 @@ class TestStage2PostProcessing:
             dataset_path="unused",
         )
 
+        np.testing.assert_array_equal(
+            result["would_pass_ssa_disability_screen"][2024],
+            np.array([True, False, False, True]),
+        )
         np.testing.assert_array_equal(
             result["meets_ssi_disability_criteria"][2024],
             np.array([True, False, False, True]),

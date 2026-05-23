@@ -28,10 +28,12 @@ from policyengine_us_data.datasets.org import (
     apply_org_domain_constraints,
 )
 from policyengine_us_data.datasets.sipp import (
+    SSA_DISABILITY_SCREEN_VARIABLE,
+    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SSI_DISABILITY_MODEL_PREDICTORS,
-    SSI_DISABILITY_MODEL_VARIABLE,
     get_ssi_disability_model,
-    predict_ssi_disability_criteria,
+    predict_ssa_disability_screen,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -191,7 +193,8 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "financial_assistance",
     "survivor_benefits",
     "disability_benefits",
-    SSI_DISABILITY_MODEL_VARIABLE,
+    SSA_DISABILITY_SCREEN_VARIABLE,
+    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
     "strike_benefits",
     "receives_wic",
     # SPM variables
@@ -847,6 +850,7 @@ _STAGE2_COMPUTED_PREDICTORS = {
 _STAGE2_COMPUTED_OUTPUTS_TO_DROP = {
     "employment_income_last_year",
 }
+_STAGE2_CONSTRUCTION_ONLY_OUTPUTS_TO_DROP = set(SSI_DISABILITY_DIFFICULTY_PREDICTORS)
 
 _COMPUTED_AGGREGATE_INPUT_RENAMES = {
     "employment_income": "employment_income_before_lsr",
@@ -979,17 +983,27 @@ def _apply_post_processing(predictions, X_test, time_period, data):
                 "employer_sponsored_insurance_premiums",
             ] = 0
 
-    if SSI_DISABILITY_MODEL_VARIABLE in predictions.columns:
+    disability_screen_columns = [
+        column
+        for column in (
+            SSA_DISABILITY_SCREEN_VARIABLE,
+            SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+        )
+        if column in predictions.columns
+    ]
+    if disability_screen_columns:
         receiver = _build_ssi_disability_clone_receiver(
             predictions,
             X_test,
             data,
             time_period,
         )
-        predictions[SSI_DISABILITY_MODEL_VARIABLE] = predict_ssi_disability_criteria(
+        disability_screen = predict_ssa_disability_screen(
             get_ssi_disability_model(time_period=time_period),
             receiver,
         )
+        predictions[SSA_DISABILITY_SCREEN_VARIABLE] = disability_screen
+        predictions[SSI_DISABILITY_COMPATIBILITY_VARIABLE] = disability_screen
 
     return predictions
 
@@ -1485,7 +1499,12 @@ class ExtendedCPS(Dataset):
             del data["social_security"]
 
         dropped = sorted(
-            set(data) & (_STAGE2_COMPUTED_PREDICTORS | _STAGE2_COMPUTED_OUTPUTS_TO_DROP)
+            set(data)
+            & (
+                _STAGE2_COMPUTED_PREDICTORS
+                | _STAGE2_COMPUTED_OUTPUTS_TO_DROP
+                | _STAGE2_CONSTRUCTION_ONLY_OUTPUTS_TO_DROP
+            )
         )
         if dropped:
             logger.info(

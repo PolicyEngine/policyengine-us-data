@@ -5,10 +5,13 @@ from policyengine_us_data.datasets.sipp import (
     SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SSI_DISABILITY_MODEL_PREDICTORS,
     SSI_DISABILITY_MODEL_VARIABLE,
+    SSA_DISABILITY_SCREEN_VARIABLE,
     apply_ssi_disability_signal_screen,
     build_ssi_disability_training_frame,
     coerce_ssi_disability_predictions,
+    predict_ssa_disability_screen,
     predict_ssi_disability_criteria,
+    preserve_under_65_ssa_disability_screen,
     preserve_under_65_ssi_disability_criteria,
     prepare_ssi_disability_receiver,
 )
@@ -100,9 +103,9 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
 
 
 def test_ssi_disability_model_cache_version_tracks_predictor_schema():
-    assert SSI_DISABILITY_MODEL_VERSION == 3
+    assert SSI_DISABILITY_MODEL_VERSION == 4
     assert (
-        _ssi_disability_model_path(2024).name == "ssi_disability_criteria_v3_2024.pkl"
+        _ssi_disability_model_path(2024).name == "ssa_disability_screen_v4_2024.pkl"
     )
 
 
@@ -169,15 +172,26 @@ def test_apply_ssi_disability_signal_screen_treats_missing_as_false():
     np.testing.assert_array_equal(result, np.array([False, False, False]))
 
 
-def test_preserve_under_65_ssi_disability_criteria_keeps_observed_anchors():
-    result = preserve_under_65_ssi_disability_criteria(
+def test_preserve_under_65_ssa_disability_screen_keeps_observed_anchors():
+    result = preserve_under_65_ssa_disability_screen(
         np.array([False, False, False, False]),
         age=np.array([40, 64, 70, 30]),
         ssi_reported=np.array([0, 100, 100, np.nan]),
+        existing_ssa_disability_screen=np.array([False, True, False, np.nan]),
         existing_meets_ssi_disability_criteria=np.array([True, False, True, np.nan]),
     )
 
     np.testing.assert_array_equal(result, np.array([True, True, False, False]))
+
+
+def test_legacy_preserve_under_65_ssi_disability_criteria_wrapper():
+    result = preserve_under_65_ssi_disability_criteria(
+        np.array([False, False, False]),
+        age=np.array([40, 64, 70]),
+        existing_meets_ssi_disability_criteria=np.array([True, False, True]),
+    )
+
+    np.testing.assert_array_equal(result, np.array([True, False, False]))
 
 
 def test_coerce_ssi_disability_predictions_handles_string_false():
@@ -191,7 +205,29 @@ def test_coerce_ssi_disability_predictions_handles_string_false():
     )
 
 
-def test_predict_ssi_disability_criteria_does_not_apply_sga_screen():
+def test_predict_ssa_disability_screen_does_not_apply_sga_screen():
+    class AlwaysTrueModel:
+        def predict(self, X_test):
+            return pd.DataFrame(
+                {SSA_DISABILITY_SCREEN_VARIABLE: np.ones(len(X_test), dtype=bool)}
+            )
+
+    receiver = pd.DataFrame(
+        {
+            "age": [40],
+            "employment_income": [60_000],
+            "difficulty_walking_or_climbing_stairs": [True],
+            "social_security_disability": [False],
+            "has_disability_income": [False],
+        }
+    )
+
+    result = predict_ssa_disability_screen(AlwaysTrueModel(), receiver)
+
+    np.testing.assert_array_equal(result, np.array([True]))
+
+
+def test_legacy_predict_ssi_disability_criteria_wrapper():
     class AlwaysTrueModel:
         def predict(self, X_test):
             return pd.DataFrame(
@@ -201,8 +237,8 @@ def test_predict_ssi_disability_criteria_does_not_apply_sga_screen():
     receiver = pd.DataFrame(
         {
             "age": [40],
-            "employment_income": [60_000],
-            "difficulty_walking_or_climbing_stairs": [True],
+            "employment_income": [0],
+            "difficulty_hearing": [True],
             "social_security_disability": [False],
             "has_disability_income": [False],
         }

@@ -2122,7 +2122,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.705.1"
+version = "1.705.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -2132,9 +2132,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/a1/1f5fac9080680f490fc8c0222e1206585fa573928c6e5a76dc11b772e3cc/policyengine_us-1.705.1.tar.gz", hash = "sha256:4467ff3c74b468593a38a65854c037a5650552abb5cb0fb3aab248d47a5b1f99", size = 9910341, upload-time = "2026-05-22T18:34:58.827Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/78/55/53777398eb764711d8a1de7452751653c28538aa0f89e9dd6899c55fff51/policyengine_us-1.705.6.tar.gz", hash = "sha256:86cdc6f88bdbb4934adf217bb9642fcc6904019f657e6f40116d60389e10a049", size = 9914380, upload-time = "2026-05-23T18:52:56.06Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/87/1d/71653e73a243ffb6e74463403b2a198cdea9ce9fa2dab8038d99ad70991b/policyengine_us-1.705.1-py3-none-any.whl", hash = "sha256:9db5121748d62961cb4867f18dab03da1be9abc986676e12e147e19afc6fd6aa", size = 10735178, upload-time = "2026-05-22T18:34:55.376Z" },
+    { url = "https://files.pythonhosted.org/packages/03/e3/cd0270ce134bbafab55e9eafae467fbf3bada47486a3ea236fa783052179/policyengine_us-1.705.6-py3-none-any.whl", hash = "sha256:da5462d2df6df6bf411d26a17688a5ebf6d40f87c2799c2451b0168386b2c124", size = 10744132, upload-time = "2026-05-23T18:52:52.824Z" },
 ]
 
 [[package]]
@@ -2204,7 +2204,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.26.1,<3.27" },
-    { name = "policyengine-us", specifier = "==1.705.1" },
+    { name = "policyengine-us", specifier = "==1.705.6" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },

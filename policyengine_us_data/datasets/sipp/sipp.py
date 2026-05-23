@@ -531,6 +531,8 @@ def build_ssi_disability_training_frame(
     social_security_amount = (
         df["TSSSAMT"] if "TSSSAMT" in df else pd.Series(0.0, index=df.index)
     )
+    # SSDI receipt is evidence for disability status, but the training label
+    # below remains SSI receipt reason, not a broad SSA disability determination.
     df["social_security_disability"] = np.where(
         _yes(df, "ESSRSN2YN"),
         social_security_amount.fillna(0).astype(float) * 12,

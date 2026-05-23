@@ -104,9 +104,7 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
 
 def test_ssi_disability_model_cache_version_tracks_predictor_schema():
     assert SSI_DISABILITY_MODEL_VERSION == 4
-    assert (
-        _ssi_disability_model_path(2024).name == "ssa_disability_screen_v4_2024.pkl"
-    )
+    assert _ssi_disability_model_path(2024).name == "ssa_disability_screen_v4_2024.pkl"
 
 
 def test_build_ssi_disability_training_frame_annualizes_ssdi_amount():

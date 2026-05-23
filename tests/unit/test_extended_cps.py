@@ -29,6 +29,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _load_raw_spm_capped_housing_subsidy,
     _apply_post_processing,
     _build_clone_test_frame,
+    _build_ssi_disability_clone_receiver,
     _cps_clone_feature_variables_for_data,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
@@ -216,6 +217,8 @@ class TestVariableListConsistency:
             "household_weight": {2024: np.array([1.0, 1.0, 0.0, 0.0])},
             "state_fips": {2024: np.array([6, 36, 6, 36])},
             "employment_income": {2024: np.array([1.0, 2.0, 3.0, 4.0])},
+            "is_household_head": {2024: np.array([True, True, True, True])},
+            "is_tax_unit_head": {2024: np.array([True, False, True, False])},
             "is_disabled": {2024: np.array([True, False, True, False])},
             "difficulty_hearing": {2024: np.array([False, True, False, True])},
             "meets_ssi_disability_criteria": {
@@ -232,6 +235,8 @@ class TestVariableListConsistency:
         assert "household_weight" not in result
         assert "state_fips" not in result
         assert "employment_income" not in result
+        assert "is_household_head" not in result
+        assert "is_tax_unit_head" not in result
         assert "meets_ssi_disability_criteria" not in result
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
@@ -881,6 +886,83 @@ class TestLLCEligibilityInputImputation:
 
 
 class TestStage2PostProcessing:
+    def test_ssi_disability_clone_receiver_uses_stage2_disability_benefits(self):
+        data = {
+            "person_id": {2024: np.array([1, 2, 101, 102])},
+            "difficulty_hearing": {2024: np.array([False, False, True, False])},
+        }
+        predictions = pd.DataFrame({"disability_benefits": [0.0, 500.0]})
+        x_test = pd.DataFrame(
+            {
+                "age": [40, 40],
+                "is_male": [False, True],
+                "employment_income": [0.0, 0.0],
+            }
+        )
+
+        result = _build_ssi_disability_clone_receiver(
+            predictions,
+            x_test,
+            data,
+            2024,
+        )
+
+        np.testing.assert_array_equal(result["difficulty_hearing"], [True, False])
+        np.testing.assert_array_equal(result["has_disability_income"], [False, True])
+        np.testing.assert_array_equal(result["is_female"], [True, False])
+
+    def test_post_processing_replaces_generic_ssi_disability_predictions(
+        self,
+        monkeypatch,
+    ):
+        class AlwaysTrueModel:
+            def predict(self, X_test):
+                return pd.DataFrame(
+                    {
+                        "meets_ssi_disability_criteria": np.ones(
+                            len(X_test),
+                            dtype=bool,
+                        )
+                    }
+                )
+
+        monkeypatch.setattr(
+            extended_cps_module,
+            "get_ssi_disability_model",
+            lambda time_period: AlwaysTrueModel(),
+        )
+        data = {
+            "person_id": {2024: np.arange(6)},
+            "difficulty_walking_or_climbing_stairs": {
+                2024: np.array([False, False, False, True, False, False])
+            },
+        }
+        predictions = pd.DataFrame(
+            {
+                "meets_ssi_disability_criteria": [False, False, True],
+                "disability_benefits": [0.0, 500.0, 0.0],
+            }
+        )
+        x_test = pd.DataFrame(
+            {
+                "age": [40, 40, 40],
+                "is_male": [False, True, False],
+                "employment_income": [0.0, 0.0, 0.0],
+            }
+        )
+
+        result = _apply_post_processing(
+            predictions=predictions,
+            X_test=x_test,
+            time_period=2024,
+            data=data,
+        )
+
+        np.testing.assert_array_equal(
+            result["meets_ssi_disability_criteria"],
+            np.array([True, True, False]),
+        )
+
     def test_splice_replaces_clone_half_ssi_disability_criteria(self, monkeypatch):
         import policyengine_us
 

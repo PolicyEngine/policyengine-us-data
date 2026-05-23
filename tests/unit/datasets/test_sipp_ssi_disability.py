@@ -12,7 +12,11 @@ from policyengine_us_data.datasets.sipp import (
     preserve_under_65_ssi_disability_criteria,
     prepare_ssi_disability_receiver,
 )
-from policyengine_us_data.datasets.sipp.sipp import SSI_DISABILITY_COLUMNS
+from policyengine_us_data.datasets.sipp.sipp import (
+    SSI_DISABILITY_COLUMNS,
+    SSI_DISABILITY_MODEL_VERSION,
+    _ssi_disability_model_path,
+)
 
 
 def _base_sipp_frame() -> pd.DataFrame:
@@ -93,6 +97,13 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
         SSI_DISABILITY_MODEL_PREDICTORS
     )
     assert "is_disabled" not in SSI_DISABILITY_MODEL_PREDICTORS
+
+
+def test_ssi_disability_model_cache_version_tracks_predictor_schema():
+    assert SSI_DISABILITY_MODEL_VERSION == 3
+    assert (
+        _ssi_disability_model_path(2024).name == "ssi_disability_criteria_v3_2024.pkl"
+    )
 
 
 def test_build_ssi_disability_training_frame_annualizes_ssdi_amount():

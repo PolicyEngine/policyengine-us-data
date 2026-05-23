@@ -47,6 +47,7 @@ VEHICLE_MODEL_PREDICTORS = [
 ]
 
 SSI_DISABILITY_MODEL_VARIABLE = "meets_ssi_disability_criteria"
+SSI_DISABILITY_MODEL_VERSION = 3
 
 SSI_DISABILITY_DIFFICULTY_PREDICTORS = [
     "difficulty_dressing_or_bathing",
@@ -818,7 +819,7 @@ def train_ssi_disability_model(time_period: int = 2024):
 
 def get_ssi_disability_model(time_period: int = 2024) -> QRF:
     """Get or train the SSI disability criteria imputation model."""
-    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v2_{time_period}.pkl"
+    model_path = _ssi_disability_model_path(time_period)
 
     if not model_path.exists():
         model = train_ssi_disability_model(time_period=time_period)
@@ -830,6 +831,13 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
             model = pickle.load(f)
 
     return model
+
+
+def _ssi_disability_model_path(time_period: int):
+    return (
+        STORAGE_FOLDER
+        / f"ssi_disability_criteria_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
+    )
 
 
 def build_vehicle_training_frame() -> pd.DataFrame:

@@ -27,6 +27,12 @@ from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
 )
+from policyengine_us_data.datasets.sipp import (
+    SSI_DISABILITY_MODEL_PREDICTORS,
+    SSI_DISABILITY_MODEL_VARIABLE,
+    get_ssi_disability_model,
+    predict_ssi_disability_criteria,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 from policyengine_us_data.datasets.puf import PUF, PUF_2024
@@ -185,7 +191,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "financial_assistance",
     "survivor_benefits",
     "disability_benefits",
-    "meets_ssi_disability_criteria",
+    SSI_DISABILITY_MODEL_VARIABLE,
     "strike_benefits",
     "receives_wic",
     # SPM variables
@@ -234,6 +240,20 @@ _CLONE_REFRESH_GEOGRAPHY_VARIABLES = {
 
 _CLONE_REFRESH_ANCHOR_VARIABLES = {
     "age",
+}
+
+_CLONE_REFRESH_STRUCTURAL_ROLE_VARIABLES = {
+    "is_household_head",
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "is_tax_unit_dependent",
+    "is_tax_unit_head_or_spouse",
+    "is_family_head",
+    "is_family_spouse",
+    "is_family_dependent",
+    "is_spm_unit_head",
+    "is_spm_unit_spouse",
+    "is_spm_unit_dependent",
 }
 
 # Predictors used for the second-stage CPS-only imputation: demographics
@@ -308,6 +328,7 @@ def _is_structural_clone_variable(variable: str) -> bool:
         or variable in _CLONE_REFRESH_GEOGRAPHY_VARIABLES
         or variable in CLONE_ORIGIN_FLAGS.values()
         or variable in _CLONE_REFRESH_ANCHOR_VARIABLES
+        or variable in _CLONE_REFRESH_STRUCTURAL_ROLE_VARIABLES
         or variable in _STAGE2_COMPUTED_PREDICTORS
     )
 
@@ -387,6 +408,41 @@ def _build_clone_test_frame(
         if clone_values is not None and len(clone_values) == len(X_test):
             X_test[predictor] = clone_values
     return X_test[predictors]
+
+
+def _build_ssi_disability_clone_receiver(
+    predictions: pd.DataFrame,
+    X_test: pd.DataFrame,
+    data: dict,
+    time_period: int,
+) -> pd.DataFrame:
+    """Build SIPP SSI disability model inputs for PUF clone records."""
+    n = len(X_test)
+    receiver = pd.DataFrame(index=X_test.index)
+    for predictor in SSI_DISABILITY_MODEL_PREDICTORS:
+        values = None
+        if (
+            predictor == "has_disability_income"
+            and "disability_benefits" in predictions
+        ):
+            values = predictions["disability_benefits"].to_numpy() > 0
+        elif predictor in predictions:
+            values = predictions[predictor].to_numpy()
+        elif predictor in X_test:
+            values = X_test[predictor].to_numpy()
+        else:
+            clone_values = _clone_half_person_values(data, predictor, time_period)
+            if clone_values is not None and len(clone_values) == n:
+                values = clone_values
+
+        if values is None and predictor == "is_female" and "is_male" in X_test:
+            values = ~X_test["is_male"].astype(bool).to_numpy()
+        if values is None:
+            values = np.zeros(n)
+
+        receiver[predictor] = values
+
+    return receiver
 
 
 def _prepare_knn_matrix(
@@ -922,6 +978,18 @@ def _apply_post_processing(predictions, X_test, time_period, data):
                 ~np.asarray(policyholder, dtype=bool),
                 "employer_sponsored_insurance_premiums",
             ] = 0
+
+    if SSI_DISABILITY_MODEL_VARIABLE in predictions.columns:
+        receiver = _build_ssi_disability_clone_receiver(
+            predictions,
+            X_test,
+            data,
+            time_period,
+        )
+        predictions[SSI_DISABILITY_MODEL_VARIABLE] = predict_ssi_disability_criteria(
+            get_ssi_disability_model(time_period=time_period),
+            receiver,
+        )
 
     return predictions
 

@@ -9,4 +9,7 @@ metadata:
     - title: Harvard Joint Center for Housing Studies summary of HUD Worst Case Housing Needs 2025
       href: https://www.jchs.harvard.edu/blog/worst-case-housing-needs-renters-ticked-down-remain-high
 values:
-  2023-01-01: 0.28
+  # Previously 0.28 from HUD Worst Case Housing Needs. That left ExtendedCPS
+  # modeled capped housing subsidies around half the raw CPS SPM benchmark, so
+  # use 0.50 pending fuller housing assistance calibration.
+  2023-01-01: 0.50

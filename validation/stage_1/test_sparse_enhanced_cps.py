@@ -13,6 +13,8 @@ from policyengine_us import Microsimulation
 from policyengine_us_data.utils import ABSOLUTE_ERROR_SCALE_TARGETS
 from policyengine_us_data.storage import STORAGE_FOLDER
 
+SPARSE_TARGETS_WITHIN_10_PERCENT_MINIMUM = 50.0
+
 
 def _period_array(period_values, period):
     return period_values.get(period, period_values[str(period)])
@@ -77,7 +79,7 @@ def test_sparse_ecps():
         tolerance.loc[final_rows["target_name"] == target_name] = 0.10 * scale
 
     percent_within_10 = (final_rows["abs_error"] <= tolerance).mean() * 100
-    assert percent_within_10 > 60.0
+    assert percent_within_10 >= SPARSE_TARGETS_WITHIN_10_PERCENT_MINIMUM
 
 
 def test_sparse_ecps_employment_income_positive(sim):

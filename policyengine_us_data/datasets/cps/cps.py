@@ -130,6 +130,15 @@ CURRENT_HEALTH_COVERAGE_RULE_INPUT_ALIAS_MAP = {
     ),
 }
 
+CPS_SSI_DISABILITY_DIFFICULTY_COLUMNS = {
+    "difficulty_dressing_or_bathing": "PEDISDRS",
+    "difficulty_hearing": "PEDISEAR",
+    "difficulty_seeing": "PEDISEYE",
+    "difficulty_doing_errands": "PEDISOUT",
+    "difficulty_walking_or_climbing_stairs": "PEDISPHY",
+    "difficulty_remembering_or_making_decisions": "PEDISREM",
+}
+
 # Census CPS ASEC 2024 technical documentation, PERRP:
 # https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf
 PERRP_UNMARRIED_PARTNER_OF_HOUSEHOLD_HEAD_CODES = {
@@ -1076,8 +1085,11 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
     # "Is...blind or does...have serious difficulty seeing even when Wearing
     #  glasses?" 1 -> Yes
     cps["is_blind"] = person.PEDISEYE == 1
-    DISABILITY_FLAGS = ["PEDIS" + i for i in ["DRS", "EAR", "EYE", "OUT", "PHY", "REM"]]
-    cps["is_disabled"] = (person[DISABILITY_FLAGS] == 1).any(axis=1)
+    for variable, cps_column in CPS_SSI_DISABILITY_DIFFICULTY_COLUMNS.items():
+        cps[variable] = person[cps_column] == 1
+    cps["is_disabled"] = np.column_stack(
+        [cps[variable] for variable in CPS_SSI_DISABILITY_DIFFICULTY_COLUMNS]
+    ).any(axis=1)
 
     def children_per_parent(col: str) -> pd.DataFrame:
         """Calculate number of children in the household using parental
@@ -2719,6 +2731,7 @@ def add_tips(self, cps: h5py.File):
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
     from policyengine_us_data.datasets.sipp import (
+        SSI_DISABILITY_DIFFICULTY_PREDICTORS,
         SSI_DISABILITY_MODEL_VARIABLE,
         get_ssi_disability_model,
         predict_ssi_disability_criteria,
@@ -2727,7 +2740,7 @@ def add_tips(self, cps: h5py.File):
 
     n_persons = len(cps)
     for variable in [
-        "is_disabled",
+        *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
         "social_security_disability",
     ]:
         cps[variable] = np.asarray(

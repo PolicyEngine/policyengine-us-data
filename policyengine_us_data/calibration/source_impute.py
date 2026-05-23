@@ -46,6 +46,7 @@ from policyengine_us_data.datasets.sipp.sipp import (
     SIPP_TIP_AMOUNT_COLUMNS,
     SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN,
     SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SSI_DISABILITY_MODEL_VARIABLE,
     VEHICLE_MODEL_PREDICTORS,
     build_vehicle_training_frame,
@@ -902,7 +903,7 @@ def _impute_sipp(
                 "rental_income",
                 "age",
                 "is_male",
-                "is_disabled",
+                *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
                 "social_security_disability",
                 "disability_benefits",
             ],
@@ -930,7 +931,7 @@ def _impute_sipp(
             "interest_income",
             "dividend_income",
             "rental_income",
-            "is_disabled",
+            *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
             "social_security_disability",
         ]:
             if var not in cps_ssi_df.columns:

@@ -29,6 +29,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _load_raw_spm_capped_housing_subsidy,
     _apply_post_processing,
     _build_clone_test_frame,
+    _cps_clone_feature_variables_for_data,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     _splice_cps_only_predictions,
@@ -206,6 +207,32 @@ class TestVariableListConsistency:
 
     def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
         assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
+
+    def test_clone_feature_candidates_include_person_level_cps_only_flags(self):
+        data = {
+            "person_id": {2024: np.array([1, 2, 101, 102])},
+            "household_id": {2024: np.array([10, 20, 110, 120])},
+            "person_household_id": {2024: np.array([10, 20, 110, 120])},
+            "household_weight": {2024: np.array([1.0, 1.0, 0.0, 0.0])},
+            "state_fips": {2024: np.array([6, 36, 6, 36])},
+            "employment_income": {2024: np.array([1.0, 2.0, 3.0, 4.0])},
+            "is_disabled": {2024: np.array([True, False, True, False])},
+            "difficulty_hearing": {2024: np.array([False, True, False, True])},
+            "meets_ssi_disability_criteria": {
+                2024: np.array([True, False, True, False])
+            },
+        }
+
+        result = _cps_clone_feature_variables_for_data(data, 2024)
+
+        assert "is_disabled" in result
+        assert "difficulty_hearing" in result
+        assert "person_id" not in result
+        assert "person_household_id" not in result
+        assert "household_weight" not in result
+        assert "state_fips" not in result
+        assert "employment_income" not in result
+        assert "meets_ssi_disability_criteria" not in result
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)

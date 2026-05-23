@@ -878,7 +878,7 @@
     "docstring": "Assert that final exported variables are leaf inputs.",
     "id": "computed_export_contract",
     "kind": "function",
-    "line": 1585,
+    "line": 1589,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._assert_no_computed_variables_exported"
@@ -1325,7 +1325,7 @@
     "docstring": "Check formula-reconstructed housing assistance before export.\n\nThe final H5 must not export formula outputs such as ``housing_assistance``.\nThis guard verifies that the remaining leaf inputs still make those\nformulas produce nonzero values before the export contract strips or\nrejects computed variables.",
     "id": "housing_assistance_microsim_validation",
     "kind": "function",
-    "line": 1355,
+    "line": 1359,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps.ExtendedCPS._validate_housing_assistance_microsimulation"
@@ -3216,7 +3216,7 @@
     "docstring": "Replace PUF clone half of CPS-only variables with QRF predictions.\n\nAfter ``puf_clone_dataset()`` the CPS-only variables in the second\nhalf are naive copies of the CPS donor values. This function\nreplaces them with the second-stage QRF predictions that are\nconsistent with the clone's PUF-imputed income.\n\nArgs:\n    data: Extended dataset dict (already doubled).\n    predictions: DataFrame from ``_impute_cps_only_variables()``.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 file for entity mapping.\n\nReturns:\n    Modified data dict with CPS-only variables spliced in.",
     "id": "qrf_pass2",
     "kind": "function",
-    "line": 825,
+    "line": 829,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.cps.extended_cps._splice_cps_only_predictions"

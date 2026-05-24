@@ -6,6 +6,7 @@ from policyengine_us_data.datasets.puf.puf import (
     PUF,
     QBI_SIMULATION_VERSION,
     QBI_SIMULATION_VERSION_ATTR,
+    _person_financial_value_from_puf_row,
 )
 
 
@@ -23,6 +24,30 @@ def test_irs_puf_generates(year: int):
     }
 
     dataset_by_year[year](require=True)
+
+
+def test_puf_person_split_keeps_capital_gains_holding_period_collapsed():
+    row = {
+        "long_term_capital_gains": 1_000.0,
+        "long_term_capital_gains_years_held": 12.5,
+    }
+
+    assert (
+        _person_financial_value_from_puf_row(
+            "long_term_capital_gains_years_held",
+            row,
+            0.25,
+        )
+        == 12.5
+    )
+    assert (
+        _person_financial_value_from_puf_row(
+            "long_term_capital_gains_years_held",
+            row,
+            0.0,
+        )
+        == 0
+    )
 
 
 def test_puf_load_dataset_backfills_sstb_split_inputs(tmp_path):

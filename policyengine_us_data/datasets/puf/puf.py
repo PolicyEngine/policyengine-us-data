@@ -21,6 +21,12 @@ from policyengine_us_data.utils.mortgage_interest import (
     STRUCTURAL_MORTGAGE_VARIABLES,
     convert_mortgage_interest_to_structural_inputs,
 )
+from policyengine_us_data.utils.capital_gains_basis import (
+    CAPITAL_GAINS_BASIS_VARIABLES,
+    LONG_TERM_CAPITAL_GAINS_YEARS_HELD,
+    add_long_term_capital_gains_basis_to_puf_frame,
+    impute_person_level_long_term_capital_gains_basis,
+)
 from policyengine_us_data.utils.policyengine import (
     has_policyengine_us_variables,
 )
@@ -614,7 +620,57 @@ def _with_lifetime_learning_credit_inputs(
 def _person_financial_value_from_puf_row(variable: str, row, share: float):
     if variable in PUF_LLC_ELIGIBILITY_INPUTS:
         return bool(row[variable]) and row["qualified_tuition_expenses"] * share > 0
+    if variable == LONG_TERM_CAPITAL_GAINS_YEARS_HELD:
+        return row[variable] if row["long_term_capital_gains"] * share != 0 else 0
     return row[variable] * share
+
+
+def _person_weights_from_household_weights(arrays: dict[str, np.ndarray]):
+    household_weight = arrays.get("household_weight")
+    if household_weight is None:
+        return None
+    person_ids = arrays.get("person_id")
+    if person_ids is not None and len(household_weight) == len(person_ids):
+        return np.asarray(household_weight, dtype=float)
+    person_household_id = arrays.get("person_household_id")
+    household_id = arrays.get("household_id")
+    if person_household_id is None or household_id is None:
+        return None
+    if len(household_weight) != len(household_id):
+        return None
+    household_weight_by_id = dict(zip(household_id.tolist(), household_weight))
+    return np.asarray(
+        [
+            household_weight_by_id.get(household_id, 1.0)
+            for household_id in person_household_id
+        ],
+        dtype=float,
+    )
+
+
+def _with_capital_gains_basis_inputs(
+    arrays: dict[str, np.ndarray],
+    time_period: int,
+) -> dict[str, np.ndarray]:
+    """Populate capital-gains basis inputs when PE-US supports them."""
+
+    if not has_policyengine_us_variables(*CAPITAL_GAINS_BASIS_VARIABLES):
+        return arrays
+    if "long_term_capital_gains" not in arrays or "person_tax_unit_id" not in arrays:
+        return arrays
+    if all(variable in arrays for variable in CAPITAL_GAINS_BASIS_VARIABLES):
+        return arrays
+
+    imputation = impute_person_level_long_term_capital_gains_basis(
+        arrays["long_term_capital_gains"],
+        person_tax_unit_ids=arrays["person_tax_unit_id"],
+        person_ids=arrays.get("person_id"),
+        person_sample_weight=_person_weights_from_household_weights(arrays),
+        tax_year=time_period,
+    )
+    arrays.setdefault("long_term_capital_gains_basis", imputation.basis)
+    arrays.setdefault("long_term_capital_gains_years_held", imputation.years_held)
+    return arrays
 
 
 @pipeline_node(
@@ -650,6 +706,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["health_savings_account_ald"] = puf.E03290
     puf["interest_deduction"] = puf.E19200
     puf["long_term_capital_gains"] = puf.P23250
+    puf = add_long_term_capital_gains_basis_to_puf_frame(puf)
     puf["long_term_capital_gains_on_collectibles"] = puf.E24518
     # Split medical expenses using CPS fractions
     for (
@@ -814,6 +871,8 @@ FINANCIAL_SUBSET = [
     "health_savings_account_ald",
     "interest_deduction",
     "long_term_capital_gains",
+    "long_term_capital_gains_basis",
+    "long_term_capital_gains_years_held",
     "long_term_capital_gains_on_collectibles",
     "unreimbursed_business_employee_expenses",
     "non_qualified_dividend_income",
@@ -1372,6 +1431,7 @@ class PUF(Dataset):
                     growth = current_index / start_index
                     arrays[variable] = arrays[variable] * growth
             arrays = _with_lifetime_learning_credit_inputs(arrays)
+            arrays = _with_capital_gains_basis_inputs(arrays, self.time_period)
             self._save_current_qbi_dataset(arrays)
             return
 
@@ -1478,6 +1538,10 @@ class PUF(Dataset):
             variable: values[self.time_period] for variable, values in holder_tp.items()
         }
         self.holder = _with_lifetime_learning_credit_inputs(self.holder)
+        self.holder = _with_capital_gains_basis_inputs(
+            self.holder,
+            self.time_period,
+        )
         self._save_current_qbi_dataset(self.holder)
 
     def add_tax_unit(self, row, tax_unit_id):

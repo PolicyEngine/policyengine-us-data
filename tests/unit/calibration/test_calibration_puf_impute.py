@@ -10,6 +10,7 @@ import pandas as pd
 from policyengine_us_data.calibration import puf_impute as puf_impute_module
 from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
+    DETERMINISTIC_IMPUTED_VARIABLES,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
     _impute_retirement_contributions,
@@ -207,6 +208,14 @@ class TestPufCloneDataset:
     def test_imputed_variables_not_empty(self):
         assert len(IMPUTED_VARIABLES) > 0
 
+    def test_capital_gains_basis_fields_are_stage_one_outputs(self):
+        expected = {
+            "long_term_capital_gains_basis",
+            "long_term_capital_gains_years_held",
+        }
+        assert expected <= set(IMPUTED_VARIABLES)
+        assert expected <= set(DETERMINISTIC_IMPUTED_VARIABLES)
+
     def test_overridden_subset_of_imputed(self):
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES
@@ -300,6 +309,40 @@ class TestPufCloneDataset:
         employment = result["employment_income"][2024]
         np.testing.assert_array_equal(employment[:20], data["employment_income"][2024])
         np.testing.assert_array_equal(employment[20:], y_full["employment_income"])
+
+    def test_capital_gains_basis_is_deterministically_imputed(self, monkeypatch):
+        data = _make_mock_data(n_persons=4, n_households=2)
+        data["person_tax_unit_id"] = {2024: np.array([1, 1, 2, 2])}
+        data["person_household_id"] = {2024: np.array([1, 1, 2, 2])}
+        data["long_term_capital_gains"] = {
+            2024: np.array([100.0, -40.0, 0.0, 200.0], dtype=np.float32)
+        }
+
+        monkeypatch.setattr(
+            puf_impute_module,
+            "has_policyengine_us_variables",
+            lambda *variables: True,
+        )
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=np.array([1, 2]),
+            time_period=2024,
+            skip_qrf=True,
+        )
+
+        basis = result["long_term_capital_gains_basis"][2024]
+        years = result["long_term_capital_gains_years_held"][2024]
+        gains = result["long_term_capital_gains"][2024]
+        tax_unit_ids = result["person_tax_unit_id"][2024]
+
+        assert np.all(basis[gains != 0] > 0)
+        assert np.all(years[gains != 0] > 0)
+        assert np.all(basis[gains == 0] == 0)
+        assert np.all(years[gains == 0] == 0)
+        for tax_unit_id in np.unique(tax_unit_ids[gains != 0]):
+            mask = (tax_unit_ids == tax_unit_id) & (gains != 0)
+            assert np.unique(years[mask]).size == 1
 
     def test_sstb_qbi_split_variables_imputed(self):
         expected = {

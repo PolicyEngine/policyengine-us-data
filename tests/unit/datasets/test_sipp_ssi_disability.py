@@ -15,7 +15,6 @@ from policyengine_us_data.datasets.sipp import (
 )
 from policyengine_us_data.datasets.sipp.sipp import (
     SSI_DISABILITY_COLUMNS,
-    SSI_DISABILITY_MODEL_VERSION,
     _ssi_disability_model_path,
 )
 
@@ -71,6 +70,37 @@ def test_build_ssi_disability_training_frame_screens_financially():
     )
 
 
+def test_build_ssi_disability_training_frame_screens_nonblind_sga():
+    frame = _base_sipp_frame().iloc[[2]].copy()
+    frame["TPTOTINC"] = 1_600.0
+    frame["TJB1_MSUM"] = 1_600.0
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert not result["ssi_disability_training_candidate"].iloc[0]
+
+
+def test_build_ssi_disability_training_frame_does_not_sga_screen_blind_records():
+    frame = _base_sipp_frame().iloc[[2]].copy()
+    frame["TPTOTINC"] = 1_600.0
+    frame["TJB1_MSUM"] = 1_600.0
+    frame["ESEEING"] = 1
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert result["ssi_disability_training_candidate"].iloc[0]
+
+
+def test_build_ssi_disability_training_frame_uses_countable_income_threshold():
+    frame = _base_sipp_frame().iloc[[2]].copy()
+    frame["TPTOTINC"] = 1_500.0
+    frame["TJB1_MSUM"] = 0.0
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert not result["ssi_disability_training_candidate"].iloc[0]
+
+
 def test_build_ssi_disability_training_frame_uses_all_disability_amounts():
     frame = _base_sipp_frame().iloc[[2]].copy()
     frame["TDIS6AMT"] = 100
@@ -81,7 +111,7 @@ def test_build_ssi_disability_training_frame_uses_all_disability_amounts():
 
 
 def test_ssi_disability_training_usecols_include_label_and_income_columns():
-    assert {"TPTOTINC", "RSSI_YRYN"} <= set(SSI_DISABILITY_COLUMNS)
+    assert {"TPTOTINC", "TJB1_MSUM", "RSSI_YRYN"} <= set(SSI_DISABILITY_COLUMNS)
     assert {"ASSI_YRYN", "ASSI_BRSN"} <= set(SSI_DISABILITY_COLUMNS)
     assert {
         "ESELFCARE",
@@ -100,11 +130,8 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
     assert "is_disabled" not in SSI_DISABILITY_MODEL_PREDICTORS
 
 
-def test_ssi_disability_model_cache_version_tracks_predictor_schema():
-    assert SSI_DISABILITY_MODEL_VERSION == 6
-    assert _ssi_disability_model_path(2024).name == (
-        "ssi_disability_criteria_v6_2024.pkl"
-    )
+def test_ssi_disability_model_cache_path_uses_training_period():
+    assert _ssi_disability_model_path(2024).name == "ssi_disability_criteria_2024.pkl"
 
 
 def test_build_ssi_disability_training_frame_annualizes_ssdi_amount():

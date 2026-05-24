@@ -48,7 +48,6 @@ VEHICLE_MODEL_PREDICTORS = [
 
 SSI_DISABILITY_CRITERIA_VARIABLE = "meets_ssi_disability_criteria"
 SSI_DISABILITY_MODEL_VARIABLE = SSI_DISABILITY_CRITERIA_VARIABLE
-SSI_DISABILITY_MODEL_VERSION = 6
 SSI_DISABILITY_EXPORT_VARIABLES = (SSI_DISABILITY_CRITERIA_VARIABLE,)
 
 # These six CPS/SIPP difficulty items are construction-time predictors for the
@@ -459,6 +458,42 @@ def _yes(df: pd.DataFrame, column: str) -> pd.Series:
     return values.fillna(0).astype(float).eq(1)
 
 
+def _sipp_monthly_earned_income(df: pd.DataFrame) -> pd.Series:
+    """Approximate monthly earned income from SIPP job earnings columns."""
+    job_cols = [col for col in ASSET_JOB_EARNINGS_COLUMNS if col in df]
+    if job_cols:
+        return df[job_cols].fillna(0).sum(axis=1)
+    return df["TPTOTINC"].fillna(0)
+
+
+def _sipp_monthly_unearned_income(
+    df: pd.DataFrame, monthly_earned_income: pd.Series
+) -> pd.Series:
+    """Approximate monthly unearned income as total income net of job earnings."""
+    return (df["TPTOTINC"].fillna(0) - monthly_earned_income).clip(lower=0)
+
+
+def _approximate_monthly_ssi_countable_income(
+    monthly_earned_income: pd.Series,
+    monthly_unearned_income: pd.Series,
+    *,
+    general_exclusion: float,
+    earned_exclusion: float,
+    earned_share_excluded: float,
+) -> pd.Series:
+    """Apply standard SSI income exclusions to monthly SIPP income proxies."""
+    applied_general = np.minimum(general_exclusion, monthly_unearned_income)
+    countable_unearned = monthly_unearned_income - applied_general
+    leftover_general = general_exclusion - applied_general
+
+    earned_after_flat_exclusions = (
+        monthly_earned_income - earned_exclusion - leftover_general
+    ).clip(lower=0)
+    countable_earned = earned_after_flat_exclusions * (1 - earned_share_excluded)
+
+    return countable_unearned + countable_earned
+
+
 def _add_ssi_disability_difficulty_predictors(df: pd.DataFrame) -> None:
     for predictor, source_column in SIPP_SSI_DISABILITY_DIFFICULTY_COLUMNS.items():
         df[predictor] = _yes(df, source_column)
@@ -491,25 +526,35 @@ def _observed_ssi_disability_label_mask(
 def _ssi_financial_candidate_mask(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.Series:
-    """Approximate non-disability SSI financial eligibility in SIPP.
+    """Approximate non-disability SSI screening eligibility in SIPP.
 
     This is only a training-frame screen. It avoids treating people whose
-    resources or income make SSI receipt structurally unlikely as clean
-    non-disabled labels.
+    resources, countable income, or SGA-level earnings make SSI receipt
+    structurally unlikely as clean non-disabled labels.
     """
     try:
         from policyengine_us import CountryTaxBenefitSystem
 
-        p = CountryTaxBenefitSystem().parameters(f"{time_period}-01-01").gov.ssa.ssi
+        parameters = CountryTaxBenefitSystem().parameters(f"{time_period}-01-01")
+        p = parameters.gov.ssa.ssi
         individual_resource_limit = float(p.eligibility.resources.limit.individual)
         couple_resource_limit = float(p.eligibility.resources.limit.couple)
         individual_fbr = float(p.amount.individual)
         couple_fbr = float(p.amount.couple)
+        income_exclusions = p.income.exclusions
+        general_exclusion = float(income_exclusions.general)
+        earned_exclusion = float(income_exclusions.earned)
+        earned_share_excluded = float(income_exclusions.earned_share)
+        non_blind_sga = float(parameters.gov.ssa.sga.non_blind)
     except Exception:
         individual_resource_limit = 2_000.0
         couple_resource_limit = 3_000.0
         individual_fbr = 943.0
         couple_fbr = 1_415.0
+        general_exclusion = 20.0
+        earned_exclusion = 65.0
+        earned_share_excluded = 0.5
+        non_blind_sga = 1_550.0
 
     resource_limit = np.where(
         df["is_married"].astype(bool),
@@ -526,9 +571,23 @@ def _ssi_financial_candidate_mask(
         + df["stock_assets"].fillna(0)
         + df["bond_assets"].fillna(0)
     )
-    monthly_income = df["TPTOTINC"].fillna(0)
-    return (liquid_resources <= resource_limit) & (
-        monthly_income <= monthly_income_limit * 2
+    monthly_earned_income = _sipp_monthly_earned_income(df)
+    monthly_unearned_income = _sipp_monthly_unearned_income(df, monthly_earned_income)
+    monthly_countable_income = _approximate_monthly_ssi_countable_income(
+        monthly_earned_income,
+        monthly_unearned_income,
+        general_exclusion=general_exclusion,
+        earned_exclusion=earned_exclusion,
+        earned_share_excluded=earned_share_excluded,
+    )
+    difficulty_seeing = df.get("difficulty_seeing", _yes(df, "ESEEING"))
+    is_blind = pd.Series(difficulty_seeing, index=df.index).fillna(False).astype(bool)
+    passes_sga_gate = is_blind | monthly_earned_income.le(non_blind_sga)
+
+    return (
+        (liquid_resources <= resource_limit)
+        & monthly_countable_income.le(monthly_income_limit)
+        & passes_sga_gate
     )
 
 
@@ -544,7 +603,7 @@ def build_ssi_disability_training_frame(
     df["age"] = df.TAGE
     df["is_female"] = df.ESEX == 2
     df["is_married"] = df.EMS == 1
-    df["employment_income"] = df.TPTOTINC.fillna(0) * 12
+    df["employment_income"] = _sipp_monthly_earned_income(df) * 12
     df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
     df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
     df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
@@ -861,10 +920,7 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
 
 
 def _ssi_disability_model_path(time_period: int):
-    return (
-        STORAGE_FOLDER
-        / f"ssi_disability_criteria_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
-    )
+    return STORAGE_FOLDER / f"ssi_disability_criteria_{time_period}.pkl"
 
 
 def build_vehicle_training_frame() -> pd.DataFrame:

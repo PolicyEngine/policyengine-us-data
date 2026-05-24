@@ -9,6 +9,11 @@ from policyengine_core.data import Dataset
 from policyengine_us_data.calibration.formulaic_inputs import (
     FORMULAIC_SPM_INPUTS_TO_DROP,
 )
+from policyengine_us_data.calibration.puf_impute import (
+    CLONE_ORIGIN_FLAGS,
+    IMPUTED_VARIABLES,
+    OVERRIDDEN_IMPUTED_VARIABLES,
+)
 from policyengine_us_data.datasets.cps.cps import (
     CPS,
     CPS_2024,
@@ -21,6 +26,12 @@ from policyengine_us_data.datasets.cps.takeup import prioritize_reported_recipie
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
     apply_org_domain_constraints,
+)
+from policyengine_us_data.datasets.sipp import (
+    SSI_DISABILITY_CRITERIA_VARIABLE,
+    SSI_DISABILITY_MODEL_PREDICTORS,
+    get_ssi_disability_model,
+    predict_ssi_disability_criteria,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -90,6 +101,8 @@ CPS_CLONE_FEATURE_VARIABLES = [
 ]
 if has_policyengine_us_variables("treasury_tipped_occupation_code"):
     CPS_CLONE_FEATURE_VARIABLES.append("treasury_tipped_occupation_code")
+
+PUF_IMPUTED_VARIABLES = set(IMPUTED_VARIABLES) | set(OVERRIDDEN_IMPUTED_VARIABLES)
 
 # Predictors used to rematch CPS features onto the PUF clone half.
 # These are all available on the CPS half and on the doubled extended CPS.
@@ -178,7 +191,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "financial_assistance",
     "survivor_benefits",
     "disability_benefits",
-    "meets_ssi_disability_criteria",
+    SSI_DISABILITY_CRITERIA_VARIABLE,
     "strike_benefits",
     "receives_wic",
     # SPM variables
@@ -207,6 +220,41 @@ CPS_ONLY_IMPUTED_VARIABLES = [
 
 # Set for O(1) lookup in the splice loop.
 _CPS_ONLY_SET = set(CPS_ONLY_IMPUTED_VARIABLES)
+
+_CLONE_REFRESH_GEOGRAPHY_VARIABLES = {
+    "block_geoid",
+    "cbsa_code",
+    "congressional_district_geoid",
+    "county",
+    "county_fips",
+    "place_fips",
+    "puma",
+    "sldl",
+    "sldu",
+    "state_fips",
+    "tract_geoid",
+    "vtd",
+    "zcta",
+    "zip_code",
+}
+
+_CLONE_REFRESH_ANCHOR_VARIABLES = {
+    "age",
+}
+
+_CLONE_REFRESH_STRUCTURAL_ROLE_VARIABLES = {
+    "is_household_head",
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "is_tax_unit_dependent",
+    "is_tax_unit_head_or_spouse",
+    "is_family_head",
+    "is_family_spouse",
+    "is_family_dependent",
+    "is_spm_unit_head",
+    "is_spm_unit_spouse",
+    "is_spm_unit_dependent",
+}
 
 # Predictors used for the second-stage CPS-only imputation: demographics
 # plus key income variables that were already imputed from PUF data.
@@ -259,6 +307,94 @@ def _clone_half_person_values(data: dict, variable: str, time_period: int):
     return None
 
 
+def _first_half_person_values(data: dict, variable: str, time_period: int):
+    """Return original-CPS-half values for person-level variables."""
+    if variable not in data:
+        return None
+
+    values = data[variable][time_period]
+    n_persons = len(data["person_id"][time_period])
+    if len(values) != n_persons:
+        return None
+
+    return np.asarray(values[: n_persons // 2])
+
+
+def _is_structural_clone_variable(variable: str) -> bool:
+    """Return whether a variable should remain copied, not rematched."""
+    return (
+        variable.endswith("_id")
+        or variable.endswith("_weight")
+        or variable in _CLONE_REFRESH_GEOGRAPHY_VARIABLES
+        or variable in CLONE_ORIGIN_FLAGS.values()
+        or variable in _CLONE_REFRESH_ANCHOR_VARIABLES
+        or variable in _CLONE_REFRESH_STRUCTURAL_ROLE_VARIABLES
+        or variable in _STAGE2_COMPUTED_PREDICTORS
+    )
+
+
+def _cps_clone_feature_variables_for_data(
+    data: dict,
+    time_period: int,
+) -> list[str]:
+    """Return person-level CPS-only fields to donor-rematch onto PUF clones.
+
+    The PUF clone starts as a literal copy of each CPS donor, then selected
+    tax/income fields are replaced with PUF-imputed values. Any remaining
+    person-level CPS-only field should be refreshed from CPS donors unless it
+    is structural, a PUF-imputed field, or a QRF-handled CPS-only output.
+    """
+    result = []
+    seen = set()
+    explicit_clone_features = set(CPS_CLONE_FEATURE_VARIABLES)
+    for variable in [*CPS_CLONE_FEATURE_VARIABLES, *data.keys()]:
+        if variable in seen:
+            continue
+        seen.add(variable)
+        if variable in PUF_IMPUTED_VARIABLES or variable in _CPS_ONLY_SET:
+            continue
+        is_explicit_clone_feature = variable in explicit_clone_features
+        if not is_explicit_clone_feature and _is_structural_clone_variable(variable):
+            continue
+        if (
+            not is_explicit_clone_feature
+            and _first_half_person_values(data, variable, time_period) is None
+        ):
+            continue
+        result.append(variable)
+    return result
+
+
+def _build_cps_train_frame(
+    cps_sim,
+    data: dict,
+    time_period: int,
+    variables: list[str],
+) -> pd.DataFrame:
+    """Build original-CPS-half training values from PE or stored data."""
+    tbs = getattr(cps_sim, "tax_benefit_system", None)
+    if tbs is None:
+        calculable_variables = variables
+    else:
+        calculable_variables = [
+            variable for variable in variables if variable in tbs.variables
+        ]
+    if calculable_variables:
+        train = cps_sim.calculate_dataframe(calculable_variables).copy()
+    else:
+        n_half = len(data["person_id"][time_period]) // 2
+        train = pd.DataFrame(index=np.arange(n_half))
+
+    for variable in variables:
+        if variable in train.columns:
+            continue
+        values = _first_half_person_values(data, variable, time_period)
+        if values is not None:
+            train[variable] = values
+
+    return train
+
+
 def _build_clone_test_frame(
     cps_sim,
     data: dict,
@@ -272,6 +408,41 @@ def _build_clone_test_frame(
         if clone_values is not None and len(clone_values) == len(X_test):
             X_test[predictor] = clone_values
     return X_test[predictors]
+
+
+def _build_ssi_disability_clone_receiver(
+    predictions: pd.DataFrame,
+    X_test: pd.DataFrame,
+    data: dict,
+    time_period: int,
+) -> pd.DataFrame:
+    """Build SIPP SSI disability model inputs for PUF clone records."""
+    n = len(X_test)
+    receiver = pd.DataFrame(index=X_test.index)
+    for predictor in SSI_DISABILITY_MODEL_PREDICTORS:
+        values = None
+        if (
+            predictor == "has_disability_income"
+            and "disability_benefits" in predictions
+        ):
+            values = predictions["disability_benefits"].to_numpy() > 0
+        elif predictor in predictions:
+            values = predictions[predictor].to_numpy()
+        elif predictor in X_test:
+            values = X_test[predictor].to_numpy()
+        else:
+            clone_values = _clone_half_person_values(data, predictor, time_period)
+            if clone_values is not None and len(clone_values) == n:
+                values = clone_values
+
+        if values is None and predictor == "is_female" and "is_male" in X_test:
+            values = ~X_test["is_male"].astype(bool).to_numpy()
+        if values is None:
+            values = np.zeros(n)
+
+        receiver[predictor] = values
+
+    return receiver
 
 
 def _prepare_knn_matrix(
@@ -321,13 +492,15 @@ def _impute_clone_cps_features(
     from sklearn.neighbors import NearestNeighbors
 
     cps_sim = Microsimulation(dataset=dataset_path)
-    X_train = cps_sim.calculate_dataframe(
-        CPS_CLONE_FEATURE_PREDICTORS + CPS_CLONE_FEATURE_VARIABLES
+    feature_variables = _cps_clone_feature_variables_for_data(data, time_period)
+    X_train = _build_cps_train_frame(
+        cps_sim,
+        data,
+        time_period,
+        CPS_CLONE_FEATURE_PREDICTORS + feature_variables,
     )
     available_outputs = [
-        variable
-        for variable in CPS_CLONE_FEATURE_VARIABLES
-        if variable in X_train.columns
+        variable for variable in feature_variables if variable in X_train.columns
     ]
     if not available_outputs:
         n_half = len(data["person_id"][time_period]) // 2
@@ -805,6 +978,19 @@ def _apply_post_processing(predictions, X_test, time_period, data):
                 ~np.asarray(policyholder, dtype=bool),
                 "employer_sponsored_insurance_premiums",
             ] = 0
+
+    if SSI_DISABILITY_CRITERIA_VARIABLE in predictions.columns:
+        receiver = _build_ssi_disability_clone_receiver(
+            predictions,
+            X_test,
+            data,
+            time_period,
+        )
+        disability_screen = predict_ssi_disability_criteria(
+            get_ssi_disability_model(time_period=time_period),
+            receiver,
+        )
+        predictions[SSI_DISABILITY_CRITERIA_VARIABLE] = disability_screen
 
     return predictions
 

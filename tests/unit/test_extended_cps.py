@@ -29,6 +29,8 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _load_raw_spm_capped_housing_subsidy,
     _apply_post_processing,
     _build_clone_test_frame,
+    _build_ssi_disability_clone_receiver,
+    _cps_clone_feature_variables_for_data,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     _splice_cps_only_predictions,
@@ -207,6 +209,36 @@ class TestVariableListConsistency:
     def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
         assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
+    def test_clone_feature_candidates_include_person_level_cps_only_flags(self):
+        data = {
+            "person_id": {2024: np.array([1, 2, 101, 102])},
+            "household_id": {2024: np.array([10, 20, 110, 120])},
+            "person_household_id": {2024: np.array([10, 20, 110, 120])},
+            "household_weight": {2024: np.array([1.0, 1.0, 0.0, 0.0])},
+            "state_fips": {2024: np.array([6, 36, 6, 36])},
+            "employment_income": {2024: np.array([1.0, 2.0, 3.0, 4.0])},
+            "is_household_head": {2024: np.array([True, True, True, True])},
+            "is_tax_unit_head": {2024: np.array([True, False, True, False])},
+            "is_disabled": {2024: np.array([True, False, True, False])},
+            "difficulty_hearing": {2024: np.array([False, True, False, True])},
+            "meets_ssi_disability_criteria": {
+                2024: np.array([True, False, True, False])
+            },
+        }
+
+        result = _cps_clone_feature_variables_for_data(data, 2024)
+
+        assert "is_disabled" in result
+        assert "difficulty_hearing" in result
+        assert "person_id" not in result
+        assert "person_household_id" not in result
+        assert "household_weight" not in result
+        assert "state_fips" not in result
+        assert "employment_income" not in result
+        assert "is_household_head" not in result
+        assert "is_tax_unit_head" not in result
+        assert "meets_ssi_disability_criteria" not in result
+
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
         assert "spm_unit_spm_threshold" not in set(CPS_ONLY_IMPUTED_VARIABLES)
         data = {
@@ -252,12 +284,27 @@ class TestVariableListConsistency:
         with pytest.raises(DatasetContractError, match="social_security"):
             ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
 
-    def test_final_export_contract_allows_data_overridden_ssi_disability_criteria(
+    def test_final_export_contract_allows_data_overridden_disability_screen(
         self,
     ):
-        data = {"meets_ssi_disability_criteria": {2024: np.array([True, False])}}
+        data = {
+            "meets_ssi_disability_criteria": {2024: np.array([True, False])},
+        }
 
         ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_finalize_stage2_preserves_disability_difficulty_predictors_for_source_impute(
+        self,
+    ):
+        data = {
+            "difficulty_hearing": {2024: np.array([True, False])},
+            "meets_ssi_disability_criteria": {2024: np.array([True, False])},
+        }
+
+        result = ExtendedCPS._finalize_stage2_computed_variables(data)
+
+        assert "difficulty_hearing" in result
+        assert "meets_ssi_disability_criteria" in result
 
     def test_rename_imputed_to_inputs_maps_medicare_enrollment_to_take_up_input(self):
         data = {"medicare_enrolled": {2024: np.array([True, False])}}
@@ -854,6 +901,83 @@ class TestLLCEligibilityInputImputation:
 
 
 class TestStage2PostProcessing:
+    def test_ssi_disability_clone_receiver_uses_stage2_disability_benefits(self):
+        data = {
+            "person_id": {2024: np.array([1, 2, 101, 102])},
+            "difficulty_hearing": {2024: np.array([False, False, True, False])},
+        }
+        predictions = pd.DataFrame({"disability_benefits": [0.0, 500.0]})
+        x_test = pd.DataFrame(
+            {
+                "age": [40, 40],
+                "is_male": [False, True],
+                "employment_income": [0.0, 0.0],
+            }
+        )
+
+        result = _build_ssi_disability_clone_receiver(
+            predictions,
+            x_test,
+            data,
+            2024,
+        )
+
+        np.testing.assert_array_equal(result["difficulty_hearing"], [True, False])
+        np.testing.assert_array_equal(result["has_disability_income"], [False, True])
+        np.testing.assert_array_equal(result["is_female"], [True, False])
+
+    def test_post_processing_replaces_generic_ssi_disability_predictions(
+        self,
+        monkeypatch,
+    ):
+        class AlwaysTrueModel:
+            def predict(self, X_test):
+                return pd.DataFrame(
+                    {
+                        "meets_ssi_disability_criteria": np.ones(
+                            len(X_test),
+                            dtype=bool,
+                        )
+                    }
+                )
+
+        monkeypatch.setattr(
+            extended_cps_module,
+            "get_ssi_disability_model",
+            lambda time_period: AlwaysTrueModel(),
+        )
+        data = {
+            "person_id": {2024: np.arange(6)},
+            "difficulty_walking_or_climbing_stairs": {
+                2024: np.array([False, False, False, True, False, False])
+            },
+        }
+        predictions = pd.DataFrame(
+            {
+                "meets_ssi_disability_criteria": [False, False, True],
+                "disability_benefits": [0.0, 500.0, 0.0],
+            }
+        )
+        x_test = pd.DataFrame(
+            {
+                "age": [40, 40, 40],
+                "is_male": [False, True, False],
+                "employment_income": [0.0, 0.0, 0.0],
+            }
+        )
+
+        result = _apply_post_processing(
+            predictions=predictions,
+            X_test=x_test,
+            time_period=2024,
+            data=data,
+        )
+
+        np.testing.assert_array_equal(
+            result["meets_ssi_disability_criteria"],
+            np.array([True, True, False]),
+        )
+
     def test_splice_replaces_clone_half_ssi_disability_criteria(self, monkeypatch):
         import policyengine_us
 
@@ -869,7 +993,11 @@ class TestStage2PostProcessing:
                 2024: np.array([True, False, True, False])
             },
         }
-        predictions = pd.DataFrame({"meets_ssi_disability_criteria": [False, True]})
+        predictions = pd.DataFrame(
+            {
+                "meets_ssi_disability_criteria": [False, True],
+            }
+        )
 
         result = _splice_cps_only_predictions(
             data,

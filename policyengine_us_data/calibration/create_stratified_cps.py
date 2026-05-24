@@ -17,6 +17,7 @@ from policyengine_core.enums import Enum
 from policyengine_us_data.datasets.puf.variable_roles import (
     PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES,
 )
+from policyengine_us_data.datasets.sipp import SSI_DISABILITY_DIFFICULTY_PREDICTORS
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
 
@@ -37,6 +38,9 @@ HIGH_AGI_BRACKETS = [
 ]
 
 TOP_AGI_FLOOR = HIGH_AGI_BRACKETS[0][0]  # $500k — boundary between top and middle
+STRATIFIED_CONSTRUCTION_ONLY_PERSON_VARIABLES = tuple(
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS
+)
 
 
 def _format_agi(x):
@@ -63,6 +67,62 @@ def _split_non_top_strata(agi, top_agi_floor):
     bottom_mask = non_top_mask & (agi < bottom_25_threshold)
     middle_mask = non_top_mask & (agi >= bottom_25_threshold)
     return non_top_mask, bottom_mask, middle_mask, bottom_25_threshold
+
+
+def _period_values(raw_data, variable, time_period):
+    if variable not in raw_data:
+        return None
+    value = raw_data[variable]
+    if isinstance(value, dict):
+        period_value = value.get(time_period, value.get(str(time_period)))
+        return None if period_value is None else np.asarray(period_value)
+    if hasattr(value, "keys") and str(time_period) in value:
+        return np.asarray(value[str(time_period)])
+    try:
+        return np.asarray(value[...])
+    except TypeError:
+        return np.asarray(value)
+
+
+def _construction_only_person_variable_data(
+    raw_data,
+    df_filtered,
+    time_period,
+    variables=STRATIFIED_CONSTRUCTION_ONLY_PERSON_VARIABLES,
+):
+    person_id_column = f"person_id__{time_period}"
+    if person_id_column not in df_filtered:
+        return {}
+
+    person_ids = _period_values(raw_data, "person_id", time_period)
+    if person_ids is None:
+        return {}
+
+    selected_person_ids = df_filtered[person_id_column].to_numpy()
+    row_by_person_id = {
+        person_id: row for row, person_id in enumerate(np.asarray(person_ids))
+    }
+    try:
+        selected_rows = np.asarray(
+            [row_by_person_id[person_id] for person_id in selected_person_ids],
+            dtype=int,
+        )
+    except KeyError as error:
+        raise ValueError(
+            f"Selected person_id {error.args[0]} is missing from source data"
+        ) from error
+
+    data = {}
+    for variable in variables:
+        values = _period_values(raw_data, variable, time_period)
+        if values is None:
+            continue
+        if len(values) != len(person_ids):
+            raise ValueError(
+                f"{variable} has {len(values)} rows, expected {len(person_ids)}"
+            )
+        data[variable] = {time_period: np.asarray(values)[selected_rows]}
+    return data
 
 
 @pipeline_node(
@@ -332,6 +392,15 @@ def create_stratified_cps_dataset(
 
         if len(data[variable]) == 0:
             del data[variable]
+
+    raw_data = sim.dataset.load_dataset()
+    data.update(
+        _construction_only_person_variable_data(
+            raw_data,
+            df_filtered,
+            time_period,
+        )
+    )
 
     # Write to h5
     with h5py.File(output_path, "w") as f:

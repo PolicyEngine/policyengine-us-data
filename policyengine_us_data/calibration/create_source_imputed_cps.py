@@ -31,6 +31,7 @@ def create_source_imputed_cps(
         assign_random_geography,
     )
     from policyengine_us_data.calibration.source_impute import (
+        drop_source_imputation_construction_variables,
         impute_source_variables,
     )
 
@@ -65,6 +66,7 @@ def create_source_imputed_cps(
         time_period=time_period,
         dataset_path=input_path,
     )
+    data_dict = drop_source_imputation_construction_variables(data_dict)
 
     logger.info("Saving to %s", output_path)
     with h5py.File(output_path, "w") as f:

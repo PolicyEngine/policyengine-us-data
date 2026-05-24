@@ -12,7 +12,7 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
     filter_positive_finite_weight_rows,
-    filter_observed_source_rows,
+    observed_source_mask,
     require_columns_present,
     sipp_allocation_flag_for,
     target_observed_source_masks,
@@ -46,7 +46,33 @@ VEHICLE_MODEL_PREDICTORS = [
     "is_homeowner",
 ]
 
-SSI_DISABILITY_MODEL_VARIABLE = "meets_ssi_disability_criteria"
+SSI_DISABILITY_CRITERIA_VARIABLE = "meets_ssi_disability_criteria"
+SSI_DISABILITY_MODEL_VARIABLE = SSI_DISABILITY_CRITERIA_VARIABLE
+SSI_DISABILITY_MODEL_VERSION = 6
+SSI_DISABILITY_EXPORT_VARIABLES = (SSI_DISABILITY_CRITERIA_VARIABLE,)
+
+# These six CPS/SIPP difficulty items are construction-time predictors for the
+# SIPP model only. PolicyEngine-US variables should generally be concepts that
+# enter the net-income tree or policy formulas; do not add private ML predictors
+# there just because us-data uses them internally. The PE-US-facing output of
+# this model is ``meets_ssi_disability_criteria``.
+SSI_DISABILITY_DIFFICULTY_PREDICTORS = [
+    "difficulty_dressing_or_bathing",
+    "difficulty_hearing",
+    "difficulty_seeing",
+    "difficulty_doing_errands",
+    "difficulty_walking_or_climbing_stairs",
+    "difficulty_remembering_or_making_decisions",
+]
+
+SIPP_SSI_DISABILITY_DIFFICULTY_COLUMNS = {
+    "difficulty_dressing_or_bathing": "ESELFCARE",
+    "difficulty_hearing": "EHEARING",
+    "difficulty_seeing": "ESEEING",
+    "difficulty_doing_errands": "EERRANDS",
+    "difficulty_walking_or_climbing_stairs": "EAMBULAT",
+    "difficulty_remembering_or_making_decisions": "ECOGNIT",
+}
 
 SSI_DISABILITY_MODEL_PREDICTORS = [
     "age",
@@ -60,7 +86,7 @@ SSI_DISABILITY_MODEL_PREDICTORS = [
     "stock_assets",
     "bond_assets",
     "count_under_18",
-    "is_disabled",
+    *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     "social_security_disability",
     "has_disability_income",
 ]
@@ -356,6 +382,7 @@ SSI_DISABILITY_COLUMNS = sorted(
             "ENJ_NOWRK3",
             "ESSRSN2YN",
             "ESSI_BRSN",
+            *SIPP_SSI_DISABILITY_DIFFICULTY_COLUMNS.values(),
             *SSI_DISABILITY_INCOME_AMOUNT_COLUMNS,
             *SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
         ]
@@ -432,6 +459,35 @@ def _yes(df: pd.DataFrame, column: str) -> pd.Series:
     return values.fillna(0).astype(float).eq(1)
 
 
+def _add_ssi_disability_difficulty_predictors(df: pd.DataFrame) -> None:
+    for predictor, source_column in SIPP_SSI_DISABILITY_DIFFICULTY_COLUMNS.items():
+        df[predictor] = _yes(df, source_column)
+
+
+def _observed_ssi_disability_label_mask(
+    df: pd.DataFrame, received_ssi: pd.Series
+) -> pd.Series:
+    ssi_receipt_observed = observed_source_mask(
+        df,
+        source_columns=["RSSI_YRYN"],
+        allocation_flag_columns=[sipp_allocation_flag_for("RSSI_YRYN")],
+    )
+    ssi_receipt_observed &= pd.to_numeric(
+        df.get("RSSI_YRYN", pd.Series(np.nan, index=df.index)),
+        errors="coerce",
+    ).isin([1, 2])
+    ssi_reason_observed = observed_source_mask(
+        df,
+        source_columns=["ESSI_BRSN"],
+        allocation_flag_columns=[sipp_allocation_flag_for("ESSI_BRSN")],
+    )
+    ssi_reason_observed &= pd.to_numeric(
+        df.get("ESSI_BRSN", pd.Series(np.nan, index=df.index)),
+        errors="coerce",
+    ).isin([1, 2])
+    return ssi_receipt_observed & (~received_ssi | ssi_reason_observed)
+
+
 def _ssi_financial_candidate_mask(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.Series:
@@ -479,7 +535,7 @@ def _ssi_financial_candidate_mask(
 def build_ssi_disability_training_frame(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.DataFrame:
-    """Build SIPP training rows for latent SSI disability criteria."""
+    """Build SIPP training rows for the latent SSI disability criteria."""
     df = df[df.MONTHCODE == 12].copy()
 
     df["bank_account_assets"] = df["TVAL_BANK"].fillna(0)
@@ -503,14 +559,18 @@ def build_ssi_disability_training_frame(
         if column in df:
             disability_income_amount += df[column].fillna(0)
 
-    df["is_disabled"] = (
-        _yes(df, "RDIS_ALT")
-        | _yes(df, "RDIS")
-        | _yes(df, "EDISABL")
-        | _yes(df, "EHLTHCOND")
-        | _yes(df, "ENJ_NOWRK3")
+    _add_ssi_disability_difficulty_predictors(df)
+    social_security_amount = (
+        df["TSSSAMT"] if "TSSSAMT" in df else pd.Series(0.0, index=df.index)
     )
-    df["social_security_disability"] = _yes(df, "ESSRSN2YN")
+    # SSDI receipt is evidence for disability status, while the label below is
+    # still anchored to under-65 SSI receipt/reason because SIPP lacks rejected
+    # SSI applications or SSA disability decisions.
+    df["social_security_disability"] = np.where(
+        _yes(df, "ESSRSN2YN"),
+        social_security_amount.fillna(0).astype(float) * 12,
+        0.0,
+    )
     df["has_disability_income"] = _yes(df, "EDISANY") | disability_income_amount.gt(0)
 
     received_ssi = _yes(df, "RSSI_YRYN")
@@ -527,23 +587,18 @@ def build_ssi_disability_training_frame(
         .astype(float)
         .eq(2)
     )
-    df[SSI_DISABILITY_MODEL_VARIABLE] = (
+    df[SSI_DISABILITY_CRITERIA_VARIABLE] = (
         received_ssi & under_65 & (disabled_or_blind_reason | ~aged_reason)
     )
 
     financial_candidate = _ssi_financial_candidate_mask(df, time_period=time_period)
     df["ssi_disability_training_candidate"] = (financial_candidate & under_65) | df[
-        SSI_DISABILITY_MODEL_VARIABLE
+        SSI_DISABILITY_CRITERIA_VARIABLE
     ]
-    df = filter_observed_source_rows(
-        df,
-        target_name=SSI_DISABILITY_MODEL_VARIABLE,
-        source_columns=SSI_DISABILITY_LABEL_SOURCE_COLUMNS,
-        allocation_flag_columns=SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
-    )
+    df = df.loc[_observed_ssi_disability_label_mask(df, received_ssi)].copy()
 
     columns = SSI_DISABILITY_MODEL_PREDICTORS + [
-        SSI_DISABILITY_MODEL_VARIABLE,
+        SSI_DISABILITY_CRITERIA_VARIABLE,
         "ssi_disability_training_candidate",
         "household_weight",
     ]
@@ -570,13 +625,13 @@ def _coerce_ssi_disability_signal(values) -> np.ndarray:
 
 def apply_ssi_disability_signal_screen(
     meets_ssi_disability_criteria: np.ndarray,
-    is_disabled: np.ndarray,
+    disability_difficulty_signal: np.ndarray,
     social_security_disability: np.ndarray,
     has_disability_income: np.ndarray,
 ) -> np.ndarray:
     """Require at least one observed disability signal before accepting imputation."""
     disability_signal = (
-        _coerce_ssi_disability_signal(is_disabled)
+        _coerce_ssi_disability_signal(disability_difficulty_signal)
         | _coerce_ssi_disability_signal(social_security_disability)
         | _coerce_ssi_disability_signal(has_disability_income)
     )
@@ -617,8 +672,18 @@ def coerce_ssi_disability_predictions(values) -> np.ndarray:
     return normalized.isin(["true", "1", "yes"]).to_numpy(dtype=bool)
 
 
+def _ssi_disability_difficulty_signal(receiver: pd.DataFrame) -> np.ndarray:
+    difficulty_signals = [
+        _coerce_ssi_disability_signal(receiver[predictor])
+        for predictor in SSI_DISABILITY_DIFFICULTY_PREDICTORS
+    ]
+    if not difficulty_signals:
+        return np.zeros(len(receiver), dtype=bool)
+    return np.column_stack(difficulty_signals).any(axis=1)
+
+
 def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndarray:
-    """Predict SSI disability criteria before applying dynamic policy screens."""
+    """Predict the SSI disability criteria before dynamic policy screens."""
     receiver = prepare_ssi_disability_receiver(receiver_df)
     predictions = model.predict(X_test=receiver[SSI_DISABILITY_MODEL_PREDICTORS])
     meets_ssi_disability_criteria = coerce_ssi_disability_predictions(
@@ -626,7 +691,7 @@ def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndar
     )
     return apply_ssi_disability_signal_screen(
         meets_ssi_disability_criteria,
-        receiver["is_disabled"],
+        _ssi_disability_difficulty_signal(receiver),
         receiver["social_security_disability"],
         receiver["has_disability_income"],
     )
@@ -734,7 +799,7 @@ def get_asset_model() -> QRF:
 
 
 def train_ssi_disability_model(time_period: int = 2024):
-    """Train a boolean model for likely SSI disability criteria."""
+    """Train a boolean model for likely SSI disability criteria passage."""
     hf_hub_download(
         repo_id="PolicyEngine/policyengine-us-data",
         filename="pu2023.csv",
@@ -781,7 +846,7 @@ def train_ssi_disability_model(time_period: int = 2024):
 
 def get_ssi_disability_model(time_period: int = 2024) -> QRF:
     """Get or train the SSI disability criteria imputation model."""
-    model_path = STORAGE_FOLDER / f"ssi_disability_criteria_v2_{time_period}.pkl"
+    model_path = _ssi_disability_model_path(time_period)
 
     if not model_path.exists():
         model = train_ssi_disability_model(time_period=time_period)
@@ -793,6 +858,13 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
             model = pickle.load(f)
 
     return model
+
+
+def _ssi_disability_model_path(time_period: int):
+    return (
+        STORAGE_FOLDER
+        / f"ssi_disability_criteria_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
+    )
 
 
 def build_vehicle_training_frame() -> pd.DataFrame:

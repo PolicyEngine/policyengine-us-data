@@ -84,6 +84,66 @@ def test_add_personal_variables_maps_current_health_coverage_flags():
     np.testing.assert_array_equal(cps["has_esi"], [False, True, False])
 
 
+def test_add_personal_variables_maps_comparable_disability_difficulties():
+    from policyengine_us_data.datasets.cps.cps import add_personal_variables
+
+    person = pd.DataFrame(
+        {
+            "A_AGE": [30, 45],
+            "A_SEX": [2, 1],
+            "PEDISEYE": [0, 1],
+            "PEDISDRS": [1, 0],
+            "PEDISEAR": [0, 1],
+            "PEDISOUT": [0, 0],
+            "PEDISPHY": [0, 0],
+            "PEDISREM": [0, 1],
+            "PEPAR1": [0, 0],
+            "PEPAR2": [0, 0],
+            "PH_SEQ": [1, 1],
+            "A_LINENO": [1, 2],
+            "NOW_COV": [0, 0],
+            "NOW_DIR": [0, 0],
+            "NOW_MRK": [0, 0],
+            "NOW_MRKS": [0, 0],
+            "NOW_MRKUN": [0, 0],
+            "NOW_NONM": [0, 0],
+            "NOW_PRIV": [0, 0],
+            "NOW_PUB": [0, 0],
+            "NOW_GRP": [0, 0],
+            "NOW_CAID": [0, 0],
+            "NOW_MCAID": [0, 0],
+            "NOW_PCHIP": [0, 0],
+            "NOW_OTHMT": [0, 0],
+            "NOW_MCARE": [0, 0],
+            "NOW_MIL": [0, 0],
+            "NOW_CHAMPVA": [0, 0],
+            "NOW_VACARE": [0, 0],
+            "NOW_IHSFLG": [0, 0],
+            "PRDTRACE": [1, 2],
+            "PRDTHSP": [0, 0],
+            "A_MARITL": [7, 7],
+            "A_HSCOL": [0, 0],
+            "POCCU2": [39, 52],
+            "PEIOOCC": [4040, 9999],
+        }
+    )
+    cps = {}
+
+    add_personal_variables(cps, person)
+
+    np.testing.assert_array_equal(cps["difficulty_dressing_or_bathing"], [True, False])
+    np.testing.assert_array_equal(cps["difficulty_hearing"], [False, True])
+    np.testing.assert_array_equal(cps["difficulty_seeing"], [False, True])
+    np.testing.assert_array_equal(cps["difficulty_doing_errands"], [False, False])
+    np.testing.assert_array_equal(
+        cps["difficulty_walking_or_climbing_stairs"], [False, False]
+    )
+    np.testing.assert_array_equal(
+        cps["difficulty_remembering_or_making_decisions"], [False, True]
+    )
+    np.testing.assert_array_equal(cps["is_disabled"], [True, True])
+
+
 def test_add_personal_variables_uses_full_time_flag():
     from policyengine_us_data.datasets.cps.cps import add_personal_variables
 

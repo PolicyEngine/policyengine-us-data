@@ -46,7 +46,9 @@ from policyengine_us_data.datasets.sipp.sipp import (
     SIPP_TIP_AMOUNT_COLUMNS,
     SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN,
     SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
-    SSI_DISABILITY_MODEL_VARIABLE,
+    SSI_DISABILITY_CRITERIA_VARIABLE,
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS,
+    SSI_DISABILITY_EXPORT_VARIABLES,
     VEHICLE_MODEL_PREDICTORS,
     build_vehicle_training_frame,
     get_ssi_disability_model,
@@ -103,7 +105,7 @@ SIPP_IMPUTED_VARIABLES = [
     "bank_account_assets",
     "stock_assets",
     "bond_assets",
-    SSI_DISABILITY_MODEL_VARIABLE,
+    *SSI_DISABILITY_EXPORT_VARIABLES,
     "household_vehicles_owned",
     "household_vehicles_value",
 ]
@@ -125,6 +127,20 @@ ALL_SOURCE_VARIABLES = (
     + ORG_IMPUTED_VARIABLES
     + SCF_IMPUTED_VARIABLES
 )
+
+SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES = tuple(
+    SSI_DISABILITY_DIFFICULTY_PREDICTORS
+)
+
+
+def drop_source_imputation_construction_variables(
+    data: Dict[str, Dict[int, np.ndarray]],
+) -> Dict[str, Dict[int, np.ndarray]]:
+    """Drop predictors needed during source imputation but not final exports."""
+    for variable in SOURCE_IMPUTATION_CONSTRUCTION_ONLY_VARIABLES:
+        data.pop(variable, None)
+    return data
+
 
 ACS_PREDICTORS = [
     "is_household_head",
@@ -902,7 +918,7 @@ def _impute_sipp(
                 "rental_income",
                 "age",
                 "is_male",
-                "is_disabled",
+                *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
                 "social_security_disability",
                 "disability_benefits",
             ],
@@ -930,7 +946,7 @@ def _impute_sipp(
             "interest_income",
             "dividend_income",
             "rental_income",
-            "is_disabled",
+            *SSI_DISABILITY_DIFFICULTY_PREDICTORS,
             "social_security_disability",
         ]:
             if var not in cps_ssi_df.columns:
@@ -953,7 +969,7 @@ def _impute_sipp(
             cps_ssi_df,
         )
         existing_meets_ssi_disability_criteria = data.get(
-            SSI_DISABILITY_MODEL_VARIABLE, {}
+            SSI_DISABILITY_CRITERIA_VARIABLE, {}
         ).get(time_period)
         ssi_reported = data.get("ssi_reported", {}).get(time_period)
         meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
@@ -962,7 +978,7 @@ def _impute_sipp(
             ssi_reported=ssi_reported,
             existing_meets_ssi_disability_criteria=existing_meets_ssi_disability_criteria,
         )
-        data[SSI_DISABILITY_MODEL_VARIABLE] = {
+        data[SSI_DISABILITY_CRITERIA_VARIABLE] = {
             time_period: meets_ssi_disability_criteria
         }
 

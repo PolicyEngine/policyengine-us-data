@@ -91,6 +91,39 @@ FLSA_SALARY_BASIS_THRESHOLD_ANNUAL_2024 = np.float32(684 * FLSA_WORKWEEKS_PER_YE
 FLSA_COMPUTER_SALARY_THRESHOLD_ANNUAL_2024 = np.float32(
     27.63 * FLSA_STANDARD_HOURS_PER_WEEK * FLSA_WORKWEEKS_PER_YEAR
 )
+FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES = np.array(
+    [
+        1,  # Chief executives, and managers
+        2,  # Compensation, human resources, and infrastructure managers
+        3,  # All other managers
+        5,  # Business operations specialists
+        6,  # Accountants and auditors
+        7,  # Financial specialists
+        9,  # Mathematical science occupations
+        10,  # Architects, except naval
+        11,  # Surveyors, cartographers, & photogrammetrists
+        12,  # Engineering technologists and technicians
+        13,  # Earth scientists
+        14,  # Economists
+        15,  # Psychologists, and other social scientists
+        16,  # Health and safety specialists
+        18,  # Lawyers, judges, magistrates, and other judicial workers
+        19,  # Paralegals and all other legal support workers
+        25,  # Registered nurses, therapists, and specific pathologists
+        26,  # Veterinarians
+        27,  # Health technicians and other healthcare practitioners
+        28,  # Healthcare support occupations
+        29,  # First-line supervisors of protective service workers
+        34,  # First-line supervisors of housekeeping and janitorial workers
+        36,  # Supervisors of personal care and service workers
+        38,  # First-line supervisors of retail/non-retail sales workers
+        39,  # Sales and related occupations
+        40,  # Office & administrative support occupations
+        42,  # First-line supervisors of construction trades workers
+        50,  # Supervisors of transportation and flight related workers
+    ],
+    dtype=np.int16,
+)
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -3016,36 +3049,7 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     cps["is_computer_scientist"] = person.POCCU2 == 8
     cps["is_farmer_fisher"] = person.POCCU2 == 41
     cps["is_executive_administrative_professional"] = person.POCCU2.isin(
-        [
-            1,  # Chief executives, and managers
-            2,  # Compensation, human resources, and infrastructure managers
-            3,  # All other managers
-            5,  # Business operations specialists
-            6,  # Accountants and auditors
-            7,  # Financial specialists
-            9,  # Mathematical science occupations
-            10,  # Architects, except naval
-            11,  # Surveyors, cartographers, & photogrammetrists
-            12,  # Engineering technologists and technicians
-            13,  # Earth scientists
-            14,  # Economists
-            15,  # Psychologists, and other social scientists
-            16,  # Health and safety specialists
-            18,  # Lawyers, judges, magistrates, and other judicial workers
-            19,  # Paralegals and all other legal support workers
-            25,  # Registered nurses, therapists, and specific pathologists
-            26,  # Veterinarians
-            27,  # Health technicians and other healthcare practitioners
-            28,  # Healthcare support occupations
-            29,  # First-line supervisors of protective service workers
-            34,  # First-line supervisors of housekeeping and janitorial workers
-            36,  # Supervisors of personal care and service workers
-            38,  # First-line supervisors of retail/non-retail sales workers
-            39,  # Sales and related occupations
-            40,  # Office & administrative support occupations
-            42,  # First-line supervisors of construction trades workers
-            50,  # Supervisors of transportation and flight related workers
-        ]
+        FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES
     )
 
 

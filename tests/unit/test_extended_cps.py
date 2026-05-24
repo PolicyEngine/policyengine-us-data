@@ -18,7 +18,10 @@ from policyengine_us_data.calibration.puf_impute import (
     OVERRIDDEN_IMPUTED_VARIABLES,
 )
 from policyengine_us_data.datasets.cps import extended_cps as extended_cps_module
-from policyengine_us_data.datasets.cps.cps import ESI_POLICYHOLDER_VARIABLE
+from policyengine_us_data.datasets.cps.cps import (
+    ESI_POLICYHOLDER_VARIABLE,
+    FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+)
 from policyengine_us_data.datasets.cps.extended_cps import (
     CPS_CLONE_FEATURE_VARIABLES,
     CPS_ONLY_IMPUTED_VARIABLES,
@@ -1317,14 +1320,26 @@ class TestCloneFeatureImputation:
         assert result["tax_unit_is_joint"].tolist() == [0, 1]
 
     def test_derive_overtime_occupation_inputs(self):
-        derived = _derive_overtime_occupation_inputs(np.array([53, 52, 8, 41, 1, 99]))
+        occupation_codes = np.array(
+            [
+                53,
+                52,
+                8,
+                41,
+                *FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+                99,
+            ]
+        )
+        eap_count = len(FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES)
+
+        derived = _derive_overtime_occupation_inputs(occupation_codes)
 
         assert derived["has_never_worked"].tolist() == [
             True,
             False,
             False,
             False,
-            False,
+            *([False] * eap_count),
             False,
         ]
         assert derived["is_military"].tolist() == [
@@ -1332,7 +1347,7 @@ class TestCloneFeatureImputation:
             True,
             False,
             False,
-            False,
+            *([False] * eap_count),
             False,
         ]
         assert derived["is_computer_scientist"].tolist() == [
@@ -1340,7 +1355,7 @@ class TestCloneFeatureImputation:
             False,
             True,
             False,
-            False,
+            *([False] * eap_count),
             False,
         ]
         assert derived["is_farmer_fisher"].tolist() == [
@@ -1348,7 +1363,7 @@ class TestCloneFeatureImputation:
             False,
             False,
             True,
-            False,
+            *([False] * eap_count),
             False,
         ]
         assert derived["is_executive_administrative_professional"].tolist() == [
@@ -1356,7 +1371,7 @@ class TestCloneFeatureImputation:
             False,
             False,
             False,
-            True,
+            *([True] * eap_count),
             False,
         ]
 

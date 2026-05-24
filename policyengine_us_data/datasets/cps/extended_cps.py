@@ -19,6 +19,7 @@ from policyengine_us_data.datasets.cps.cps import (
     CPS_2024,
     CPS_2024_Full,
     ESI_POLICYHOLDER_VARIABLE,
+    FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
     _open_dataset_read_only,
     load_take_up_rate,
 )
@@ -125,39 +126,6 @@ _OVERTIME_OCCUPATION_CODES = {
     "is_computer_scientist": 8,
     "is_farmer_fisher": 41,
 }
-_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES = np.array(
-    [
-        1,
-        2,
-        3,
-        5,
-        7,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        18,
-        19,
-        20,
-        21,
-        22,
-        24,
-        25,
-        27,
-        28,
-        29,
-        30,
-        32,
-        33,
-        34,
-    ],
-    dtype=np.int16,
-)
-
 # CPS-only variables that should be QRF-imputed for the PUF clone half
 # instead of naively duplicated from the CPS donor. Most demographics,
 # IDs, weights, and random seeds are fine to duplicate; the categorical
@@ -478,7 +446,7 @@ def _derive_overtime_occupation_inputs(
     }
     derived["is_executive_administrative_professional"] = np.isin(
         occupation_codes,
-        _EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES,
+        FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
     )
     return pd.DataFrame(derived)
 

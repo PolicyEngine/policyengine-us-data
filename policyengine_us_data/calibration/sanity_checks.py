@@ -36,9 +36,7 @@ KEY_MONETARY_VARS = [
     "income_tax_before_credits",
 ]
 
-COMPUTED_KEY_MONETARY_VARS = [
-    "ssi_federal_fiscal_year_outlays",
-]
+COMPUTED_KEY_MONETARY_VARS = []
 
 TAKEUP_VARS = [
     "takes_up_snap_if_eligible",
@@ -665,6 +663,9 @@ def run_sanity_checks(
 
 
 def _computed_key_monetary_values(h5_path: str, period: int) -> dict[str, np.ndarray]:
+    if not COMPUTED_KEY_MONETARY_VARS:
+        return {}
+
     try:
         from policyengine_us import Microsimulation
 

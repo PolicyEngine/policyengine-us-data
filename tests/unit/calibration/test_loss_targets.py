@@ -378,10 +378,10 @@ def test_add_ssi_recipient_targets_adds_total_and_age_counts():
     )
 
 
-def test_legacy_cbo_ssi_target_uses_cbo_projection():
+def test_legacy_cbo_ssi_target_uses_ssa_actual_when_available():
     sim = _FakeCBOProgramTargetSimulation()
 
-    assert _cbo_program_target_value(sim, "ssi", 2024) == 57_000_000_000
+    assert _cbo_program_target_value(sim, "ssi", 2024) == 59_665_127_000
     assert _cbo_program_target_value(sim, "snap", 2024) == 1_000.0
 
 

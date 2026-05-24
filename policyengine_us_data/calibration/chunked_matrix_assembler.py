@@ -380,7 +380,9 @@ class ChunkedMatrixAssembler:
                 continue
             try:
                 hh_vars[variable] = chunk_sim.calculate(
-                    variable, state.time_period, map_to="household"
+                    variable,
+                    state.time_period,
+                    map_to="household",
                 ).values.astype(np.float32)
             except Exception as exc:
                 logger.warning(
@@ -394,7 +396,9 @@ class ChunkedMatrixAssembler:
                 continue
             try:
                 target_entity_vars[variable] = chunk_sim.calculate(
-                    variable, state.time_period, map_to=entity_key
+                    variable,
+                    state.time_period,
+                    map_to=entity_key,
                 ).values.astype(np.float32)
             except Exception as exc:
                 logger.warning(

@@ -32,6 +32,7 @@ from policyengine_us_data.utils.ssi_targets import (
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
+    get_ssi_annual_payment_target,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -798,7 +799,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             source = "CBO Budget Projections"
             notes = f"CBO projection for {variable_name}"
             if variable_name == "ssi":
-                source = SSI_CBO_TARGET_SOURCE
+                ssi_target = get_ssi_annual_payment_target(time_period)
+                if ssi_target is None:
+                    source = SSI_CBO_TARGET_SOURCE
+                else:
+                    value = ssi_target["value"]
+                    source = ssi_target["source"]
+                    notes = ssi_target["notes"]
             cbo_targets.append(
                 {
                     "variable": variable_name,

@@ -59,8 +59,8 @@ _DIRECT_NATIONAL_CENSUS_TARGET_VARIABLES = {
     "social_security_survivors",
     "social_security_dependents",
     "capped_traditional_ira_contributions",
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
+    "capped_traditional_401k_contributions",
+    "capped_roth_401k_contributions",
     "self_employed_pension_contribution_ald",
     "capped_roth_ira_contributions",
 }

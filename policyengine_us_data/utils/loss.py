@@ -146,7 +146,7 @@ HARD_CODED_TOTALS = {
     "capped_traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
         "capped_traditional_ira_contributions"
     ]["value"],
-    # traditional_401k_contributions & roth_401k_contributions:
+    # capped_traditional_401k_contributions & capped_roth_401k_contributions:
     # BEA/FRED National Income Accounts. Total DC employer+employee
     # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
     # (W351RC0A144NBEA), employee elective deferrals = $567.9B.
@@ -158,8 +158,8 @@ HARD_CODED_TOTALS = {
     # https://fred.stlouisfed.org/series/Y351RC1A027NBEA
     # https://fred.stlouisfed.org/series/W351RC0A144NBEA
     # https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
-    "traditional_401k_contributions": 482.7e9,
-    "roth_401k_contributions": 85.2e9,
+    "capped_traditional_401k_contributions": 482.7e9,
+    "capped_roth_401k_contributions": 85.2e9,
     # self_employed_pension_contribution_ald: IRS SOI Publication
     # 1304, Table 1.4 (TY 2023), "Payments to a Keogh plan" —
     # $30.13B (col DM, row "All returns, total"). Includes

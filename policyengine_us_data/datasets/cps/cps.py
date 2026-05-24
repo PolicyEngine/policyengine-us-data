@@ -1373,34 +1373,23 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # split contributions into DC (401k) and IRA pools, then splits
     # each pool into traditional/Roth using administrative fractions.
     # See imputation_parameters.yaml for sources.
-    from policyengine_us_data.utils.retirement_limits import (
-        get_retirement_limits,
-    )
-
-    limits = get_retirement_limits(year)
-    LIMIT_401K = limits["401k"]
-    LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
-    CATCH_UP_AGE = 50
-    catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
-    limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
-
     retirement_contributions = person.RETCB_VAL
     has_wages = person.WSAL_VAL > 0
     has_se = person.SEMP_VAL > 0
     has_earned_income = has_wages | has_se
 
-    # 1) Self-employed pension: cap at min(25% of SE income, dollar
-    #    limit) so dual-income filers keep a remainder for 401(k)/IRA.
+    # 1) Self-employed pension: use the plan contribution rate as an
+    #    allocation prior so dual-income filers keep a remainder for
+    #    401(k)/IRA. PolicyEngine-US applies statutory limits.
     se_rate = p["se_pension_contribution_rate"]
-    se_dollar_cap = p["se_pension_contribution_dollar_limit"][year]
-    se_pension_cap = np.minimum(person.SEMP_VAL * se_rate, se_dollar_cap)
-    cps["self_employed_pension_contributions"] = np.where(
+    se_pension_capacity = person.SEMP_VAL * se_rate
+    cps["self_employed_pension_contributions_desired"] = np.where(
         has_se,
-        np.minimum(retirement_contributions, se_pension_cap),
+        np.minimum(retirement_contributions, se_pension_capacity),
         0,
     )
     remaining = np.maximum(
-        retirement_contributions - cps["self_employed_pension_contributions"],
+        retirement_contributions - cps["self_employed_pension_contributions_desired"],
         0,
     )
 
@@ -1416,11 +1405,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # earned income (including SE-only filers).
     ira_pool = np.where(has_earned_income, remaining - dc_pool, 0)
 
-    # DC pool: split into traditional/Roth 401(k), cap at combined
-    # 401(k) limit.
-    dc_capped = np.minimum(dc_pool, limit_401k)
-    cps["traditional_401k_contributions"] = dc_capped * (1 - roth_dc_share)
-    cps["roth_401k_contributions"] = dc_capped * roth_dc_share
+    # DC pool: split into desired traditional/Roth 401(k) contributions.
+    # The statutory elective deferral limit is applied in policyengine-us.
+    cps["traditional_401k_contributions_desired"] = dc_pool * (1 - roth_dc_share)
+    cps["roth_401k_contributions_desired"] = dc_pool * roth_dc_share
 
     # IRA pool: split into desired traditional/Roth IRA contributions.
     # The statutory IRA limit is applied in policyengine-us.

@@ -234,9 +234,9 @@ include:
   # === NATIONAL — retirement contribution targets ===
   - variable: capped_traditional_ira_contributions
     geo_level: national
-  - variable: traditional_401k_contributions
+  - variable: capped_traditional_401k_contributions
     geo_level: national
-  - variable: roth_401k_contributions
+  - variable: capped_roth_401k_contributions
     geo_level: national
   - variable: capped_roth_ira_contributions
     geo_level: national

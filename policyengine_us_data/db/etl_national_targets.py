@@ -646,14 +646,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "traditional_401k_contributions",
+            "variable": "capped_traditional_401k_contributions",
             "value": 482.7e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
             "year": 2024,
         },
         {
-            "variable": "roth_401k_contributions",
+            "variable": "capped_roth_401k_contributions",
             "value": 85.2e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",

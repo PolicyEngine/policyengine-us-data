@@ -1308,13 +1308,12 @@ def derive_flsa_overtime_premium(
         ),
         salary_threshold,
     )
-    salary_threshold = np.where(
-        has_never_worked | is_military,
-        0,
-        salary_threshold,
-    )
+    always_exempt = has_never_worked | is_military
+    salary_threshold = np.where(always_exempt, 0, salary_threshold)
 
-    is_exempt = (employment_income >= salary_threshold) & ~is_paid_hourly
+    is_exempt = always_exempt | (
+        (employment_income >= salary_threshold) & ~is_paid_hourly
+    )
     eligible = ~is_exempt & (weeks_worked > 0)
     premium = np.where(eligible, employment_income * premium_share, 0)
     return np.minimum(premium, employment_income).astype(np.float32)

@@ -100,18 +100,25 @@ def test_add_personal_income_variables_maps_spm_income_leaves():
 
 def test_derive_flsa_overtime_premium_uses_wage_share_and_exemption_screen():
     premium = derive_flsa_overtime_premium(
-        employment_income=np.array([57_200.0, 100_000.0, 30_000.0, 60_000.0]),
-        hours_worked_last_week=np.array([50.0, 50.0, 50.0, 40.0]),
-        weeks_worked=np.array([52.0, 52.0, 52.0, 52.0]),
-        is_paid_hourly=np.array([True, False, False, True]),
-        has_never_worked=np.array([False, False, False, False]),
-        is_military=np.array([False, False, False, False]),
-        is_executive_administrative_professional=np.array([False, True, True, False]),
-        is_farmer_fisher=np.array([False, False, False, False]),
-        is_computer_scientist=np.array([False, False, False, False]),
+        employment_income=np.array(
+            [57_200.0, 100_000.0, 30_000.0, 60_000.0, 50_000.0, 50_000.0]
+        ),
+        hours_worked_last_week=np.array([50.0, 50.0, 50.0, 40.0, 50.0, 50.0]),
+        weeks_worked=np.array([52.0, 52.0, 52.0, 52.0, 52.0, 52.0]),
+        is_paid_hourly=np.array([True, False, False, True, True, True]),
+        has_never_worked=np.array([False, False, False, False, True, False]),
+        is_military=np.array([False, False, False, False, False, True]),
+        is_executive_administrative_professional=np.array(
+            [False, True, True, False, False, False]
+        ),
+        is_farmer_fisher=np.array([False, False, False, False, False, False]),
+        is_computer_scientist=np.array([False, False, False, False, False, False]),
     )
 
     np.testing.assert_allclose(
         premium,
-        np.array([5_200.0, 0.0, 30_000 * 5 / 55, 0.0], dtype=np.float32),
+        np.array(
+            [5_200.0, 0.0, 30_000 * 5 / 55, 0.0, 0.0, 0.0],
+            dtype=np.float32,
+        ),
     )

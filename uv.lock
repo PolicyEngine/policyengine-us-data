@@ -2122,7 +2122,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.705.8"
+version = "1.705.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -2132,9 +2132,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/93/430f7fdc97da8111f1e3b5b8d58d2fe27b6e22b06ea722814f86d66a0bdf/policyengine_us-1.705.8.tar.gz", hash = "sha256:1193ed09d7bb28788ba1d8bca0f8d023eae0259f856ffdd098b068ce11fcf0d0", size = 9915631, upload-time = "2026-05-23T20:52:39.871Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/24/ca/76c6d9f02ffcb1da5e9eb294dd741cae759419288908084025b3fd30738b/policyengine_us-1.705.11.tar.gz", hash = "sha256:f6704437522ae8226ffcab51f17cdce4fa985d79fd05fc74797d21cad85a9152", size = 9923721, upload-time = "2026-05-23T23:11:44.145Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/68/bf/2764e445cfbd49da4a71961b751e4e2f18419329207b77a7d8307f173752/policyengine_us-1.705.8-py3-none-any.whl", hash = "sha256:dacdfbe48f1b99ec6a861ce6847486a1bc6a876765e939ccdff015bc29e3f09b", size = 10744841, upload-time = "2026-05-23T20:52:37.038Z" },
+    { url = "https://files.pythonhosted.org/packages/af/f9/a7cf4bb1ea29ffd071fece39131cee9e79de54e8b085cc5c86df4a9f474a/policyengine_us-1.705.11-py3-none-any.whl", hash = "sha256:7b6154664aa5c1fa8af398ed9b44b7377f75634594a9437d15578ac6bce3c34f", size = 10750335, upload-time = "2026-05-23T23:11:40.701Z" },
 ]
 
 [[package]]
@@ -2204,7 +2204,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.26.1,<3.27" },
-    { name = "policyengine-us", specifier = "==1.705.8" },
+    { name = "policyengine-us", specifier = "==1.705.11" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },

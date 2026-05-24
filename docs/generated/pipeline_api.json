@@ -3533,7 +3533,7 @@
       "status": "transitional"
     },
     "object_path": "policyengine_us_data.datasets.cps.enhanced_cps.reweight",
-    "signature": "def reweight(original_weights, loss_matrix, targets_array, log_path = 'calibration_log.csv', epochs = 500, l0_lambda = 2.6445e-07, init_mean = 0.999, temperature = 0.25, seed = 1456)",
+    "signature": "def reweight(original_weights, loss_matrix, targets_array, log_path = 'calibration_log.csv', epochs = 500, l0_lambda = 0.0, init_mean = 0.999, temperature = 0.25, seed = 1456)",
     "source_file": "policyengine_us_data/datasets/cps/enhanced_cps.py"
   },
   "run_calibration": {

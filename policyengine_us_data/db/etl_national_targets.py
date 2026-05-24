@@ -633,16 +633,16 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         },
         # Retirement contribution targets — see issue #553
         {
-            "variable": "traditional_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
-                "value"
-            ],
-            "source": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
-                "source"
-            ],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
-                "notes"
-            ],
+            "variable": "capped_traditional_ira_contributions",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS[
+                "capped_traditional_ira_contributions"
+            ]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS[
+                "capped_traditional_ira_contributions"
+            ]["source"],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
+                "capped_traditional_ira_contributions"
+            ]["notes"],
             "year": 2024,
         },
         {
@@ -673,12 +673,16 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "roth_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["value"],
-            "source": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+            "variable": "capped_roth_ira_contributions",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
+                "value"
+            ],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
                 "source"
             ],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["notes"],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
+                "notes"
+            ],
             "year": 2024,
         },
     ]

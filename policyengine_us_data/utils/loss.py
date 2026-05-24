@@ -136,15 +136,15 @@ HARD_CODED_TOTALS = {
     "social_security_dependents": 84e9,  # ~5.8% (spouses/children of retired+disabled)
     # Retirement contribution calibration targets.
     #
-    # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
+    # capped_traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
     # (TY 2023), "IRA payments" deduction — $13.77B (col DU, row
     # "All returns, total"). This is the actual above-the-line
     # deduction claimed on returns. The variable flows directly into
     # the ALD with no deductibility logic in policyengine-us, so the
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
-        "traditional_ira_contributions"
+    "capped_traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "capped_traditional_ira_contributions"
     ]["value"],
     # traditional_401k_contributions & roth_401k_contributions:
     # BEA/FRED National Income Accounts. Total DC employer+employee
@@ -170,13 +170,13 @@ HARD_CODED_TOTALS = {
     "self_employed_pension_contribution_ald": RETIREMENT_CONTRIBUTION_TARGETS[
         "self_employed_pension_contribution_ald"
     ]["value"],
-    # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
+    # capped_roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
     # (TY 2022, latest published). Total Roth IRA contributions =
     # $34.95B (10.04M contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
-        "value"
-    ],
+    "capped_roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "capped_roth_ira_contributions"
+    ]["value"],
 }
 
 AGE_BUCKETED_HEALTH_TARGETS = (

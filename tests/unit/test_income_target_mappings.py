@@ -83,3 +83,31 @@ def test_bea_nipa_direct_sum_targets_are_in_default_target_config():
     }
 
     assert expected_entries <= include_entries
+
+
+def test_ira_calibration_targets_use_capped_outputs():
+    include_entries = _target_config_include_entries()
+    expected_entries = {
+        ("capped_traditional_ira_contributions", "national", None),
+        ("capped_roth_ira_contributions", "national", None),
+    }
+
+    assert expected_entries <= include_entries
+    assert "traditional_ira_contributions" not in loss.HARD_CODED_TOTALS
+    assert "roth_ira_contributions" not in loss.HARD_CODED_TOTALS
+    assert expected_entries <= {
+        (variable, "national", None)
+        for variable in loss.HARD_CODED_TOTALS
+        if variable.startswith("capped_") and "ira_contributions" in variable
+    }
+
+    direct_sum_targets = {
+        target["variable"]
+        for target in etl_national_targets.extract_national_targets(year=2024)[
+            "direct_sum_targets"
+        ]
+    }
+    assert {
+        "capped_traditional_ira_contributions",
+        "capped_roth_ira_contributions",
+    } <= direct_sum_targets

@@ -136,17 +136,17 @@ HARD_CODED_TOTALS = {
     "social_security_dependents": 84e9,  # ~5.8% (spouses/children of retired+disabled)
     # Retirement contribution calibration targets.
     #
-    # capped_traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
+    # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
     # (TY 2023), "IRA payments" deduction — $13.77B (col DU, row
-    # "All returns, total"). This is the actual above-the-line
-    # deduction claimed on returns. The variable flows directly into
-    # the ALD with no deductibility logic in policyengine-us, so the
+    # "All returns, total"). This is the above-the-line deduction
+    # claimed on returns. The variable flows directly into the ALD
+    # with no deductibility logic in policyengine-us, so the
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "capped_traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
-        "capped_traditional_ira_contributions"
+    "traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "traditional_ira_contributions"
     ]["value"],
-    # capped_traditional_401k_contributions & capped_roth_401k_contributions:
+    # traditional_401k_contributions & roth_401k_contributions:
     # BEA/FRED National Income Accounts. Total DC employer+employee
     # = $815.4B (Y351RC1A027NBEA), employer-only = $247.5B
     # (W351RC0A144NBEA), employee elective deferrals = $567.9B.
@@ -158,25 +158,25 @@ HARD_CODED_TOTALS = {
     # https://fred.stlouisfed.org/series/Y351RC1A027NBEA
     # https://fred.stlouisfed.org/series/W351RC0A144NBEA
     # https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
-    "capped_traditional_401k_contributions": 482.7e9,
-    "capped_roth_401k_contributions": 85.2e9,
-    # self_employed_pension_contribution_ald: IRS SOI Publication
+    "traditional_401k_contributions": 482.7e9,
+    "roth_401k_contributions": 85.2e9,
+    # self_employed_pension_contributions: IRS SOI Publication
     # 1304, Table 1.4 (TY 2023), "Payments to a Keogh plan" —
     # $30.13B (col DM, row "All returns, total"). Includes
     # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
-    # Targeting the ALD (not the input) because policyengine-us
-    # applies a min(contributions, SE_income) cap.
+    # Targeting the contribution output because policyengine-us applies
+    # statutory limits before the ALD formula.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "self_employed_pension_contribution_ald": RETIREMENT_CONTRIBUTION_TARGETS[
-        "self_employed_pension_contribution_ald"
+    "self_employed_pension_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "self_employed_pension_contributions"
     ]["value"],
-    # capped_roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
+    # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
     # (TY 2022, latest published). Total Roth IRA contributions =
     # $34.95B (10.04M contributors). Direct administrative source.
     # https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements
-    "capped_roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
-        "capped_roth_ira_contributions"
-    ]["value"],
+    "roth_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
+        "value"
+    ],
 }
 
 AGE_BUCKETED_HEALTH_TARGETS = (

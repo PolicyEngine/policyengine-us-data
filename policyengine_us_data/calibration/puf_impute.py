@@ -845,8 +845,8 @@ def _impute_retirement_contributions(
         n_persons = len(data["person_id"][time_period])
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
-    # Extract results and apply data-domain constraints. Statutory caps
-    # are applied by PolicyEngine-US capped variables.
+    # Extract results and apply data-domain constraints. Statutory limits
+    # are applied by PolicyEngine-US plain contribution variables.
     se_income = X_test["self_employment_income"].values
     emp_income = X_test["employment_income"].values
 

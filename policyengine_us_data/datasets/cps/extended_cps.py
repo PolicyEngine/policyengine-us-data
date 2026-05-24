@@ -743,7 +743,7 @@ def apply_retirement_constraints(predictions, X_test, time_period):
     se_income = X_test["self_employment_income"].values
 
     # Explicit mapping: variable -> zero_mask or None. Statutory limits
-    # are applied by PolicyEngine-US capped variables.
+    # are applied by PolicyEngine-US plain contribution variables.
     _CONSTRAINT_MAP = {
         "traditional_401k_contributions_desired": emp_income == 0,
         "roth_401k_contributions_desired": emp_income == 0,

@@ -633,56 +633,52 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         },
         # Retirement contribution targets — see issue #553
         {
-            "variable": "capped_traditional_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS[
-                "capped_traditional_ira_contributions"
-            ]["value"],
-            "source": RETIREMENT_CONTRIBUTION_TARGETS[
-                "capped_traditional_ira_contributions"
-            ]["source"],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS[
-                "capped_traditional_ira_contributions"
-            ]["notes"],
+            "variable": "traditional_ira_contributions",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "value"
+            ],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "source"
+            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["traditional_ira_contributions"][
+                "notes"
+            ],
             "year": 2024,
         },
         {
-            "variable": "capped_traditional_401k_contributions",
+            "variable": "traditional_401k_contributions",
             "value": 482.7e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 85% traditional share (Vanguard HAS 2024)",
             "year": 2024,
         },
         {
-            "variable": "capped_roth_401k_contributions",
+            "variable": "roth_401k_contributions",
             "value": 85.2e9,
             "source": "https://fred.stlouisfed.org/series/Y351RC1A027NBEA",
             "notes": "BEA/FRED employee DC deferrals ($567.9B) x 15% Roth share (Vanguard HAS 2024)",
             "year": 2024,
         },
         {
-            "variable": "self_employed_pension_contribution_ald",
+            "variable": "self_employed_pension_contributions",
             "value": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["value"],
             "source": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["source"],
             "notes": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["notes"],
             "year": 2024,
         },
         {
-            "variable": "capped_roth_ira_contributions",
-            "value": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
-                "value"
-            ],
-            "source": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
+            "variable": "roth_ira_contributions",
+            "value": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["value"],
+            "source": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"][
                 "source"
             ],
-            "notes": RETIREMENT_CONTRIBUTION_TARGETS["capped_roth_ira_contributions"][
-                "notes"
-            ],
+            "notes": RETIREMENT_CONTRIBUTION_TARGETS["roth_ira_contributions"]["notes"],
             "year": 2024,
         },
     ]

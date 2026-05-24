@@ -16,11 +16,11 @@ REQUIRED_RETIREMENT_POLICYENGINE_US_VARIABLES = {
     "traditional_ira_contributions_desired",
     "roth_ira_contributions_desired",
     "self_employed_pension_contributions_desired",
-    "capped_traditional_401k_contributions",
-    "capped_roth_401k_contributions",
-    "capped_traditional_ira_contributions",
-    "capped_roth_ira_contributions",
-    "capped_self_employed_pension_contributions",
+    "traditional_401k_contributions",
+    "roth_401k_contributions",
+    "traditional_ira_contributions",
+    "roth_ira_contributions",
+    "self_employed_pension_contributions",
 }
 
 
@@ -103,24 +103,19 @@ def test_bea_nipa_direct_sum_targets_are_in_default_target_config():
     assert expected_entries <= include_entries
 
 
-def test_retirement_calibration_targets_use_capped_outputs():
+def test_retirement_calibration_targets_use_contribution_outputs():
     include_entries = _target_config_include_entries()
     expected_entries = {
-        ("capped_traditional_401k_contributions", "national", None),
-        ("capped_roth_401k_contributions", "national", None),
-        ("capped_traditional_ira_contributions", "national", None),
-        ("capped_roth_ira_contributions", "national", None),
+        ("traditional_401k_contributions", "national", None),
+        ("roth_401k_contributions", "national", None),
+        ("traditional_ira_contributions", "national", None),
+        ("roth_ira_contributions", "national", None),
+        ("self_employed_pension_contributions", "national", None),
     }
 
     assert expected_entries <= include_entries
-    assert "traditional_401k_contributions" not in loss.HARD_CODED_TOTALS
-    assert "roth_401k_contributions" not in loss.HARD_CODED_TOTALS
-    assert "traditional_ira_contributions" not in loss.HARD_CODED_TOTALS
-    assert "roth_ira_contributions" not in loss.HARD_CODED_TOTALS
     assert expected_entries <= {
-        (variable, "national", None)
-        for variable in loss.HARD_CODED_TOTALS
-        if variable.startswith("capped_") and "contributions" in variable
+        (variable, "national", None) for variable in loss.HARD_CODED_TOTALS
     }
 
     direct_sum_targets = {
@@ -130,10 +125,11 @@ def test_retirement_calibration_targets_use_capped_outputs():
         ]
     }
     assert {
-        "capped_traditional_401k_contributions",
-        "capped_roth_401k_contributions",
-        "capped_traditional_ira_contributions",
-        "capped_roth_ira_contributions",
+        "traditional_401k_contributions",
+        "roth_401k_contributions",
+        "traditional_ira_contributions",
+        "roth_ira_contributions",
+        "self_employed_pension_contributions",
     } <= direct_sum_targets
 
 

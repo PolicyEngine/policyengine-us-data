@@ -232,15 +232,15 @@ include:
     geo_level: national
 
   # === NATIONAL — retirement contribution targets ===
-  - variable: capped_traditional_ira_contributions
+  - variable: traditional_ira_contributions
     geo_level: national
-  - variable: capped_traditional_401k_contributions
+  - variable: traditional_401k_contributions
     geo_level: national
-  - variable: capped_roth_401k_contributions
+  - variable: roth_401k_contributions
     geo_level: national
-  - variable: capped_roth_ira_contributions
+  - variable: roth_ira_contributions
     geo_level: national
-  - variable: self_employed_pension_contribution_ald
+  - variable: self_employed_pension_contributions
     geo_level: national
 
   # === NATIONAL — IRS SOI domain-constrained dollar targets (restored: |rel_err| < 15%) ===

@@ -5,7 +5,7 @@ LATEST_PUBLISHED_GEOGRAPHIC_SOI_YEAR = 2022
 LATEST_PUBLISHED_IRA_ACCUMULATION_YEAR = 2022
 
 RETIREMENT_CONTRIBUTION_TARGETS = {
-    "capped_traditional_ira_contributions": {
+    "traditional_ira_contributions": {
         "value": 13.771289e9,
         "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
         "notes": (
@@ -14,7 +14,7 @@ RETIREMENT_CONTRIBUTION_TARGETS = {
         ),
         "source_year": 2023,
     },
-    "self_employed_pension_contribution_ald": {
+    "self_employed_pension_contributions": {
         "value": 30.130848e9,
         "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
         "notes": (
@@ -23,7 +23,7 @@ RETIREMENT_CONTRIBUTION_TARGETS = {
         ),
         "source_year": 2023,
     },
-    "capped_roth_ira_contributions": {
+    "roth_ira_contributions": {
         "value": 34.951077e9,
         "source": "https://www.irs.gov/statistics/soi-tax-stats-accumulation-and-distribution-of-individual-retirement-arrangements",
         "notes": (

@@ -46,15 +46,14 @@ from policyengine_us_data.datasets.sipp.sipp import (
     SIPP_TIP_AMOUNT_COLUMNS,
     SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN,
     SIPP_VEHICLE_TARGET_ALLOCATION_COLUMNS,
-    SSA_DISABILITY_SCREEN_VARIABLE,
-    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+    SSI_DISABILITY_CRITERIA_VARIABLE,
     SSI_DISABILITY_DIFFICULTY_PREDICTORS,
     SSI_DISABILITY_EXPORT_VARIABLES,
     VEHICLE_MODEL_PREDICTORS,
     build_vehicle_training_frame,
     get_ssi_disability_model,
-    predict_ssa_disability_screen,
-    preserve_under_65_ssa_disability_screen,
+    predict_ssi_disability_criteria,
+    preserve_under_65_ssi_disability_criteria,
 )
 
 from policyengine_us_data.datasets.org import (
@@ -965,32 +964,25 @@ def _impute_sipp(
         )
 
         ssi_disability_model = get_ssi_disability_model(time_period=time_period)
-        would_pass_ssa_disability_screen = predict_ssa_disability_screen(
+        meets_ssi_disability_criteria = predict_ssi_disability_criteria(
             ssi_disability_model,
             cps_ssi_df,
         )
-        existing_ssa_disability_screen = data.get(
-            SSA_DISABILITY_SCREEN_VARIABLE, {}
-        ).get(time_period)
         existing_meets_ssi_disability_criteria = data.get(
-            SSI_DISABILITY_COMPATIBILITY_VARIABLE, {}
+            SSI_DISABILITY_CRITERIA_VARIABLE, {}
         ).get(time_period)
         ssi_reported = data.get("ssi_reported", {}).get(time_period)
-        would_pass_ssa_disability_screen = preserve_under_65_ssa_disability_screen(
-            would_pass_ssa_disability_screen,
+        meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
+            meets_ssi_disability_criteria,
             age=data["age"][time_period],
             ssi_reported=ssi_reported,
-            existing_ssa_disability_screen=existing_ssa_disability_screen,
             existing_meets_ssi_disability_criteria=existing_meets_ssi_disability_criteria,
         )
-        data[SSA_DISABILITY_SCREEN_VARIABLE] = {
-            time_period: would_pass_ssa_disability_screen
-        }
-        data[SSI_DISABILITY_COMPATIBILITY_VARIABLE] = {
-            time_period: would_pass_ssa_disability_screen
+        data[SSI_DISABILITY_CRITERIA_VARIABLE] = {
+            time_period: meets_ssi_disability_criteria
         }
 
-        logger.info("SIPP SSA disability-screen imputation complete")
+        logger.info("SIPP SSI disability criteria imputation complete")
 
         vehicle_train = build_vehicle_training_frame()
 

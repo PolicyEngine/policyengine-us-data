@@ -39,7 +39,6 @@ STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset(
 # inputs that should override the fallback.
 DATA_OVERRIDABLE_COMPUTED_EXPORT_VARIABLES = frozenset(
     {
-        "would_pass_ssa_disability_screen",
         "meets_ssi_disability_criteria",
     }
 )

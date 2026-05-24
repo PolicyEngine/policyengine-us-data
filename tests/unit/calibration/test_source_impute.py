@@ -246,13 +246,13 @@ class TestImputeSourceVariables:
     ):
         data = {
             "difficulty_hearing": {2024: np.array([True, False])},
-            "would_pass_ssa_disability_screen": {2024: np.array([True, False])},
+            "meets_ssi_disability_criteria": {2024: np.array([True, False])},
         }
 
         result = drop_source_imputation_construction_variables(data)
 
         assert "difficulty_hearing" not in result
-        assert "would_pass_ssa_disability_screen" in result
+        assert "meets_ssi_disability_criteria" in result
 
 
 class TestPersonStateFips:
@@ -521,14 +521,14 @@ class TestSubfunctions:
             lambda time_period: object(),
         )
 
-        def fake_predict_ssa_disability_screen(model, receiver):
+        def fake_predict_ssi_disability_criteria(model, receiver):
             captured_ssi_receiver["receiver"] = receiver.copy()
             return np.zeros(len(receiver), dtype=bool)
 
         monkeypatch.setattr(
             source_impute,
-            "predict_ssa_disability_screen",
-            fake_predict_ssa_disability_screen,
+            "predict_ssi_disability_criteria",
+            fake_predict_ssi_disability_criteria,
         )
         monkeypatch.setattr(
             source_impute,

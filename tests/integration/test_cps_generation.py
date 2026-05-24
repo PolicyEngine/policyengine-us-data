@@ -242,7 +242,7 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
     class FakeSsiDisabilityModel:
         pass
 
-    def fake_predict_ssa_disability_screen(model, receiver_df):
+    def fake_predict_ssi_disability_criteria(model, receiver_df):
         assert isinstance(model, FakeSsiDisabilityModel)
         assert receiver_df["employment_income"].tolist() == [25_000.0, 30_000.0]
         assert receiver_df["difficulty_hearing"].tolist() == [True, False]
@@ -258,8 +258,8 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         sipp_module,
-        "predict_ssa_disability_screen",
-        fake_predict_ssa_disability_screen,
+        "predict_ssi_disability_criteria",
+        fake_predict_ssi_disability_criteria,
     )
 
     dataset = FakeDataset()
@@ -281,10 +281,6 @@ def test_add_tips_derives_tipped_status_from_raw_cps(monkeypatch, tmp_path):
         7_500.0,
     ]
     assert dataset.saved_dataset["meets_ssi_disability_criteria"].tolist() == [
-        True,
-        False,
-    ]
-    assert dataset.saved_dataset["would_pass_ssa_disability_screen"].tolist() == [
         True,
         False,
     ]

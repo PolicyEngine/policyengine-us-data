@@ -2731,12 +2731,11 @@ def add_tips(self, cps: h5py.File):
     cps["bond_assets"] = asset_predictions.bond_assets.values
 
     from policyengine_us_data.datasets.sipp import (
-        SSA_DISABILITY_SCREEN_VARIABLE,
-        SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+        SSI_DISABILITY_CRITERIA_VARIABLE,
         SSI_DISABILITY_DIFFICULTY_PREDICTORS,
         get_ssi_disability_model,
-        predict_ssa_disability_screen,
-        preserve_under_65_ssa_disability_screen,
+        predict_ssi_disability_criteria,
+        preserve_under_65_ssi_disability_criteria,
     )
 
     n_persons = len(cps)
@@ -2752,23 +2751,19 @@ def add_tips(self, cps: h5py.File):
     )
     cps["has_disability_income"] = disability_benefits > 0
     ssi_disability_model = get_ssi_disability_model()
-    would_pass_ssa_disability_screen = predict_ssa_disability_screen(
+    meets_ssi_disability_criteria = predict_ssi_disability_criteria(
         ssi_disability_model,
         cps,
     )
-    would_pass_ssa_disability_screen = preserve_under_65_ssa_disability_screen(
-        would_pass_ssa_disability_screen,
+    meets_ssi_disability_criteria = preserve_under_65_ssi_disability_criteria(
+        meets_ssi_disability_criteria,
         age=existing_data.get("age", np.full(n_persons, 65)),
         ssi_reported=existing_data.get("ssi_reported"),
-        existing_ssa_disability_screen=existing_data.get(
-            SSA_DISABILITY_SCREEN_VARIABLE
-        ),
         existing_meets_ssi_disability_criteria=existing_data.get(
-            SSI_DISABILITY_COMPATIBILITY_VARIABLE
+            SSI_DISABILITY_CRITERIA_VARIABLE
         ),
     )
-    cps[SSA_DISABILITY_SCREEN_VARIABLE] = would_pass_ssa_disability_screen
-    cps[SSI_DISABILITY_COMPATIBILITY_VARIABLE] = would_pass_ssa_disability_screen
+    cps[SSI_DISABILITY_CRITERIA_VARIABLE] = meets_ssi_disability_criteria
 
     from policyengine_us_data.datasets.sipp import get_vehicle_model
 

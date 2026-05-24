@@ -28,11 +28,10 @@ from policyengine_us_data.datasets.org import (
     apply_org_domain_constraints,
 )
 from policyengine_us_data.datasets.sipp import (
-    SSA_DISABILITY_SCREEN_VARIABLE,
-    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+    SSI_DISABILITY_CRITERIA_VARIABLE,
     SSI_DISABILITY_MODEL_PREDICTORS,
     get_ssi_disability_model,
-    predict_ssa_disability_screen,
+    predict_ssi_disability_criteria,
 )
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.pipeline_schema import PipelineNode
@@ -192,8 +191,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "financial_assistance",
     "survivor_benefits",
     "disability_benefits",
-    SSA_DISABILITY_SCREEN_VARIABLE,
-    SSI_DISABILITY_COMPATIBILITY_VARIABLE,
+    SSI_DISABILITY_CRITERIA_VARIABLE,
     "strike_benefits",
     "receives_wic",
     # SPM variables
@@ -981,27 +979,18 @@ def _apply_post_processing(predictions, X_test, time_period, data):
                 "employer_sponsored_insurance_premiums",
             ] = 0
 
-    disability_screen_columns = [
-        column
-        for column in (
-            SSA_DISABILITY_SCREEN_VARIABLE,
-            SSI_DISABILITY_COMPATIBILITY_VARIABLE,
-        )
-        if column in predictions.columns
-    ]
-    if disability_screen_columns:
+    if SSI_DISABILITY_CRITERIA_VARIABLE in predictions.columns:
         receiver = _build_ssi_disability_clone_receiver(
             predictions,
             X_test,
             data,
             time_period,
         )
-        disability_screen = predict_ssa_disability_screen(
+        disability_screen = predict_ssi_disability_criteria(
             get_ssi_disability_model(time_period=time_period),
             receiver,
         )
-        predictions[SSA_DISABILITY_SCREEN_VARIABLE] = disability_screen
-        predictions[SSI_DISABILITY_COMPATIBILITY_VARIABLE] = disability_screen
+        predictions[SSI_DISABILITY_CRITERIA_VARIABLE] = disability_screen
 
     return predictions
 

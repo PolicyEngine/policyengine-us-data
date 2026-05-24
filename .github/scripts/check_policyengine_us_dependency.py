@@ -143,7 +143,11 @@ def check_dependency(root: Path, latest_version: str | None = None) -> list[str]
             f"PyPI release pin once policyengine-us {locked_version} is published."
         )
 
-    if "@" in project_dependency and "git+" in project_dependency and not git_ref_allowed:
+    if (
+        "@" in project_dependency
+        and "git+" in project_dependency
+        and not git_ref_allowed
+    ):
         violations.append(
             "pyproject.toml pins policyengine-us to a Git ref. Prefer an exact "
             "PyPI release pin for production data builds."

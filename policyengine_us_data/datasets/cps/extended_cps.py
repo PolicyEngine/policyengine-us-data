@@ -209,6 +209,7 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "weekly_hours_worked",
     "hours_worked_last_week",
     "weeks_worked",
+    "fsla_overtime_premium",
     # ORG labor-market variables
     "hourly_wage",
     "is_paid_hourly",

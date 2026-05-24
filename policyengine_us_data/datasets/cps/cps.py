@@ -83,6 +83,15 @@ ACS_RENT_TARGET_ALLOCATION_COLUMNS = {
     "real_estate_taxes": ["real_estate_taxes_is_allocated"],
 }
 
+FLSA_STANDARD_HOURS_PER_WEEK = np.float32(40)
+FLSA_OVERTIME_RATE_MULTIPLIER = np.float32(1.5)
+FLSA_WORKWEEKS_PER_YEAR = np.float32(52)
+FLSA_HCE_SALARY_THRESHOLD_2024 = np.float32(107_432)
+FLSA_SALARY_BASIS_THRESHOLD_ANNUAL_2024 = np.float32(684 * FLSA_WORKWEEKS_PER_YEAR)
+FLSA_COMPUTER_SALARY_THRESHOLD_ANNUAL_2024 = np.float32(
+    27.63 * FLSA_STANDARD_HOURS_PER_WEEK * FLSA_WORKWEEKS_PER_YEAR
+)
+
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
     "reported_has_marketplace_health_coverage_at_interview": "NOW_MRK",
@@ -1188,6 +1197,94 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
 def derive_weeks_worked(weeks_worked: Series | np.ndarray) -> Series | np.ndarray:
     return np.clip(weeks_worked, 0, 52)
+
+
+def derive_flsa_overtime_premium(
+    *,
+    employment_income: Series | np.ndarray,
+    hours_worked_last_week: Series | np.ndarray,
+    weeks_worked: Series | np.ndarray,
+    is_paid_hourly: Series | np.ndarray,
+    has_never_worked: Series | np.ndarray,
+    is_military: Series | np.ndarray,
+    is_executive_administrative_professional: Series | np.ndarray,
+    is_farmer_fisher: Series | np.ndarray,
+    is_computer_scientist: Series | np.ndarray,
+) -> np.ndarray:
+    """Proxy annual FLSA overtime premium from CPS annual wages and hours.
+
+    CPS ASEC does not contain a week-by-week earnings history. This constructs
+    the premium share implied by the reported/reference week, then applies that
+    share to annual employment income for workers not screened as FLSA-exempt.
+    """
+    employment_income = np.maximum(
+        np.nan_to_num(np.asarray(employment_income, dtype=np.float32), nan=0),
+        0,
+    )
+    hours_worked_last_week = np.maximum(
+        np.nan_to_num(np.asarray(hours_worked_last_week, dtype=np.float32), nan=0),
+        0,
+    )
+    weeks_worked = np.maximum(
+        np.nan_to_num(np.asarray(weeks_worked, dtype=np.float32), nan=0),
+        0,
+    )
+    is_paid_hourly = np.asarray(is_paid_hourly, dtype=bool)
+    has_never_worked = np.asarray(has_never_worked, dtype=bool)
+    is_military = np.asarray(is_military, dtype=bool)
+    is_executive_administrative_professional = np.asarray(
+        is_executive_administrative_professional,
+        dtype=bool,
+    )
+    is_farmer_fisher = np.asarray(is_farmer_fisher, dtype=bool)
+    is_computer_scientist = np.asarray(is_computer_scientist, dtype=bool)
+
+    overtime_hours = np.maximum(
+        hours_worked_last_week - FLSA_STANDARD_HOURS_PER_WEEK,
+        0,
+    )
+    straight_time_equivalent_hours = (
+        np.minimum(hours_worked_last_week, FLSA_STANDARD_HOURS_PER_WEEK)
+        + overtime_hours * FLSA_OVERTIME_RATE_MULTIPLIER
+    )
+    premium_share = np.divide(
+        (FLSA_OVERTIME_RATE_MULTIPLIER - 1) * overtime_hours,
+        straight_time_equivalent_hours,
+        out=np.zeros_like(employment_income, dtype=np.float32),
+        where=straight_time_equivalent_hours > 0,
+    )
+
+    salary_threshold = np.full_like(
+        employment_income,
+        FLSA_HCE_SALARY_THRESHOLD_2024,
+        dtype=np.float32,
+    )
+    salary_threshold = np.where(
+        is_computer_scientist,
+        min(
+            FLSA_COMPUTER_SALARY_THRESHOLD_ANNUAL_2024,
+            FLSA_HCE_SALARY_THRESHOLD_2024,
+        ),
+        salary_threshold,
+    )
+    salary_threshold = np.where(
+        is_executive_administrative_professional | is_farmer_fisher,
+        min(
+            FLSA_SALARY_BASIS_THRESHOLD_ANNUAL_2024,
+            FLSA_HCE_SALARY_THRESHOLD_2024,
+        ),
+        salary_threshold,
+    )
+    salary_threshold = np.where(
+        has_never_worked | is_military,
+        0,
+        salary_threshold,
+    )
+
+    is_exempt = (employment_income >= salary_threshold) & ~is_paid_hourly
+    eligible = ~is_exempt & (weeks_worked > 0)
+    premium = np.where(eligible, employment_income * premium_share, 0)
+    return np.minimum(premium, employment_income).astype(np.float32)
 
 
 @pipeline_node(
@@ -2824,7 +2921,10 @@ def add_tips(self, cps: h5py.File):
         id="add_org_inputs",
         label="ORG Labor-Market Inputs",
         node_type="library",
-        description="Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+        description=(
+            "Impute hourly wage, hourly-pay status, and union coverage from CPS "
+            "ORG donors, then derive FLSA overtime premium."
+        ),
         source_file="policyengine_us_data/datasets/cps/cps.py",
         status="current",
         stability="moving",
@@ -2833,7 +2933,7 @@ def add_tips(self, cps: h5py.File):
     )
 )
 def add_org_labor_market_inputs(cps: h5py.File) -> None:
-    """Impute ORG-derived wage and union inputs onto CPS persons."""
+    """Impute ORG-derived labor-market inputs and derive overtime premium."""
     n_persons = len(np.asarray(cps["age"]))
     household_ids = np.asarray(cps["household_id"], dtype=np.int64)
     person_household_ids = np.asarray(
@@ -2889,6 +2989,20 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
             cps[variable] = values.astype(bool)
         else:
             cps[variable] = values.astype(np.float32)
+
+    cps["fsla_overtime_premium"] = derive_flsa_overtime_premium(
+        employment_income=cps["employment_income"],
+        hours_worked_last_week=cps["hours_worked_last_week"],
+        weeks_worked=cps["weeks_worked"],
+        is_paid_hourly=cps["is_paid_hourly"],
+        has_never_worked=cps["has_never_worked"],
+        is_military=cps["is_military"],
+        is_executive_administrative_professional=cps[
+            "is_executive_administrative_professional"
+        ],
+        is_farmer_fisher=cps["is_farmer_fisher"],
+        is_computer_scientist=cps["is_computer_scientist"],
+    )
 
 
 def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:

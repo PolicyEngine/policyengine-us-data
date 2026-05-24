@@ -206,6 +206,9 @@ class TestVariableListConsistency:
     def test_weeks_worked_is_cps_only_imputed_for_clone_records(self):
         assert "weeks_worked" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
+    def test_flsa_overtime_premium_is_cps_only_imputed_for_clone_records(self):
+        assert "fsla_overtime_premium" in set(CPS_ONLY_IMPUTED_VARIABLES)
+
     def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
         assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
@@ -289,6 +292,15 @@ class TestVariableListConsistency:
     ):
         data = {
             "meets_ssi_disability_criteria": {2024: np.array([True, False])},
+        }
+
+        ExtendedCPS._assert_no_computed_variables_exported(data, 2024)
+
+    def test_final_export_contract_allows_data_overridden_flsa_overtime_premium(
+        self,
+    ):
+        data = {
+            "fsla_overtime_premium": {2024: np.array([1_000.0, 0.0])},
         }
 
         ExtendedCPS._assert_no_computed_variables_exported(data, 2024)

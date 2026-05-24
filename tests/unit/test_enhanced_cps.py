@@ -1,3 +1,5 @@
+import inspect
+
 import numpy as np
 
 from policyengine_us_data.datasets.cps import enhanced_cps
@@ -7,6 +9,12 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
     _set_period_array,
     create_aca_2025_takeup_override,
 )
+
+
+def test_reweight_default_does_not_penalize_l0():
+    signature = inspect.signature(enhanced_cps.reweight)
+
+    assert signature.parameters["l0_lambda"].default == 0.0
 
 
 def test_get_base_aca_takeup_uses_stored_values():

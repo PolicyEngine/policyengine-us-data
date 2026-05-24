@@ -490,7 +490,7 @@ def reweight(
     targets_array,
     log_path="calibration_log.csv",
     epochs=500,
-    l0_lambda=2.6445e-07,
+    l0_lambda=0.0,
     init_mean=0.999,  # initial proportion with non-zero weights
     temperature=0.25,
     seed=1456,
@@ -534,7 +534,7 @@ def reweight(
         return rel_error_normalized.mean()
 
     logging.info(
-        f"Sparse optimization using seed {seed}, temp {temperature} "
+        f"Hard-concrete optimization using seed {seed}, temp {temperature} "
         + f"init_mean {init_mean}, l0_lambda {l0_lambda}"
     )
     set_seeds(seed)
@@ -600,7 +600,7 @@ def reweight(
         final_weights_sparse,
         loss_matrix,
         targets_array,
-        "L0 Sparse Solution",
+        "L0 Sparse Solution" if l0_lambda else "Unpenalized HardConcrete Solution",
         target_names=target_names,
     )
 

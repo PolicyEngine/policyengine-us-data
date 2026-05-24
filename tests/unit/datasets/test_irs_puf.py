@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import pytest
 
+from policyengine_us_data.datasets.puf import puf as puf_module
 from policyengine_us_data.datasets.puf.puf import (
     PUF,
     QBI_SIMULATION_VERSION,
@@ -12,6 +13,19 @@ from policyengine_us_data.datasets.puf.puf import (
 
 def _mark_current_qbi_simulation(file_handle):
     file_handle.attrs[QBI_SIMULATION_VERSION_ATTR] = QBI_SIMULATION_VERSION
+
+
+def _write_capital_gains_basis_source_file(path):
+    with h5py.File(path, "w") as file_handle:
+        file_handle.create_dataset("person_id", data=np.array([1, 2, 3, 4]))
+        file_handle.create_dataset("person_tax_unit_id", data=np.array([1, 1, 2, 2]))
+        file_handle.create_dataset("person_household_id", data=np.array([1, 1, 2, 2]))
+        file_handle.create_dataset("household_id", data=np.array([1, 2]))
+        file_handle.create_dataset("household_weight", data=np.array([100.0, 200.0]))
+        file_handle.create_dataset(
+            "long_term_capital_gains",
+            data=np.array([100.0, -40.0, 0.0, 200.0]),
+        )
 
 
 @pytest.mark.skip(reason="This test requires private data.")
@@ -48,6 +62,78 @@ def test_puf_person_split_keeps_capital_gains_holding_period_collapsed():
         )
         == 0
     )
+
+
+def test_puf_load_dataset_backfills_capital_gains_basis_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        puf_module,
+        "has_policyengine_us_variables",
+        lambda *variables: True,
+    )
+
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    _write_capital_gains_basis_source_file(DummyPUF.file_path)
+
+    arrays = DummyPUF().load_dataset()
+
+    basis = arrays["long_term_capital_gains_basis"]
+    years = arrays["long_term_capital_gains_years_held"]
+    gains = arrays["long_term_capital_gains"]
+
+    assert np.all(basis[gains != 0] > 0)
+    assert np.all(years[gains != 0] > 0)
+    assert np.all(basis[gains == 0] == 0)
+    assert np.all(years[gains == 0] == 0)
+
+    with h5py.File(DummyPUF.file_path, "r") as file_handle:
+        assert "long_term_capital_gains_basis" in file_handle
+        assert "long_term_capital_gains_years_held" in file_handle
+
+
+def test_puf_load_key_backfills_read_only_capital_gains_basis_inputs(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        puf_module,
+        "has_policyengine_us_variables",
+        lambda *variables: True,
+    )
+
+    class DummyPUF(PUF):
+        label = "Dummy PUF"
+        name = "dummy_puf"
+        time_period = 2024
+        file_path = tmp_path / "dummy_puf.h5"
+
+    _write_capital_gains_basis_source_file(DummyPUF.file_path)
+    DummyPUF.file_path.chmod(0o444)
+
+    dataset = DummyPUF()
+    try:
+        basis = dataset.load("long_term_capital_gains_basis")
+        years = dataset.load("long_term_capital_gains_years_held")
+        reader = dataset.load()
+        np.testing.assert_array_equal(
+            reader["long_term_capital_gains_basis"],
+            basis,
+        )
+        reader.close()
+    finally:
+        DummyPUF.file_path.chmod(0o644)
+
+    assert np.all(basis[[0, 1, 3]] > 0)
+    assert basis[2] == 0
+    assert np.all(years[[0, 1, 3]] > 0)
+    assert years[2] == 0
 
 
 def test_puf_load_dataset_backfills_sstb_split_inputs(tmp_path):

@@ -1340,6 +1340,88 @@ class PUF(Dataset):
 
         return overrides
 
+    def _capital_gains_basis_overrides(
+        self,
+        existing_overrides: dict[str, np.ndarray] | None = None,
+    ) -> dict[str, np.ndarray]:
+        if not has_policyengine_us_variables(*CAPITAL_GAINS_BASIS_VARIABLES):
+            return {}
+        if not self.file_path.exists():
+            return {}
+
+        existing_overrides = existing_overrides or {}
+        with h5py.File(self.file_path, "r") as file_handle:
+            keys = set(file_handle.keys()) | set(existing_overrides)
+            if all(variable in keys for variable in CAPITAL_GAINS_BASIS_VARIABLES):
+                return {}
+            if (
+                "long_term_capital_gains" not in keys
+                or "person_tax_unit_id" not in keys
+            ):
+                return {}
+
+            gains = self._values_from_file_or_overrides(
+                file_handle,
+                "long_term_capital_gains",
+                existing_overrides,
+                0,
+            )
+            length = len(gains)
+            arrays = {
+                "long_term_capital_gains": gains,
+                "person_tax_unit_id": self._values_from_file_or_overrides(
+                    file_handle,
+                    "person_tax_unit_id",
+                    existing_overrides,
+                    length,
+                ),
+            }
+            for variable in (
+                "person_id",
+                "household_weight",
+                "person_household_id",
+                "household_id",
+                *CAPITAL_GAINS_BASIS_VARIABLES,
+            ):
+                if variable in keys:
+                    arrays[variable] = self._values_from_file_or_overrides(
+                        file_handle,
+                        variable,
+                        existing_overrides,
+                        length,
+                    )
+
+        arrays = _with_capital_gains_basis_inputs(arrays, self.time_period)
+        return {
+            variable: np.asarray(arrays[variable])
+            for variable in CAPITAL_GAINS_BASIS_VARIABLES
+            if variable not in keys and variable in arrays
+        }
+
+    def _ensure_capital_gains_basis_inputs(
+        self,
+        existing_overrides: dict[str, np.ndarray] | None = None,
+    ) -> dict[str, np.ndarray]:
+        overrides = self._capital_gains_basis_overrides(existing_overrides)
+        if not overrides:
+            return {}
+
+        try:
+            with h5py.File(self.file_path, "r+") as file_handle:
+                for key, values in overrides.items():
+                    self._replace_array(file_handle, key, values)
+        except OSError:
+            pass
+
+        return overrides
+
+    def _ensure_read_overrides(self) -> dict[str, np.ndarray]:
+        sstb_overrides = self._ensure_sstb_split_inputs()
+        capital_gains_overrides = self._ensure_capital_gains_basis_inputs(
+            sstb_overrides
+        )
+        return {**sstb_overrides, **capital_gains_overrides}
+
     class _OverrideView:
         def __init__(self, backing, overrides: dict[str, np.ndarray]):
             self._backing = backing
@@ -1393,7 +1475,7 @@ class PUF(Dataset):
 
     def load(self, key=None, mode="r"):
         if mode == "r":
-            overrides = self._ensure_sstb_split_inputs()
+            overrides = self._ensure_read_overrides()
             if key in overrides:
                 return overrides[key]
             if key is None and overrides:
@@ -1401,7 +1483,7 @@ class PUF(Dataset):
         return super().load(key=key, mode=mode)
 
     def load_dataset(self):
-        overrides = self._ensure_sstb_split_inputs()
+        overrides = self._ensure_read_overrides()
         arrays = super().load_dataset()
         arrays.update(overrides)
         return arrays

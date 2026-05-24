@@ -216,6 +216,59 @@ class TestPufCloneDataset:
         assert expected <= set(IMPUTED_VARIABLES)
         assert expected <= set(DETERMINISTIC_IMPUTED_VARIABLES)
 
+    def test_qrf_excludes_deterministic_capital_gains_basis_outputs(
+        self,
+        monkeypatch,
+    ):
+        import policyengine_us
+
+        data = _make_mock_data(n_persons=4, n_households=2)
+
+        class FakeCalculation:
+            values = np.array([100.0, 200.0, 300.0, 400.0], dtype=np.float32)
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset):
+                self.dataset = dataset
+
+            def calculate(self, variable, map_to=None):
+                return FakeCalculation()
+
+            def calculate_dataframe(self, variables):
+                return pd.DataFrame(
+                    {variable: np.arange(4, dtype=np.float32) for variable in variables}
+                )
+
+        captured_output_vars = []
+
+        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+            captured_output_vars.append(tuple(output_vars))
+            return {
+                variable: np.zeros(len(X_test), dtype=np.float32)
+                for variable in output_vars
+            }
+
+        monkeypatch.setattr(policyengine_us, "Microsimulation", FakeMicrosimulation)
+        monkeypatch.setattr(
+            puf_impute_module,
+            "_sequential_qrf",
+            fake_sequential_qrf,
+        )
+
+        puf_impute_module._run_qrf_imputation(
+            data=data,
+            time_period=2024,
+            puf_dataset=object(),
+        )
+
+        deterministic_outputs = set(DETERMINISTIC_IMPUTED_VARIABLES)
+        assert captured_output_vars
+        for output_vars in captured_output_vars:
+            assert deterministic_outputs.isdisjoint(output_vars)
+        assert set(captured_output_vars[0]) == (
+            set(IMPUTED_VARIABLES) - deterministic_outputs
+        )
+
     def test_overridden_subset_of_imputed(self):
         for var in OVERRIDDEN_IMPUTED_VARIABLES:
             assert var in IMPUTED_VARIABLES

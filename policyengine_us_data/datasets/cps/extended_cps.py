@@ -174,8 +174,8 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     # Retirement contributions
     "traditional_401k_contributions",
     "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
     "self_employed_pension_contributions",
     # Social Security sub-components
     "social_security_retirement",
@@ -752,7 +752,6 @@ def apply_retirement_constraints(predictions, X_test, time_period):
     se_income = X_test["self_employment_income"].values
 
     limit_401k = limits["401k"] + catch_up * limits["401k_catch_up"]
-    limit_ira = limits["ira"] + catch_up * limits["ira_catch_up"]
     se_pension_cap = np.minimum(
         se_income * se_limits["se_pension_rate"],
         se_limits["se_pension_dollar_limit"],
@@ -762,8 +761,8 @@ def apply_retirement_constraints(predictions, X_test, time_period):
     _CONSTRAINT_MAP = {
         "traditional_401k_contributions": (limit_401k, emp_income == 0),
         "roth_401k_contributions": (limit_401k, emp_income == 0),
-        "traditional_ira_contributions": (limit_ira, None),
-        "roth_ira_contributions": (limit_ira, None),
+        "traditional_ira_contributions_desired": (None, None),
+        "roth_ira_contributions_desired": (None, None),
         "self_employed_pension_contributions": (
             se_pension_cap,
             se_income == 0,
@@ -816,8 +815,8 @@ def reconcile_ss_subcomponents(predictions, total_ss):
 _RETIREMENT_VARS = {
     "traditional_401k_contributions",
     "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
     "self_employed_pension_contributions",
 }
 

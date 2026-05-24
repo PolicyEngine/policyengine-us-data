@@ -162,8 +162,8 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
 CPS_RETIREMENT_VARIABLES = [
     "traditional_401k_contributions",
     "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
     "self_employed_pension_contributions",
 ]
 
@@ -850,7 +850,6 @@ def _impute_retirement_contributions(
     age = X_test["age"].values
     catch_up_eligible = age >= 50
     limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
-    limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
     se_income = X_test["self_employment_income"].values
     se_pension_cap = np.minimum(
         se_income * limits["se_pension_rate"],
@@ -872,10 +871,6 @@ def _impute_retirement_contributions(
             # Zero out for records with no employment income
             vals = np.where(emp_income > 0, vals, 0)
 
-        # Cap IRA at year-specific limit
-        if "ira" in var:
-            vals = np.minimum(vals, limit_ira)
-
         # Cap SE pension at min(25% of SE income, dollar limit)
         if var == "self_employed_pension_contributions":
             vals = np.minimum(vals, se_pension_cap)
@@ -888,8 +883,8 @@ def _impute_retirement_contributions(
         "401k mean=$%.0f, IRA mean=$%.0f, SE pension mean=$%.0f",
         result["traditional_401k_contributions"].mean()
         + result["roth_401k_contributions"].mean(),
-        result["traditional_ira_contributions"].mean()
-        + result["roth_ira_contributions"].mean(),
+        result["traditional_ira_contributions_desired"].mean()
+        + result["roth_ira_contributions_desired"].mean(),
         result["self_employed_pension_contributions"].mean(),
     )
 

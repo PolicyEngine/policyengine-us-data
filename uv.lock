@@ -2122,7 +2122,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.705.15"
+version = "1.705.16"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -2132,9 +2132,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/cc/921f994e5c688be0f45dbe8d7bce209ee45225d328a9724cf363df225ce8/policyengine_us-1.705.15.tar.gz", hash = "sha256:559d79690cb1d79615479ed2c71a53510e8cfea56d2398a37120f6797548c26b", size = 9927111, upload-time = "2026-05-24T02:32:30.769Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6b/9f/faa4ceee8157d4ceb3c589ca25e77af678787662949637409938c97ef5e1/policyengine_us-1.705.16.tar.gz", hash = "sha256:3eb8c31be571492566d6684ce12626eac6ae409d50819e42acdeb4dd5c7712ea", size = 9927762, upload-time = "2026-05-24T02:55:40.346Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/24/02/b8ae7ec50124bc4f442c8e3f662bf02d0f670d288c63e367dff75ed8c374/policyengine_us-1.705.15-py3-none-any.whl", hash = "sha256:aeafbbbef2a8de88cb73da8c234943784789023e7d32e05a9560e1a7dd713c70", size = 10758474, upload-time = "2026-05-24T02:32:26.588Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/74/44b3eecac9d624c512c85932146a7dabe47dc32c76645ef449edb930c2dd/policyengine_us-1.705.16-py3-none-any.whl", hash = "sha256:eb1f5a04b3b0f1b3fc46706a47ac9ccc2b726bddd15ee9d55055803f415f8aeb", size = 10759039, upload-time = "2026-05-24T02:55:36.665Z" },
 ]
 
 [[package]]
@@ -2204,7 +2204,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.26.1,<3.27" },
-    { name = "policyengine-us", specifier = "==1.705.15" },
+    { name = "policyengine-us", specifier = "==1.705.16" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "samplics", marker = "extra == 'calibration'" },
     { name = "scipy", specifier = ">=1.15.3" },

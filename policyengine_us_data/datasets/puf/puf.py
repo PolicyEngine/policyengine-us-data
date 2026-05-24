@@ -692,7 +692,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     puf["taxable_ira_distributions"] = puf.E01400
     puf["tax_exempt_interest_income"] = puf.E00400
     puf["tax_exempt_pension_income"] = puf.E01500 - puf.E01700
-    puf["traditional_ira_contributions"] = puf.E03150
+    puf["traditional_ira_contributions_desired"] = puf.E03150
     puf["unrecaptured_section_1250_gain"] = puf.E24515
 
     puf["foreign_tax_credit"] = puf.E07300
@@ -835,7 +835,7 @@ FINANCIAL_SUBSET = [
     "taxable_ira_distributions",
     "tax_exempt_interest_income",
     "tax_exempt_pension_income",
-    "traditional_ira_contributions",
+    "traditional_ira_contributions_desired",
     "unrecaptured_section_1250_gain",
     "foreign_tax_credit",
     "amt_foreign_tax_credit",

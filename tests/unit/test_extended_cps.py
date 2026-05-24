@@ -147,8 +147,8 @@ class TestVariableListConsistency:
         expected = {
             "traditional_401k_contributions",
             "roth_401k_contributions",
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
             "self_employed_pension_contributions",
         }
         missing = expected - set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -1034,7 +1034,7 @@ class TestStage2PostProcessing:
 
 
 class TestRetirementConstraints:
-    """Post-processing retirement constraints enforce IRS caps."""
+    """Post-processing retirement constraints clean retirement predictions."""
 
     @pytest.fixture
     def sample_predictions(self):
@@ -1042,8 +1042,14 @@ class TestRetirementConstraints:
             {
                 "traditional_401k_contributions": [25000, -500, 5000, 10000, 3000],
                 "roth_401k_contributions": [30000, 2000, 0, 50000, 1000],
-                "traditional_ira_contributions": [8000, -100, 3000, 15000, 500],
-                "roth_ira_contributions": [10000, 1000, 0, 20000, 200],
+                "traditional_ira_contributions_desired": [
+                    8000,
+                    -100,
+                    3000,
+                    15000,
+                    500,
+                ],
+                "roth_ira_contributions_desired": [10000, 1000, 0, 20000, 200],
                 "self_employed_pension_contributions": [80000, -200, 5000, 0, 100000],
             }
         )
@@ -1074,16 +1080,16 @@ class TestRetirementConstraints:
         for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
             assert (result[var].values <= cap).all(), f"{var} exceeds 401k cap"
 
-    def test_ira_capped_at_limit(self, sample_predictions, sample_features):
+    def test_ira_desired_not_capped_at_limit(self, sample_predictions, sample_features):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
-        from policyengine_us_data.utils.retirement_limits import get_retirement_limits
-
-        limits = get_retirement_limits(2024)
-        age = sample_features["age"].values
-        catch_up = age >= 50
-        cap = limits["ira"] + catch_up * limits["ira_catch_up"]
-        for var in ["traditional_ira_contributions", "roth_ira_contributions"]:
-            assert (result[var].values <= cap).all(), f"{var} exceeds IRA cap"
+        np.testing.assert_allclose(
+            result["traditional_ira_contributions_desired"].to_numpy(),
+            np.array([8000, 0, 3000, 15000, 500]),
+        )
+        np.testing.assert_allclose(
+            result["roth_ira_contributions_desired"].to_numpy(),
+            np.array([10000, 1000, 0, 20000, 200]),
+        )
 
     def test_401k_zeroed_without_employment_income(
         self, sample_predictions, sample_features

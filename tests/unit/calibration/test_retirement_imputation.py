@@ -91,8 +91,8 @@ def _make_cps_df(n, rng):
             # Targets
             "traditional_401k_contributions": rng.uniform(0, 5000, n),
             "roth_401k_contributions": rng.uniform(0, 3000, n),
-            "traditional_ira_contributions": rng.uniform(0, 2000, n),
-            "roth_ira_contributions": rng.uniform(0, 2000, n),
+            "traditional_ira_contributions_desired": rng.uniform(0, 2000, n),
+            "roth_ira_contributions_desired": rng.uniform(0, 2000, n),
             "self_employed_pension_contributions": rng.uniform(0, 10_000, n),
         }
     )
@@ -144,8 +144,8 @@ class TestConstants:
         expected = {
             "traditional_401k_contributions",
             "roth_401k_contributions",
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
             "self_employed_pension_contributions",
         }
         assert set(CPS_RETIREMENT_VARIABLES) == expected
@@ -326,16 +326,14 @@ class TestImputeRetirementContributions:
         ):
             assert np.all(result[var] <= max_401k), f"{var} exceeds 401k limit"
 
-    def test_ira_capped(self):
+    def test_ira_desired_not_capped(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
-        lim = _get_retirement_limits(self.time_period)
-        max_ira = lim["ira"] + lim["ira_catch_up"]
 
         for var in (
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
         ):
-            assert np.all(result[var] <= max_ira), f"{var} exceeds IRA limit"
+            assert np.all(result[var] == 50_000.0), f"{var} should remain uncapped"
 
     def test_401k_zero_when_no_wages(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
@@ -377,18 +375,18 @@ class TestImputeRetirementContributions:
         # Old get full value (within catch-up limit)
         assert np.all(old_401k == val)
 
-    def test_ira_catch_up_threshold(self):
-        """IRA catch-up also works for age >= 50."""
+    def test_ira_desired_does_not_apply_age_threshold(self):
+        """IRA desired inputs are not capped by age in policyengine-us-data."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         lim = _get_retirement_limits(self.time_period)
         val = float(lim["ira"]) + 500  # 7500
 
         result = self._call_with_mocks(self._uniform_preds(val))
 
-        young_ira = result["traditional_ira_contributions"][:25]
-        old_ira = result["traditional_ira_contributions"][25:]
+        young_ira = result["traditional_ira_contributions_desired"][:25]
+        old_ira = result["traditional_ira_contributions_desired"][25:]
 
-        assert np.all(young_ira == lim["ira"])
+        assert np.all(young_ira == val)
         assert np.all(old_ira == val)
 
     def test_401k_nonzero_for_positive_wages(self):

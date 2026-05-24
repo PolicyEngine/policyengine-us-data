@@ -1380,12 +1380,9 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     limits = get_retirement_limits(year)
     LIMIT_401K = limits["401k"]
     LIMIT_401K_CATCH_UP = limits["401k_catch_up"]
-    LIMIT_IRA = limits["ira"]
-    LIMIT_IRA_CATCH_UP = limits["ira_catch_up"]
     CATCH_UP_AGE = 50
     catch_up_eligible = person.A_AGE >= CATCH_UP_AGE
     limit_401k = LIMIT_401K + catch_up_eligible * LIMIT_401K_CATCH_UP
-    limit_ira = LIMIT_IRA + catch_up_eligible * LIMIT_IRA_CATCH_UP
 
     retirement_contributions = person.RETCB_VAL
     has_wages = person.WSAL_VAL > 0
@@ -1425,11 +1422,10 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     cps["traditional_401k_contributions"] = dc_capped * (1 - roth_dc_share)
     cps["roth_401k_contributions"] = dc_capped * roth_dc_share
 
-    # IRA pool: split into traditional/Roth IRA, cap at combined
-    # IRA limit.
-    ira_capped = np.minimum(ira_pool, limit_ira)
-    cps["traditional_ira_contributions"] = ira_capped * trad_ira_share
-    cps["roth_ira_contributions"] = ira_capped * (1 - trad_ira_share)
+    # IRA pool: split into desired traditional/Roth IRA contributions.
+    # The statutory IRA limit is applied in policyengine-us.
+    cps["traditional_ira_contributions_desired"] = ira_pool * trad_ira_share
+    cps["roth_ira_contributions_desired"] = ira_pool * (1 - trad_ira_share)
     # Allocate capital gains into long-term and short-term based on aggregate split.
     cps["long_term_capital_gains"] = person.CAP_VAL * (p["long_term_capgain_fraction"])
     cps["short_term_capital_gains"] = person.CAP_VAL * (

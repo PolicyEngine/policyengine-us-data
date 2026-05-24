@@ -587,7 +587,7 @@ def test_add_org_labor_market_inputs_handles_nonsequential_household_index(
         fake_predict_org_features,
     )
 
-    cps_module.add_org_labor_market_inputs(cps)
+    cps_module.add_org_labor_market_inputs(cps, 2024)
 
     np.testing.assert_array_equal(
         captured_state_fips["value"],

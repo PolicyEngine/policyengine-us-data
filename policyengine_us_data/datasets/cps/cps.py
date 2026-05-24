@@ -1,4 +1,5 @@
 from contextlib import closing, contextmanager
+from functools import lru_cache
 from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
@@ -86,11 +87,6 @@ ACS_RENT_TARGET_ALLOCATION_COLUMNS = {
 FLSA_STANDARD_HOURS_PER_WEEK = np.float32(40)
 FLSA_OVERTIME_RATE_MULTIPLIER = np.float32(1.5)
 FLSA_WORKWEEKS_PER_YEAR = np.float32(52)
-FLSA_HCE_SALARY_THRESHOLD_2024 = np.float32(107_432)
-FLSA_SALARY_BASIS_THRESHOLD_ANNUAL_2024 = np.float32(684 * FLSA_WORKWEEKS_PER_YEAR)
-FLSA_COMPUTER_SALARY_THRESHOLD_ANNUAL_2024 = np.float32(
-    27.63 * FLSA_STANDARD_HOURS_PER_WEEK * FLSA_WORKWEEKS_PER_YEAR
-)
 FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES = np.array(
     [
         1,  # Chief executives, and managers
@@ -124,6 +120,32 @@ FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES = np.array(
     ],
     dtype=np.int16,
 )
+
+
+@lru_cache(maxsize=1)
+def _policyengine_us_parameters():
+    from policyengine_us import CountryTaxBenefitSystem
+
+    return CountryTaxBenefitSystem().parameters
+
+
+@lru_cache(maxsize=16)
+def _flsa_overtime_thresholds_for_year(
+    time_period: int,
+) -> tuple[np.float32, np.float32, np.float32]:
+    overtime = _policyengine_us_parameters()(
+        f"{int(time_period)}-01-01"
+    ).gov.irs.income.exemption.overtime
+    return (
+        np.float32(overtime.hce_salary_threshold),
+        np.float32(overtime.salary_basis_threshold * FLSA_WORKWEEKS_PER_YEAR),
+        np.float32(
+            overtime.computer_salary_threshold
+            * FLSA_STANDARD_HOURS_PER_WEEK
+            * FLSA_WORKWEEKS_PER_YEAR
+        ),
+    )
+
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -346,7 +368,7 @@ class CPS(Dataset):
         logging.info("Adding tips")
         add_tips(self, cps)
         logging.info("Adding ORG labor-market inputs")
-        add_org_labor_market_inputs(cps)
+        add_org_labor_market_inputs(cps, self.time_period)
         logging.info("Adding auto loan balance, interest and wealth")
         add_auto_loan_interest_and_net_worth(self, cps)
         logging.info("Added all variables")
@@ -1234,6 +1256,7 @@ def derive_weeks_worked(weeks_worked: Series | np.ndarray) -> Series | np.ndarra
 
 def derive_flsa_overtime_premium(
     *,
+    time_period: int,
     employment_income: Series | np.ndarray,
     hours_worked_last_week: Series | np.ndarray,
     weeks_worked: Series | np.ndarray,
@@ -1287,25 +1310,25 @@ def derive_flsa_overtime_premium(
         where=straight_time_equivalent_hours > 0,
     )
 
+    (
+        hce_salary_threshold,
+        salary_basis_threshold,
+        computer_salary_threshold,
+    ) = _flsa_overtime_thresholds_for_year(time_period)
+
     salary_threshold = np.full_like(
         employment_income,
-        FLSA_HCE_SALARY_THRESHOLD_2024,
+        hce_salary_threshold,
         dtype=np.float32,
     )
     salary_threshold = np.where(
         is_computer_scientist,
-        min(
-            FLSA_COMPUTER_SALARY_THRESHOLD_ANNUAL_2024,
-            FLSA_HCE_SALARY_THRESHOLD_2024,
-        ),
+        min(computer_salary_threshold, hce_salary_threshold),
         salary_threshold,
     )
     salary_threshold = np.where(
         is_executive_administrative_professional | is_farmer_fisher,
-        min(
-            FLSA_SALARY_BASIS_THRESHOLD_ANNUAL_2024,
-            FLSA_HCE_SALARY_THRESHOLD_2024,
-        ),
+        min(salary_basis_threshold, hce_salary_threshold),
         salary_threshold,
     )
     always_exempt = has_never_worked | is_military
@@ -2964,7 +2987,7 @@ def add_tips(self, cps: h5py.File):
         validation_commands=["uv run pytest tests/unit/datasets/test_org.py"],
     )
 )
-def add_org_labor_market_inputs(cps: h5py.File) -> None:
+def add_org_labor_market_inputs(cps: h5py.File, time_period: int) -> None:
     """Impute ORG-derived labor-market inputs and derive overtime premium."""
     n_persons = len(np.asarray(cps["age"]))
     household_ids = np.asarray(cps["household_id"], dtype=np.int64)
@@ -3023,6 +3046,7 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
             cps[variable] = values.astype(np.float32)
 
     cps["fsla_overtime_premium"] = derive_flsa_overtime_premium(
+        time_period=time_period,
         employment_income=cps["employment_income"],
         hours_worked_last_week=cps["hours_worked_last_week"],
         weeks_worked=cps["weeks_worked"],

@@ -4,6 +4,7 @@ import pandas as pd
 from policyengine_us_data.datasets.cps.cps import (
     add_personal_income_variables,
     derive_flsa_overtime_premium,
+    _flsa_overtime_thresholds_for_year,
 )
 
 
@@ -100,6 +101,7 @@ def test_add_personal_income_variables_maps_spm_income_leaves():
 
 def test_derive_flsa_overtime_premium_uses_wage_share_and_exemption_screen():
     premium = derive_flsa_overtime_premium(
+        time_period=2024,
         employment_income=np.array(
             [57_200.0, 100_000.0, 30_000.0, 60_000.0, 50_000.0, 50_000.0]
         ),
@@ -121,4 +123,43 @@ def test_derive_flsa_overtime_premium_uses_wage_share_and_exemption_screen():
             [5_200.0, 0.0, 30_000 * 5 / 55, 0.0, 0.0, 0.0],
             dtype=np.float32,
         ),
+    )
+
+
+def test_derive_flsa_overtime_premium_uses_historical_salary_thresholds():
+    inputs = dict(
+        employment_income=np.array([30_000.0, 40_000.0]),
+        hours_worked_last_week=np.array([50.0, 50.0]),
+        weeks_worked=np.array([52.0, 52.0]),
+        is_paid_hourly=np.array([False, False]),
+        has_never_worked=np.array([False, False]),
+        is_military=np.array([False, False]),
+        is_executive_administrative_professional=np.array([True, True]),
+        is_farmer_fisher=np.array([False, False]),
+        is_computer_scientist=np.array([False, False]),
+    )
+    premium_2019 = derive_flsa_overtime_premium(
+        time_period=2019,
+        **inputs,
+    )
+    premium_2024 = derive_flsa_overtime_premium(
+        time_period=2024,
+        **inputs,
+    )
+
+    np.testing.assert_allclose(premium_2019, np.array([0.0, 0.0], dtype=np.float32))
+    np.testing.assert_allclose(
+        premium_2024,
+        np.array([30_000 * 5 / 55, 0.0], dtype=np.float32),
+    )
+
+
+def test_flsa_overtime_thresholds_match_policyengine_us_parameters():
+    assert _flsa_overtime_thresholds_for_year(2019)[:2] == (
+        np.float32(100_000),
+        np.float32(455 * 52),
+    )
+    assert _flsa_overtime_thresholds_for_year(2024)[:2] == (
+        np.float32(107_432),
+        np.float32(684 * 52),
     )

@@ -497,10 +497,10 @@ def _derive_clone_flsa_overtime_premium(data: dict, time_period: int) -> dict:
         variable: np.asarray(data[variable][time_period][n_half:])
         for variable in FLSA_OVERTIME_PREMIUM_INPUTS
     }
-    values[n_half:] = derive_flsa_overtime_premium(**clone_inputs).astype(
-        values.dtype,
-        copy=False,
-    )
+    values[n_half:] = derive_flsa_overtime_premium(
+        time_period=time_period,
+        **clone_inputs,
+    ).astype(values.dtype, copy=False)
     data[FLSA_OVERTIME_PREMIUM_VARIABLE] = {time_period: values}
     return data
 

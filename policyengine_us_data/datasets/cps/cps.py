@@ -1370,22 +1370,21 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     # nearly all of RETCB_VAL and left IRA contributions at $0.
     #
     # The proportional approach uses BEA/FRED and IRS SOI shares to
-    # split contributions into DC (401k) and IRA pools, then splits
-    # each pool into traditional/Roth using administrative fractions.
-    # See imputation_parameters.yaml for sources.
+    # split contributions into self-employed pension, DC (401k), and
+    # IRA pools, then splits each pool into traditional/Roth using
+    # administrative fractions. See imputation_parameters.yaml for
+    # sources.
     retirement_contributions = person.RETCB_VAL
     has_wages = person.WSAL_VAL > 0
     has_se = person.SEMP_VAL > 0
     has_earned_income = has_wages | has_se
 
-    # 1) Self-employed pension: use the plan contribution rate as an
-    #    allocation prior so dual-income filers keep a remainder for
-    #    401(k)/IRA. PolicyEngine-US applies statutory limits.
-    se_rate = p["se_pension_contribution_rate"]
-    se_pension_capacity = person.SEMP_VAL * se_rate
+    # 1) Self-employed pension: allocate a share without statutory
+    #    pre-capping. PolicyEngine-US applies statutory limits.
+    se_share = p["se_pension_share_of_retirement_contributions"]
     cps["self_employed_pension_contributions_desired"] = np.where(
         has_se,
-        np.minimum(retirement_contributions, se_pension_capacity),
+        retirement_contributions * se_share,
         0,
     )
     remaining = np.maximum(

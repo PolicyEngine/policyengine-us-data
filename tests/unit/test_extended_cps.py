@@ -133,16 +133,21 @@ class TestVariableListConsistency:
 
     def test_cps_only_vars_mostly_exist_in_tbs(self):
         """Most CPS-only variables should exist in policyengine-us."""
+        from importlib.metadata import version
+
+        from packaging.version import Version
         from policyengine_us import CountryTaxBenefitSystem
 
         tbs = CountryTaxBenefitSystem()
-        pending_policyengine_us_release = {
-            "traditional_401k_contributions_desired",
-            "roth_401k_contributions_desired",
-            "traditional_ira_contributions_desired",
-            "roth_ira_contributions_desired",
-            "self_employed_pension_contributions_desired",
-        }
+        pending_policyengine_us_release = set()
+        if Version(version("policyengine-us")) < Version("1.706.3"):
+            pending_policyengine_us_release = {
+                "traditional_401k_contributions_desired",
+                "roth_401k_contributions_desired",
+                "traditional_ira_contributions_desired",
+                "roth_ira_contributions_desired",
+                "self_employed_pension_contributions_desired",
+            }
         checked_variables = [
             v
             for v in CPS_ONLY_IMPUTED_VARIABLES

@@ -93,3 +93,18 @@ def test_add_personal_income_variables_maps_spm_income_leaves():
     np.testing.assert_array_equal(cps["educational_assistance"], [10.0, 11.0, 12.0])
     np.testing.assert_array_equal(cps["financial_assistance"], [20.0, 21.0, 22.0])
     np.testing.assert_array_equal(cps["survivor_benefits"], [30.0, 31.0, 32.0])
+
+
+def test_retirement_contributions_write_desired_without_se_rate_cap():
+    person = _minimal_person_income_frame()
+    person["SEMP_VAL"] = [100.0, 0.0]
+    person["WSAL_VAL"] = [0.0, 100_000.0]
+    person["RETCB_VAL"] = [100_000.0, 100_000.0]
+    cps = {}
+
+    add_personal_income_variables(cps, person, 2024)
+
+    assert cps["self_employed_pension_contributions_desired"][0] > 100 * 0.25
+    assert cps["self_employed_pension_contributions_desired"][1] == 0
+    assert cps["traditional_ira_contributions_desired"][0] > 0
+    assert cps["traditional_401k_contributions_desired"][1] > 0

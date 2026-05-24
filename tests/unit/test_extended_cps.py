@@ -34,6 +34,7 @@ from policyengine_us_data.datasets.cps.extended_cps import (
     _build_clone_test_frame,
     _build_ssi_disability_clone_receiver,
     _cps_clone_feature_variables_for_data,
+    _derive_clone_flsa_overtime_premium,
     _derive_overtime_occupation_inputs,
     _impute_clone_cps_features,
     _splice_cps_only_predictions,
@@ -209,8 +210,8 @@ class TestVariableListConsistency:
     def test_weeks_worked_is_cps_only_imputed_for_clone_records(self):
         assert "weeks_worked" in set(CPS_ONLY_IMPUTED_VARIABLES)
 
-    def test_flsa_overtime_premium_is_cps_only_imputed_for_clone_records(self):
-        assert "fsla_overtime_premium" in set(CPS_ONLY_IMPUTED_VARIABLES)
+    def test_flsa_overtime_premium_is_derived_for_clone_records(self):
+        assert "fsla_overtime_premium" not in set(CPS_ONLY_IMPUTED_VARIABLES)
 
     def test_ssi_disability_criteria_is_cps_only_imputed_for_clone_records(self):
         assert "meets_ssi_disability_criteria" in set(CPS_ONLY_IMPUTED_VARIABLES)
@@ -227,6 +228,7 @@ class TestVariableListConsistency:
             "is_tax_unit_head": {2024: np.array([True, False, True, False])},
             "is_disabled": {2024: np.array([True, False, True, False])},
             "difficulty_hearing": {2024: np.array([False, True, False, True])},
+            "fsla_overtime_premium": {2024: np.array([1_000.0, 0.0, 2_000.0, 0.0])},
             "meets_ssi_disability_criteria": {
                 2024: np.array([True, False, True, False])
             },
@@ -243,6 +245,7 @@ class TestVariableListConsistency:
         assert "employment_income" not in result
         assert "is_household_head" not in result
         assert "is_tax_unit_head" not in result
+        assert "fsla_overtime_premium" not in result
         assert "meets_ssi_disability_criteria" not in result
 
     def test_spm_threshold_is_formula_output_not_qrf_imputed(self):
@@ -1374,6 +1377,35 @@ class TestCloneFeatureImputation:
             *([True] * eap_count),
             False,
         ]
+
+    def test_derive_clone_flsa_overtime_premium_uses_final_clone_inputs(self):
+        tp = 2024
+        data = {
+            "person_id": {tp: np.array([1, 2, 101, 102])},
+            "fsla_overtime_premium": {
+                tp: np.array([111.0, 222.0, 9_999.0, 9_999.0], dtype=np.float32)
+            },
+            "employment_income": {
+                tp: np.array([20_000.0, 25_000.0, 57_200.0, 60_000.0])
+            },
+            "hours_worked_last_week": {tp: np.array([45.0, 45.0, 50.0, 40.0])},
+            "weeks_worked": {tp: np.array([52.0, 52.0, 52.0, 52.0])},
+            "is_paid_hourly": {tp: np.array([True, True, True, True])},
+            "has_never_worked": {tp: np.array([False, False, False, False])},
+            "is_military": {tp: np.array([False, False, False, False])},
+            "is_executive_administrative_professional": {
+                tp: np.array([False, False, False, False])
+            },
+            "is_farmer_fisher": {tp: np.array([False, False, False, False])},
+            "is_computer_scientist": {tp: np.array([False, False, False, False])},
+        }
+
+        result = _derive_clone_flsa_overtime_premium(data, tp)
+
+        np.testing.assert_allclose(
+            result["fsla_overtime_premium"][tp],
+            np.array([111.0, 222.0, 5_200.0, 0.0], dtype=np.float32),
+        )
 
     def test_clone_feature_imputation_rematches_outputs_and_derives_flags(
         self, monkeypatch

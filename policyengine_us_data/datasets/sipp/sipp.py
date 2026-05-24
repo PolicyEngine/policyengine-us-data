@@ -12,7 +12,7 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
     filter_positive_finite_weight_rows,
-    filter_observed_source_rows,
+    observed_source_mask,
     require_columns_present,
     sipp_allocation_flag_for,
     target_observed_source_masks,
@@ -48,7 +48,7 @@ VEHICLE_MODEL_PREDICTORS = [
 
 SSI_DISABILITY_CRITERIA_VARIABLE = "meets_ssi_disability_criteria"
 SSI_DISABILITY_MODEL_VARIABLE = SSI_DISABILITY_CRITERIA_VARIABLE
-SSI_DISABILITY_MODEL_VERSION = 5
+SSI_DISABILITY_MODEL_VERSION = 6
 SSI_DISABILITY_EXPORT_VARIABLES = (SSI_DISABILITY_CRITERIA_VARIABLE,)
 
 # These six CPS/SIPP difficulty items are construction-time predictors for the
@@ -464,6 +464,30 @@ def _add_ssi_disability_difficulty_predictors(df: pd.DataFrame) -> None:
         df[predictor] = _yes(df, source_column)
 
 
+def _observed_ssi_disability_label_mask(
+    df: pd.DataFrame, received_ssi: pd.Series
+) -> pd.Series:
+    ssi_receipt_observed = observed_source_mask(
+        df,
+        source_columns=["RSSI_YRYN"],
+        allocation_flag_columns=[sipp_allocation_flag_for("RSSI_YRYN")],
+    )
+    ssi_receipt_observed &= pd.to_numeric(
+        df.get("RSSI_YRYN", pd.Series(np.nan, index=df.index)),
+        errors="coerce",
+    ).isin([1, 2])
+    ssi_reason_observed = observed_source_mask(
+        df,
+        source_columns=["ESSI_BRSN"],
+        allocation_flag_columns=[sipp_allocation_flag_for("ESSI_BRSN")],
+    )
+    ssi_reason_observed &= pd.to_numeric(
+        df.get("ESSI_BRSN", pd.Series(np.nan, index=df.index)),
+        errors="coerce",
+    ).isin([1, 2])
+    return ssi_receipt_observed & (~received_ssi | ssi_reason_observed)
+
+
 def _ssi_financial_candidate_mask(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.Series:
@@ -571,12 +595,7 @@ def build_ssi_disability_training_frame(
     df["ssi_disability_training_candidate"] = (financial_candidate & under_65) | df[
         SSI_DISABILITY_CRITERIA_VARIABLE
     ]
-    df = filter_observed_source_rows(
-        df,
-        target_name=SSI_DISABILITY_CRITERIA_VARIABLE,
-        source_columns=SSI_DISABILITY_LABEL_SOURCE_COLUMNS,
-        allocation_flag_columns=SSI_DISABILITY_LABEL_ALLOCATION_COLUMNS,
-    )
+    df = df.loc[_observed_ssi_disability_label_mask(df, received_ssi)].copy()
 
     columns = SSI_DISABILITY_MODEL_PREDICTORS + [
         SSI_DISABILITY_CRITERIA_VARIABLE,

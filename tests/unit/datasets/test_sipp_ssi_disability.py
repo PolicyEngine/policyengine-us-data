@@ -101,9 +101,9 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
 
 
 def test_ssi_disability_model_cache_version_tracks_predictor_schema():
-    assert SSI_DISABILITY_MODEL_VERSION == 5
+    assert SSI_DISABILITY_MODEL_VERSION == 6
     assert _ssi_disability_model_path(2024).name == (
-        "ssi_disability_criteria_v5_2024.pkl"
+        "ssi_disability_criteria_v6_2024.pkl"
     )
 
 
@@ -121,6 +121,35 @@ def test_build_ssi_disability_training_frame_excludes_allocated_label_source():
     frame = _base_sipp_frame()
     frame.loc[0, "ASSI_YRYN"] = 3
     frame.loc[1:, "ASSI_YRYN"] = 0
+    frame["ASSI_BRSN"] = 0
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert len(result) == 3
+    np.testing.assert_array_equal(
+        result[SSI_DISABILITY_MODEL_VARIABLE].values,
+        np.array([False, False, False]),
+    )
+
+
+def test_build_ssi_disability_training_frame_keeps_non_ssi_without_reason_source():
+    frame = _base_sipp_frame()
+    frame["ASSI_YRYN"] = 0
+    frame["ASSI_BRSN"] = 3
+
+    result = build_ssi_disability_training_frame(frame)
+
+    assert len(result) == 2
+    np.testing.assert_array_equal(
+        result[SSI_DISABILITY_MODEL_VARIABLE].values,
+        np.array([False, False]),
+    )
+
+
+def test_build_ssi_disability_training_frame_excludes_ssi_with_missing_reason_source():
+    frame = _base_sipp_frame()
+    frame.loc[0, "ESSI_BRSN"] = -9
+    frame["ASSI_YRYN"] = 0
     frame["ASSI_BRSN"] = 0
 
     result = build_ssi_disability_training_frame(frame)

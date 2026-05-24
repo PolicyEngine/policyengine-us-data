@@ -20,6 +20,7 @@ from policyengine_us_data.datasets.cps.cps import (
     CPS_2024_Full,
     ESI_POLICYHOLDER_VARIABLE,
     FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    FLSA_OVERTIME_OCCUPATION_CODES,
     _open_dataset_read_only,
     derive_flsa_overtime_premium,
     load_take_up_rate,
@@ -121,12 +122,7 @@ CPS_CLONE_FEATURE_PREDICTORS = [
     "social_security",
 ]
 
-_OVERTIME_OCCUPATION_CODES = {
-    "has_never_worked": 53,
-    "is_military": 52,
-    "is_computer_scientist": 8,
-    "is_farmer_fisher": 41,
-}
+_OVERTIME_OCCUPATION_CODES = dict(FLSA_OVERTIME_OCCUPATION_CODES)
 FLSA_OVERTIME_PREMIUM_VARIABLE = "fsla_overtime_premium"
 FLSA_OVERTIME_PREMIUM_INPUTS = (
     "employment_income",

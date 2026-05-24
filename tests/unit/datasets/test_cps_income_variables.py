@@ -1,9 +1,14 @@
 import numpy as np
 import pandas as pd
+import pytest
 
+from policyengine_us_data.datasets.cps import cps as cps_module
 from policyengine_us_data.datasets.cps.cps import (
+    FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    FLSA_OVERTIME_OCCUPATION_CODES,
     add_personal_income_variables,
     derive_flsa_overtime_premium,
+    _flsa_overtime_policy_for_year,
     _flsa_overtime_thresholds_for_year,
 )
 
@@ -154,6 +159,38 @@ def test_derive_flsa_overtime_premium_uses_historical_salary_thresholds():
     )
 
 
+def test_derive_flsa_overtime_premium_uses_policy_hours_and_rate(monkeypatch):
+    monkeypatch.setattr(
+        cps_module,
+        "_flsa_overtime_policy_for_year",
+        lambda _year: (
+            np.float32(100_000),
+            np.float32(100_000),
+            np.float32(100_000),
+            np.float32(35),
+            np.float32(2),
+        ),
+    )
+
+    premium = derive_flsa_overtime_premium(
+        time_period=2024,
+        employment_income=np.array([60_000.0]),
+        hours_worked_last_week=np.array([45.0]),
+        weeks_worked=np.array([52.0]),
+        is_paid_hourly=np.array([True]),
+        has_never_worked=np.array([False]),
+        is_military=np.array([False]),
+        is_executive_administrative_professional=np.array([False]),
+        is_farmer_fisher=np.array([False]),
+        is_computer_scientist=np.array([False]),
+    )
+
+    np.testing.assert_allclose(
+        premium,
+        np.array([60_000 * 10 / 55], dtype=np.float32),
+    )
+
+
 def test_flsa_overtime_thresholds_match_policyengine_us_parameters():
     assert _flsa_overtime_thresholds_for_year(2019)[:2] == (
         np.float32(100_000),
@@ -162,4 +199,33 @@ def test_flsa_overtime_thresholds_match_policyengine_us_parameters():
     assert _flsa_overtime_thresholds_for_year(2024)[:2] == (
         np.float32(107_432),
         np.float32(684 * 52),
+    )
+
+
+def test_flsa_overtime_hours_and_rate_match_policyengine_us_parameters():
+    from policyengine_us import CountryTaxBenefitSystem
+
+    policy = _flsa_overtime_policy_for_year(2024)
+    overtime = (
+        CountryTaxBenefitSystem()
+        .parameters("2024-01-01")
+        .gov.irs.income.exemption.overtime
+    )
+
+    assert policy[3:] == (
+        np.float32(overtime.hours_threshold),
+        np.float32(overtime.rate_multiplier),
+    )
+
+
+def test_flsa_overtime_occupation_codes_match_policyengine_us_when_available():
+    policyengine_us_cps = pytest.importorskip("policyengine_us.data.cps")
+
+    np.testing.assert_array_equal(
+        FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+        policyengine_us_cps.CPS_FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    )
+    assert (
+        FLSA_OVERTIME_OCCUPATION_CODES
+        == policyengine_us_cps.CPS_FLSA_OVERTIME_OCCUPATION_CODES
     )

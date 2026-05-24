@@ -1379,8 +1379,8 @@ def add_personal_income_variables(cps: h5py.File, person: DataFrame, year: int):
     has_se = person.SEMP_VAL > 0
     has_earned_income = has_wages | has_se
 
-    # 1) Self-employed pension: allocate a share without statutory
-    #    pre-capping. PolicyEngine-US applies statutory limits.
+    # 1) Self-employed pension: allocate a share without applying statutory
+    #    limits. PolicyEngine-US applies those limits.
     se_share = p["se_pension_share_of_retirement_contributions"]
     cps["self_employed_pension_contributions_desired"] = np.where(
         has_se,

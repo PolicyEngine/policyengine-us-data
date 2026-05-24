@@ -9,7 +9,7 @@ from policyengine_us_data.calibration.unified_calibration import load_target_con
 
 
 TARGET_CONFIG_PATH = "policyengine_us_data/calibration/target_config.yaml"
-RETIREMENT_VARIABLE_RELEASE = Version("1.706.3")
+RETIREMENT_VARIABLE_RELEASE = Version("1.706.4")
 REQUIRED_RETIREMENT_POLICYENGINE_US_VARIABLES = {
     "traditional_401k_contributions_desired",
     "roth_401k_contributions_desired",

@@ -1098,7 +1098,7 @@ class TestRetirementConstraints:
         for var in result.columns:
             assert (result[var] >= 0).all(), f"{var} has negative values"
 
-    def test_401k_desired_not_capped_at_limit(
+    def test_401k_preserves_desired_amounts_above_limit(
         self, sample_predictions, sample_features
     ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
@@ -1111,7 +1111,9 @@ class TestRetirementConstraints:
             np.array([30000, 2000, 0, 50000, 1000]),
         )
 
-    def test_ira_desired_not_capped_at_limit(self, sample_predictions, sample_features):
+    def test_ira_preserves_desired_amounts_above_limit(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         np.testing.assert_allclose(
             result["traditional_ira_contributions_desired"].to_numpy(),
@@ -1135,7 +1137,9 @@ class TestRetirementConstraints:
                 f"{var} should be zero without employment income"
             )
 
-    def test_se_pension_desired_not_capped(self, sample_predictions, sample_features):
+    def test_se_pension_preserves_desired_amounts(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         np.testing.assert_allclose(
             result["self_employed_pension_contributions_desired"].to_numpy(),

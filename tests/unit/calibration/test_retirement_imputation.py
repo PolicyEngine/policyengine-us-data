@@ -315,7 +315,7 @@ class TestImputeRetirementContributions:
         for var in CPS_RETIREMENT_VARIABLES:
             assert np.all(result[var] >= 0), f"{var} has negative values"
 
-    def test_401k_desired_not_capped(self):
+    def test_401k_preserves_desired_amounts(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
         pos_wage = self.puf_imputations["employment_income"] > 0
 
@@ -324,17 +324,19 @@ class TestImputeRetirementContributions:
             "roth_401k_contributions_desired",
         ):
             assert np.all(result[var][pos_wage] == 50_000.0), (
-                f"{var} should remain uncapped for records with wages"
+                f"{var} should preserve desired amounts for records with wages"
             )
 
-    def test_ira_desired_not_capped(self):
+    def test_ira_preserves_desired_amounts(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
 
         for var in (
             "traditional_ira_contributions_desired",
             "roth_ira_contributions_desired",
         ):
-            assert np.all(result[var] == 50_000.0), f"{var} should remain uncapped"
+            assert np.all(result[var] == 50_000.0), (
+                f"{var} should preserve desired amounts"
+            )
 
     def test_401k_zero_when_no_wages(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
@@ -358,7 +360,7 @@ class TestImputeRetirementContributions:
         )
 
     def test_401k_desired_does_not_apply_age_threshold(self):
-        """401(k) desired inputs are not capped by age in policyengine-us-data."""
+        """401(k) desired inputs do not apply age-based statutory limits here."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         # All have positive income
         self.puf_imputations["employment_income"] = np.full(self.n, 100_000.0).astype(
@@ -377,7 +379,7 @@ class TestImputeRetirementContributions:
         assert np.all(old_401k == val)
 
     def test_ira_desired_does_not_apply_age_threshold(self):
-        """IRA desired inputs are not capped by age in policyengine-us-data."""
+        """IRA desired inputs do not apply age-based statutory limits here."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         lim = _get_retirement_limits(self.time_period)
         val = float(lim["ira"]) + 500  # 7500
@@ -406,8 +408,8 @@ class TestImputeRetirementContributions:
         pos_se = self.puf_imputations["self_employment_income"] > 0
         assert np.all(result["self_employed_pension_contributions_desired"][pos_se] > 0)
 
-    def test_se_pension_desired_not_capped(self):
-        """SE pension desired inputs are not capped in policyengine-us-data."""
+    def test_se_pension_preserves_desired_amounts(self):
+        """SE pension desired inputs preserve source amounts when SE income exists."""
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
         se_income = self.puf_imputations["self_employment_income"]
         pos_se = se_income > 0

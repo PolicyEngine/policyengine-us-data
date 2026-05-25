@@ -322,10 +322,11 @@ AGGREGATE_LEVEL_TARGETED_VARIABLES = (
     "unemployment_compensation",
 )
 
-IRS_SOI_AGGREGATE_TARGETS = [
-    # This complements the net capital gains target with the source-specific
-    # control used by downstream preferential-rate reforms.
-    ("long_term_capital_gains", ["long_term_capital_gains"], "long_term_capital_gains"),
+CBO_CAPITAL_GAINS_TARGETS = [
+    # This complements the net capital gains target with the variable used by
+    # downstream preferential-rate reforms, while using CBO's net capital gains
+    # projection directly as the aggregate control.
+    ("long_term_capital_gains", ["long_term_capital_gains"], "net_capital_gain"),
 ]
 
 EITC_NATIONAL_GEO_ID = "0100000US"
@@ -1062,15 +1063,17 @@ def _sum_household_variables(sim, variable_names):
     )
 
 
-def _add_irs_soi_aggregate_targets(loss_matrix, targets_list, sim, time_period):
-    soi = sim.tax_benefit_system.parameters(time_period).calibration.gov.irs.soi
+def _add_cbo_capital_gains_targets(loss_matrix, targets_list, sim, time_period):
+    income_by_source = sim.tax_benefit_system.parameters(
+        time_period
+    ).calibration.gov.cbo.income_by_source
 
-    for label_suffix, pe_variables, soi_param_name in IRS_SOI_AGGREGATE_TARGETS:
-        label = f"nation/irs/soi/{label_suffix}"
+    for label_suffix, pe_variables, cbo_param_name in CBO_CAPITAL_GAINS_TARGETS:
+        label = f"nation/cbo/income_by_source/{label_suffix}"
         loss_matrix[label] = _sum_household_variables(sim, pe_variables)
         if any(pd.isna(loss_matrix[label])):
             raise ValueError(f"Missing values for {label}")
-        targets_list.append(soi._children[soi_param_name])
+        targets_list.append(income_by_source._children[cbo_param_name])
 
     return targets_list, loss_matrix
 
@@ -1387,10 +1390,10 @@ def build_loss_matrix(dataset: type, time_period):
         time_period,
     )
 
-    # IRS SOI aggregate capital-gains targets. This adds a long-term gains
-    # control on top of the CBO net capital gains aggregate, which is important
-    # for reforms that change preferential LTCG rates.
-    targets_array, loss_matrix = _add_irs_soi_aggregate_targets(
+    # CBO aggregate capital-gains targets. This adds a long-term gains control
+    # on top of the net capital gains aggregate, which is important for reforms
+    # that change preferential LTCG rates.
+    targets_array, loss_matrix = _add_cbo_capital_gains_targets(
         loss_matrix,
         targets_array,
         sim,

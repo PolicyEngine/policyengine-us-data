@@ -121,6 +121,18 @@ CBO_INCOME_BY_SOURCE_TARGETS = [
     },
 ]
 
+CBO_LONG_TERM_CAPITAL_GAINS_TARGET = {
+    "variable": "long_term_capital_gains",
+    "parameter": "net_capital_gain",
+    "source": "CBO Revenue Projections",
+    "notes": (
+        "CBO detailed AGI-by-source net capital gains, used directly as the "
+        "aggregate long-term capital gains target because CPS-reported capital "
+        "gains are underreported and preferential-rate reforms operate on "
+        "long-term gains"
+    ),
+}
+
 
 def _register_target_variable(session: Session, variable: str) -> None:
     from policyengine_us.system import system
@@ -428,7 +440,7 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         - tax_expenditure_targets: Variables targeted via repeal-based tax expenditures
         - conditional_count_targets: Enrollment counts requiring constraints
         - cbo_targets: List of CBO projection targets
-        - irs_soi_targets: List of IRS SOI aggregate targets
+        - capital_gains_targets: List of CBO capital gains aggregate targets
         - treasury_targets: Empty compatibility list; EITC Treasury outlays are
           diagnostics, not claim calibration targets.
         - time_period: The target year
@@ -821,25 +833,25 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
                 f"{variable_name} (param: {param_name}): {e}"
             )
 
-    # IRS SOI aggregate targets - use time_period derived from dataset.
-    irs_soi_targets = []
+    # Capital gains aggregate targets - use time_period derived from dataset.
+    capital_gains_targets = []
     try:
-        value = tax_benefit_system.parameters(
-            time_period
-        ).calibration.gov.irs.soi._children["long_term_capital_gains"]
-        irs_soi_targets.append(
+        target = CBO_LONG_TERM_CAPITAL_GAINS_TARGET
+        value = income_by_source._children[target["parameter"]]
+        capital_gains_targets.append(
             {
-                "variable": "long_term_capital_gains",
+                "variable": target["variable"],
                 "value": float(value),
-                "source": "IRS SOI",
-                "notes": (
-                    "IRS SOI total long-term capital gains, uprated by policyengine-us"
-                ),
+                "source": target["source"],
+                "notes": target["notes"],
                 "year": time_period,
             }
         )
     except (KeyError, AttributeError) as e:
-        print(f"Warning: Could not extract IRS SOI LTCG parameter: {e}")
+        print(
+            "Warning: Could not extract CBO net capital gains target "
+            f"for long-term capital gains: {e}"
+        )
 
     # Treasury/CBO EITC figures are fiscal-year refundable-outlay concepts,
     # not tax-year claim controls. Keep them out of calibration targets.
@@ -851,7 +863,8 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "tax_expenditure_targets": tax_expenditure_targets,
         "conditional_count_targets": conditional_count_targets,
         "cbo_targets": cbo_targets,
-        "irs_soi_targets": irs_soi_targets,
+        "capital_gains_targets": capital_gains_targets,
+        "irs_soi_targets": [],
         "treasury_targets": treasury_targets,
         "time_period": time_period,
     }
@@ -888,6 +901,7 @@ def transform_national_targets(raw_targets):
     all_direct_targets = (
         raw_targets["direct_sum_targets"]
         + cbo_non_tax
+        + raw_targets.get("capital_gains_targets", [])
         + raw_targets.get("irs_soi_targets", [])
     )
 

@@ -23,7 +23,7 @@ from policyengine_us_data.utils.loss import (
     _add_bls_ce_targets,
     _add_ctc_targets,
     _add_education_credit_targets,
-    _add_irs_soi_aggregate_targets,
+    _add_cbo_capital_gains_targets,
     _add_medicare_enrollment_target,
     _add_real_estate_tax_targets,
     _add_ssi_recipient_targets,
@@ -262,10 +262,10 @@ class _FakeCapitalGainsSimulation:
             parameters=lambda period: SimpleNamespace(
                 calibration=SimpleNamespace(
                     gov=SimpleNamespace(
-                        irs=SimpleNamespace(
-                            soi=SimpleNamespace(
+                        cbo=SimpleNamespace(
+                            income_by_source=SimpleNamespace(
                                 _children={
-                                    "long_term_capital_gains": 1_650.0,
+                                    "net_capital_gain": 1_650.0,
                                 }
                             )
                         )
@@ -763,10 +763,10 @@ def test_transfer_balance_targets_use_absolute_error_scale():
     np.testing.assert_array_equal(denominator, np.array([1e9, 11.0]))
 
 
-def test_add_irs_soi_capital_gains_targets():
+def test_add_cbo_capital_gains_targets():
     sim = _FakeCapitalGainsSimulation()
 
-    targets, loss_matrix = _add_irs_soi_aggregate_targets(
+    targets, loss_matrix = _add_cbo_capital_gains_targets(
         pd.DataFrame(),
         [],
         sim,
@@ -775,7 +775,7 @@ def test_add_irs_soi_capital_gains_targets():
 
     assert targets == [1_650.0]
     np.testing.assert_array_equal(
-        loss_matrix["nation/irs/soi/long_term_capital_gains"],
+        loss_matrix["nation/cbo/income_by_source/long_term_capital_gains"],
         np.array([100.0, 0.0, 50.0], dtype=np.float32),
     )
     assert sim.calculate_calls == [

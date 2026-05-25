@@ -977,6 +977,11 @@ def test_extracts_income_targets_from_primary_concepts(monkeypatch):
         for target in raw_targets["tax_filer_targets"]
         if target["variable"] == "self_employment_income"
     ]
+    long_term_capital_gains_targets = [
+        target
+        for target in raw_targets["capital_gains_targets"]
+        if target["variable"] == "long_term_capital_gains"
+    ]
 
     assert gross_wage_targets == [
         {
@@ -1029,6 +1034,15 @@ def test_extracts_income_targets_from_primary_concepts(monkeypatch):
                 "restricted to tax filers because this is an AGI tax-return "
                 "concept"
             ),
+            "year": 2024,
+        }
+    ]
+    assert long_term_capital_gains_targets == [
+        {
+            "variable": "long_term_capital_gains",
+            "value": 1_290_900_000_000,
+            "source": "CBO Revenue Projections",
+            "notes": etl_national_targets.CBO_LONG_TERM_CAPITAL_GAINS_TARGET["notes"],
             "year": 2024,
         }
     ]

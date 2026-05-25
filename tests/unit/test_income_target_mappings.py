@@ -47,6 +47,15 @@ def test_cbo_income_by_source_targets_match_between_legacy_and_target_db():
     assert legacy_targets == db_targets
 
 
+def test_cbo_ltcg_target_matches_between_legacy_and_target_db():
+    legacy_variable, legacy_inputs, legacy_parameter = loss.CBO_CAPITAL_GAINS_TARGETS[0]
+    db_target = etl_national_targets.CBO_LONG_TERM_CAPITAL_GAINS_TARGET
+
+    assert legacy_variable == db_target["variable"] == "long_term_capital_gains"
+    assert legacy_inputs == ["long_term_capital_gains"]
+    assert legacy_parameter == db_target["parameter"] == "net_capital_gain"
+
+
 def test_bea_nipa_direct_sum_targets_match_between_legacy_and_target_db():
     assert (
         loss.BEA_NIPA_WAGES_AND_SALARIES_2024

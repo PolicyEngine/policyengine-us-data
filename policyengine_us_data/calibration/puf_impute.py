@@ -616,7 +616,9 @@ def puf_clone_dataset(
         var_meta = tbs.variables.get(variable_name)
         if var_meta is None:
             return pred_values
-        entity = var_meta.entity.key
+        entity = getattr(getattr(var_meta, "entity", None), "key", None)
+        if not isinstance(entity, str):
+            return pred_values
         if entity != "person":
             return cps_sim.populations[entity].value_from_first_person(pred_values)
         return pred_values

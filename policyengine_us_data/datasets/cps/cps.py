@@ -1,4 +1,5 @@
 from contextlib import closing, contextmanager
+from functools import lru_cache
 from importlib.resources import files
 from policyengine_core.data import Dataset
 from policyengine_us_data.storage import STORAGE_FOLDER, DOCS_FOLDER
@@ -18,6 +19,11 @@ import numpy as np
 import pandas as pd
 import yaml
 from typing import Type
+from policyengine_us.model_api import WEEKS_IN_YEAR
+from policyengine_us.data.cps import (
+    CPS_FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    CPS_FLSA_OVERTIME_OCCUPATION_CODES,
+)
 from policyengine_us_data.utils.uprating import (
     create_policyengine_uprating_factors_table,
 )
@@ -82,6 +88,46 @@ ACS_RENT_TARGET_ALLOCATION_COLUMNS = {
     "rent": ["rent_is_allocated"],
     "real_estate_taxes": ["real_estate_taxes_is_allocated"],
 }
+
+FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES = (
+    CPS_FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES
+)
+FLSA_OVERTIME_OCCUPATION_CODES = CPS_FLSA_OVERTIME_OCCUPATION_CODES
+
+
+@lru_cache(maxsize=1)
+def _policyengine_us_parameters():
+    from policyengine_us import CountryTaxBenefitSystem
+
+    return CountryTaxBenefitSystem().parameters
+
+
+@lru_cache(maxsize=16)
+def _flsa_overtime_policy_for_year(
+    time_period: int,
+) -> tuple[np.float32, np.float32, np.float32, np.float32, np.float32]:
+    overtime = _policyengine_us_parameters()(
+        f"{int(time_period)}-01-01"
+    ).gov.irs.income.exemption.overtime
+    hours_threshold = np.float32(overtime.hours_threshold)
+    rate_multiplier = np.float32(overtime.rate_multiplier)
+    workweeks_per_year = np.float32(WEEKS_IN_YEAR)
+    return (
+        np.float32(overtime.hce_salary_threshold),
+        np.float32(overtime.salary_basis_threshold * workweeks_per_year),
+        np.float32(
+            overtime.computer_salary_threshold * hours_threshold * workweeks_per_year
+        ),
+        hours_threshold,
+        rate_multiplier,
+    )
+
+
+def _flsa_overtime_thresholds_for_year(
+    time_period: int,
+) -> tuple[np.float32, np.float32, np.float32]:
+    return _flsa_overtime_policy_for_year(time_period)[:3]
+
 
 CURRENT_HEALTH_COVERAGE_REPORTED_VAR_MAP = {
     "reported_has_direct_purchase_health_coverage_at_interview": "NOW_DIR",
@@ -304,7 +350,7 @@ class CPS(Dataset):
         logging.info("Adding tips")
         add_tips(self, cps)
         logging.info("Adding ORG labor-market inputs")
-        add_org_labor_market_inputs(cps)
+        add_org_labor_market_inputs(cps, self.time_period)
         logging.info("Adding auto loan balance, interest and wealth")
         add_auto_loan_interest_and_net_worth(self, cps)
         logging.info("Added all variables")
@@ -1188,6 +1234,96 @@ def add_personal_variables(cps: h5py.File, person: DataFrame) -> None:
 
 def derive_weeks_worked(weeks_worked: Series | np.ndarray) -> Series | np.ndarray:
     return np.clip(weeks_worked, 0, 52)
+
+
+def derive_flsa_overtime_premium(
+    *,
+    time_period: int,
+    employment_income: Series | np.ndarray,
+    hours_worked_last_week: Series | np.ndarray,
+    weeks_worked: Series | np.ndarray,
+    is_paid_hourly: Series | np.ndarray,
+    has_never_worked: Series | np.ndarray,
+    is_military: Series | np.ndarray,
+    is_executive_administrative_professional: Series | np.ndarray,
+    is_farmer_fisher: Series | np.ndarray,
+    is_computer_scientist: Series | np.ndarray,
+) -> np.ndarray:
+    """Proxy annual FLSA overtime premium from CPS annual wages and hours.
+
+    CPS ASEC does not contain a week-by-week earnings history. This constructs
+    the premium share implied by the reported/reference week, then applies that
+    share to annual employment income for workers not screened as FLSA-exempt.
+    """
+    employment_income = np.maximum(
+        np.nan_to_num(np.asarray(employment_income, dtype=np.float32), nan=0),
+        0,
+    )
+    hours_worked_last_week = np.maximum(
+        np.nan_to_num(np.asarray(hours_worked_last_week, dtype=np.float32), nan=0),
+        0,
+    )
+    weeks_worked = np.maximum(
+        np.nan_to_num(np.asarray(weeks_worked, dtype=np.float32), nan=0),
+        0,
+    )
+    is_paid_hourly = np.asarray(is_paid_hourly, dtype=bool)
+    has_never_worked = np.asarray(has_never_worked, dtype=bool)
+    is_military = np.asarray(is_military, dtype=bool)
+    is_executive_administrative_professional = np.asarray(
+        is_executive_administrative_professional,
+        dtype=bool,
+    )
+    is_farmer_fisher = np.asarray(is_farmer_fisher, dtype=bool)
+    is_computer_scientist = np.asarray(is_computer_scientist, dtype=bool)
+
+    (
+        hce_salary_threshold,
+        salary_basis_threshold,
+        computer_salary_threshold,
+        hours_threshold,
+        rate_multiplier,
+    ) = _flsa_overtime_policy_for_year(time_period)
+
+    overtime_hours = np.maximum(
+        hours_worked_last_week - hours_threshold,
+        0,
+    )
+    straight_time_equivalent_hours = (
+        np.minimum(hours_worked_last_week, hours_threshold)
+        + overtime_hours * rate_multiplier
+    )
+    premium_share = np.divide(
+        (rate_multiplier - 1) * overtime_hours,
+        straight_time_equivalent_hours,
+        out=np.zeros_like(employment_income, dtype=np.float32),
+        where=straight_time_equivalent_hours > 0,
+    )
+
+    salary_threshold = np.full_like(
+        employment_income,
+        hce_salary_threshold,
+        dtype=np.float32,
+    )
+    salary_threshold = np.where(
+        is_computer_scientist,
+        min(computer_salary_threshold, hce_salary_threshold),
+        salary_threshold,
+    )
+    salary_threshold = np.where(
+        is_executive_administrative_professional | is_farmer_fisher,
+        min(salary_basis_threshold, hce_salary_threshold),
+        salary_threshold,
+    )
+    always_exempt = has_never_worked | is_military
+    salary_threshold = np.where(always_exempt, 0, salary_threshold)
+
+    is_exempt = always_exempt | (
+        (employment_income >= salary_threshold) & ~is_paid_hourly
+    )
+    eligible = ~is_exempt & (weeks_worked > 0)
+    premium = np.where(eligible, employment_income * premium_share, 0)
+    return np.minimum(premium, employment_income).astype(np.float32)
 
 
 @pipeline_node(
@@ -2824,7 +2960,10 @@ def add_tips(self, cps: h5py.File):
         id="add_org_inputs",
         label="ORG Labor-Market Inputs",
         node_type="library",
-        description="Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+        description=(
+            "Impute hourly wage, hourly-pay status, and union coverage from CPS "
+            "ORG donors, then derive FLSA overtime premium."
+        ),
         source_file="policyengine_us_data/datasets/cps/cps.py",
         status="current",
         stability="moving",
@@ -2832,8 +2971,8 @@ def add_tips(self, cps: h5py.File):
         validation_commands=["uv run pytest tests/unit/datasets/test_org.py"],
     )
 )
-def add_org_labor_market_inputs(cps: h5py.File) -> None:
-    """Impute ORG-derived wage and union inputs onto CPS persons."""
+def add_org_labor_market_inputs(cps: h5py.File, time_period: int) -> None:
+    """Impute ORG-derived labor-market inputs and derive overtime premium."""
     n_persons = len(np.asarray(cps["age"]))
     household_ids = np.asarray(cps["household_id"], dtype=np.int64)
     person_household_ids = np.asarray(
@@ -2890,6 +3029,21 @@ def add_org_labor_market_inputs(cps: h5py.File) -> None:
         else:
             cps[variable] = values.astype(np.float32)
 
+    cps["fsla_overtime_premium"] = derive_flsa_overtime_premium(
+        time_period=time_period,
+        employment_income=cps["employment_income"],
+        hours_worked_last_week=cps["hours_worked_last_week"],
+        weeks_worked=cps["weeks_worked"],
+        is_paid_hourly=cps["is_paid_hourly"],
+        has_never_worked=cps["has_never_worked"],
+        is_military=cps["is_military"],
+        is_executive_administrative_professional=cps[
+            "is_executive_administrative_professional"
+        ],
+        is_farmer_fisher=cps["is_farmer_fisher"],
+        is_computer_scientist=cps["is_computer_scientist"],
+    )
+
 
 def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     """Add occupation categories relevant to overtime eligibility calculations.
@@ -2897,41 +3051,10 @@ def add_overtime_occupation(cps: h5py.File, person: DataFrame) -> None:
     https://www.law.cornell.edu/uscode/text/29/213
     https://www.congress.gov/crs-product/IF12480
     """
-    cps["has_never_worked"] = person.POCCU2 == 53
-    cps["is_military"] = person.POCCU2 == 52
-    cps["is_computer_scientist"] = person.POCCU2 == 8
-    cps["is_farmer_fisher"] = person.POCCU2 == 41
+    for variable, occupation_code in FLSA_OVERTIME_OCCUPATION_CODES.items():
+        cps[variable] = person.POCCU2 == occupation_code
     cps["is_executive_administrative_professional"] = person.POCCU2.isin(
-        [
-            1,  # Chief executives, and managers
-            2,  # Compensation, human resources, and infrastructure managers
-            3,  # All other managers
-            5,  # Business operations specialists
-            6,  # Accountants and auditors
-            7,  # Financial specialists
-            9,  # Mathematical science occupations
-            10,  # Architects, except naval
-            11,  # Surveyors, cartographers, & photogrammetrists
-            12,  # Engineering technologists and technicians
-            13,  # Earth scientists
-            14,  # Economists
-            15,  # Psychologists, and other social scientists
-            16,  # Health and safety specialists
-            18,  # Lawyers, judges, magistrates, and other judicial workers
-            19,  # Paralegals and all other legal support workers
-            25,  # Registered nurses, therapists, and specific pathologists
-            26,  # Veterinarians
-            27,  # Health technicians and other healthcare practitioners
-            28,  # Healthcare support occupations
-            29,  # First-line supervisors of protective service workers
-            34,  # First-line supervisors of housekeeping and janitorial workers
-            36,  # Supervisors of personal care and service workers
-            38,  # First-line supervisors of retail/non-retail sales workers
-            39,  # Sales and related occupations
-            40,  # Office & administrative support occupations
-            42,  # First-line supervisors of construction trades workers
-            50,  # Supervisors of transportation and flight related workers
-        ]
+        FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES
     )
 
 

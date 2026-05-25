@@ -39,6 +39,7 @@ STRUCTURAL_COMPUTED_EXPORT_VARIABLES = frozenset(
 # inputs that should override the fallback.
 DATA_OVERRIDABLE_COMPUTED_EXPORT_VARIABLES = frozenset(
     {
+        "fsla_overtime_premium",
         "meets_ssi_disability_criteria",
     }
 )

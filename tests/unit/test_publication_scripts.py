@@ -286,18 +286,19 @@ def test_policyengine_us_dependency_check_allows_unreleased_git_refs(
     tmp_path,
     monkeypatch,
 ):
+    sha = "a" * 40
     module = _load_script(
         ".github/scripts/check_policyengine_us_dependency.py",
         "check_policyengine_us_dependency_unreleased_git_test",
     )
     _write_pyproject_with_policyengine_us(
         tmp_path,
-        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us@abc",
+        f"policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@{sha}",
     )
     _write_uv_lock_for_policyengine_us(
         tmp_path,
         "1.691.12",
-        source='{ git = "https://github.com/PolicyEngine/policyengine-us?rev=abc#abc" }',
+        source=f'{{ git = "https://github.com/PolicyEngine/policyengine-us.git?rev={sha}#{sha}" }}',
     )
     monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
     monkeypatch.setattr(module, "_latest_pypi_version", lambda: "1.691.11")

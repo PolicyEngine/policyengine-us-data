@@ -19,7 +19,10 @@ from policyengine_us_data.datasets.cps.cps import (
     CPS_2024,
     CPS_2024_Full,
     ESI_POLICYHOLDER_VARIABLE,
+    FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
+    FLSA_OVERTIME_OCCUPATION_CODES,
     _open_dataset_read_only,
+    derive_flsa_overtime_premium,
     load_take_up_rate,
 )
 from policyengine_us_data.datasets.cps.takeup import prioritize_reported_recipients
@@ -119,49 +122,25 @@ CPS_CLONE_FEATURE_PREDICTORS = [
     "social_security",
 ]
 
-_OVERTIME_OCCUPATION_CODES = {
-    "has_never_worked": 53,
-    "is_military": 52,
-    "is_computer_scientist": 8,
-    "is_farmer_fisher": 41,
-}
-_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES = np.array(
-    [
-        1,
-        2,
-        3,
-        5,
-        7,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-        18,
-        19,
-        20,
-        21,
-        22,
-        24,
-        25,
-        27,
-        28,
-        29,
-        30,
-        32,
-        33,
-        34,
-    ],
-    dtype=np.int16,
+_OVERTIME_OCCUPATION_CODES = dict(FLSA_OVERTIME_OCCUPATION_CODES)
+FLSA_OVERTIME_PREMIUM_VARIABLE = "fsla_overtime_premium"
+FLSA_OVERTIME_PREMIUM_INPUTS = (
+    "employment_income",
+    "hours_worked_last_week",
+    "weeks_worked",
+    "is_paid_hourly",
+    "has_never_worked",
+    "is_military",
+    "is_executive_administrative_professional",
+    "is_farmer_fisher",
+    "is_computer_scientist",
 )
-
+CLONE_DERIVED_VARIABLES = frozenset({FLSA_OVERTIME_PREMIUM_VARIABLE})
 # CPS-only variables that should be QRF-imputed for the PUF clone half
 # instead of naively duplicated from the CPS donor. Most demographics,
 # IDs, weights, and random seeds are fine to duplicate; the categorical
-# clone features above are rematched separately.
+# clone features above are rematched separately, and clone-derived variables
+# are recomputed from final clone inputs after QRF splicing.
 CPS_ONLY_IMPUTED_VARIABLES = [
     # Retirement distributions
     "taxable_401k_distributions",
@@ -351,7 +330,11 @@ def _cps_clone_feature_variables_for_data(
         if variable in seen:
             continue
         seen.add(variable)
-        if variable in PUF_IMPUTED_VARIABLES or variable in _CPS_ONLY_SET:
+        if (
+            variable in PUF_IMPUTED_VARIABLES
+            or variable in _CPS_ONLY_SET
+            or variable in CLONE_DERIVED_VARIABLES
+        ):
             continue
         is_explicit_clone_feature = variable in explicit_clone_features
         if not is_explicit_clone_feature and _is_structural_clone_variable(variable):
@@ -477,9 +460,45 @@ def _derive_overtime_occupation_inputs(
     }
     derived["is_executive_administrative_professional"] = np.isin(
         occupation_codes,
-        _EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_CODES,
+        FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,
     )
     return pd.DataFrame(derived)
+
+
+def _derive_clone_flsa_overtime_premium(data: dict, time_period: int) -> dict:
+    """Recompute clone-half FLSA overtime premiums from final clone inputs."""
+    if FLSA_OVERTIME_PREMIUM_VARIABLE not in data:
+        return data
+
+    missing = [
+        variable
+        for variable in FLSA_OVERTIME_PREMIUM_INPUTS
+        if variable not in data or time_period not in data[variable]
+    ]
+    if missing:
+        raise ValueError(
+            "Cannot derive clone FLSA overtime premium; missing inputs: "
+            + ", ".join(missing)
+        )
+
+    values = np.array(data[FLSA_OVERTIME_PREMIUM_VARIABLE][time_period], copy=True)
+    n_persons = len(data["person_id"][time_period])
+    if len(values) != n_persons:
+        raise ValueError(
+            "fsla_overtime_premium must be person-level to derive clone values"
+        )
+
+    n_half = n_persons // 2
+    clone_inputs = {
+        variable: np.asarray(data[variable][time_period][n_half:])
+        for variable in FLSA_OVERTIME_PREMIUM_INPUTS
+    }
+    values[n_half:] = derive_flsa_overtime_premium(
+        time_period=time_period,
+        **clone_inputs,
+    ).astype(values.dtype, copy=False)
+    data[FLSA_OVERTIME_PREMIUM_VARIABLE] = {time_period: values}
+    return data
 
 
 def _impute_clone_cps_features(
@@ -1161,6 +1180,7 @@ class ExtendedCPS(Dataset):
             time_period=self.time_period,
             dataset_path=str(self.cps.file_path),
         )
+        new_data = _derive_clone_flsa_overtime_premium(new_data, self.time_period)
         new_data = self._finalize_stage2_computed_variables(new_data)
 
         new_data = self._impute_aotc_eligibility_inputs(new_data, self.time_period)

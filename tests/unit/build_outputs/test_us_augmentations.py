@@ -428,20 +428,7 @@ def test_us_takeup_postprocessor_rejects_unknown_takeup_results():
         )
 
 
-def test_us_medicaid_cost_postprocessor_applies_conditional_costs():
-    seen = {}
-
-    def fake_medicaid_cost_adder(data, time_period):
-        seen["time_period"] = time_period
-        np.testing.assert_array_equal(
-            data["takes_up_snap_if_eligible"][2024],
-            np.array([True, False]),
-        )
-        data["medicaid_cost_if_enrolled"] = {
-            time_period: np.array([100.0, 200.0, 300.0], dtype=np.float32)
-        }
-        return data
-
+def test_us_medicaid_cost_postprocessor_preserves_cloned_conditional_costs():
     payload = (
         USTakeupPostProcessor(
             takeup_applier=lambda **kwargs: {
@@ -454,14 +441,50 @@ def test_us_medicaid_cost_postprocessor_applies_conditional_costs():
         )
         .payload
     )
+    payload = H5Payload(
+        data={
+            **payload.data,
+            "medicaid_cost_if_enrolled": {
+                2024: np.array([100.0, 200.0, 300.0], dtype=np.float32)
+            },
+        },
+        time_period=payload.time_period,
+        entity_lengths=payload.entity_lengths,
+    )
 
-    result = USMedicaidCostPostProcessor(
-        medicaid_cost_adder=fake_medicaid_cost_adder,
-    ).apply(payload=payload, context=_context())
+    result = USMedicaidCostPostProcessor().apply(payload=payload, context=_context())
 
-    assert seen["time_period"] == 2024
     assert result.payload.variable_entities["medicaid_cost_if_enrolled"] == "person"
     np.testing.assert_array_equal(
         result.data["medicaid_cost_if_enrolled"][2024],
         np.array([100.0, 200.0, 300.0], dtype=np.float32),
+    )
+
+
+def test_us_medicaid_cost_postprocessor_clones_source_cost_without_reallocating():
+    class SourceVariableProvider:
+        def get_array(self, variable, period):
+            assert variable == "medicaid_cost_if_enrolled"
+            assert period == 2024
+            return np.array([10.0, 20.0, 30.0], dtype=np.float32)
+
+    context = _context()
+    context = replace(
+        context,
+        source=replace(
+            context.source,
+            input_variables=frozenset({"medicaid_cost_if_enrolled"}),
+            variable_provider=SourceVariableProvider(),
+        ),
+    )
+
+    result = USMedicaidCostPostProcessor().apply(
+        payload=_geography_payload(context),
+        context=context,
+    )
+
+    assert result.payload.variable_entities["medicaid_cost_if_enrolled"] == "person"
+    np.testing.assert_array_equal(
+        result.data["medicaid_cost_if_enrolled"][2024],
+        np.array([30.0, 10.0, 20.0], dtype=np.float32),
     )

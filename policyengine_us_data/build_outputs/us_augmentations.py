@@ -13,9 +13,6 @@ from policyengine_us.variables.gov.hud.is_eligible_for_housing_assistance import
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
-from policyengine_us_data.datasets.cps.medicaid_cost import (
-    add_medicaid_cost_if_enrolled_to_time_period_data,
-)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -51,7 +48,6 @@ PeriodData = dict[Any, np.ndarray]
 PayloadData = dict[str, PeriodData]
 GeographyDeriver = Callable[[np.ndarray], Mapping[str, np.ndarray]]
 TakeupApplier = Callable[..., Mapping[str, np.ndarray]]
-MedicaidCostAdder = Callable[[PayloadData, int], PayloadData]
 TAKEUP_VARIABLE_ENTITIES = {
     str(spec["variable"]): str(spec["entity"]) for spec in SIMPLE_TAKEUP_VARS
 }
@@ -609,7 +605,7 @@ class USTakeupPostProcessor:
     id="local_h5_us_medicaid_cost_postprocessor",
     label="USMedicaidCostPostProcessor",
     node_type="library",
-    description="Apply SLCSP-indexed Medicaid cost-if-enrolled to local H5 payloads.",
+    description="Preserve Medicaid cost-if-enrolled inputs in local H5 payloads.",
     source_file="policyengine_us_data/build_outputs/us_augmentations.py",
     status="current",
     stability="moving",
@@ -620,7 +616,7 @@ class USTakeupPostProcessor:
 )
 @dataclass(frozen=True)
 class USMedicaidCostPostProcessor:
-    """Apply Medicaid conditional cost after entity, geography, and take-up."""
+    """Preserve source Medicaid conditional costs after local H5 transforms."""
 
     spec = PayloadPostProcessorSpec(
         key=US_MEDICAID_COST_POSTPROCESSOR_KEY,
@@ -630,9 +626,6 @@ class USMedicaidCostPostProcessor:
             US_TAKEUP_POSTPROCESSOR_KEY,
         ),
     )
-    medicaid_cost_adder: MedicaidCostAdder = (
-        add_medicaid_cost_if_enrolled_to_time_period_data
-    )
 
     def apply(
         self,
@@ -640,16 +633,23 @@ class USMedicaidCostPostProcessor:
         payload: H5Payload,
         context: PayloadBuildContext,
     ) -> USMedicaidCostPostProcessorResult:
-        """Return a payload with conditional Medicaid costs applied."""
+        """Return a payload with source conditional Medicaid costs preserved."""
 
-        output = self.medicaid_cost_adder(
-            _copy_payload(payload.data),
-            context.time_period,
-        )
-        variable_entities = {
-            **payload.variable_entities,
-            "medicaid_cost_if_enrolled": "person",
-        }
+        output = _copy_payload(payload.data)
+        cost_periods = output.get("medicaid_cost_if_enrolled", {})
+        if context.time_period not in cost_periods:
+            source_values = _source_person_period_values(
+                context=context,
+                variable="medicaid_cost_if_enrolled",
+            )
+            if source_values is not None:
+                output["medicaid_cost_if_enrolled"] = {
+                    context.time_period: source_values.astype(np.float32)
+                }
+
+        variable_entities = dict(payload.variable_entities)
+        if "medicaid_cost_if_enrolled" in output:
+            variable_entities["medicaid_cost_if_enrolled"] = "person"
         return USMedicaidCostPostProcessorResult(
             payload=H5Payload(
                 data=output,
@@ -679,6 +679,26 @@ def default_us_postprocessors() -> tuple[
 
 def _copy_payload(data: Mapping[str, Mapping[Any, np.ndarray]]) -> PayloadData:
     return {variable: dict(periods) for variable, periods in data.items()}
+
+
+def _source_person_period_values(
+    *,
+    context: PayloadBuildContext,
+    variable: str,
+) -> np.ndarray | None:
+    """Return a source person input mapped to the local payload, if available."""
+
+    if variable not in context.source.input_variables:
+        return None
+    provider = context.source.variable_provider
+    get_array = getattr(provider, "get_array", None)
+    if not callable(get_array):
+        return None
+    try:
+        values = np.asarray(get_array(variable, context.time_period))
+    except (KeyError, ValueError):
+        return None
+    return values[context.reindexed.person_source_indices]
 
 
 def _required_period_array(

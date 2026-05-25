@@ -18,7 +18,7 @@ def test_other_health_insurance_premiums_subtracts_computed_premiums() -> None:
         baseline_computed_premium=computed,
     )
 
-    np.testing.assert_allclose(result, [375.0, -50.0, 50.0])
+    np.testing.assert_allclose(result, [375.0, 0.0, 50.0])
 
 
 def test_other_health_insurance_premiums_preserves_reported_input() -> None:

@@ -841,10 +841,10 @@ def derive_other_health_insurance_premiums(self):
     """Create other premium inputs net of baseline computed premiums.
 
     The model adds computed premiums back explicitly, so it needs a separate
-    other-premium input for the parts of CPS-reported non-Medicare premiums
-    not explained by baseline computed Marketplace, CHIP, or Medicaid
-    premiums. The original CPS-reported premium inputs remain unchanged as raw
-    source fields. The data package requires a policyengine-us release with
+    other-premium input for the non-negative part of CPS-reported non-Medicare
+    premiums not explained by baseline computed Marketplace, CHIP, or Medicaid
+    premiums. The CPS-reported premium inputs remain separate source fields.
+    The data package requires a policyengine-us release with
     these modeled premium variables, so missing variables fail fast instead of
     silently producing an incomplete decomposition.
     """
@@ -895,10 +895,11 @@ def compute_other_health_insurance_premiums(
     reported_premium: np.ndarray,
     baseline_computed_premium: np.ndarray,
 ) -> np.ndarray:
-    """Return other premiums after subtracting baseline computed premiums."""
-    return np.asarray(reported_premium, dtype=float) - np.asarray(
+    """Return non-negative other premiums net of baseline computed premiums."""
+    residual = np.asarray(reported_premium, dtype=float) - np.asarray(
         baseline_computed_premium, dtype=float
     )
+    return np.clip(residual, 0, None)
 
 
 def _premium_values_to_person(

@@ -3,6 +3,66 @@ import pandas as pd
 from scipy import optimize, sparse
 
 
+class GregCalibrator:
+    """Small adapter around svy's GREG calibration workflow."""
+
+    _base_weight_column = "_policyengine_base_weight"
+    _calibrated_weight_column = "_policyengine_greg_weight"
+
+    def __init__(self):
+        try:
+            import polars as pl
+            import svy
+        except ImportError as e:  # pragma: no cover - exercised without extra
+            raise ImportError(
+                "svy is required for GREG calibration. "
+                "Install with: pip install policyengine-us-data[calibration]"
+            ) from e
+
+        self._pl = pl
+        self._svy = svy
+
+    def calibrate(self, *, samp_weight, aux_vars, control):
+        control = {str(name): float(target) for name, target in control.items()}
+        aux_df = self._auxiliary_dataframe(aux_vars, list(control))
+        aux_df[self._base_weight_column] = np.asarray(samp_weight, dtype=float)
+
+        sample = self._svy.Sample(
+            self._pl.from_pandas(aux_df),
+            design=self._svy.Design(wgt=self._base_weight_column),
+        )
+        sample.weighting.calibrate(
+            controls=control,
+            wgt_name=self._calibrated_weight_column,
+        )
+        return (
+            sample.data.get_column(self._calibrated_weight_column)
+            .to_numpy()
+            .astype(float)
+        )
+
+    def _auxiliary_dataframe(self, aux_vars, control_names):
+        if isinstance(aux_vars, pd.DataFrame):
+            aux_df = aux_vars.copy()
+            aux_df.columns = [str(column) for column in aux_df.columns]
+            return aux_df
+
+        if sparse.issparse(aux_vars):
+            aux_array = aux_vars.toarray()
+        else:
+            aux_array = np.asarray(aux_vars)
+
+        if aux_array.ndim == 1:
+            aux_array = aux_array.reshape(-1, 1)
+
+        if aux_array.shape[1] != len(control_names):
+            raise ValueError(
+                "aux_vars column count must match the number of GREG controls"
+            )
+
+        return pd.DataFrame(aux_array.astype(float), columns=control_names)
+
+
 def _pct_error(achieved, target):
     if target == 0:
         return 0.0 if achieved == 0 else float("inf")
@@ -106,10 +166,10 @@ def calibrate_greg(
     n_ages=86,
 ):
     """
-    Calibrate weights using GREG method via samplics.
+    Calibrate weights using GREG method via svy.
 
     Args:
-        calibrator: SampleWeight instance from samplics
+        calibrator: GregCalibrator instance
         X: Design matrix (n_households x n_ages)
         y_target: Target age distribution
         baseline_weights: Initial household weights

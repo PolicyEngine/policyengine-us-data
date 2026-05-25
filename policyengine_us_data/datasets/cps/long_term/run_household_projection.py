@@ -56,6 +56,7 @@ from ssa_data import (
     set_long_term_target_source,
 )
 from calibration import (
+    GregCalibrator,
     build_calibration_audit,
     build_clone_donor_component_weight_concentration_audit,
     build_clone_donor_family_weight_concentration_audit,
@@ -787,14 +788,7 @@ if USE_TOB or BENCHMARK_TOB:
     from ssa_data import load_hi_tob_projections, load_oasdi_tob_projections
 
 if USE_GREG:
-    try:
-        from samplics.weighting import SampleWeight
-    except ImportError:
-        raise ImportError(
-            "samplics is required for GREG calibration. "
-            "Install with: pip install policyengine-us-data[calibration]"
-        )
-    calibrator = SampleWeight()
+    calibrator = GregCalibrator()
 else:
     calibrator = None
 

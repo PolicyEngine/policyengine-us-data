@@ -54,7 +54,7 @@ dependencies = [
 
 [project.optional-dependencies]
 calibration = [
-    "samplics",
+    "svy>=0.18.2",
 ]
 l0 = [
     "l0-python",

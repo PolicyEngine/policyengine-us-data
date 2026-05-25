@@ -24,8 +24,9 @@ classifiers = [
 dependencies = [
     # Temporary GitHub pin: policyengine-us 1.706.14 is blocked from PyPI by
     # the project-size limit, but us-data needs the merged FLSA overtime
-    # constants before the next PyPI release is available.
-    "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@0dcc69aa7a38be901141d38c8dbb7a9c870f2561",
+    # constants and data-backed Medicaid cost input before the next PyPI
+    # release is available.
+    "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@1da04a64dcdce26834b063d68daa835765a5d8ed",
     # policyengine-core 3.26.1 is the current 3.26.x runtime and includes the fix for
     # PolicyEngine/policyengine-core#482 (user-set ETERNITY inputs lost
     # after _invalidate_all_caches) and is required by policyengine-us 1.682.1+.

@@ -2739,7 +2739,7 @@
           "api_refs": [
             "policyengine_us_data.datasets.cps.cps.add_org_labor_market_inputs"
           ],
-          "description": "Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors.",
+          "description": "Impute hourly wage, hourly-pay status, and union coverage from CPS ORG donors, then derive FLSA overtime premium.",
           "id": "add_org_inputs",
           "label": "ORG Labor-Market Inputs",
           "node_type": "library",

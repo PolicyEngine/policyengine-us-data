@@ -15,6 +15,11 @@ from filelock import FileLock
 
 from policyengine_us_data.utils.downsample import downsample_dataset_arrays
 
+SCF_AUTO_LOAN_IDENTIFIER_COLUMNS = ["yy1", "y1"]
+SCF_AUTO_LOAN_BALANCE_COLUMNS = ["x2209", "x2309", "x2409", "x7158"]
+SCF_AUTO_LOAN_RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
+SCF_AUTO_LOAN_COLUMNS = SCF_AUTO_LOAN_BALANCE_COLUMNS + SCF_AUTO_LOAN_RATE_COLUMNS
+
 
 class SCF(Dataset):
     """Dataset containing processed Survey of Consumer Finances data."""
@@ -82,7 +87,7 @@ class SCF(Dataset):
         """
         # Check if file exists
         if not os.path.exists(self.file_path):
-            print(f"SCF dataset file not found. Generating it.")
+            print("SCF dataset file not found. Generating it.")
             self._generate_unlocked()
 
         # Open the HDF5 file and handle potential errors
@@ -218,6 +223,13 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
             scf[pe_var] = raw_data[scf_var].fillna(0).values
 
 
+def _clean_auto_loan_columns(auto_df: pd.DataFrame) -> pd.DataFrame:
+    """Replace SCF auto-loan missing-code artifacts with valid zero values."""
+    auto_df = auto_df.copy()
+    auto_df[SCF_AUTO_LOAN_COLUMNS] = auto_df[SCF_AUTO_LOAN_COLUMNS].clip(lower=0)
+    return auto_df
+
+
 def add_auto_loan_interest(scf: dict, year: int) -> None:
     """Adds auto loan balance and interest to the summarized SCF dataset from the full SCF."""
     import requests
@@ -228,19 +240,6 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
     logger = logging.getLogger(__name__)
 
     url = f"https://www.federalreserve.gov/econres/files/scf{year}s.zip"
-
-    # Define columns of interest
-    IDENTIFYER_COLUMNS = ["yy1", "y1"]
-    AUTO_LOAN_COLUMNS = [
-        "x2209",  # loan amount on car 1
-        "x2309",  # loan amount on car 2
-        "x2409",  # loan amount on car 3
-        "x7158",  # loan amount on car 4
-        "x2219",  # loan interest rate on car 1
-        "x2319",  # loan interest rate on car 2
-        "x2419",  # loan interest rate on car 3
-        "x7170",  # loan interest rate on car 4
-    ]
 
     try:
         # Download zip file
@@ -273,7 +272,9 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                 with z.open(dta_files[0]) as f:
                     df = pd.read_stata(
                         io.BytesIO(f.read()),
-                        columns=(IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS),
+                        columns=(
+                            SCF_AUTO_LOAN_IDENTIFIER_COLUMNS + SCF_AUTO_LOAN_COLUMNS
+                        ),
                     )
                     logger.info(f"Read DataFrame with shape {df.shape}")
             except Exception as e:
@@ -287,17 +288,17 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
             raise RuntimeError(f"Downloaded zip file is corrupt for year {year}") from e
 
         # Process the interest data and add to final SCF dictionary
-        auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()
-        auto_df[AUTO_LOAN_COLUMNS].replace(-1, 0, inplace=True)
+        auto_df = _clean_auto_loan_columns(
+            df[SCF_AUTO_LOAN_IDENTIFIER_COLUMNS + SCF_AUTO_LOAN_COLUMNS]
+        )
 
         # Interest rate columns are in percent * 10,000 format, we need to divide by 10,000 to leave them in percentage format
-        RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
-        auto_df[RATE_COLUMNS] /= 10_000
+        auto_df[SCF_AUTO_LOAN_RATE_COLUMNS] /= 10_000
 
         # Calculate total auto loan balance (sum of all auto loan balance variables)
-        auto_df["auto_loan_balance"] = auto_df[
-            ["x2209", "x2309", "x2409", "x7158"]
-        ].sum(axis=1)
+        auto_df["auto_loan_balance"] = auto_df[SCF_AUTO_LOAN_BALANCE_COLUMNS].sum(
+            axis=1
+        )
 
         # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
         auto_df["auto_loan_interest"] = (

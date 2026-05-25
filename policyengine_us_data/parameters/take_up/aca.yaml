@@ -6,21 +6,21 @@ metadata:
   reference:
     - title: KFF "A Closer Look at the Remaining Uninsured Population Eligible for Medicaid and CHIP"
       href: https://www.kff.org/affordable-care-act/state-indicator/distribution-of-eligibility-for-aca-coverage-among-the-remaining-uninsured/
-    - title: "CMS Effectuated Enrollment: Early 2024 Snapshot and Full Year 2023 Average"
-      href: https://www.cms.gov/files/document/early-2024-and-full-year-2023-effectuated-enrollment-report.pdf
+    - title: CMS "2023 Marketplace Open Enrollment Period Public Use Files"
+      href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2023-marketplace-open-enrollment-period-public-use-files
     - title: CMS "2024 Marketplace Open Enrollment Period Public Use Files"
       href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2024-marketplace-open-enrollment-period-public-use-files
-    - title: "CMS Effectuated Enrollment: Early 2025 Snapshot and Full Year 2024 Average"
-      href: https://www.cms.gov/files/document/effectuated-enrollment-early-snapshot-2025-and-full-year-2024-average.pdf
+    - title: CMS "2025 Marketplace Open Enrollment Period Public Use Files"
+      href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2025-marketplace-open-enrollment-period-public-use-files
     - title: CMS "2026 Marketplace Open Enrollment Period Public Use Files"
       href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2026-marketplace-open-enrollment-period-public-use-files
 values:
   2018-01-01: 0.672
-  # APTC enrollment / (APTC enrollment + 2023 tax-credit-eligible uninsured).
+  # OEP APTC plan selections / (OEP APTC plan selections + 2023 tax-credit-eligible uninsured).
   # KFF reports 8,163,000 uninsured people eligible for Marketplace tax credits in 2023.
-  # APTC enrollment: 14,793,073 (2023), 19,771,819 (2024), 21,822,894 (2025),
-  # and 20,035,756 (2026).
-  2023-01-01: 0.644408
-  2024-01-01: 0.707784
-  2025-01-01: 0.727772
+  # OEP APTC plan selections: 14,797,921 (2023), 19,743,689 (2024),
+  # 22,380,137 (2025), and 20,035,756 (2026).
+  2023-01-01: 0.644483
+  2024-01-01: 0.707489
+  2025-01-01: 0.732739
   2026-01-01: 0.710519

@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from policyengine_us_data.datasets.cps import cps as cps_module
 from policyengine_us_data.datasets.cps.cps import (
@@ -219,7 +218,7 @@ def test_flsa_overtime_hours_and_rate_match_policyengine_us_parameters():
 
 
 def test_flsa_overtime_occupation_codes_match_policyengine_us_when_available():
-    policyengine_us_cps = pytest.importorskip("policyengine_us.data.cps")
+    from policyengine_us.data import cps as policyengine_us_cps
 
     np.testing.assert_array_equal(
         FLSA_EXECUTIVE_ADMINISTRATIVE_PROFESSIONAL_OCCUPATION_CODES,

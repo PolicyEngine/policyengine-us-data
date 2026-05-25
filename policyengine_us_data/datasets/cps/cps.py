@@ -49,6 +49,9 @@ from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
+from policyengine_us_data.datasets.cps.medicaid_cost import (
+    add_medicaid_cost_if_enrolled_to_dataset,
+)
 from policyengine_us_data.utils.takeup import (
     _sum_person_values_to_tax_units,
     _voluntary_filing_age_bin,
@@ -360,6 +363,8 @@ class CPS(Dataset):
         add_takeup(self)
         logging.info("Imputing Marketplace plan benchmark ratio")
         add_marketplace_plan_benchmark_ratio(self)
+        logging.info("Adding Medicaid cost if enrolled")
+        add_medicaid_cost_if_enrolled_to_dataset(self)
         logging.info("Deriving other health insurance premiums")
         derive_other_health_insurance_premiums(self)
         logging.info("Downsampling")

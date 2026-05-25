@@ -15,9 +15,11 @@ from policyengine_us_data.build_outputs.source_dataset import (
 from policyengine_us_data.build_outputs.us_augmentations import (
     US_ENTITY_POSTPROCESSOR_KEY,
     US_GEOGRAPHY_POSTPROCESSOR_KEY,
+    US_MEDICAID_COST_POSTPROCESSOR_KEY,
     US_TAKEUP_POSTPROCESSOR_KEY,
     USEntityPostProcessor,
     USGeographyPostProcessor,
+    USMedicaidCostPostProcessor,
     USTakeupPostProcessor,
     _build_reported_takeup_anchors,
     default_us_postprocessors,
@@ -140,11 +142,13 @@ def test_default_us_postprocessors_are_in_runtime_order():
         USEntityPostProcessor,
         USGeographyPostProcessor,
         USTakeupPostProcessor,
+        USMedicaidCostPostProcessor,
     )
     assert tuple(processor.spec.key for processor in postprocessors) == (
         US_ENTITY_POSTPROCESSOR_KEY,
         US_GEOGRAPHY_POSTPROCESSOR_KEY,
         US_TAKEUP_POSTPROCESSOR_KEY,
+        US_MEDICAID_COST_POSTPROCESSOR_KEY,
     )
     seen = set()
     for processor in postprocessors:
@@ -422,3 +426,42 @@ def test_us_takeup_postprocessor_rejects_unknown_takeup_results():
             payload=_geography_payload(),
             context=_context(),
         )
+
+
+def test_us_medicaid_cost_postprocessor_applies_conditional_costs():
+    seen = {}
+
+    def fake_medicaid_cost_adder(data, time_period):
+        seen["time_period"] = time_period
+        np.testing.assert_array_equal(
+            data["takes_up_snap_if_eligible"][2024],
+            np.array([True, False]),
+        )
+        data["medicaid_cost_if_enrolled"] = {
+            time_period: np.array([100.0, 200.0, 300.0], dtype=np.float32)
+        }
+        return data
+
+    payload = (
+        USTakeupPostProcessor(
+            takeup_applier=lambda **kwargs: {
+                "takes_up_snap_if_eligible": np.array([True, False])
+            },
+        )
+        .apply(
+            payload=_geography_payload(),
+            context=_context(),
+        )
+        .payload
+    )
+
+    result = USMedicaidCostPostProcessor(
+        medicaid_cost_adder=fake_medicaid_cost_adder,
+    ).apply(payload=payload, context=_context())
+
+    assert seen["time_period"] == 2024
+    assert result.payload.variable_entities["medicaid_cost_if_enrolled"] == "person"
+    np.testing.assert_array_equal(
+        result.data["medicaid_cost_if_enrolled"][2024],
+        np.array([100.0, 200.0, 300.0], dtype=np.float32),
+    )

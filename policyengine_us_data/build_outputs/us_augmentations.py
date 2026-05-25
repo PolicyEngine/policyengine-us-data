@@ -13,6 +13,9 @@ from policyengine_us.variables.gov.hud.is_eligible_for_housing_assistance import
 from policyengine_us_data.calibration.block_assignment import (
     derive_geography_from_blocks,
 )
+from policyengine_us_data.datasets.cps.medicaid_cost import (
+    add_medicaid_cost_if_enrolled_to_time_period_data,
+)
 from policyengine_us_data.pipeline_metadata import pipeline_node
 from policyengine_us_data.utils.takeup import (
     SIMPLE_TAKEUP_VARS,
@@ -31,11 +34,14 @@ __all__ = [
     "TAKEUP_VARIABLE_ENTITIES",
     "US_ENTITY_POSTPROCESSOR_KEY",
     "US_GEOGRAPHY_POSTPROCESSOR_KEY",
+    "US_MEDICAID_COST_POSTPROCESSOR_KEY",
     "US_TAKEUP_POSTPROCESSOR_KEY",
     "USEntityPostProcessor",
     "USEntityPostProcessorResult",
     "USGeographyPostProcessor",
     "USGeographyPostProcessorResult",
+    "USMedicaidCostPostProcessor",
+    "USMedicaidCostPostProcessorResult",
     "USTakeupPostProcessor",
     "USTakeupPostProcessorResult",
     "default_us_postprocessors",
@@ -45,6 +51,7 @@ PeriodData = dict[Any, np.ndarray]
 PayloadData = dict[str, PeriodData]
 GeographyDeriver = Callable[[np.ndarray], Mapping[str, np.ndarray]]
 TakeupApplier = Callable[..., Mapping[str, np.ndarray]]
+MedicaidCostAdder = Callable[[PayloadData, int], PayloadData]
 TAKEUP_VARIABLE_ENTITIES = {
     str(spec["variable"]): str(spec["entity"]) for spec in SIMPLE_TAKEUP_VARS
 }
@@ -52,6 +59,7 @@ REQUIRED_TAKEUP_SUBENTITIES = ("tax_unit", "spm_unit")
 US_ENTITY_POSTPROCESSOR_KEY = "us_entity"
 US_GEOGRAPHY_POSTPROCESSOR_KEY = "us_geography"
 US_TAKEUP_POSTPROCESSOR_KEY = "us_takeup"
+US_MEDICAID_COST_POSTPROCESSOR_KEY = "us_medicaid_cost"
 
 
 @pipeline_node(
@@ -126,6 +134,32 @@ class USTakeupPostProcessorResult:
 
     payload: H5Payload
     takeup_variables: tuple[str, ...] = ()
+
+    @property
+    def data(self) -> PayloadData:
+        """Augmented payload data retained for transitional callers."""
+
+        return self.payload.data
+
+
+@pipeline_node(
+    id="local_h5_us_medicaid_cost_postprocessor_result",
+    label="USMedicaidCostPostProcessorResult",
+    node_type="library",
+    description="US Medicaid conditional-cost local H5 payload data.",
+    source_file="policyengine_us_data/build_outputs/us_augmentations.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+    ],
+)
+@dataclass(frozen=True)
+class USMedicaidCostPostProcessorResult:
+    """Payload after conditional Medicaid cost fields are applied."""
+
+    payload: H5Payload
 
     @property
     def data(self) -> PayloadData:
@@ -571,8 +605,67 @@ class USTakeupPostProcessor:
         }
 
 
+@pipeline_node(
+    id="local_h5_us_medicaid_cost_postprocessor",
+    label="USMedicaidCostPostProcessor",
+    node_type="library",
+    description="Apply SLCSP-indexed Medicaid cost-if-enrolled to local H5 payloads.",
+    source_file="policyengine_us_data/build_outputs/us_augmentations.py",
+    status="current",
+    stability="moving",
+    pathways=["local_h5"],
+    validation_commands=[
+        "uv run pytest tests/unit/build_outputs/test_us_augmentations.py"
+    ],
+)
+@dataclass(frozen=True)
+class USMedicaidCostPostProcessor:
+    """Apply Medicaid conditional cost after entity, geography, and take-up."""
+
+    spec = PayloadPostProcessorSpec(
+        key=US_MEDICAID_COST_POSTPROCESSOR_KEY,
+        requires=(
+            US_ENTITY_POSTPROCESSOR_KEY,
+            US_GEOGRAPHY_POSTPROCESSOR_KEY,
+            US_TAKEUP_POSTPROCESSOR_KEY,
+        ),
+    )
+    medicaid_cost_adder: MedicaidCostAdder = (
+        add_medicaid_cost_if_enrolled_to_time_period_data
+    )
+
+    def apply(
+        self,
+        *,
+        payload: H5Payload,
+        context: PayloadBuildContext,
+    ) -> USMedicaidCostPostProcessorResult:
+        """Return a payload with conditional Medicaid costs applied."""
+
+        output = self.medicaid_cost_adder(
+            _copy_payload(payload.data),
+            context.time_period,
+        )
+        variable_entities = {
+            **payload.variable_entities,
+            "medicaid_cost_if_enrolled": "person",
+        }
+        return USMedicaidCostPostProcessorResult(
+            payload=H5Payload(
+                data=output,
+                time_period=payload.time_period,
+                entity_lengths=payload.entity_lengths,
+                variable_entities=variable_entities,
+            ),
+        )
+
+
 def default_us_postprocessors() -> tuple[
-    USEntityPostProcessor | USGeographyPostProcessor | USTakeupPostProcessor, ...
+    USEntityPostProcessor
+    | USGeographyPostProcessor
+    | USTakeupPostProcessor
+    | USMedicaidCostPostProcessor,
+    ...,
 ]:
     """Return production US postprocessors in their required order."""
 
@@ -580,6 +673,7 @@ def default_us_postprocessors() -> tuple[
         USEntityPostProcessor(),
         USGeographyPostProcessor(),
         USTakeupPostProcessor(),
+        USMedicaidCostPostProcessor(),
     )
 
 

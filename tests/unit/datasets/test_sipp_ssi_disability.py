@@ -131,7 +131,10 @@ def test_ssi_disability_predictors_use_six_comparable_difficulty_items():
 
 
 def test_ssi_disability_model_cache_path_uses_training_period():
-    assert _ssi_disability_model_path(2024).name == "ssi_disability_criteria_2024.pkl"
+    assert (
+        _ssi_disability_model_path(2024).name
+        == "ssi_disability_criteria_2024_sipp_2024.pkl"
+    )
 
 
 def test_build_ssi_disability_training_frame_annualizes_ssdi_amount():

@@ -51,6 +51,7 @@ from policyengine_us_data.datasets.sipp.sipp import (
     SSI_DISABILITY_EXPORT_VARIABLES,
     VEHICLE_MODEL_PREDICTORS,
     build_vehicle_training_frame,
+    ensure_sipp_file,
     get_ssi_disability_model,
     predict_ssi_disability_criteria,
     preserve_under_65_ssi_disability_criteria,
@@ -663,16 +664,26 @@ def _impute_sipp(
     Returns:
         Updated data dict.
     """
-    from huggingface_hub import hf_hub_download
-    from policyengine_us_data.storage import STORAGE_FOLDER
-
-    hf_hub_download(
-        repo_id="PolicyEngine/policyengine-us-data",
-        filename="pu2023_slim.csv",
-        repo_type="model",
-        local_dir=STORAGE_FOLDER,
+    tip_cols = (
+        [
+            "SSUID",
+            "MONTHCODE",
+            "WPFINWGT",
+            "TAGE",
+            "TPTOTINC",
+        ]
+        + SIPP_JOB_OCCUPATION_COLUMNS
+        + SIPP_TIP_AMOUNT_COLUMNS
+        + [
+            SIPP_TIP_AMOUNT_TO_ALLOCATION_COLUMN[column]
+            for column in SIPP_TIP_AMOUNT_COLUMNS
+        ]
     )
-    sipp_df = pd.read_csv(STORAGE_FOLDER / "pu2023_slim.csv")
+    sipp_df = pd.read_csv(
+        ensure_sipp_file(),
+        delimiter="|",
+        usecols=tip_cols,
+    )
 
     tip_amount_columns = [
         column for column in SIPP_TIP_AMOUNT_COLUMNS if column in sipp_df
@@ -788,12 +799,6 @@ def _impute_sipp(
 
     # Asset imputation
     try:
-        hf_hub_download(
-            repo_id="PolicyEngine/policyengine-us-data",
-            filename="pu2023.csv",
-            repo_type="model",
-            local_dir=STORAGE_FOLDER,
-        )
         asset_cols = (
             [
                 "SSUID",
@@ -817,7 +822,7 @@ def _impute_sipp(
             + SIPP_ASSET_ALLOCATION_COLUMNS
         )
         asset_df = pd.read_csv(
-            STORAGE_FOLDER / "pu2023.csv",
+            ensure_sipp_file(),
             delimiter="|",
             usecols=asset_cols,
         )

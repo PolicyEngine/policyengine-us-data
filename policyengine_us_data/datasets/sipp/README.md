@@ -18,8 +18,8 @@ SIPP panel wave. These are the canonical reference for every variable
 name, value code, and weighting construct used by the code in this
 folder:
 
-- [SIPP 2023 public-use data dictionary (PDF)](https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2023/2023_SIPP_Data_Dictionary.pdf)
-- [SIPP 2023 users' guide (PDF, Aug 2026 revision)](https://www2.census.gov/programs-surveys/sipp/tech-documentation/methodology/2023_SIPP_Users_Guide_AUG26.pdf)
+- [SIPP 2024 public-use data dictionary (PDF)](https://www2.census.gov/programs-surveys/sipp/tech-documentation/data-dictionaries/2024/2024_SIPP_Data_Dictionary.pdf)
+- [SIPP 2024 users' guide (PDF)](https://www2.census.gov/programs-surveys/sipp/tech-documentation/methodology/2024_SIPP_Users_Guide.pdf)
 
 See also:
 
@@ -30,15 +30,16 @@ See also:
 ## Data products in this folder
 
 - `sipp.py` — trains and caches QRF imputation models (`get_tip_model`,
-  `get_asset_model`, `get_vehicle_model`) from SIPP 2023 person-month
+  `get_asset_model`, `get_vehicle_model`) from SIPP 2024 person-month
   data. The training frame is filtered to `MONTHCODE == 12` (December)
   so every row represents one person-year rather than twelve annualized
   months.
 
-The raw SIPP CSVs (`pu2023.csv` and the slim variant `pu2023_slim.csv`)
-are mirrored on the `PolicyEngine/policyengine-us-data` HuggingFace model
-repo and downloaded on demand when a training run is needed. They are
-not vendored in this Git repository.
+The raw SIPP CSV (`pu2024.csv`) is downloaded on demand when a training
+run is needed. The downloader first checks the
+`PolicyEngine/policyengine-us-data` HuggingFace model repo for a cached
+copy, then falls back to Census's public `pu2024_csv.zip` archive. The raw
+file is not vendored in this Git repository.
 
 ## Licensing
 

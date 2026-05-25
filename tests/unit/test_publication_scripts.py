@@ -282,6 +282,34 @@ def test_policyengine_us_dependency_check_flags_git_refs(tmp_path):
     assert any("Git ref" in violation for violation in violations)
 
 
+def test_policyengine_us_dependency_check_allows_unreleased_git_refs(
+    tmp_path,
+    monkeypatch,
+):
+    module = _load_script(
+        ".github/scripts/check_policyengine_us_dependency.py",
+        "check_policyengine_us_dependency_unreleased_git_test",
+    )
+    _write_pyproject_with_policyengine_us(
+        tmp_path,
+        "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us@abc",
+    )
+    _write_uv_lock_for_policyengine_us(
+        tmp_path,
+        "1.691.12",
+        source='{ git = "https://github.com/PolicyEngine/policyengine-us?rev=abc#abc" }',
+    )
+    monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(module, "_latest_pypi_version", lambda: "1.691.11")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["check_policyengine_us_dependency.py", "--mode", "fail"],
+    )
+
+    assert module.main() == 0
+
+
 def test_policyengine_us_dependency_check_flags_non_exact_pyproject_pin(tmp_path):
     module = _load_script(
         ".github/scripts/check_policyengine_us_dependency.py",

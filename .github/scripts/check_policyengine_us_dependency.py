@@ -18,6 +18,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPI_JSON_TIMEOUT_SECONDS = 20
 POLICYENGINE_US = "policyengine-us"
 STALE_LOCK_PREFIX = "uv.lock has policyengine-us "
+LOCK_GIT_REF_PREFIX = "uv.lock resolves policyengine-us from a Git ref."
+PROJECT_GIT_REF_PREFIX = "pyproject.toml pins policyengine-us to a Git ref."
 
 
 def _annotation(level: str, message: str) -> str:
@@ -86,6 +88,8 @@ def _latest_pypi_version() -> str:
 def check_dependency(root: Path, latest_version: str | None = None) -> list[str]:
     locked_version, source = _locked_policyengine_us(root)
     project_dependency = _project_policyengine_us_dependency(root)
+    lock_uses_git_ref = "git" in source
+    project_uses_git_ref = "@" in project_dependency and "git+" in project_dependency
 
     violations: list[str] = []
     if (
@@ -99,25 +103,38 @@ def check_dependency(root: Path, latest_version: str | None = None) -> list[str]
         )
 
     expected_dependency = f"{POLICYENGINE_US}=={locked_version}"
-    if project_dependency != expected_dependency:
+    if not project_uses_git_ref and project_dependency != expected_dependency:
         violations.append(
             f"pyproject.toml must pin {expected_dependency} to match uv.lock; "
             f"found {project_dependency!r}."
         )
 
-    if "git" in source:
+    if lock_uses_git_ref:
         violations.append(
-            "uv.lock resolves policyengine-us from a Git ref. Prefer an exact "
+            f"{LOCK_GIT_REF_PREFIX} Prefer an exact "
             f"PyPI release pin once policyengine-us {locked_version} is published."
         )
 
-    if "@" in project_dependency and "git+" in project_dependency:
+    if project_uses_git_ref:
         violations.append(
-            "pyproject.toml pins policyengine-us to a Git ref. Prefer an exact "
+            f"{PROJECT_GIT_REF_PREFIX} Prefer an exact "
             "PyPI release pin for production data builds."
         )
 
     return violations
+
+
+def _is_unreleased_git_ref_violation(
+    violation: str,
+    locked_version: str,
+    latest_version: str | None,
+) -> bool:
+    if latest_version is None:
+        return False
+    git_ref_violation = violation.startswith(
+        LOCK_GIT_REF_PREFIX
+    ) or violation.startswith(PROJECT_GIT_REF_PREFIX)
+    return git_ref_violation and _compare_versions(locked_version, latest_version) > 0
 
 
 def main() -> int:
@@ -163,17 +180,30 @@ def main() -> int:
         print(f"policyengine-us dependency is current at {locked_version}.")
         return 0
 
+    locked_version, _source = _locked_policyengine_us(REPO_ROOT)
     has_blocking_violation = False
     allowed_stale_version = False
+    allowed_unreleased_git_ref = False
     for violation in violations:
         stale_version_violation = violation.startswith(STALE_LOCK_PREFIX)
         allowed_by_override = allow_stale and stale_version_violation
-        level = "warning" if args.mode == "warn" or allowed_by_override else "error"
+        allowed_git_ref = _is_unreleased_git_ref_violation(
+            violation,
+            locked_version,
+            latest_version,
+        )
+        level = (
+            "warning"
+            if args.mode == "warn" or allowed_by_override or allowed_git_ref
+            else "error"
+        )
         print(_annotation(level, violation))
-        if args.mode == "fail" and not allowed_by_override:
+        if args.mode == "fail" and not allowed_by_override and not allowed_git_ref:
             has_blocking_violation = True
         if allowed_by_override:
             allowed_stale_version = True
+        if allowed_git_ref:
+            allowed_unreleased_git_ref = True
 
     if allowed_stale_version:
         print(
@@ -183,10 +213,18 @@ def main() -> int:
                 "policyengine-us lagging the latest PyPI release.",
             )
         )
+    if allowed_unreleased_git_ref:
+        print(
+            _annotation(
+                "warning",
+                "policyengine-us is pinned to an unreleased Git ref; switch to "
+                f"policyengine-us=={locked_version} once that PyPI release exists.",
+            )
+        )
 
     if has_blocking_violation:
         return 1
-    if allowed_stale_version:
+    if allowed_stale_version or allowed_unreleased_git_ref:
         return 0
 
     return 1 if args.mode == "fail" else 0

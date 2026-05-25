@@ -17,7 +17,9 @@ from urllib.request import urlopen
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPI_JSON_TIMEOUT_SECONDS = 20
 POLICYENGINE_US = "policyengine-us"
+POLICYENGINE_US_GITHUB_REPO = "github.com/PolicyEngine/policyengine-us"
 STALE_LOCK_PREFIX = "uv.lock has policyengine-us "
+GIT_REF_PREFIX = "uv.lock resolves policyengine-us from a Git ref"
 
 
 def _annotation(level: str, message: str) -> str:
@@ -83,9 +85,39 @@ def _latest_pypi_version() -> str:
     return version
 
 
+def _is_policyengine_us_git_source(source: dict[str, object]) -> bool:
+    git_source = source.get("git")
+    return isinstance(git_source, str) and POLICYENGINE_US_GITHUB_REPO in git_source
+
+
+def _is_policyengine_us_git_dependency(dependency: str) -> bool:
+    return (
+        dependency.startswith(f"{POLICYENGINE_US} @ git+")
+        and POLICYENGINE_US_GITHUB_REPO in dependency
+        and re.search(r"@[0-9a-f]{40}$", dependency) is not None
+    )
+
+
+def _allows_temporary_git_ref(
+    locked_version: str,
+    source: dict[str, object],
+    project_dependency: str,
+    latest_version: str | None,
+) -> bool:
+    return (
+        latest_version is not None
+        and _compare_versions(locked_version, latest_version) > 0
+        and _is_policyengine_us_git_source(source)
+        and _is_policyengine_us_git_dependency(project_dependency)
+    )
+
+
 def check_dependency(root: Path, latest_version: str | None = None) -> list[str]:
     locked_version, source = _locked_policyengine_us(root)
     project_dependency = _project_policyengine_us_dependency(root)
+    git_ref_allowed = _allows_temporary_git_ref(
+        locked_version, source, project_dependency, latest_version
+    )
 
     violations: list[str] = []
     if (
@@ -99,19 +131,23 @@ def check_dependency(root: Path, latest_version: str | None = None) -> list[str]
         )
 
     expected_dependency = f"{POLICYENGINE_US}=={locked_version}"
-    if project_dependency != expected_dependency:
+    if project_dependency != expected_dependency and not git_ref_allowed:
         violations.append(
             f"pyproject.toml must pin {expected_dependency} to match uv.lock; "
             f"found {project_dependency!r}."
         )
 
-    if "git" in source:
+    if "git" in source and not git_ref_allowed:
         violations.append(
-            "uv.lock resolves policyengine-us from a Git ref. Prefer an exact "
+            f"{GIT_REF_PREFIX}. Prefer an exact "
             f"PyPI release pin once policyengine-us {locked_version} is published."
         )
 
-    if "@" in project_dependency and "git+" in project_dependency:
+    if (
+        "@" in project_dependency
+        and "git+" in project_dependency
+        and not git_ref_allowed
+    ):
         violations.append(
             "pyproject.toml pins policyengine-us to a Git ref. Prefer an exact "
             "PyPI release pin for production data builds."
@@ -159,8 +195,22 @@ def main() -> int:
         return 0
 
     if not violations:
-        locked_version, _source = _locked_policyengine_us(REPO_ROOT)
+        locked_version, source = _locked_policyengine_us(REPO_ROOT)
         print(f"policyengine-us dependency is current at {locked_version}.")
+        if _allows_temporary_git_ref(
+            locked_version,
+            source,
+            _project_policyengine_us_dependency(REPO_ROOT),
+            latest_version,
+        ):
+            print(
+                _annotation(
+                    "warning",
+                    f"policyengine-us {locked_version} is temporarily pinned to "
+                    "GitHub because it is newer than the latest PyPI release. "
+                    "Replace it with an exact PyPI release pin once published.",
+                )
+            )
         return 0
 
     has_blocking_violation = False

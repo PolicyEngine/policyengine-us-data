@@ -552,6 +552,13 @@ def test_add_org_labor_market_inputs_handles_nonsequential_household_index(
         "cps_race": np.array([1.0, 2.0]),
         "employment_income": np.array([50_000.0, 60_000.0]),
         "weekly_hours_worked": np.array([40.0, 40.0]),
+        "hours_worked_last_week": np.array([50.0, 40.0]),
+        "weeks_worked": np.array([52.0, 52.0]),
+        "has_never_worked": np.array([False, False]),
+        "is_military": np.array([False, False]),
+        "is_computer_scientist": np.array([False, False]),
+        "is_farmer_fisher": np.array([False, False]),
+        "is_executive_administrative_professional": np.array([False, False]),
     }
     captured_state_fips = {}
 
@@ -580,7 +587,7 @@ def test_add_org_labor_market_inputs_handles_nonsequential_household_index(
         fake_predict_org_features,
     )
 
-    cps_module.add_org_labor_market_inputs(cps)
+    cps_module.add_org_labor_market_inputs(cps, 2024)
 
     np.testing.assert_array_equal(
         captured_state_fips["value"],
@@ -591,4 +598,8 @@ def test_add_org_labor_market_inputs_handles_nonsequential_household_index(
     np.testing.assert_array_equal(
         cps["is_union_member_or_covered"],
         np.array([False, True]),
+    )
+    np.testing.assert_allclose(
+        cps["fsla_overtime_premium"],
+        np.array([50_000 * 5 / 55, 0], dtype=np.float32),
     )

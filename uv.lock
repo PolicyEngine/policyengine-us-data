@@ -2164,8 +2164,8 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.706.14"
-source = { git = "https://github.com/PolicyEngine/policyengine-us.git?rev=1da04a64dcdce26834b063d68daa835765a5d8ed#1da04a64dcdce26834b063d68daa835765a5d8ed" }
+version = "1.709.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
     { name = "pandas" },
@@ -2173,6 +2173,10 @@ dependencies = [
     { name = "spm-calculator" },
     { name = "tables" },
     { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/dc/068115100ff17bb7245e7237777c7efee926f8788420e49b6dcd8091c483/policyengine_us-1.709.1.tar.gz", hash = "sha256:66e4f09629fcca1fd9094e6211d0ee1e514c4f00ce55addca5d7063794963384", size = 9951226, upload-time = "2026-05-26T22:23:52.351Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/fc/4925a9e5d2a6f738d4c3c8252e6e52ece83c7da8e5cb8a66e98e8e80faa3/policyengine_us-1.709.1-py3-none-any.whl", hash = "sha256:9d26ff9a84a4f0c99cf9529fbfb6f07572c697010628fcd1f65fdb350cec40e6", size = 10870006, upload-time = "2026-05-26T22:23:49.08Z" },
 ]
 
 [[package]]
@@ -2242,7 +2246,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },
     { name = "policyengine-core", specifier = ">=3.26.1,<3.27" },
-    { name = "policyengine-us", git = "https://github.com/PolicyEngine/policyengine-us.git?rev=1da04a64dcdce26834b063d68daa835765a5d8ed" },
+    { name = "policyengine-us", specifier = "==1.709.1" },
     { name = "requests", specifier = ">=2.25.0" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "setuptools", specifier = ">=60" },

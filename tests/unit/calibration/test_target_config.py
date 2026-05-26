@@ -402,6 +402,50 @@ class TestLoadTargetConfig:
             "geo_level": "national",
         } in config["include"]
 
+    def test_training_config_includes_soi_loss_component_agi_targets(self):
+        config = load_target_config(
+            str(
+                Path(__file__).resolve().parents[3]
+                / "policyengine_us_data"
+                / "calibration"
+                / "target_config.yaml"
+            )
+        )
+
+        include_rules = config["include"]
+        for variable in [
+            "loss_limited_net_capital_gains",
+            "tax_unit_partnership_s_corp_income",
+            "tax_unit_rental_income",
+        ]:
+            assert {
+                "variable": variable,
+                "geo_level": "national",
+                "domain_variable": (
+                    f"adjusted_gross_income,income_tax_before_credits,{variable}"
+                ),
+            } in include_rules
+            assert {
+                "variable": "tax_unit_count",
+                "geo_level": "national",
+                "domain_variable": (
+                    f"adjusted_gross_income,income_tax_before_credits,{variable}"
+                ),
+            } in include_rules
+
+        for person_level_loss_variable in [
+            "total_self_employment_income",
+            "estate_income",
+        ]:
+            assert {
+                "variable": person_level_loss_variable,
+                "geo_level": "national",
+                "domain_variable": (
+                    "adjusted_gross_income,income_tax_before_credits,"
+                    f"{person_level_loss_variable}"
+                ),
+            } not in include_rules
+
     def test_training_config_excludes_national_undifferentiated_eitc_target(self):
         config = load_target_config(
             str(

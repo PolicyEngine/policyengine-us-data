@@ -1,0 +1,7 @@
+{
+  "base_release_version": "1.115.5",
+  "candidate_scope": "1.115.5-minor",
+  "release_bump": "minor",
+  "run_id": "usdata-gha26379540291-a1",
+  "would_release_as_at_build_time": "1.116.0"
+}

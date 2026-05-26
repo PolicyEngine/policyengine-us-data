@@ -1188,6 +1188,22 @@ class USGeographyPostProcessorResult
 
 Payload after US geography fields are applied.
 
+### `policyengine_us_data.build_outputs.us_augmentations.USMedicaidCostPostProcessor`
+
+```python
+class USMedicaidCostPostProcessor
+```
+
+Preserve source Medicaid conditional costs after local H5 transforms.
+
+### `policyengine_us_data.build_outputs.us_augmentations.USMedicaidCostPostProcessorResult`
+
+```python
+class USMedicaidCostPostProcessorResult
+```
+
+Payload after conditional Medicaid cost fields are applied.
+
 ### `policyengine_us_data.build_outputs.us_augmentations.USTakeupPostProcessor`
 
 ```python

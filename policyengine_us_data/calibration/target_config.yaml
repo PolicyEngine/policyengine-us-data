@@ -205,7 +205,7 @@ include:
     geo_level: national
   - variable: social_security_survivors
     geo_level: national
-  - variable: ssi_federal_fiscal_year_outlays
+  - variable: ssi
     geo_level: national
   - variable: person_count
     geo_level: national

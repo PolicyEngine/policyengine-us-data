@@ -15,6 +15,7 @@ from policyengine_us_data.utils.loss import (
     BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
+    LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES,
     TRANSFER_BALANCE_TARGETS,
     _add_bea_state_wage_targets,
     _add_agi_metric_columns,
@@ -39,18 +40,39 @@ from policyengine_us_data.utils.loss import (
     get_target_error_normalisation,
     get_target_loss_weights,
 )
+from policyengine_us_data.storage import CALIBRATION_FOLDER
 from policyengine_us_data.db import etl_national_targets
 from policyengine_us_data.utils.ssi_targets import (
     SSI_RECIPIENT_TARGETS_2024,
-    get_ssi_fiscal_year_payment_count,
-    get_ssi_single_year_available_payment_count,
-    scale_ssi_fiscal_year_target_for_single_year_data,
 )
 
 
 def test_legacy_loss_targets_include_aggregate_qbi_deduction():
     assert "qualified_business_income_deduction" in AGGREGATE_LEVEL_TARGETED_VARIABLES
     assert "qualified_business_income_deduction" not in AGI_LEVEL_TARGETED_VARIABLES
+
+
+def test_legacy_loss_targets_include_ltcg_agi_grid():
+    assert "long_term_capital_gains" in AGI_LEVEL_TARGETED_VARIABLES
+    assert "long_term_capital_gains" in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
+
+    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
+    ltcg = soi[
+        (soi["Variable"] == "long_term_capital_gains")
+        & (soi["SOI table"] == "Table 1.4A")
+        & (soi["Filing status"] == "All")
+        & (~soi["Taxable only"])
+        & (~soi["Full population"])
+    ]
+
+    assert ltcg.groupby("Count").size().to_dict() == {False: 19, True: 19}
+    assert ltcg["Value"].gt(0).all()
+    top_bracket = ltcg[
+        (~ltcg["Count"])
+        & (ltcg["AGI lower bound"] == 10_000_000.0)
+        & np.isinf(ltcg["AGI upper bound"])
+    ]
+    assert top_bracket["Value"].iat[0] == 346_272_458_000
 
 
 def test_bea_nipa_direct_sum_targets_match_targets_db():
@@ -381,28 +403,10 @@ def test_add_ssi_recipient_targets_adds_total_and_age_counts():
     )
 
 
-def test_ssi_payment_targets_scale_to_single_year_fiscal_year_coverage():
-    assert get_ssi_fiscal_year_payment_count(2024) == 11
-    assert get_ssi_single_year_available_payment_count(2024) == 9
-    assert get_ssi_fiscal_year_payment_count(2025) == 12
-    assert get_ssi_single_year_available_payment_count(2025) == 9
-    assert get_ssi_fiscal_year_payment_count(2028) == 13
-    assert get_ssi_single_year_available_payment_count(2028) == 10
-
-    assert scale_ssi_fiscal_year_target_for_single_year_data(
-        57_000_000_000, 2024
-    ) == pytest.approx(57_000_000_000 * 9 / 11)
-    assert scale_ssi_fiscal_year_target_for_single_year_data(
-        75_400_000_000, 2028
-    ) == pytest.approx(75_400_000_000 * 10 / 13)
-
-
-def test_legacy_cbo_ssi_target_uses_single_year_fiscal_year_coverage():
+def test_legacy_cbo_ssi_target_uses_ssa_actual_when_available():
     sim = _FakeCBOProgramTargetSimulation()
 
-    assert _cbo_program_target_value(
-        sim, "ssi_federal_fiscal_year_outlays", 2024
-    ) == pytest.approx(57_000_000_000 * 9 / 11)
+    assert _cbo_program_target_value(sim, "ssi", 2024) == 59_665_127_000
     assert _cbo_program_target_value(sim, "snap", 2024) == 1_000.0
 
 
@@ -790,12 +794,16 @@ def test_low_agi_soi_skip_keeps_investment_income_targets():
     capital_income_low_agi_row = pd.Series(
         {"Variable": "capital_gains_gross", "AGI upper bound": 10_000.0}
     )
+    ltcg_low_agi_row = pd.Series(
+        {"Variable": "long_term_capital_gains", "AGI upper bound": 10_000.0}
+    )
     ordinary_higher_agi_row = pd.Series(
         {"Variable": "employment_income", "AGI upper bound": 25_000.0}
     )
 
     assert _should_skip_soi_agi_row(ordinary_low_agi_row)
     assert not _should_skip_soi_agi_row(capital_income_low_agi_row)
+    assert not _should_skip_soi_agi_row(ltcg_low_agi_row)
     assert not _should_skip_soi_agi_row(ordinary_higher_agi_row)
 
 
@@ -805,6 +813,9 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     )
     capital_income_all_return_row = pd.Series(
         {"Variable": "capital_gains_gross", "Taxable only": False}
+    )
+    ltcg_all_return_row = pd.Series(
+        {"Variable": "long_term_capital_gains", "Taxable only": False}
     )
     ordinary_taxable_row = pd.Series(
         {"Variable": "employment_income", "Taxable only": True}
@@ -818,12 +829,17 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     capital_income_taxable_row = pd.Series(
         {"Variable": "capital_gains_gross", "Taxable only": True}
     )
+    ltcg_taxable_row = pd.Series(
+        {"Variable": "long_term_capital_gains", "Taxable only": True}
+    )
 
     assert _should_skip_soi_taxability_row(ordinary_all_return_row)
     assert not _should_skip_soi_taxability_row(capital_income_all_return_row)
+    assert not _should_skip_soi_taxability_row(ltcg_all_return_row)
     assert not _should_skip_soi_taxability_row(ordinary_taxable_row)
     assert not _should_skip_soi_taxability_row(qbi_taxable_row)
     assert _should_skip_soi_taxability_row(capital_income_taxable_row)
+    assert _should_skip_soi_taxability_row(ltcg_taxable_row)
 
 
 def test_tanf_hardcoded_target_uses_fy2024_basic_assistance_total():

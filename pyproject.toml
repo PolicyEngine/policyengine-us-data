@@ -22,10 +22,11 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    # Temporary GitHub pin: policyengine-us 1.706.4 is blocked from PyPI by
+    # Temporary GitHub pin: policyengine-us 1.706.14 is blocked from PyPI by
     # the project-size limit, but us-data needs the merged desired retirement
-    # contribution variables before the next PyPI release is available.
-    "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@ac00eb138a00d24222ff1577d3f844f167cda44a",
+    # contribution variables, FLSA overtime constants, and data-backed
+    # Medicaid cost input before the next PyPI release is available.
+    "policyengine-us @ git+https://github.com/PolicyEngine/policyengine-us.git@1da04a64dcdce26834b063d68daa835765a5d8ed",
     # policyengine-core 3.26.1 is the current 3.26.x runtime and includes the fix for
     # PolicyEngine/policyengine-core#482 (user-set ETERNITY inputs lost
     # after _invalidate_all_caches) and is required by policyengine-us 1.682.1+.
@@ -54,7 +55,7 @@ dependencies = [
 
 [project.optional-dependencies]
 calibration = [
-    "samplics",
+    "svy>=0.18.2",
 ]
 l0 = [
     "l0-python",

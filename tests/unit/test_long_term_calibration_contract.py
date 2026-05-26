@@ -21,6 +21,7 @@ from policyengine_us_data.datasets.cps.long_term import (
 )
 from policyengine_us_data.datasets.cps.long_term import run_long_term_production
 from policyengine_us_data.datasets.cps.long_term.calibration import (
+    GregCalibrator,
     assess_nonnegative_feasibility,
     build_calibration_audit,
     calibrate_entropy,
@@ -1105,6 +1106,29 @@ def test_strict_greg_failure_raises():
             calibrator=ExplodingCalibrator(),
             allow_fallback_to_ipf=False,
         )
+
+
+def test_greg_calibrator_hits_linear_controls_with_svy():
+    pytest.importorskip("svy")
+
+    X = np.array([[1.0, 0.0], [0.0, 1.0]])
+    y_target = np.array([2.0, 3.0])
+    baseline_weights = np.array([1.0, 1.0])
+
+    weights, iterations, audit = calibrate_weights(
+        X=X,
+        y_target=y_target,
+        baseline_weights=baseline_weights,
+        method="greg",
+        calibrator=GregCalibrator(),
+        n_ages=2,
+        allow_fallback_to_ipf=False,
+    )
+
+    assert iterations == 1
+    assert audit["method_used"] == "greg"
+    assert audit["fell_back_to_ipf"] is False
+    np.testing.assert_allclose(X.T @ weights, y_target)
 
 
 def test_build_calibration_audit_reports_constraint_error():

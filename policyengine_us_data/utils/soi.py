@@ -8,7 +8,8 @@ SOI_UPRATING_MAP = {
     "count": "population",
     "employment_income": "employment_income_before_lsr",
     "business_net_profits": "total_self_employment_income",
-    "capital_gains_gross": "long_term_capital_gains",
+    "capital_gains_gross": "long_term_capital_gains_basis",
+    "long_term_capital_gains": "long_term_capital_gains_basis",
     "ordinary_dividends": "non_qualified_dividend_income",
     "partnership_and_s_corp_income": "partnership_s_corp_income",
     "qualified_dividends": "qualified_dividend_income",
@@ -21,8 +22,8 @@ SOI_UPRATING_MAP = {
     "total_pension_income": "pension_income",
     "total_social_security": "social_security",
     "business_net_losses": "total_self_employment_income",
-    "capital_gains_distributions": "long_term_capital_gains",
-    "capital_gains_losses": "long_term_capital_gains",
+    "capital_gains_distributions": "long_term_capital_gains_basis",
+    "capital_gains_losses": "long_term_capital_gains_basis",
     "estate_income": "estate_income",
     "estate_losses": "estate_income",
     "exempt_interest": "tax_exempt_interest_income",
@@ -89,6 +90,8 @@ def pe_to_soi(pe_dataset, year):
     df["capital_gains_losses"] = -pe("loss_limited_net_capital_gains") * (
         pe("loss_limited_net_capital_gains") < 0
     )
+    ltcg = pe("long_term_capital_gains")
+    df["long_term_capital_gains"] = ltcg * (ltcg > 0)
     df["estate_income"] = pe("estate_income") * (pe("estate_income") > 0)
     df["estate_losses"] = -pe("estate_income") * (pe("estate_income") < 0)
     df["exempt_interest"] = pe("tax_exempt_interest_income")
@@ -146,6 +149,12 @@ def puf_to_soi(puf, year):
     df["capital_gains_distributions"] = puf.E01100
     df["capital_gains_gross"] = puf["E01000"] * (puf["E01000"] > 0)
     df["capital_gains_losses"] = -puf["E01000"] * (puf["E01000"] < 0)
+    ltcg = (
+        puf["long_term_capital_gains"]
+        if "long_term_capital_gains" in puf
+        else puf.P23250
+    )
+    df["long_term_capital_gains"] = ltcg * (ltcg > 0)
     df["estate_income"] = puf.E26390
     df["estate_losses"] = puf.E26400
     df["exempt_interest"] = puf.E00400

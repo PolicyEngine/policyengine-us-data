@@ -20,7 +20,7 @@ from policyengine_us_data.db.etl_national_targets import (
     load_state_acs_rent_targets,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_PAYMENT_TARGET_SOURCE,
+    SSI_ANNUAL_PAYMENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGETS_2024,
 )
 
@@ -442,7 +442,7 @@ def test_extract_national_targets_includes_ssi_count_targets():
     }
 
 
-def test_extract_national_targets_uses_ssi_fiscal_year_outlays_target(monkeypatch):
+def test_extract_national_targets_uses_ssi_ssa_actual_when_available(monkeypatch):
     class FakeIncomeBySource:
         _children = {
             target["parameter"]: 0
@@ -485,72 +485,20 @@ def test_extract_national_targets_uses_ssi_fiscal_year_outlays_target(monkeypatc
 
     raw_targets = extract_national_targets(year=2024)
     ssi_target = next(
-        target
-        for target in raw_targets["cbo_targets"]
-        if target["variable"] == "ssi_federal_fiscal_year_outlays"
+        target for target in raw_targets["cbo_targets"] if target["variable"] == "ssi"
     )
 
-    assert ssi_target["value"] == 57_000_000_000 * 9 / 11
-    assert ssi_target["source"] == SSI_PAYMENT_TARGET_SOURCE
-    assert "single-year PolicyEngine-US-data H5" in ssi_target["notes"]
-
-
-def test_load_national_targets_deactivates_legacy_ssi_dollar_target(
-    tmp_path, monkeypatch
-):
-    calibration_dir = tmp_path / "calibration"
-    calibration_dir.mkdir()
-    db_uri = f"sqlite:///{calibration_dir / 'policy_data.db'}"
-    engine = create_database(db_uri)
-
-    with Session(engine) as session:
-        national = _make_stratum(session, notes="United States")
-        session.add(
-            Target(
-                stratum_id=national.stratum_id,
-                variable="ssi",
-                period=2024,
-                value=57_000_000_000,
-                active=True,
-                notes="legacy SSI dollar target",
-            )
-        )
-        session.commit()
-
-    monkeypatch.setattr(
-        "policyengine_us_data.db.etl_national_targets.STORAGE_FOLDER",
-        tmp_path,
-    )
-
-    load_national_targets(
-        direct_targets_df=pd.DataFrame(
-            [
-                {
-                    "variable": "ssi_federal_fiscal_year_outlays",
-                    "value": 57_000_000_000 * 9 / 11,
-                    "source": SSI_PAYMENT_TARGET_SOURCE,
-                    "notes": "CBO SSI federal fiscal-year outlays",
-                    "year": 2024,
-                }
-            ]
-        ),
-        tax_filer_df=pd.DataFrame(),
-        tax_expenditure_df=pd.DataFrame(),
-        conditional_targets=[],
-    )
-
-    with Session(engine) as session:
-        legacy_target = session.exec(
-            select(Target).where(Target.variable == "ssi")
-        ).one()
-        new_target = session.exec(
-            select(Target).where(Target.variable == "ssi_federal_fiscal_year_outlays")
-        ).one()
-
-    assert legacy_target.active is False
-    assert "replaced this target concept" in legacy_target.notes
-    assert new_target.active is True
-    assert new_target.value == 57_000_000_000 * 9 / 11
+    assert ssi_target["value"] == 59_665_127_000
+    assert ssi_target["source"] == SSI_ANNUAL_PAYMENT_TARGET_SOURCE
+    assert "SSA SSI Annual Statistical Report, 2024, Table 2" in ssi_target["notes"]
+    assert "month due" in ssi_target["notes"]
+    assert "annual `ssi` over January-December benefit months" in ssi_target["notes"]
+    assert "OACT Table IV.C2" in ssi_target["notes"]
+    assert "$57.600B" in ssi_target["notes"]
+    assert "OACT Table IV.C1" in ssi_target["notes"]
+    assert "$63.080B" in ssi_target["notes"]
+    assert "$5.480B above OACT FY2024" in ssi_target["notes"]
+    assert "recovered overpayments" in ssi_target["notes"]
 
 
 def test_load_national_targets_uses_medicaid_enrolled_for_enrollment_counts(

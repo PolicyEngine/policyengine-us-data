@@ -217,6 +217,7 @@ def test_build_h5_facade_delegates_to_builder_and_writer(tmp_path, monkeypatch):
         "USEntityPostProcessor",
         "USGeographyPostProcessor",
         "USTakeupPostProcessor",
+        "USMedicaidCostPostProcessor",
     ]
     assert seen["build"]["source"] is source
     assert seen["build"]["takeup_filter"] == ("takes_up_snap",)

@@ -12,6 +12,7 @@ import numpy as np
 from policyengine_us import Microsimulation
 
 from calibration import build_calibration_audit, calibrate_weights
+from calibration import GregCalibrator
 from calibration_profiles import (
     approximate_window_for_year,
     classify_calibration_quality,
@@ -34,12 +35,6 @@ from ssa_data import (
     load_taxable_payroll_projections,
     set_long_term_target_source,
 )
-
-try:
-    from samplics.weighting import SampleWeight
-except ImportError:  # pragma: no cover - only needed for greg profiles
-    SampleWeight = None
-
 
 DEFAULT_BASE_DATASET_PATH = (
     "hf://policyengine/policyengine-us-data/enhanced_cps_2024.h5"
@@ -90,12 +85,7 @@ def parse_years(raw: str) -> list[int]:
 def maybe_build_calibrator(method: str):
     if method != "greg":
         return None
-    if SampleWeight is None:
-        raise ImportError(
-            "samplics is required for GREG calibration. "
-            "Install with: pip install policyengine-us-data[calibration]"
-        )
-    return SampleWeight()
+    return GregCalibrator()
 
 
 def benchmark_tob_values(

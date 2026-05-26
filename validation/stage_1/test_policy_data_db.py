@@ -50,7 +50,7 @@ def test_national_targets_loaded(built_db):
         "long_term_capital_gains",
         "snap",
         "social_security",
-        "ssi_federal_fiscal_year_outlays",
+        "ssi",
     ]:
         assert expected in variables, (
             f"National target '{expected}' missing. Found: {sorted(variables)}"

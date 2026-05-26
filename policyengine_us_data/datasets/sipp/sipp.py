@@ -946,8 +946,7 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
 
 def _ssi_disability_model_path(time_period: int):
     return (
-        STORAGE_FOLDER
-        / f"ssi_disability_criteria_{time_period}_sipp_{SIPP_YEAR}.pkl"
+        STORAGE_FOLDER / f"ssi_disability_criteria_{time_period}_sipp_{SIPP_YEAR}.pkl"
     )
 
 

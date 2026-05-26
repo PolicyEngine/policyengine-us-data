@@ -659,15 +659,15 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             "year": 2024,
         },
         {
-            "variable": "self_employed_pension_contribution_ald",
+            "variable": "self_employed_pension_contributions",
             "value": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["value"],
             "source": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["source"],
             "notes": RETIREMENT_CONTRIBUTION_TARGETS[
-                "self_employed_pension_contribution_ald"
+                "self_employed_pension_contributions"
             ]["notes"],
             "year": 2024,
         },

@@ -14,7 +14,7 @@ RETIREMENT_CONTRIBUTION_TARGETS = {
         ),
         "source_year": 2023,
     },
-    "self_employed_pension_contribution_ald": {
+    "self_employed_pension_contributions": {
         "value": 30.130848e9,
         "source": "https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income",
         "notes": (

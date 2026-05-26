@@ -160,11 +160,11 @@ OVERRIDDEN_IMPUTED_VARIABLES = [
 ]
 
 CPS_RETIREMENT_VARIABLES = [
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
-    "self_employed_pension_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
 ]
 
 RETIREMENT_DEMOGRAPHIC_PREDICTORS = [
@@ -845,18 +845,9 @@ def _impute_retirement_contributions(
         n_persons = len(data["person_id"][time_period])
         return {var: np.zeros(n_persons) for var in CPS_RETIREMENT_VARIABLES}
 
-    # Extract results and apply constraints
-    limits = _get_retirement_limits(time_period)
-    age = X_test["age"].values
-    catch_up_eligible = age >= 50
-    limit_401k = limits["401k"] + catch_up_eligible * limits["401k_catch_up"]
-    limit_ira = limits["ira"] + catch_up_eligible * limits["ira_catch_up"]
+    # Extract results and apply data-domain constraints. Statutory limits
+    # are applied by PolicyEngine-US plain contribution variables.
     se_income = X_test["self_employment_income"].values
-    se_pension_cap = np.minimum(
-        se_income * limits["se_pension_rate"],
-        limits["se_pension_dollar_limit"],
-    )
-
     emp_income = X_test["employment_income"].values
 
     result = {}
@@ -866,19 +857,12 @@ def _impute_retirement_contributions(
         # Non-negativity
         vals = np.maximum(vals, 0)
 
-        # Cap 401k at year-specific limit
+        # Zero out employment-based plans for records with no employment income.
         if "401k" in var:
-            vals = np.minimum(vals, limit_401k)
-            # Zero out for records with no employment income
             vals = np.where(emp_income > 0, vals, 0)
 
-        # Cap IRA at year-specific limit
-        if "ira" in var:
-            vals = np.minimum(vals, limit_ira)
-
-        # Cap SE pension at min(25% of SE income, dollar limit)
-        if var == "self_employed_pension_contributions":
-            vals = np.minimum(vals, se_pension_cap)
+        # Zero out self-employed plans for records with no self-employment income.
+        if var == "self_employed_pension_contributions_desired":
             vals = np.where(se_income > 0, vals, 0)
 
         result[var] = vals
@@ -886,11 +870,11 @@ def _impute_retirement_contributions(
     logger.info(
         "Imputed retirement contributions for PUF: "
         "401k mean=$%.0f, IRA mean=$%.0f, SE pension mean=$%.0f",
-        result["traditional_401k_contributions"].mean()
-        + result["roth_401k_contributions"].mean(),
-        result["traditional_ira_contributions"].mean()
-        + result["roth_ira_contributions"].mean(),
-        result["self_employed_pension_contributions"].mean(),
+        result["traditional_401k_contributions_desired"].mean()
+        + result["roth_401k_contributions_desired"].mean(),
+        result["traditional_ira_contributions_desired"].mean()
+        + result["roth_ira_contributions_desired"].mean(),
+        result["self_employed_pension_contributions_desired"].mean(),
     )
 
     return result

@@ -4,7 +4,7 @@ Uses synthetic data to verify that:
 1. Sequential QRF preserves covariance between imputed variables
 2. CPS-only imputation uses PUF-imputed income (not CPS originals)
 3. Variable lists don't overlap (no double-imputation)
-4. Post-processing constraints enforce IRS caps and SS normalization
+4. Post-processing constraints clean retirement inputs and normalize SS
 """
 
 from contextlib import contextmanager
@@ -137,23 +137,40 @@ class TestVariableListConsistency:
 
     def test_cps_only_vars_mostly_exist_in_tbs(self):
         """Most CPS-only variables should exist in policyengine-us."""
+        from importlib.metadata import version
+
+        from packaging.version import Version
         from policyengine_us import CountryTaxBenefitSystem
 
         tbs = CountryTaxBenefitSystem()
-        valid = [v for v in CPS_ONLY_IMPUTED_VARIABLES if v in tbs.variables]
-        assert len(valid) >= len(CPS_ONLY_IMPUTED_VARIABLES) * 0.9, (
-            f"Only {len(valid)}/{len(CPS_ONLY_IMPUTED_VARIABLES)} "
+        pending_policyengine_us_release = set()
+        if Version(version("policyengine-us")) < Version("1.706.3"):
+            pending_policyengine_us_release = {
+                "traditional_401k_contributions_desired",
+                "roth_401k_contributions_desired",
+                "traditional_ira_contributions_desired",
+                "roth_ira_contributions_desired",
+                "self_employed_pension_contributions_desired",
+            }
+        checked_variables = [
+            v
+            for v in CPS_ONLY_IMPUTED_VARIABLES
+            if v in tbs.variables or v not in pending_policyengine_us_release
+        ]
+        valid = [v for v in checked_variables if v in tbs.variables]
+        assert len(valid) >= len(checked_variables) * 0.9, (
+            f"Only {len(valid)}/{len(checked_variables)} "
             f"CPS-only vars exist in tax-benefit system"
         )
 
     def test_retirement_contributions_in_cps_only(self):
         """All 5 retirement contribution vars should be in CPS_ONLY."""
         expected = {
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
-            "self_employed_pension_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
         }
         missing = expected - set(CPS_ONLY_IMPUTED_VARIABLES)
         assert missing == set(), (
@@ -1052,17 +1069,35 @@ class TestStage2PostProcessing:
 
 
 class TestRetirementConstraints:
-    """Post-processing retirement constraints enforce IRS caps."""
+    """Post-processing retirement constraints clean retirement predictions."""
 
     @pytest.fixture
     def sample_predictions(self):
         return pd.DataFrame(
             {
-                "traditional_401k_contributions": [25000, -500, 5000, 10000, 3000],
-                "roth_401k_contributions": [30000, 2000, 0, 50000, 1000],
-                "traditional_ira_contributions": [8000, -100, 3000, 15000, 500],
-                "roth_ira_contributions": [10000, 1000, 0, 20000, 200],
-                "self_employed_pension_contributions": [80000, -200, 5000, 0, 100000],
+                "traditional_401k_contributions_desired": [
+                    25000,
+                    -500,
+                    5000,
+                    10000,
+                    3000,
+                ],
+                "roth_401k_contributions_desired": [30000, 2000, 0, 50000, 1000],
+                "traditional_ira_contributions_desired": [
+                    8000,
+                    -100,
+                    3000,
+                    15000,
+                    500,
+                ],
+                "roth_ira_contributions_desired": [10000, 1000, 0, 20000, 200],
+                "self_employed_pension_contributions_desired": [
+                    80000,
+                    -200,
+                    5000,
+                    0,
+                    100000,
+                ],
             }
         )
 
@@ -1081,44 +1116,53 @@ class TestRetirementConstraints:
         for var in result.columns:
             assert (result[var] >= 0).all(), f"{var} has negative values"
 
-    def test_401k_capped_at_limit(self, sample_predictions, sample_features):
+    def test_401k_preserves_desired_amounts_above_limit(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
-        from policyengine_us_data.utils.retirement_limits import get_retirement_limits
+        np.testing.assert_allclose(
+            result["traditional_401k_contributions_desired"].to_numpy(),
+            np.array([25000, 0, 0, 10000, 3000]),
+        )
+        np.testing.assert_allclose(
+            result["roth_401k_contributions_desired"].to_numpy(),
+            np.array([30000, 2000, 0, 50000, 1000]),
+        )
 
-        limits = get_retirement_limits(2024)
-        age = sample_features["age"].values
-        catch_up = age >= 50
-        cap = limits["401k"] + catch_up * limits["401k_catch_up"]
-        for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
-            assert (result[var].values <= cap).all(), f"{var} exceeds 401k cap"
-
-    def test_ira_capped_at_limit(self, sample_predictions, sample_features):
+    def test_ira_preserves_desired_amounts_above_limit(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
-        from policyengine_us_data.utils.retirement_limits import get_retirement_limits
-
-        limits = get_retirement_limits(2024)
-        age = sample_features["age"].values
-        catch_up = age >= 50
-        cap = limits["ira"] + catch_up * limits["ira_catch_up"]
-        for var in ["traditional_ira_contributions", "roth_ira_contributions"]:
-            assert (result[var].values <= cap).all(), f"{var} exceeds IRA cap"
+        np.testing.assert_allclose(
+            result["traditional_ira_contributions_desired"].to_numpy(),
+            np.array([8000, 0, 3000, 15000, 500]),
+        )
+        np.testing.assert_allclose(
+            result["roth_ira_contributions_desired"].to_numpy(),
+            np.array([10000, 1000, 0, 20000, 200]),
+        )
 
     def test_401k_zeroed_without_employment_income(
         self, sample_predictions, sample_features
     ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         no_emp = sample_features["employment_income"] == 0
-        for var in ["traditional_401k_contributions", "roth_401k_contributions"]:
+        for var in [
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+        ]:
             assert (result[var].values[no_emp] == 0).all(), (
                 f"{var} should be zero without employment income"
             )
 
-    def test_se_pension_capped(self, sample_predictions, sample_features):
+    def test_se_pension_preserves_desired_amounts(
+        self, sample_predictions, sample_features
+    ):
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
-        se_income = sample_features["self_employment_income"].values
-        se_vals = result["self_employed_pension_contributions"].values
-        rate_cap = se_income * 0.25
-        assert (se_vals <= rate_cap + 1).all(), "SE pension exceeds 25% of SE income"
+        np.testing.assert_allclose(
+            result["self_employed_pension_contributions_desired"].to_numpy(),
+            np.array([0, 0, 5000, 0, 100000]),
+        )
 
     def test_se_pension_zeroed_without_se_income(
         self, sample_predictions, sample_features
@@ -1126,7 +1170,7 @@ class TestRetirementConstraints:
         result = apply_retirement_constraints(sample_predictions, sample_features, 2024)
         no_se = sample_features["self_employment_income"] == 0
         assert (
-            result["self_employed_pension_contributions"].values[no_se] == 0
+            result["self_employed_pension_contributions_desired"].values[no_se] == 0
         ).all(), "SE pension should be zero without SE income"
 
 

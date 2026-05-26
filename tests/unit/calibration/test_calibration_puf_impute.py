@@ -384,13 +384,13 @@ class TestStratifiedSubsample:
         assert np.all(idx[1:] >= idx[:-1])
 
 
-def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
+def test_retirement_imputation_uses_sstb_income_for_se_eligibility(monkeypatch):
     class FakeMicrosimulation:
         def __init__(self, dataset):
             self.dataset = dataset
 
         def calculate_dataframe(self, columns):
-            if "self_employed_pension_contributions" in columns:
+            if "self_employed_pension_contributions_desired" in columns:
                 return pd.DataFrame(
                     {
                         "age": [40, 55],
@@ -406,11 +406,11 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
                         "qualified_dividend_income": [0.0, 0.0],
                         "taxable_pension_income": [0.0, 0.0],
                         "social_security": [0.0, 0.0],
-                        "traditional_401k_contributions": [0.0, 0.0],
-                        "roth_401k_contributions": [0.0, 0.0],
-                        "traditional_ira_contributions": [0.0, 0.0],
-                        "roth_ira_contributions": [0.0, 0.0],
-                        "self_employed_pension_contributions": [0.0, 0.0],
+                        "traditional_401k_contributions_desired": [0.0, 0.0],
+                        "roth_401k_contributions_desired": [0.0, 0.0],
+                        "traditional_ira_contributions_desired": [0.0, 0.0],
+                        "roth_ira_contributions_desired": [0.0, 0.0],
+                        "self_employed_pension_contributions_desired": [0.0, 0.0],
                     }
                 )
             return pd.DataFrame(
@@ -446,11 +446,11 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
             )
             return pd.DataFrame(
                 {
-                    "traditional_401k_contributions": [0.0, 0.0],
-                    "roth_401k_contributions": [0.0, 0.0],
-                    "traditional_ira_contributions": [0.0, 0.0],
-                    "roth_ira_contributions": [0.0, 0.0],
-                    "self_employed_pension_contributions": [50_000.0, 50_000.0],
+                    "traditional_401k_contributions_desired": [0.0, 0.0],
+                    "roth_401k_contributions_desired": [0.0, 0.0],
+                    "traditional_ira_contributions_desired": [0.0, 0.0],
+                    "roth_ira_contributions_desired": [0.0, 0.0],
+                    "self_employed_pension_contributions_desired": [50_000.0, 50_000.0],
                 }
             )
 
@@ -473,8 +473,8 @@ def test_retirement_imputation_caps_se_pension_using_sstb_income(monkeypatch):
     )
 
     np.testing.assert_array_equal(
-        result["self_employed_pension_contributions"],
-        np.array([25.0, 25.0]),
+        result["self_employed_pension_contributions_desired"],
+        np.array([50_000.0, 50_000.0]),
     )
 
 

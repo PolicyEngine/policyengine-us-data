@@ -89,11 +89,11 @@ def _make_cps_df(n, rng):
             "taxable_pension_income": rng.uniform(0, 20_000, n),
             "social_security": rng.uniform(0, 15_000, n),
             # Targets
-            "traditional_401k_contributions": rng.uniform(0, 5000, n),
-            "roth_401k_contributions": rng.uniform(0, 3000, n),
-            "traditional_ira_contributions": rng.uniform(0, 2000, n),
-            "roth_ira_contributions": rng.uniform(0, 2000, n),
-            "self_employed_pension_contributions": rng.uniform(0, 10_000, n),
+            "traditional_401k_contributions_desired": rng.uniform(0, 5000, n),
+            "roth_401k_contributions_desired": rng.uniform(0, 3000, n),
+            "traditional_ira_contributions_desired": rng.uniform(0, 2000, n),
+            "roth_ira_contributions_desired": rng.uniform(0, 2000, n),
+            "self_employed_pension_contributions_desired": rng.uniform(0, 10_000, n),
         }
     )
 
@@ -142,11 +142,11 @@ class TestConstants:
 
     def test_retirement_variable_names(self):
         expected = {
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
-            "self_employed_pension_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
+            "self_employed_pension_contributions_desired",
         }
         assert set(CPS_RETIREMENT_VARIABLES) == expected
 
@@ -315,27 +315,28 @@ class TestImputeRetirementContributions:
         for var in CPS_RETIREMENT_VARIABLES:
             assert np.all(result[var] >= 0), f"{var} has negative values"
 
-    def test_401k_capped(self):
+    def test_401k_preserves_desired_amounts(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
-        lim = _get_retirement_limits(self.time_period)
-        max_401k = lim["401k"] + lim["401k_catch_up"]
+        pos_wage = self.puf_imputations["employment_income"] > 0
 
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
-            assert np.all(result[var] <= max_401k), f"{var} exceeds 401k limit"
+            assert np.all(result[var][pos_wage] == 50_000.0), (
+                f"{var} should preserve desired amounts for records with wages"
+            )
 
-    def test_ira_capped(self):
+    def test_ira_preserves_desired_amounts(self):
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
-        lim = _get_retirement_limits(self.time_period)
-        max_ira = lim["ira"] + lim["ira_catch_up"]
 
         for var in (
-            "traditional_ira_contributions",
-            "roth_ira_contributions",
+            "traditional_ira_contributions_desired",
+            "roth_ira_contributions_desired",
         ):
-            assert np.all(result[var] <= max_ira), f"{var} exceeds IRA limit"
+            assert np.all(result[var] == 50_000.0), (
+                f"{var} should preserve desired amounts"
+            )
 
     def test_401k_zero_when_no_wages(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
@@ -343,8 +344,8 @@ class TestImputeRetirementContributions:
         assert zero_wage.sum() == 10
 
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
             assert np.all(result[var][zero_wage] == 0), (
                 f"{var} should be 0 when employment_income is 0"
@@ -354,10 +355,12 @@ class TestImputeRetirementContributions:
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         zero_se = self.puf_imputations["self_employment_income"] == 0
         assert zero_se.sum() == 20
-        assert np.all(result["self_employed_pension_contributions"][zero_se] == 0)
+        assert np.all(
+            result["self_employed_pension_contributions_desired"][zero_se] == 0
+        )
 
-    def test_catch_up_age_threshold(self):
-        """Records age >= 50 get higher caps than younger."""
+    def test_401k_desired_does_not_apply_age_threshold(self):
+        """401(k) desired inputs do not apply age-based statutory limits here."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         # All have positive income
         self.puf_imputations["employment_income"] = np.full(self.n, 100_000.0).astype(
@@ -369,26 +372,24 @@ class TestImputeRetirementContributions:
 
         result = self._call_with_mocks(self._uniform_preds(val))
 
-        young_401k = result["traditional_401k_contributions"][:25]
-        old_401k = result["traditional_401k_contributions"][25:]
+        young_401k = result["traditional_401k_contributions_desired"][:25]
+        old_401k = result["traditional_401k_contributions_desired"][25:]
 
-        # Young capped at base limit
-        assert np.all(young_401k == lim["401k"])
-        # Old get full value (within catch-up limit)
+        assert np.all(young_401k == val)
         assert np.all(old_401k == val)
 
-    def test_ira_catch_up_threshold(self):
-        """IRA catch-up also works for age >= 50."""
+    def test_ira_desired_does_not_apply_age_threshold(self):
+        """IRA desired inputs do not apply age-based statutory limits here."""
         self.cps_df["age"] = np.concatenate([np.full(25, 30.0), np.full(25, 55.0)])
         lim = _get_retirement_limits(self.time_period)
         val = float(lim["ira"]) + 500  # 7500
 
         result = self._call_with_mocks(self._uniform_preds(val))
 
-        young_ira = result["traditional_ira_contributions"][:25]
-        old_ira = result["traditional_ira_contributions"][25:]
+        young_ira = result["traditional_ira_contributions_desired"][:25]
+        old_ira = result["traditional_ira_contributions_desired"][25:]
 
-        assert np.all(young_ira == lim["ira"])
+        assert np.all(young_ira == val)
         assert np.all(old_ira == val)
 
     def test_401k_nonzero_for_positive_wages(self):
@@ -397,31 +398,24 @@ class TestImputeRetirementContributions:
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         pos_wage = self.puf_imputations["employment_income"] > 0
         for var in (
-            "traditional_401k_contributions",
-            "roth_401k_contributions",
+            "traditional_401k_contributions_desired",
+            "roth_401k_contributions_desired",
         ):
             assert np.all(result[var][pos_wage] > 0)
 
     def test_se_pension_nonzero_for_positive_se(self):
         result = self._call_with_mocks(self._uniform_preds(5_000.0))
         pos_se = self.puf_imputations["self_employment_income"] > 0
-        assert np.all(result["self_employed_pension_contributions"][pos_se] > 0)
+        assert np.all(result["self_employed_pension_contributions_desired"][pos_se] > 0)
 
-    def test_se_pension_capped_at_rate_times_income(self):
-        """SE pension should not exceed 25% of SE income."""
-        # Predict a large value that would exceed the SE cap
+    def test_se_pension_preserves_desired_amounts(self):
+        """SE pension desired inputs preserve source amounts when SE income exists."""
         result = self._call_with_mocks(self._uniform_preds(50_000.0))
-        lim = _get_retirement_limits(self.time_period)
         se_income = self.puf_imputations["self_employment_income"]
-        se_cap = np.minimum(
-            se_income * lim["se_pension_rate"],
-            lim["se_pension_dollar_limit"],
-        )
         pos_se = se_income > 0
         assert np.all(
-            result["self_employed_pension_contributions"][pos_se]
-            <= se_cap[pos_se] + 0.01
-        ), "SE pension exceeds 25%-of-income cap"
+            result["self_employed_pension_contributions_desired"][pos_se] == 50_000.0
+        )
 
     def test_qrf_failure_returns_zeros(self):
         """When QRF fit/predict throws, should return all zeros."""

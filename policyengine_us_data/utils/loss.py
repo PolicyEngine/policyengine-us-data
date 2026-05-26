@@ -137,9 +137,9 @@ HARD_CODED_TOTALS = {
     #
     # traditional_ira_contributions: IRS SOI Publication 1304, Table 1.4
     # (TY 2023), "IRA payments" deduction — $13.77B (col DU, row
-    # "All returns, total"). This is the actual above-the-line
-    # deduction claimed on returns. The variable flows directly into
-    # the ALD with no deductibility logic in policyengine-us, so the
+    # "All returns, total"). This is the above-the-line deduction
+    # claimed on returns. The variable flows directly into the ALD
+    # with no deductibility logic in policyengine-us, so the
     # target must match the deduction, not total contributions.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
     "traditional_ira_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
@@ -159,15 +159,15 @@ HARD_CODED_TOTALS = {
     # https://corporate.vanguard.com/content/dam/corp/research/pdf/how_america_saves_report_2024.pdf
     "traditional_401k_contributions": 482.7e9,
     "roth_401k_contributions": 85.2e9,
-    # self_employed_pension_contribution_ald: IRS SOI Publication
+    # self_employed_pension_contributions: IRS SOI Publication
     # 1304, Table 1.4 (TY 2023), "Payments to a Keogh plan" —
     # $30.13B (col DM, row "All returns, total"). Includes
     # SEP-IRAs, SIMPLE-IRAs, and traditional Keogh/HR-10 plans.
-    # Targeting the ALD (not the input) because policyengine-us
-    # applies a min(contributions, SE_income) cap.
+    # Targeting the contribution output because policyengine-us applies
+    # statutory limits before the ALD formula.
     # https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income
-    "self_employed_pension_contribution_ald": RETIREMENT_CONTRIBUTION_TARGETS[
-        "self_employed_pension_contribution_ald"
+    "self_employed_pension_contributions": RETIREMENT_CONTRIBUTION_TARGETS[
+        "self_employed_pension_contributions"
     ]["value"],
     # roth_ira_contributions: IRS SOI IRA Accumulation Tables 5 & 6
     # (TY 2022, latest published). Total Roth IRA contributions =

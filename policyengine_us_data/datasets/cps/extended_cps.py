@@ -56,10 +56,6 @@ from policyengine_us_data.utils.policyengine import has_policyengine_us_variable
 from policyengine_us_data.utils.dataset_validation import (
     assert_no_computed_policyengine_us_variables_exported,
 )
-from policyengine_us_data.utils.retirement_limits import (
-    get_retirement_limits,
-    get_se_pension_limits,
-)
 from policyengine_us_data.utils.randomness import seeded_rng
 
 logger = logging.getLogger(__name__)
@@ -154,11 +150,11 @@ CPS_ONLY_IMPUTED_VARIABLES = [
     "taxable_sep_distributions",
     "tax_exempt_sep_distributions",
     # Retirement contributions
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
-    "self_employed_pension_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
     # Social Security sub-components
     "social_security_retirement",
     "social_security_disability",
@@ -753,50 +749,34 @@ def _impute_cps_only_variables(
 
 
 def apply_retirement_constraints(predictions, X_test, time_period):
-    """Enforce IRS contribution limits on retirement variable predictions.
+    """Clean retirement contribution predictions for data-domain eligibility.
 
     Args:
         predictions: DataFrame of QRF predictions for retirement
             contribution variables.
         X_test: DataFrame with at least ``age``,
             ``employment_income``, and ``self_employment_income``.
-        time_period: Tax year (int) for IRS limit look-up.
+        time_period: Tax year (int), accepted for API compatibility.
 
     Returns:
-        DataFrame with constrained values (same columns).
+        DataFrame with cleaned values (same columns).
     """
-    limits = get_retirement_limits(time_period)
-    se_limits = get_se_pension_limits(time_period)
-
-    age = X_test["age"].values
-    catch_up = age >= 50
     emp_income = X_test["employment_income"].values
     se_income = X_test["self_employment_income"].values
 
-    limit_401k = limits["401k"] + catch_up * limits["401k_catch_up"]
-    limit_ira = limits["ira"] + catch_up * limits["ira_catch_up"]
-    se_pension_cap = np.minimum(
-        se_income * se_limits["se_pension_rate"],
-        se_limits["se_pension_dollar_limit"],
-    )
-
-    # Explicit mapping: variable -> (cap array, zero_mask or None).
+    # Explicit mapping: variable -> zero_mask or None. Statutory limits
+    # are applied by PolicyEngine-US plain contribution variables.
     _CONSTRAINT_MAP = {
-        "traditional_401k_contributions": (limit_401k, emp_income == 0),
-        "roth_401k_contributions": (limit_401k, emp_income == 0),
-        "traditional_ira_contributions": (limit_ira, None),
-        "roth_ira_contributions": (limit_ira, None),
-        "self_employed_pension_contributions": (
-            se_pension_cap,
-            se_income == 0,
-        ),
+        "traditional_401k_contributions_desired": emp_income == 0,
+        "roth_401k_contributions_desired": emp_income == 0,
+        "traditional_ira_contributions_desired": None,
+        "roth_ira_contributions_desired": None,
+        "self_employed_pension_contributions_desired": se_income == 0,
     }
 
     result = predictions.clip(lower=0)
     for var in result.columns:
-        cap, zero_mask = _CONSTRAINT_MAP.get(var, (None, None))
-        if cap is not None:
-            result[var] = np.minimum(result[var].values, cap)
+        zero_mask = _CONSTRAINT_MAP.get(var)
         if zero_mask is not None:
             result.loc[zero_mask, var] = 0
 
@@ -836,11 +816,11 @@ def reconcile_ss_subcomponents(predictions, total_ss):
 
 
 _RETIREMENT_VARS = {
-    "traditional_401k_contributions",
-    "roth_401k_contributions",
-    "traditional_ira_contributions",
-    "roth_ira_contributions",
-    "self_employed_pension_contributions",
+    "traditional_401k_contributions_desired",
+    "roth_401k_contributions_desired",
+    "traditional_ira_contributions_desired",
+    "roth_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
 }
 
 _SS_SUBCOMPONENT_VARS = {

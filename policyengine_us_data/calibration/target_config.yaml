@@ -240,7 +240,7 @@ include:
     geo_level: national
   - variable: roth_ira_contributions
     geo_level: national
-  - variable: self_employed_pension_contribution_ald
+  - variable: self_employed_pension_contributions
     geo_level: national
 
   # === NATIONAL — IRS SOI domain-constrained dollar targets (restored: |rel_err| < 15%) ===

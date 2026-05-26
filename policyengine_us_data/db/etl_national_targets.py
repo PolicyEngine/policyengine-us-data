@@ -27,13 +27,12 @@ from policyengine_us_data.utils.db import (
     get_geographic_strata,
 )
 from policyengine_us_data.utils.ssi_targets import (
-    SSI_PAYMENT_TARGET_SOURCE,
+    SSI_CBO_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_NOTES,
     SSI_RECIPIENT_TARGET_SOURCE,
     SSI_RECIPIENT_TARGET_YEAR,
     SSI_RECIPIENT_TARGETS_2024,
-    get_ssi_payment_target_notes,
-    scale_ssi_fiscal_year_target_for_single_year_data,
+    get_ssi_annual_payment_target,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -781,14 +780,13 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
         "income_tax_positive",
         "snap",
         "social_security",
-        "ssi_federal_fiscal_year_outlays",
+        "ssi",
         "unemployment_compensation",
     ]
 
     # Mapping from target variable to CBO parameter name (when different)
     cbo_param_name_map = {
         "income_tax_positive": "income_tax",  # CBO param is income_tax
-        "ssi_federal_fiscal_year_outlays": "ssi",
     }
 
     cbo_targets = []
@@ -800,12 +798,14 @@ def extract_national_targets(year: int = DEFAULT_YEAR):
             ).calibration.gov.cbo._children[param_name]
             source = "CBO Budget Projections"
             notes = f"CBO projection for {variable_name}"
-            if variable_name == "ssi_federal_fiscal_year_outlays":
-                value = scale_ssi_fiscal_year_target_for_single_year_data(
-                    value, time_period
-                )
-                source = SSI_PAYMENT_TARGET_SOURCE
-                notes = get_ssi_payment_target_notes(time_period)
+            if variable_name == "ssi":
+                ssi_target = get_ssi_annual_payment_target(time_period)
+                if ssi_target is None:
+                    source = SSI_CBO_TARGET_SOURCE
+                else:
+                    value = ssi_target["value"]
+                    source = ssi_target["source"]
+                    notes = ssi_target["notes"]
             cbo_targets.append(
                 {
                     "variable": variable_name,
@@ -951,14 +951,6 @@ def load_national_targets(
         for _, target_data in direct_targets_df.iterrows():
             target_year = target_data["year"]
             _register_target_variable(session, target_data["variable"])
-            if target_data["variable"] == "ssi_federal_fiscal_year_outlays":
-                _deactivate_replaced_national_target(
-                    session,
-                    stratum_id=us_stratum.stratum_id,
-                    old_variable="ssi",
-                    new_variable="ssi_federal_fiscal_year_outlays",
-                    period=target_year,
-                )
             # Check if target already exists
             existing_target = session.exec(
                 select(Target).where(

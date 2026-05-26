@@ -479,9 +479,10 @@ class TestSubfunctions:
         )
 
         def fake_read_csv(path, *args, **kwargs):
-            if str(path).endswith("pu2023_slim.csv"):
+            usecols = set(kwargs.get("usecols") or [])
+            if "TJB1_TXAMT" in usecols:
                 return tip_source.copy()
-            if str(path).endswith("pu2023.csv"):
+            if "TVAL_BANK" in usecols:
                 return asset_source.copy()
             raise AssertionError(f"Unexpected read_csv path: {path}")
 
@@ -512,6 +513,11 @@ class TestSubfunctions:
             huggingface_hub,
             "hf_hub_download",
             lambda *args, **kwargs: None,
+        )
+        monkeypatch.setattr(
+            source_impute,
+            "ensure_sipp_file",
+            lambda: "pu2024.csv",
         )
         monkeypatch.setattr(source_impute.pd, "read_csv", fake_read_csv)
         monkeypatch.setattr(source_impute, "QRF", FakeQRF)

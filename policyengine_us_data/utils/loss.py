@@ -28,7 +28,7 @@ from policyengine_core.reforms import Reform
 from policyengine_us_data.utils.soi import pe_to_soi, get_soi, get_tracked_soi_row
 from policyengine_us_data.utils.ssi_targets import (
     SSI_RECIPIENT_TARGETS_2024,
-    scale_ssi_fiscal_year_target_for_single_year_data,
+    get_ssi_annual_payment_target,
 )
 from policyengine_us_data.utils.target_variables import (
     target_variable_components,
@@ -100,13 +100,12 @@ CBO_PROGRAMS = [
     "income_tax_positive",
     "snap",
     "social_security",
-    "ssi_federal_fiscal_year_outlays",
+    "ssi",
     "unemployment_compensation",
 ]
 
 CBO_PARAM_NAME_MAP = {
     "income_tax_positive": "income_tax",
-    "ssi_federal_fiscal_year_outlays": "ssi",
 }
 
 HARD_CODED_TOTALS = {
@@ -250,13 +249,15 @@ def _add_ssi_recipient_targets(loss_matrix, targets_array, sim, time_period):
 
 
 def _cbo_program_target_value(sim, variable_name: str, time_period):
+    if variable_name == "ssi":
+        ssi_target = get_ssi_annual_payment_target(time_period)
+        if ssi_target is not None:
+            return ssi_target["value"]
+
     param_name = CBO_PARAM_NAME_MAP.get(variable_name, variable_name)
-    value = sim.tax_benefit_system.parameters(
-        time_period
-    ).calibration.gov.cbo._children[param_name]
-    if variable_name == "ssi_federal_fiscal_year_outlays":
-        return scale_ssi_fiscal_year_target_for_single_year_data(value, time_period)
-    return value
+    return sim.tax_benefit_system.parameters(time_period).calibration.gov.cbo._children[
+        param_name
+    ]
 
 
 ACA_SPENDING_TARGETS = {
@@ -1346,7 +1347,11 @@ def build_loss_matrix(dataset: type, time_period):
 
     for variable_name in CBO_PROGRAMS:
         label = f"nation/cbo/{variable_name}"
-        loss_matrix[label] = sim.calculate(variable_name, map_to="household").values
+        loss_matrix[label] = sim.calculate(
+            variable_name,
+            time_period,
+            map_to="household",
+        ).values
         if any(loss_matrix[label].isna()):
             raise ValueError(f"Missing values for {label}")
         targets_array.append(_cbo_program_target_value(sim, variable_name, time_period))

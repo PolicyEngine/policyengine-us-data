@@ -1,97 +1,41 @@
 """Shared SSI calibration targets."""
 
-from datetime import date, timedelta
-
 SSI_CBO_TARGET_SOURCE = (
     "https://www.cbo.gov/system/files/2026-02/51313-2026-02-ssi.xlsx"
 )
-SSI_PAYMENT_TIMING_SOURCE = "https://www.ssa.gov/oact/ssir/SSI24/IV_C_Payments.html"
-SSI_PAYMENT_RULE_SOURCE = "https://www.ssa.gov/OP_Home/cfr20/416/416-0502.htm"
-SSI_PAYMENT_TARGET_SOURCE = (
-    f"{SSI_CBO_TARGET_SOURCE}; {SSI_PAYMENT_TIMING_SOURCE}; {SSI_PAYMENT_RULE_SOURCE}"
+SSI_ANNUAL_PAYMENT_TARGET_SOURCE = (
+    "https://www.ssa.gov/policy/docs/statcomps/ssi_asr/2024/sect01.html"
 )
+SSI_OACT_PAYMENT_DATE_TARGET_SOURCE = (
+    "https://www.ssa.gov/oact/ssir/SSI25/IV_C_Payments.html"
+)
+SSI_OACT_CY2024_PAYMENT_DATE_ALL = 63_080_000_000
+SSI_OACT_FY2024_PAYMENT_DATE_ALL = 57_600_000_000
+SSI_ANNUAL_PAYMENT_TARGET_NOTES = (
+    "SSA SSI Annual Statistical Report, 2024, Table 2; Federal SSI total "
+    "annual payments for all recipients, excluding federally administered "
+    "state supplementation. ASR allocates payments to the month due, so this "
+    "target aligns with annual `ssi` over January-December benefit months. "
+    "Do not replace it with OACT payment-date accounting; OACT Table IV.C2 "
+    "reports FY2024 all Federal SSI payments of $57.600B because fiscal-year "
+    "payment-date totals can contain 11, 12, or 13 monthly payments. The "
+    "smaller gap between ASR CY2024 and OACT FY2024 is not a pure 12-vs-11 "
+    "month comparison: OACT Table IV.C1 reports CY2024 all Federal SSI "
+    "payments of $63.080B on a payment-date basis, $5.480B above OACT "
+    "FY2024, and OACT obligations are not reduced for certain recovered "
+    "overpayments remitted directly to Treasury that ASR nets out."
+)
+SSI_ANNUAL_PAYMENT_TARGETS = {
+    2024: {
+        "value": 59_665_127_000,
+        "source": SSI_ANNUAL_PAYMENT_TARGET_SOURCE,
+        "notes": SSI_ANNUAL_PAYMENT_TARGET_NOTES,
+    },
+}
 
 
-def _as_fiscal_year(year) -> int:
-    return int(str(year)[:4])
-
-
-def _is_new_years_day_observed(day: date) -> bool:
-    new_years_day = date(day.year, 1, 1)
-    next_new_years_day = date(day.year + 1, 1, 1)
-    return (
-        day == new_years_day
-        or (new_years_day.weekday() == 6 and day == date(day.year, 1, 2))
-        or (next_new_years_day.weekday() == 5 and day == date(day.year, 12, 31))
-    )
-
-
-def _is_labor_day(day: date) -> bool:
-    return day.month == 9 and day.weekday() == 0 and day.day <= 7
-
-
-def _is_federal_holiday_affecting_ssi_payment(day: date) -> bool:
-    return _is_new_years_day_observed(day) or _is_labor_day(day)
-
-
-def _ssi_payment_date(year: int, month: int) -> date:
-    payment_date = date(year, month, 1)
-    while payment_date.weekday() >= 5 or _is_federal_holiday_affecting_ssi_payment(
-        payment_date
-    ):
-        payment_date -= timedelta(days=1)
-    return payment_date
-
-
-def _ssi_fiscal_year_benefit_months(year) -> list[date]:
-    fiscal_year = _as_fiscal_year(year)
-    fiscal_year_start = date(fiscal_year - 1, 10, 1)
-    fiscal_year_end = date(fiscal_year, 9, 30)
-
-    benefit_months = []
-    for calendar_year in (fiscal_year - 1, fiscal_year):
-        for month in range(1, 13):
-            payment_day = _ssi_payment_date(calendar_year, month)
-            if fiscal_year_start <= payment_day <= fiscal_year_end:
-                benefit_months.append(date(calendar_year, month, 1))
-    return benefit_months
-
-
-def get_ssi_fiscal_year_payment_count(year) -> int:
-    """Return SSI benefit months with payment dates in the federal fiscal year."""
-    return len(_ssi_fiscal_year_benefit_months(year))
-
-
-def get_ssi_single_year_available_payment_count(year) -> int:
-    """Return fiscal-year SSI benefit months available from a single-year H5."""
-    fiscal_year = _as_fiscal_year(year)
-    return sum(
-        benefit_month.year == fiscal_year
-        for benefit_month in _ssi_fiscal_year_benefit_months(year)
-    )
-
-
-def scale_ssi_fiscal_year_target_for_single_year_data(value, year) -> float:
-    """Scale full fiscal-year SSI outlays to months computable from one H5 year."""
-    return (
-        float(value)
-        * get_ssi_single_year_available_payment_count(year)
-        / get_ssi_fiscal_year_payment_count(year)
-    )
-
-
-def get_ssi_payment_target_notes(year) -> str:
-    fiscal_year = _as_fiscal_year(year)
-    available_count = get_ssi_single_year_available_payment_count(year)
-    payment_count = get_ssi_fiscal_year_payment_count(year)
-    return (
-        "CBO SSI federal fiscal-year outlays scaled to the benefit months "
-        "computable from a single-year PolicyEngine-US-data H5 using "
-        "policyengine-us ssi_federal_fiscal_year_outlays; "
-        f"FY{fiscal_year} has {payment_count} SSI benefit months paid in the "
-        f"federal fiscal year, of which {available_count} are benefit months "
-        f"in calendar year {fiscal_year}"
-    )
+def get_ssi_annual_payment_target(year) -> dict | None:
+    return SSI_ANNUAL_PAYMENT_TARGETS.get(int(str(year)[:4]))
 
 
 SSI_RECIPIENT_TARGET_YEAR = 2024

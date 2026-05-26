@@ -61,7 +61,7 @@ def test_tip_sum_excludes_allocation_flags():
 def test_train_tip_model_requires_allocation_flags_for_present_tip_columns(
     monkeypatch,
 ):
-    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sipp_module, "ensure_sipp_file", lambda: "pu2024.csv")
     monkeypatch.setattr(
         sipp_module.pd,
         "read_csv",
@@ -73,7 +73,7 @@ def test_train_tip_model_requires_allocation_flags_for_present_tip_columns(
 
 
 def test_train_tip_model_drops_non_positive_weights(monkeypatch):
-    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sipp_module, "ensure_sipp_file", lambda: "pu2024.csv")
 
     data = {
         "SSUID": [1, 2, 3, 4],
@@ -117,7 +117,7 @@ def test_train_tip_model_drops_non_positive_weights(monkeypatch):
 
 
 def test_train_tip_model_keeps_reported_sipp_status_flags(monkeypatch):
-    monkeypatch.setattr(sipp_module, "hf_hub_download", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sipp_module, "ensure_sipp_file", lambda: "pu2024.csv")
 
     data = {
         "SSUID": [1, 2, 3, 4],

@@ -1,14 +1,19 @@
-import pandas as pd
-import numpy as np
-from microimpute.models.qrf import QRF
-from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.utils.randomness import seeded_rng
 import pickle
+from urllib.error import HTTPError, URLError
+from urllib.request import urlretrieve
+from zipfile import ZipFile
+
 from huggingface_hub import hf_hub_download
+import numpy as np
+import pandas as pd
+from microimpute.models.qrf import QRF
+
 from policyengine_us_data.datasets.cps.tipped_occupation import (
     derive_any_treasury_tipped_occupation_code,
     derive_is_tipped_occupation,
 )
+from policyengine_us_data.storage import STORAGE_FOLDER
+from policyengine_us_data.utils.randomness import seeded_rng
 from policyengine_us_data.utils.source_quality import (
     cap_training_sample,
     filter_positive_finite_weight_rows,
@@ -18,6 +23,15 @@ from policyengine_us_data.utils.source_quality import (
     target_observed_source_masks,
 )
 
+
+SIPP_YEAR = 2024
+SIPP_REFERENCE_YEAR = 2023
+SIPP_FULL_FILE = f"pu{SIPP_YEAR}.csv"
+SIPP_FULL_ZIP_FILE = f"pu{SIPP_YEAR}_csv.zip"
+SIPP_FULL_ZIP_URL = (
+    "https://www2.census.gov/programs-surveys/sipp/data/datasets/"
+    f"{SIPP_YEAR}/{SIPP_FULL_ZIP_FILE}"
+)
 
 SIPP_JOB_OCCUPATION_COLUMNS = [f"TJB{i}_OCC" for i in range(1, 8)]
 SIPP_TIP_AMOUNT_COLUMNS = [f"TJB{i}_TXAMT" for i in range(1, 8)]
@@ -48,7 +62,6 @@ VEHICLE_MODEL_PREDICTORS = [
 
 SSI_DISABILITY_CRITERIA_VARIABLE = "meets_ssi_disability_criteria"
 SSI_DISABILITY_MODEL_VARIABLE = SSI_DISABILITY_CRITERIA_VARIABLE
-SSI_DISABILITY_MODEL_VERSION = 6
 SSI_DISABILITY_EXPORT_VARIABLES = (SSI_DISABILITY_CRITERIA_VARIABLE,)
 
 # These six CPS/SIPP difficulty items are construction-time predictors for the
@@ -92,63 +105,88 @@ SSI_DISABILITY_MODEL_PREDICTORS = [
 ]
 
 
+def ensure_sipp_file(filename: str = SIPP_FULL_FILE):
+    """Return a local SIPP public-use file, downloading it if needed."""
+
+    local_path = STORAGE_FOLDER / filename
+    if local_path.exists():
+        return local_path
+
+    try:
+        downloaded_path = hf_hub_download(
+            repo_id="PolicyEngine/policyengine-us-data",
+            filename=filename,
+            repo_type="model",
+            local_dir=STORAGE_FOLDER,
+        )
+        if downloaded_path:
+            return downloaded_path
+    except Exception:
+        if filename != SIPP_FULL_FILE:
+            raise
+        _download_sipp_full_file_from_census()
+
+    if not local_path.exists():
+        raise FileNotFoundError(f"Could not download {filename}")
+    return local_path
+
+
+def _download_sipp_full_file_from_census():
+    zip_path = STORAGE_FOLDER / SIPP_FULL_ZIP_FILE
+    if not zip_path.exists():
+        try:
+            urlretrieve(SIPP_FULL_ZIP_URL, zip_path)
+        except (HTTPError, URLError) as error:
+            raise FileNotFoundError(
+                f"Could not download {SIPP_FULL_FILE} from HuggingFace or "
+                f"Census at {SIPP_FULL_ZIP_URL}"
+            ) from error
+
+    with ZipFile(zip_path) as archive:
+        if SIPP_FULL_FILE not in archive.namelist():
+            raise FileNotFoundError(
+                f"{SIPP_FULL_ZIP_FILE} does not contain {SIPP_FULL_FILE}"
+            )
+        archive.extract(SIPP_FULL_FILE, STORAGE_FOLDER)
+
+
 def train_tip_model():
-    DOWNLOAD_FULL_SIPP = False
+    cols = [
+        "SSUID",
+        "PNUM",
+        "MONTHCODE",
+        "ERESIDENCEID",
+        "ERELRPE",
+        "SPANEL",
+        "SWAVE",
+        "WPFINWGT",
+        "ESEX",
+        "TAGE",
+        "TAGE_EHC",
+        "ERACE",
+        "EORIGIN",
+        "EEDUC",
+        "EDEPCLM",
+        "EMS",
+        "EFSTATUS",
+        "TJB1_TXAMT",
+        "TJB1_MSUM",
+        "TJB1_OCC",
+        "TJB1_IND",
+        "AJB1_TXAMT",
+        "TPTOTINC",
+    ]
 
-    if DOWNLOAD_FULL_SIPP:
-        hf_hub_download(
-            repo_id="PolicyEngine/policyengine-us-data",
-            filename="pu2023.csv",
-            repo_type="model",
-            local_dir=STORAGE_FOLDER,
-        )
-        cols = [
-            "SSUID",
-            "PNUM",
-            "MONTHCODE",
-            "ERESIDENCEID",
-            "ERELRPE",
-            "SPANEL",
-            "SWAVE",
-            "WPFINWGT",
-            "ESEX",
-            "TAGE",
-            "TAGE_EHC",
-            "ERACE",
-            "EORIGIN",
-            "EEDUC",
-            "EDEPCLM",
-            "EMS",
-            "EFSTATUS",
-            "TJB1_TXAMT",
-            "TJB1_MSUM",
-            "TJB1_OCC",
-            "TJB1_IND",
-            "AJB1_TXAMT",
-            "TPTOTINC",
-        ]
+    for col in cols.copy():
+        if "JB1" in col:
+            for i in range(2, 8):
+                cols.append(col.replace("JB1", f"JB{i}"))
 
-        for col in cols:
-            if "JB1" in col:
-                for i in range(2, 8):
-                    cols.append(col.replace("JB1", f"JB{i}"))
-
-        df = pd.read_csv(
-            STORAGE_FOLDER / "pu2023.csv",
-            delimiter="|",
-            usecols=cols,
-        )
-
-    else:
-        hf_hub_download(
-            repo_id="PolicyEngine/policyengine-us-data",
-            filename="pu2023_slim.csv",
-            repo_type="model",
-            local_dir=STORAGE_FOLDER,
-        )
-        df = pd.read_csv(
-            STORAGE_FOLDER / "pu2023_slim.csv",
-        )
+    df = pd.read_csv(
+        ensure_sipp_file(),
+        delimiter="|",
+        usecols=cols,
+    )
     # Sum tip dollar-amount columns (TJB*_TXAMT) across all jobs.
     # Previously used `str.contains("TXAMT")`, which also picked up
     # AJB*_TXAMT Census allocation flags (small ints 0/1/2 indicating
@@ -256,7 +294,7 @@ def get_tip_model() -> QRF:
     return model
 
 
-# Asset imputation from SIPP 2023
+# Asset imputation from the latest available SIPP public-use file
 # Imputes asset categories separately for policy flexibility
 
 ASSET_JOB_EARNINGS_COLUMNS = [f"TJB{i}_MSUM" for i in range(1, 8)]
@@ -459,6 +497,42 @@ def _yes(df: pd.DataFrame, column: str) -> pd.Series:
     return values.fillna(0).astype(float).eq(1)
 
 
+def _sipp_monthly_earned_income(df: pd.DataFrame) -> pd.Series:
+    """Approximate monthly earned income from SIPP job earnings columns."""
+    job_cols = [col for col in ASSET_JOB_EARNINGS_COLUMNS if col in df]
+    if job_cols:
+        return df[job_cols].fillna(0).sum(axis=1)
+    return df["TPTOTINC"].fillna(0)
+
+
+def _sipp_monthly_unearned_income(
+    df: pd.DataFrame, monthly_earned_income: pd.Series
+) -> pd.Series:
+    """Approximate monthly unearned income as total income net of job earnings."""
+    return (df["TPTOTINC"].fillna(0) - monthly_earned_income).clip(lower=0)
+
+
+def _approximate_monthly_ssi_countable_income(
+    monthly_earned_income: pd.Series,
+    monthly_unearned_income: pd.Series,
+    *,
+    general_exclusion: float,
+    earned_exclusion: float,
+    earned_share_excluded: float,
+) -> pd.Series:
+    """Apply standard SSI income exclusions to monthly SIPP income proxies."""
+    applied_general = np.minimum(general_exclusion, monthly_unearned_income)
+    countable_unearned = monthly_unearned_income - applied_general
+    leftover_general = general_exclusion - applied_general
+
+    earned_after_flat_exclusions = (
+        monthly_earned_income - earned_exclusion - leftover_general
+    ).clip(lower=0)
+    countable_earned = earned_after_flat_exclusions * (1 - earned_share_excluded)
+
+    return countable_unearned + countable_earned
+
+
 def _add_ssi_disability_difficulty_predictors(df: pd.DataFrame) -> None:
     for predictor, source_column in SIPP_SSI_DISABILITY_DIFFICULTY_COLUMNS.items():
         df[predictor] = _yes(df, source_column)
@@ -491,25 +565,35 @@ def _observed_ssi_disability_label_mask(
 def _ssi_financial_candidate_mask(
     df: pd.DataFrame, time_period: int = 2024
 ) -> pd.Series:
-    """Approximate non-disability SSI financial eligibility in SIPP.
+    """Approximate non-disability SSI screening eligibility in SIPP.
 
     This is only a training-frame screen. It avoids treating people whose
-    resources or income make SSI receipt structurally unlikely as clean
-    non-disabled labels.
+    resources, countable income, or SGA-level earnings make SSI receipt
+    structurally unlikely as clean non-disabled labels.
     """
     try:
         from policyengine_us import CountryTaxBenefitSystem
 
-        p = CountryTaxBenefitSystem().parameters(f"{time_period}-01-01").gov.ssa.ssi
+        parameters = CountryTaxBenefitSystem().parameters(f"{time_period}-01-01")
+        p = parameters.gov.ssa.ssi
         individual_resource_limit = float(p.eligibility.resources.limit.individual)
         couple_resource_limit = float(p.eligibility.resources.limit.couple)
         individual_fbr = float(p.amount.individual)
         couple_fbr = float(p.amount.couple)
+        income_exclusions = p.income.exclusions
+        general_exclusion = float(income_exclusions.general)
+        earned_exclusion = float(income_exclusions.earned)
+        earned_share_excluded = float(income_exclusions.earned_share)
+        non_blind_sga = float(parameters.gov.ssa.sga.non_blind)
     except Exception:
         individual_resource_limit = 2_000.0
         couple_resource_limit = 3_000.0
         individual_fbr = 943.0
         couple_fbr = 1_415.0
+        general_exclusion = 20.0
+        earned_exclusion = 65.0
+        earned_share_excluded = 0.5
+        non_blind_sga = 1_550.0
 
     resource_limit = np.where(
         df["is_married"].astype(bool),
@@ -526,9 +610,23 @@ def _ssi_financial_candidate_mask(
         + df["stock_assets"].fillna(0)
         + df["bond_assets"].fillna(0)
     )
-    monthly_income = df["TPTOTINC"].fillna(0)
-    return (liquid_resources <= resource_limit) & (
-        monthly_income <= monthly_income_limit * 2
+    monthly_earned_income = _sipp_monthly_earned_income(df)
+    monthly_unearned_income = _sipp_monthly_unearned_income(df, monthly_earned_income)
+    monthly_countable_income = _approximate_monthly_ssi_countable_income(
+        monthly_earned_income,
+        monthly_unearned_income,
+        general_exclusion=general_exclusion,
+        earned_exclusion=earned_exclusion,
+        earned_share_excluded=earned_share_excluded,
+    )
+    difficulty_seeing = df.get("difficulty_seeing", _yes(df, "ESEEING"))
+    is_blind = pd.Series(difficulty_seeing, index=df.index).fillna(False).astype(bool)
+    passes_sga_gate = is_blind | monthly_earned_income.le(non_blind_sga)
+
+    return (
+        (liquid_resources <= resource_limit)
+        & monthly_countable_income.le(monthly_income_limit)
+        & passes_sga_gate
     )
 
 
@@ -544,7 +642,7 @@ def build_ssi_disability_training_frame(
     df["age"] = df.TAGE
     df["is_female"] = df.ESEX == 2
     df["is_married"] = df.EMS == 1
-    df["employment_income"] = df.TPTOTINC.fillna(0) * 12
+    df["employment_income"] = _sipp_monthly_earned_income(df) * 12
     df["interest_income"] = (df["TINC_BANK"].fillna(0) + df["TINC_BOND"].fillna(0)) * 12
     df["dividend_income"] = df["TINC_STMF"].fillna(0) * 12
     df["rental_income"] = df["TINC_RENT"].fillna(0) * 12
@@ -698,7 +796,7 @@ def predict_ssi_disability_criteria(model, receiver_df: pd.DataFrame) -> np.ndar
 
 
 def train_asset_model():
-    """Train QRF model for liquid asset categories using SIPP 2023 data.
+    """Train QRF model for liquid asset categories using SIPP data.
 
     Imputes three asset categories separately:
     - bank_account_assets: checking, savings, money market (TVAL_BANK)
@@ -707,15 +805,8 @@ def train_asset_model():
 
     Policy models can then define countable resources based on rules.
     """
-    hf_hub_download(
-        repo_id="PolicyEngine/policyengine-us-data",
-        filename="pu2023.csv",
-        repo_type="model",
-        local_dir=STORAGE_FOLDER,
-    )
-
     df = pd.read_csv(
-        STORAGE_FOLDER / "pu2023.csv",
+        ensure_sipp_file(),
         delimiter="|",
         usecols=ASSET_COLUMNS,
     )
@@ -784,7 +875,7 @@ def train_asset_model():
 
 def get_asset_model() -> QRF:
     """Get or train the liquid asset imputation model."""
-    model_path = STORAGE_FOLDER / "liquid_assets_v3.pkl"
+    model_path = STORAGE_FOLDER / f"liquid_assets_sipp_{SIPP_YEAR}.pkl"
 
     if not model_path.exists():
         model = train_asset_model()
@@ -800,15 +891,8 @@ def get_asset_model() -> QRF:
 
 def train_ssi_disability_model(time_period: int = 2024):
     """Train a boolean model for likely SSI disability criteria passage."""
-    hf_hub_download(
-        repo_id="PolicyEngine/policyengine-us-data",
-        filename="pu2023.csv",
-        repo_type="model",
-        local_dir=STORAGE_FOLDER,
-    )
-
     df = pd.read_csv(
-        STORAGE_FOLDER / "pu2023.csv",
+        ensure_sipp_file(),
         delimiter="|",
         usecols=SSI_DISABILITY_COLUMNS,
     )
@@ -862,22 +946,14 @@ def get_ssi_disability_model(time_period: int = 2024) -> QRF:
 
 def _ssi_disability_model_path(time_period: int):
     return (
-        STORAGE_FOLDER
-        / f"ssi_disability_criteria_v{SSI_DISABILITY_MODEL_VERSION}_{time_period}.pkl"
+        STORAGE_FOLDER / f"ssi_disability_criteria_{time_period}_sipp_{SIPP_YEAR}.pkl"
     )
 
 
 def build_vehicle_training_frame() -> pd.DataFrame:
     """Build a household-level SIPP frame for vehicle asset imputation."""
-    hf_hub_download(
-        repo_id="PolicyEngine/policyengine-us-data",
-        filename="pu2023.csv",
-        repo_type="model",
-        local_dir=STORAGE_FOLDER,
-    )
-
     df = pd.read_csv(
-        STORAGE_FOLDER / "pu2023.csv",
+        ensure_sipp_file(),
         delimiter="|",
         usecols=VEHICLE_COLUMNS,
     )
@@ -949,7 +1025,7 @@ def build_vehicle_training_frame() -> pd.DataFrame:
 
 
 def train_vehicle_model():
-    """Train a household-level vehicle asset model from SIPP 2023."""
+    """Train a household-level vehicle asset model from SIPP."""
     sipp = build_vehicle_training_frame()
     sipp = sipp[~sipp.isna().any(axis=1)]
     vehicle_vars = [
@@ -986,7 +1062,7 @@ def train_vehicle_model():
 
 def get_vehicle_model() -> QRF:
     """Get or train the household vehicle imputation model."""
-    model_path = STORAGE_FOLDER / "household_vehicle_assets_v2.pkl"
+    model_path = STORAGE_FOLDER / f"household_vehicle_assets_sipp_{SIPP_YEAR}.pkl"
 
     if not model_path.exists():
         model = train_vehicle_model()

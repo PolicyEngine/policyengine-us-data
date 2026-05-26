@@ -14,16 +14,17 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
 )
 
 
-def test_initialize_weight_priors_keeps_zero_weight_records_near_zero():
+def test_initialize_weight_priors_gives_zero_weight_records_balanced_mass():
     weights = np.array([1_500.0, 0.0, 625.0, 0.0], dtype=np.float64)
 
     priors = initialize_weight_priors(weights, seed=123)
 
     assert np.all(priors > 0)
-    assert priors[1] < 1e-4
-    assert priors[3] < 1e-4
-    assert priors[0] == pytest.approx(1_500.0)
-    assert priors[2] == pytest.approx(625.0)
+    assert priors.sum() == pytest.approx(weights.sum())
+    assert priors[[0, 2]].sum() == pytest.approx(weights.sum() / 2)
+    assert priors[[1, 3]].sum() == pytest.approx(weights.sum() / 2)
+    assert priors[1] == pytest.approx(priors[3])
+    assert priors[0] / priors[2] == pytest.approx(weights[0] / weights[2])
 
 
 def test_initialize_weight_priors_preserves_positive_weights_exactly():

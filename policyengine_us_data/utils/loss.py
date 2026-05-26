@@ -281,6 +281,7 @@ MEDICAID_ENROLLMENT_TARGETS = {
 
 LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
     "capital_gains_gross",
+    "long_term_capital_gains",
     "ordinary_dividends",
     "qualified_dividends",
     "taxable_interest_income",
@@ -292,6 +293,7 @@ AGI_LEVEL_TARGETED_VARIABLES = (
     "employment_income",
     "business_net_profits",
     "capital_gains_gross",
+    "long_term_capital_gains",
     "ordinary_dividends",
     "partnership_and_s_corp_income",
     "qualified_dividends",

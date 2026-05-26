@@ -3,7 +3,8 @@
 Earlier versions used global ``np.random.normal(1, 0.1, ...)`` jitter before
 ``reweight()`` reseeded the optimizer. Current code routes both dense CPS
 weighting paths through ``initialize_weight_priors()``, which preserves positive
-survey weights and gives zero-weight clone records deterministic tiny priors.
+survey weight shape and gives zero-weight clone records deterministic uniform
+prior mass.
 """
 
 import numpy as np

@@ -45,21 +45,37 @@ def initialize_weight_priors(
     original_weights: np.ndarray,
     seed: int = 1456,
     epsilon: float = 1e-6,
+    zero_weight_total_share: float = 0.5,
 ) -> np.ndarray:
-    """Build deterministic positive priors for sparse reweighting."""
+    """Build deterministic positive priors for sparse reweighting.
+
+    PUF clone households enter the extended CPS with zero household weight.
+    Giving those records near-zero priors leaves them effectively unusable in
+    log-space optimization. When zero-weight rows are present, preserve the
+    relative distribution of positive survey weights but reserve a fixed share
+    of the original total household mass for uniform zero-weight-row priors.
+    """
 
     weights = np.asarray(original_weights, dtype=np.float64)
     if np.any(weights < 0):
         raise ValueError("original_weights must be non-negative")
+    if weights.size == 0:
+        return weights.copy()
+    if not 0 < zero_weight_total_share < 1:
+        raise ValueError("zero_weight_total_share must be between 0 and 1")
 
     priors = np.empty_like(weights, dtype=np.float64)
     positive_mask = weights > 0
-    priors[positive_mask] = weights[positive_mask]
-
     zero_mask = ~positive_mask
-    if zero_mask.any():
-        rng = np.random.default_rng(seed)
-        priors[zero_mask] = epsilon * rng.uniform(1.0, 2.0, size=zero_mask.sum())
+    if not zero_mask.any():
+        return weights.copy()
+
+    positive_total = float(weights[positive_mask].sum())
+    if positive_total <= 0:
+        return np.full_like(weights, 1.0, dtype=np.float64)
+
+    priors[positive_mask] = weights[positive_mask] * (1 - zero_weight_total_share)
+    priors[zero_mask] = positive_total * zero_weight_total_share / zero_mask.sum()
 
     return priors
 

@@ -105,6 +105,7 @@ def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
             values = {
                 "self_employment_income": np.array([100.0, -10.0]),
                 "sstb_self_employment_income": np.array([50.0, -25.0]),
+                "long_term_capital_gains": np.array([25.0, -5.0]),
                 "miscellaneous_income": np.array([12.0, -5.0]),
                 "filing_status": np.array(["SINGLE", "SINGLE"]),
                 "tax_unit_weight": np.ones(n),
@@ -123,6 +124,9 @@ def test_pe_to_soi_combines_sstb_and_non_sstb_schedule_c(monkeypatch):
     )
     np.testing.assert_array_equal(
         soi["business_net_losses"].to_numpy(), np.array([0.0, 35.0])
+    )
+    np.testing.assert_array_equal(
+        soi["long_term_capital_gains"].to_numpy(), np.array([25.0, 0.0])
     )
     np.testing.assert_array_equal(soi["other_income"].to_numpy(), np.array([12.0, 0.0]))
 
@@ -197,6 +201,56 @@ def test_get_soi_uses_best_available_year_per_variable(monkeypatch):
 
     assert np.isclose(mortgage_value, 146.6666666667)
     assert np.isclose(taxable_interest_value, 266.6666666667)
+
+
+def test_get_soi_uses_ltcg_basis_uprating_for_capital_gains(monkeypatch):
+    soi_module = load_soi_module()
+    fake_soi = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "Variable": "capital_gains_gross",
+                "Value": 100.0,
+            },
+            {
+                "Year": 2023,
+                "Variable": "long_term_capital_gains",
+                "Value": 200.0,
+            },
+        ]
+    )
+    for column, default in {
+        "SOI table": "Table 1.4A",
+        "XLSX column": "BK",
+        "XLSX row": 10,
+        "Filing status": "All",
+        "AGI lower bound": float("-inf"),
+        "AGI upper bound": float("inf"),
+        "Count": False,
+        "Taxable only": False,
+        "Full population": True,
+    }.items():
+        fake_soi[column] = default
+
+    uprating = pd.DataFrame(
+        {
+            2023: [1.0, 1.0],
+            2024: [2.0, 10.0],
+        },
+        index=["long_term_capital_gains_basis", "employment_income_before_lsr"],
+    )
+
+    monkeypatch.setattr(soi_module, "load_tracked_soi_targets", lambda: fake_soi.copy())
+    monkeypatch.setattr(
+        soi_module,
+        "create_policyengine_uprating_factors_table",
+        lambda: uprating,
+    )
+
+    soi = soi_module.get_soi(2024)
+
+    assert soi.set_index("Variable").loc["capital_gains_gross", "Value"] == 200.0
+    assert soi.set_index("Variable").loc["long_term_capital_gains", "Value"] == 400.0
 
 
 def test_get_soi_uses_current_employment_income_uprating_without_legacy_row(

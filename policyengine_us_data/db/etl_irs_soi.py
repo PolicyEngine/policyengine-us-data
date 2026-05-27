@@ -204,10 +204,16 @@ SOI_TAXABLE_AGI_TARGET_VARIABLES = {
     "adjusted_gross_income": "adjusted_gross_income",
     "count": "tax_unit_count",
 }
+SOI_NEGATIVE_AGI_TARGET_VARIABLES = dict(SOI_TAXABLE_AGI_TARGET_VARIABLES)
 SOI_TAXABLE_AGI_DOMAIN_TARGET_VARIABLES = {
     "employment_income": "irs_employment_income",
     "total_pension_income": "pension_income",
     "total_social_security": "social_security",
+}
+SOI_TAXABLE_LOSS_AGI_TARGET_VARIABLES = {
+    "capital_gains_losses": "loss_limited_net_capital_gains",
+    "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+    "rent_and_royalty_net_losses": "tax_unit_rental_income",
 }
 SOI_FILING_STATUS_CONSTRAINTS = {
     "Single": ("==", "SINGLE"),
@@ -694,6 +700,110 @@ def _get_or_create_national_agi_domain_stratum(
     return stratum
 
 
+def _get_or_create_national_agi_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+) -> Stratum:
+    note = f"National filers, AGI >= {agi_lower_bound}, AGI < {agi_upper_bound}"
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(
+        [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation=">=",
+                value=str(agi_lower_bound),
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation="<",
+                value=str(agi_upper_bound),
+            ),
+        ]
+    )
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
+def _get_or_create_national_taxable_agi_negative_domain_stratum(
+    session: Session,
+    national_filer_stratum_id: int,
+    *,
+    domain_variable: str,
+    agi_lower_bound: float,
+    agi_upper_bound: float,
+) -> Stratum:
+    note = (
+        "National taxable filers, AGI >= "
+        f"{agi_lower_bound}, AGI < {agi_upper_bound}, {domain_variable} < 0"
+    )
+    stratum = session.exec(
+        select(Stratum).where(
+            Stratum.parent_stratum_id == national_filer_stratum_id,
+            Stratum.notes == note,
+        )
+    ).first()
+    if stratum:
+        return stratum
+
+    stratum = Stratum(
+        parent_stratum_id=national_filer_stratum_id,
+        notes=note,
+    )
+    stratum.constraints_rel.extend(
+        [
+            StratumConstraint(
+                constraint_variable="tax_unit_is_filer",
+                operation="==",
+                value="1",
+            ),
+            StratumConstraint(
+                constraint_variable="income_tax_before_credits",
+                operation=">",
+                value="0",
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation=">=",
+                value=str(agi_lower_bound),
+            ),
+            StratumConstraint(
+                constraint_variable="adjusted_gross_income",
+                operation="<",
+                value=str(agi_upper_bound),
+            ),
+            StratumConstraint(
+                constraint_variable=domain_variable,
+                operation="<",
+                value="0",
+            ),
+        ]
+    )
+    session.add(stratum)
+    session.flush()
+    return stratum
+
+
 def _get_or_create_national_eitc_agi_child_stratum(
     session: Session,
     national_filer_stratum_id: int,
@@ -1117,6 +1227,86 @@ def load_national_taxable_agi_domain_filing_status_targets(
             variable="tax_unit_count" if bool(row["Count"]) else target_variable,
             period=int(target_year),
             value=float(row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
+
+
+def load_national_negative_agi_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    target_year: int,
+) -> None:
+    """Create all-return negative-AGI amount and count targets."""
+    soi = get_soi(target_year)
+    rows = soi[
+        soi["Variable"].isin(SOI_NEGATIVE_AGI_TARGET_VARIABLES)
+        & (soi["Filing status"] == "All")
+        & (soi["AGI lower bound"] == -np.inf)
+        & (soi["AGI upper bound"] == 0)
+        & (~soi["Taxable only"])
+    ].copy()
+
+    for _, row in rows.iterrows():
+        source_variable = row["Variable"]
+        target_variable = SOI_NEGATIVE_AGI_TARGET_VARIABLES[source_variable]
+        stratum = _get_or_create_national_agi_stratum(
+            session,
+            national_filer_stratum_id,
+            agi_lower_bound=float(row["AGI lower bound"]),
+            agi_upper_bound=float(row["AGI upper bound"]),
+        )
+        notes = (
+            f"Publication 1304 {row['SOI table']} all-return negative-AGI "
+            f"target (source year {int(row['Year'])}, row {int(row['XLSX row'])})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable=target_variable,
+            period=int(target_year),
+            value=float(row["Value"]),
+            source="IRS SOI",
+            notes=notes,
+        )
+
+
+def load_national_taxable_loss_agi_targets(
+    session: Session,
+    national_filer_stratum_id: int,
+    target_year: int,
+) -> None:
+    """Create taxable loss-component targets by AGI band."""
+    soi = get_soi(target_year)
+    rows = soi[
+        soi["Variable"].isin(SOI_TAXABLE_LOSS_AGI_TARGET_VARIABLES)
+        & (soi["Filing status"] == "All")
+        & (soi["Taxable only"])
+        & (~soi["Full population"])
+        & (soi["Value"] > 0)
+    ].copy()
+
+    for _, row in rows.iterrows():
+        source_variable = row["Variable"]
+        target_variable = SOI_TAXABLE_LOSS_AGI_TARGET_VARIABLES[source_variable]
+        stratum = _get_or_create_national_taxable_agi_negative_domain_stratum(
+            session,
+            national_filer_stratum_id,
+            domain_variable=target_variable,
+            agi_lower_bound=float(row["AGI lower bound"]),
+            agi_upper_bound=float(row["AGI upper bound"]),
+        )
+        notes = (
+            f"Publication 1304 {row['SOI table']} taxable AGI-band "
+            f"{source_variable} target "
+            f"(source year {int(row['Year'])}, row {int(row['XLSX row'])})"
+        )
+        _upsert_target(
+            session,
+            stratum_id=stratum.stratum_id,
+            variable="tax_unit_count" if bool(row["Count"]) else target_variable,
+            period=int(target_year),
+            value=(float(row["Value"]) if bool(row["Count"]) else -float(row["Value"])),
             source="IRS SOI",
             notes=notes,
         )
@@ -1717,6 +1907,16 @@ def load_soi_data(
             national_year,
         )
         load_national_taxable_agi_domain_filing_status_targets(
+            session,
+            filer_strata["national"],
+            target_year or national_year,
+        )
+        load_national_negative_agi_targets(
+            session,
+            filer_strata["national"],
+            target_year or national_year,
+        )
+        load_national_taxable_loss_agi_targets(
             session,
             filer_strata["national"],
             target_year or national_year,

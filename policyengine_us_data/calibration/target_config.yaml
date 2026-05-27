@@ -313,6 +313,28 @@ include:
   - variable: tax_unit_count
     geo_level: national
     domain_variable: adjusted_gross_income,taxable_interest_income
+  # SOI AGI-binned loss-component targets. These replace rough manually
+  # curated negative-income controls with source-backed component constraints.
+  # Include the loss components that have tax-unit-level PolicyEngine
+  # variables, so the DB matrix matches SOI return-level netting.
+  - variable: loss_limited_net_capital_gains
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,loss_limited_net_capital_gains
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,loss_limited_net_capital_gains
+  - variable: tax_unit_partnership_s_corp_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,tax_unit_partnership_s_corp_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,tax_unit_partnership_s_corp_income
+  - variable: tax_unit_rental_income
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,tax_unit_rental_income
+  - variable: tax_unit_count
+    geo_level: national
+    domain_variable: adjusted_gross_income,income_tax_before_credits,tax_unit_rental_income
   - variable: tax_exempt_interest_income
     geo_level: national
     domain_variable: tax_exempt_interest_income

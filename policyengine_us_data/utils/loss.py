@@ -288,6 +288,19 @@ LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES = {
     "taxable_interest_income",
 }
 
+SOI_NEGATIVE_AGI_TARGETED_VARIABLES = (
+    "adjusted_gross_income",
+    "count",
+)
+
+AGI_LEVEL_LOSS_TARGETED_VARIABLES = (
+    "business_net_losses",
+    "capital_gains_losses",
+    "estate_losses",
+    "partnership_and_s_corp_losses",
+    "rent_and_royalty_net_losses",
+)
+
 AGI_LEVEL_TARGETED_VARIABLES = (
     "adjusted_gross_income",
     "count",
@@ -1217,8 +1230,22 @@ def get_target_loss_weights(target_names):
     return weights
 
 
+def _is_negative_agi_all_returns_row(row) -> bool:
+    return (
+        row["Variable"] in SOI_NEGATIVE_AGI_TARGETED_VARIABLES
+        and row["Filing status"] == "All"
+        and row["AGI lower bound"] == -np.inf
+        and row["AGI upper bound"] == 0
+        and not row["Taxable only"]
+    )
+
+
 def _should_skip_soi_agi_row(row) -> bool:
-    """Skip fragile low-AGI SOI rows except for investment-income controls."""
+    """Skip fragile low-AGI SOI rows except selected source-backed controls."""
+    if _is_negative_agi_all_returns_row(row):
+        return False
+    if row["Variable"] in AGI_LEVEL_LOSS_TARGETED_VARIABLES:
+        return False
     if row["AGI upper bound"] > 10_000:
         return False
     return row["Variable"] not in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES
@@ -1226,6 +1253,8 @@ def _should_skip_soi_agi_row(row) -> bool:
 
 def _should_skip_soi_taxability_row(row) -> bool:
     """Use all-return SOI rows only for investment-income controls."""
+    if _is_negative_agi_all_returns_row(row):
+        return False
     if row["Variable"] in LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES:
         return row["Taxable only"]
     return not row["Taxable only"]
@@ -1244,8 +1273,14 @@ def build_loss_matrix(dataset: type, time_period):
         for variable in AGGREGATE_LEVEL_TARGETED_VARIABLES
         if variable in df.columns
     ]
+    agi_level_loss_targeted_variables = [
+        variable
+        for variable in AGI_LEVEL_LOSS_TARGETED_VARIABLES
+        if variable in df.columns
+    ]
     soi_subset = soi_subset[
         soi_subset.Variable.isin(AGI_LEVEL_TARGETED_VARIABLES)
+        | soi_subset.Variable.isin(agi_level_loss_targeted_variables)
         | (
             soi_subset.Variable.isin(aggregate_level_targeted_variables)
             & (soi_subset["AGI lower bound"] == -np.inf)
@@ -1257,6 +1292,9 @@ def build_loss_matrix(dataset: type, time_period):
             continue  # exclude non "taxable returns" statistics by default
 
         if _should_skip_soi_agi_row(row):
+            continue
+
+        if row["Variable"] in AGI_LEVEL_LOSS_TARGETED_VARIABLES and row["Value"] <= 0:
             continue
 
         mask = (
@@ -1586,19 +1624,6 @@ def build_loss_matrix(dataset: type, time_period):
         sim,
         time_period,
     )
-
-    # Negative household market income total rough estimate from the IRS SOI PUF
-
-    market_income = sim.calculate("household_market_income").values
-    loss_matrix["nation/irs/negative_household_market_income_total"] = market_income * (
-        market_income < 0
-    )
-    targets_array.append(-138e9)
-
-    loss_matrix["nation/irs/negative_household_market_income_count"] = (
-        market_income < 0
-    ).astype(float)
-    targets_array.append(3e6)
 
     # Healthcare spending by age.
     # Each row targets a decade of ages (lower_bound to lower_bound + 9).

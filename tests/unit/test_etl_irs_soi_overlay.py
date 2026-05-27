@@ -14,6 +14,7 @@ from policyengine_us_data.db.create_database_tables import (
 )
 from policyengine_us_data.db.etl_irs_soi import (
     GEOGRAPHY_FILE_TARGET_SPECS,
+    SOI_TAXABLE_LOSS_AGI_TARGET_VARIABLES,
     WORKBOOK_NATIONAL_DOMAIN_TARGETS,
     get_geography_soi_year,
     get_national_geography_soi_agi_targets,
@@ -26,8 +27,10 @@ from policyengine_us_data.db.etl_irs_soi import (
     load_national_geography_ctc_agi_targets,
     load_national_geography_ctc_targets,
     load_national_ltcg_agi_targets,
+    load_national_negative_agi_targets,
     load_national_taxable_agi_domain_filing_status_targets,
     load_national_taxable_agi_filing_status_targets,
+    load_national_taxable_loss_agi_targets,
     load_national_workbook_soi_targets,
     load_state_eitc_claim_count_targets,
 )
@@ -1021,6 +1024,245 @@ def test_load_national_taxable_agi_domain_filing_status_targets_creates_structur
         ">",
         "0",
     ) in constraint_set
+
+
+def test_load_national_negative_agi_targets_creates_all_return_rows(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    soi_rows = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.1",
+                "XLSX column": "C",
+                "XLSX row": 10,
+                "Variable": "adjusted_gross_income",
+                "Filing status": "All",
+                "AGI lower bound": -np.inf,
+                "AGI upper bound": 0.0,
+                "Count": False,
+                "Taxable only": False,
+                "Full population": False,
+                "Value": -1_000_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.1",
+                "XLSX column": "B",
+                "XLSX row": 10,
+                "Variable": "count",
+                "Filing status": "All",
+                "AGI lower bound": -np.inf,
+                "AGI upper bound": 0.0,
+                "Count": True,
+                "Taxable only": False,
+                "Full population": False,
+                "Value": 20_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.1",
+                "XLSX column": "C",
+                "XLSX row": 10,
+                "Variable": "adjusted_gross_income",
+                "Filing status": "All",
+                "AGI lower bound": -np.inf,
+                "AGI upper bound": 0.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": -999.0,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_soi",
+        lambda year: soi_rows,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_negative_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            target_year=2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["adjusted_gross_income", "tax_unit_count"],
+            "domain_variables": ["adjusted_gross_income"],
+        }
+    )
+
+    assert set(rows["variable"]) == {"adjusted_gross_income", "tax_unit_count"}
+    assert (
+        rows.set_index("variable").loc["adjusted_gross_income", "value"] == -1_000_000.0
+    )
+    assert rows.set_index("variable").loc["tax_unit_count", "value"] == 20_000.0
+
+    with engine.connect() as conn:
+        constraints = conn.execute(
+            text(
+                """
+                SELECT tv.variable, sc.constraint_variable, sc.operation, sc.value
+                FROM target_overview tv
+                JOIN stratum_constraints sc ON tv.stratum_id = sc.stratum_id
+                ORDER BY tv.variable, sc.constraint_variable, sc.operation
+                """
+            )
+        ).fetchall()
+
+    constraint_set = {
+        (target_variable, variable, operation, constraint_value)
+        for target_variable, variable, operation, constraint_value in constraints
+    }
+    assert (
+        "adjusted_gross_income",
+        "income_tax_before_credits",
+        ">",
+        "0",
+    ) not in constraint_set
+    assert (
+        "adjusted_gross_income",
+        "adjusted_gross_income",
+        ">=",
+        "-inf",
+    ) in constraint_set
+    assert (
+        "tax_unit_count",
+        "adjusted_gross_income",
+        "<",
+        "0.0",
+    ) in constraint_set
+
+
+def test_load_national_taxable_loss_agi_targets_creates_negative_value_rows(
+    monkeypatch, tmp_path
+):
+    db_uri, engine = _create_test_engine(tmp_path)
+    soi_rows = pd.DataFrame(
+        [
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "AS",
+                "XLSX row": 21,
+                "Variable": "partnership_and_s_corp_losses",
+                "Filing status": "All",
+                "AGI lower bound": 100_000.0,
+                "AGI upper bound": 200_000.0,
+                "Count": False,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 5_000_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "AR",
+                "XLSX row": 21,
+                "Variable": "partnership_and_s_corp_losses",
+                "Filing status": "All",
+                "AGI lower bound": 100_000.0,
+                "AGI upper bound": 200_000.0,
+                "Count": True,
+                "Taxable only": True,
+                "Full population": False,
+                "Value": 7_000.0,
+            },
+            {
+                "Year": 2023,
+                "SOI table": "Table 1.4",
+                "XLSX column": "AS",
+                "XLSX row": 21,
+                "Variable": "partnership_and_s_corp_losses",
+                "Filing status": "All",
+                "AGI lower bound": 100_000.0,
+                "AGI upper bound": 200_000.0,
+                "Count": False,
+                "Taxable only": False,
+                "Full population": False,
+                "Value": 999.0,
+            },
+        ]
+    )
+
+    monkeypatch.setattr(
+        "policyengine_us_data.db.etl_irs_soi.get_soi",
+        lambda year: soi_rows,
+    )
+
+    with Session(engine) as session:
+        national_filer_stratum = _create_national_filer_stratum(session)
+        load_national_taxable_loss_agi_targets(
+            session,
+            national_filer_stratum.stratum_id,
+            target_year=2024,
+        )
+        session.commit()
+
+    builder = UnifiedMatrixBuilder(db_uri=db_uri, time_period=2024)
+    rows = builder._query_targets(
+        {
+            "variables": ["tax_unit_partnership_s_corp_income", "tax_unit_count"],
+            "domain_variables": [
+                "adjusted_gross_income,income_tax_before_credits,tax_unit_partnership_s_corp_income"
+            ],
+        }
+    )
+
+    assert set(rows["variable"]) == {
+        "tax_unit_partnership_s_corp_income",
+        "tax_unit_count",
+    }
+    assert (
+        rows.set_index("variable").loc["tax_unit_partnership_s_corp_income", "value"]
+        == -5_000_000.0
+    )
+    assert rows.set_index("variable").loc["tax_unit_count", "value"] == 7_000.0
+
+    with engine.connect() as conn:
+        constraints = conn.execute(
+            text(
+                """
+                SELECT tv.variable, sc.constraint_variable, sc.operation, sc.value
+                FROM target_overview tv
+                JOIN stratum_constraints sc ON tv.stratum_id = sc.stratum_id
+                WHERE tv.variable = 'tax_unit_partnership_s_corp_income'
+                ORDER BY sc.constraint_variable
+                """
+            )
+        ).fetchall()
+
+    constraint_set = {
+        (target_variable, variable, operation, constraint_value)
+        for target_variable, variable, operation, constraint_value in constraints
+    }
+    assert (
+        "tax_unit_partnership_s_corp_income",
+        "income_tax_before_credits",
+        ">",
+        "0",
+    ) in constraint_set
+    assert (
+        "tax_unit_partnership_s_corp_income",
+        "tax_unit_partnership_s_corp_income",
+        "<",
+        "0",
+    ) in constraint_set
+
+
+def test_taxable_loss_agi_db_targets_use_tax_unit_safe_variables():
+    assert SOI_TAXABLE_LOSS_AGI_TARGET_VARIABLES == {
+        "capital_gains_losses": "loss_limited_net_capital_gains",
+        "partnership_and_s_corp_losses": "tax_unit_partnership_s_corp_income",
+        "rent_and_royalty_net_losses": "tax_unit_rental_income",
+    }
 
 
 def test_load_state_eitc_claim_count_targets_creates_state_rows(monkeypatch, tmp_path):

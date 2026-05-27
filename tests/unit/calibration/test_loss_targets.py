@@ -9,6 +9,7 @@ from policyengine_us_data.utils.loss import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
     AGE_BUCKETED_HEALTH_TARGETS,
     AGGREGATE_LEVEL_TARGETED_VARIABLES,
+    AGI_LEVEL_LOSS_TARGETED_VARIABLES,
     AGI_LEVEL_TARGETED_VARIABLES,
     BEA_NIPA_DIRECT_SUM_TARGETS,
     BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT,
@@ -16,6 +17,7 @@ from policyengine_us_data.utils.loss import (
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES,
+    SOI_NEGATIVE_AGI_TARGETED_VARIABLES,
     TRANSFER_BALANCE_TARGETS,
     _add_bea_state_wage_targets,
     _add_agi_metric_columns,
@@ -73,6 +75,57 @@ def test_legacy_loss_targets_include_ltcg_agi_grid():
         & np.isinf(ltcg["AGI upper bound"])
     ]
     assert top_bracket["Value"].iat[0] == 346_272_458_000
+
+
+def test_legacy_loss_targets_include_soi_loss_agi_grid():
+    assert AGI_LEVEL_LOSS_TARGETED_VARIABLES == (
+        "business_net_losses",
+        "capital_gains_losses",
+        "estate_losses",
+        "partnership_and_s_corp_losses",
+        "rent_and_royalty_net_losses",
+    )
+
+    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
+    loss_rows = soi[
+        soi["Variable"].isin(AGI_LEVEL_LOSS_TARGETED_VARIABLES)
+        & (soi["SOI table"] == "Table 1.4")
+        & (soi["Filing status"] == "All")
+        & (soi["Taxable only"])
+        & (~soi["Full population"])
+    ]
+
+    assert set(loss_rows["Variable"]) == set(AGI_LEVEL_LOSS_TARGETED_VARIABLES)
+    assert loss_rows.groupby(["Variable", "Count"]).size().min() >= 19
+    assert loss_rows["Value"].ge(0).all()
+    assert (
+        loss_rows[loss_rows["Value"] > 0].groupby(["Variable", "Count"]).size().min()
+        >= 1
+    )
+
+
+def test_legacy_loss_targets_include_soi_negative_agi_controls():
+    assert SOI_NEGATIVE_AGI_TARGETED_VARIABLES == (
+        "adjusted_gross_income",
+        "count",
+    )
+
+    soi = pd.read_csv(CALIBRATION_FOLDER / "soi_targets.csv")
+    negative_agi = soi[
+        soi["Variable"].isin(SOI_NEGATIVE_AGI_TARGETED_VARIABLES)
+        & (soi["SOI table"] == "Table 1.1")
+        & (soi["Filing status"] == "All")
+        & (soi["AGI lower bound"] == -np.inf)
+        & (soi["AGI upper bound"] == 0)
+        & (~soi["Taxable only"])
+    ]
+
+    assert set(negative_agi["Variable"]) == set(SOI_NEGATIVE_AGI_TARGETED_VARIABLES)
+    latest_negative_agi = negative_agi[
+        negative_agi["Year"] == negative_agi["Year"].max()
+    ].set_index("Variable")
+    assert latest_negative_agi.loc["adjusted_gross_income", "Value"] < 0
+    assert latest_negative_agi.loc["count", "Value"] > 0
 
 
 def test_bea_nipa_direct_sum_targets_match_targets_db():
@@ -797,6 +850,18 @@ def test_low_agi_soi_skip_keeps_investment_income_targets():
     ltcg_low_agi_row = pd.Series(
         {"Variable": "long_term_capital_gains", "AGI upper bound": 10_000.0}
     )
+    loss_low_agi_row = pd.Series(
+        {"Variable": "partnership_and_s_corp_losses", "AGI upper bound": 10_000.0}
+    )
+    negative_agi_all_return_row = pd.Series(
+        {
+            "Variable": "adjusted_gross_income",
+            "Filing status": "All",
+            "AGI lower bound": -np.inf,
+            "AGI upper bound": 0.0,
+            "Taxable only": False,
+        }
+    )
     ordinary_higher_agi_row = pd.Series(
         {"Variable": "employment_income", "AGI upper bound": 25_000.0}
     )
@@ -804,6 +869,8 @@ def test_low_agi_soi_skip_keeps_investment_income_targets():
     assert _should_skip_soi_agi_row(ordinary_low_agi_row)
     assert not _should_skip_soi_agi_row(capital_income_low_agi_row)
     assert not _should_skip_soi_agi_row(ltcg_low_agi_row)
+    assert not _should_skip_soi_agi_row(loss_low_agi_row)
+    assert not _should_skip_soi_agi_row(negative_agi_all_return_row)
     assert not _should_skip_soi_agi_row(ordinary_higher_agi_row)
 
 
@@ -816,6 +883,15 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     )
     ltcg_all_return_row = pd.Series(
         {"Variable": "long_term_capital_gains", "Taxable only": False}
+    )
+    negative_agi_all_return_row = pd.Series(
+        {
+            "Variable": "adjusted_gross_income",
+            "Filing status": "All",
+            "AGI lower bound": -np.inf,
+            "AGI upper bound": 0.0,
+            "Taxable only": False,
+        }
     )
     ordinary_taxable_row = pd.Series(
         {"Variable": "employment_income", "Taxable only": True}
@@ -836,6 +912,7 @@ def test_all_return_soi_skip_keeps_investment_income_targets():
     assert _should_skip_soi_taxability_row(ordinary_all_return_row)
     assert not _should_skip_soi_taxability_row(capital_income_all_return_row)
     assert not _should_skip_soi_taxability_row(ltcg_all_return_row)
+    assert not _should_skip_soi_taxability_row(negative_agi_all_return_row)
     assert not _should_skip_soi_taxability_row(ordinary_taxable_row)
     assert not _should_skip_soi_taxability_row(qbi_taxable_row)
     assert _should_skip_soi_taxability_row(capital_income_taxable_row)
@@ -876,6 +953,13 @@ def test_national_loss_excludes_survey_spm_threshold_decile_targets():
     assert "spm_threshold_agi.csv" not in source
     assert "agi_in_spm_threshold_decile" not in source
     assert "count_in_spm_threshold_decile" not in source
+
+
+def test_national_loss_excludes_manual_negative_household_market_income_targets():
+    source = inspect.getsource(build_loss_matrix)
+
+    assert "negative_household_market_income" not in source
+    assert "-138e9" not in source
 
 
 def test_add_medicare_enrollment_target(monkeypatch):

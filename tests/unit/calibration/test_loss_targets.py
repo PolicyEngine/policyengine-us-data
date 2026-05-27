@@ -16,12 +16,15 @@ from policyengine_us_data.utils.loss import (
     BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
+    HOUSEHOLD_COUNT_LOSS_WEIGHT,
+    HOUSEHOLD_COUNT_TARGET,
     LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES,
     SOI_NEGATIVE_AGI_TARGETED_VARIABLES,
     TRANSFER_BALANCE_TARGETS,
     _add_bea_state_wage_targets,
     _add_agi_metric_columns,
     _add_acs_housing_cost_targets,
+    _add_household_count_target,
     _add_aotc_targets,
     _add_bls_ce_targets,
     _add_ctc_targets,
@@ -167,6 +170,22 @@ def test_bea_nipa_direct_sum_targets_get_higher_loss_weight():
     ]
 
 
+def test_household_count_target_gets_higher_loss_weight():
+    target_names = np.array(
+        [
+            HOUSEHOLD_COUNT_TARGET,
+            "nation/census/population_by_age/0",
+        ]
+    )
+
+    weights = get_target_loss_weights(target_names)
+
+    assert weights.tolist() == [
+        HOUSEHOLD_COUNT_LOSS_WEIGHT,
+        1.0,
+    ]
+
+
 def test_aca_targets_roll_forward_to_2025():
     targets, data_year = _load_aca_spending_and_enrollment_targets(2025)
 
@@ -241,6 +260,17 @@ def test_medicaid_national_targets_use_2026_enrollment():
 class _FakeArrayResult:
     def __init__(self, values):
         self.values = np.asarray(values)
+
+
+class _FakeHouseholdWeightSimulation:
+    def __init__(self, weights):
+        self.weights = weights
+
+    def calculate(self, variable, map_to=None, period=None):
+        assert variable == "household_weight"
+        assert map_to is None
+        assert period is None
+        return _FakeArrayResult(self.weights)
 
 
 class _FakeSimulation:
@@ -425,6 +455,28 @@ def test_state_agi_targets_are_limited_to_filers(tmp_path, monkeypatch):
         loss_matrix["state/CA/adjusted_gross_income/amount/1_10000"],
         np.array([0.0, 0.0, 5_000.0, 0.0]),
     )
+
+
+def test_add_household_count_target_uses_source_weight_total():
+    loss_matrix = pd.DataFrame(index=[101, 102, 103, 104])
+
+    targets, loss_matrix = _add_household_count_target(
+        loss_matrix,
+        [],
+        _FakeHouseholdWeightSimulation([80.0, 20.0, 0.0, 0.0]),
+    )
+
+    assert targets == [100.0]
+    np.testing.assert_array_equal(
+        loss_matrix[HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.ones(4, dtype=np.float32),
+    )
+
+
+def test_build_loss_matrix_adds_household_count_target_before_reweighting():
+    source = inspect.getsource(build_loss_matrix)
+
+    assert "_add_household_count_target" in source
 
 
 def test_add_ssi_recipient_targets_adds_total_and_age_counts():

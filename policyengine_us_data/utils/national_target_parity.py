@@ -675,6 +675,8 @@ def _legacy_reason(target_name: str) -> str:
         return "legacy_cms_aca_spending_target_not_in_target_db"
     if target_name.startswith("nation/accounting/"):
         return "legacy_accounting_balance_target_not_in_target_db"
+    if target_name == "nation/source/household_count":
+        return "legacy_source_household_count_target_not_in_target_db"
     if target_name.startswith("nation/irs/negative_household_market_income_"):
         return "legacy_negative_market_income_target_not_in_target_db"
     if target_name == "nation/census/infants":

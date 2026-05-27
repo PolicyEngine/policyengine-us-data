@@ -42,3 +42,17 @@ def test_enhanced_cps_sources_use_deterministic_weight_priors():
 
     assert "np.random.normal" not in source
     assert source.count("initialize_weight_priors(original_weights.values)") == 2
+
+
+def test_initialize_weight_priors_preserves_source_weight_total():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        initialize_weight_priors,
+    )
+
+    priors = initialize_weight_priors(
+        np.array([80.0, 20.0, 0.0, 0.0]),
+        zero_weight_total_share=0.5,
+    )
+
+    np.testing.assert_allclose(priors.sum(), 100.0)
+    np.testing.assert_allclose(priors, np.array([40.0, 10.0, 25.0, 25.0]))

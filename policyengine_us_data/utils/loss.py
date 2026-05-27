@@ -82,6 +82,8 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
 
 BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT = 1_000.0
 BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 1_000.0
+HOUSEHOLD_COUNT_TARGET = "nation/source/household_count"
+HOUSEHOLD_COUNT_LOSS_WEIGHT = 1_000.0
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
@@ -1199,6 +1201,31 @@ def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
+def _add_household_count_target(loss_matrix, targets_list, sim):
+    """Constrain total household weight to the source survey total."""
+
+    household_weights = sim.calculate("household_weight").values
+    if len(loss_matrix) != len(household_weights):
+        raise ValueError(
+            "Household count target length mismatch: "
+            f"loss matrix has {len(loss_matrix)} rows but household_weight has "
+            f"{len(household_weights)} values"
+        )
+
+    target = float(np.sum(household_weights))
+    if not np.isfinite(target) or target <= 0:
+        raise ValueError(
+            "Household count target must have positive finite source weight total"
+        )
+
+    loss_matrix[HOUSEHOLD_COUNT_TARGET] = np.ones(
+        len(household_weights),
+        dtype=np.float32,
+    )
+    targets_list.append(target)
+    return targets_list, loss_matrix
+
+
 def get_target_error_normalisation(target_names, targets_array):
     """Return numerator shifts and denominators for target loss scaling."""
     target_names = np.asarray(target_names)
@@ -1227,6 +1254,7 @@ def get_target_loss_weights(target_names):
     ) | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
     weights[is_bea_direct_sum_target] = BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT
     weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
+    weights[target_names == HOUSEHOLD_COUNT_TARGET] = HOUSEHOLD_COUNT_LOSS_WEIGHT
     return weights
 
 
@@ -1359,6 +1387,12 @@ def build_loss_matrix(dataset: type, time_period):
 
     hh_id = sim.calculate("household_id").values
     loss_matrix = loss_matrix.loc[hh_id]
+
+    targets_array, loss_matrix = _add_household_count_target(
+        loss_matrix,
+        targets_array,
+        sim,
+    )
 
     # Census single-year age population projections
 

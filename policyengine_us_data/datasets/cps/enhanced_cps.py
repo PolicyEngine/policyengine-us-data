@@ -6,6 +6,7 @@ from policyengine_core.data import Dataset
 import pandas as pd
 from policyengine_us_data.utils import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
+    HOUSEHOLD_COUNT_TARGET,
     build_loss_matrix,
     get_target_error_normalisation,
     get_target_loss_weights,
@@ -669,6 +670,11 @@ class EnhancedCPS(Dataset):
             del loss_matrix, targets_array
             gc.collect()
             assert loss_matrix_clean.shape[1] == targets_array_clean.size
+            if HOUSEHOLD_COUNT_TARGET not in loss_matrix_clean.columns:
+                raise ValueError(
+                    f"{HOUSEHOLD_COUNT_TARGET} missing from EnhancedCPS "
+                    "calibration targets"
+                )
 
             loss_matrix_clean = loss_matrix_clean.astype(np.float32)
 

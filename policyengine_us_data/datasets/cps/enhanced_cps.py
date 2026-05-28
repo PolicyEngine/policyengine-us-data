@@ -7,7 +7,6 @@ import pandas as pd
 from policyengine_us_data.utils import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
     HOUSEHOLD_COUNT_TARGET,
-    PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
     build_loss_matrix,
     get_target_error_normalisation,
     get_target_loss_weights,
@@ -44,24 +43,31 @@ except ImportError:
 
 
 HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE = 0.02
-PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE = 0.10
 PERSON_POVERTY_RATE_MIN = 0.05
 PERSON_POVERTY_RATE_MAX = 0.25
+# PUF clones enter the extended CPS with zero household weight. They are support
+# records for calibration, but the earlier bug starved them to ~0 (unusable in
+# log-space optimization). Reserve a small but non-trivial share of prior mass
+# for them, and validate that final weights keep them above a floor. There is no
+# upper cap: the household-count loss target (loss.py) governs how much weight
+# clones ultimately carry.
+PUF_CLONE_PRIOR_TOTAL_SHARE = 0.05
+MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT = 5.0
+MAX_PUF_CLONE_TAXES_EXCEED_MARKET_INCOME_SHARE_PCT = 25.0
 
 
 def initialize_weight_priors(
     original_weights: np.ndarray,
     seed: int = 1456,
     epsilon: float = 1e-6,
-    zero_weight_total_share: float = 0.5,
+    zero_weight_total_share: float = PUF_CLONE_PRIOR_TOTAL_SHARE,
 ) -> np.ndarray:
     """Build deterministic positive priors for sparse reweighting.
 
     PUF clone households enter the extended CPS with zero household weight.
-    Giving those records near-zero priors leaves them effectively unusable in
-    log-space optimization. When zero-weight rows are present, preserve the
-    relative distribution of positive survey weights but reserve a fixed share
-    of the original total household mass for uniform zero-weight-row priors.
+    Reserve a small but non-trivial share of prior mass for them so they remain
+    usable in log-space optimization (the earlier bug starved them to ~0). Their
+    final weight is governed by the household-count loss target, not this prior.
     """
 
     weights = np.asarray(original_weights, dtype=np.float64)
@@ -135,10 +141,14 @@ def validate_clone_household_weight_share(
     household_is_puf_clone: np.ndarray,
     *,
     year: int,
-    target_share: float = PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
-    abs_tolerance: float = PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE,
+    min_share: float = MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT / 100,
 ) -> float:
-    """Validate that PUF-clone households do not dominate final weights."""
+    """Validate that PUF-clone households keep a usable share of final weight.
+
+    Clones must not be starved below ``min_share`` (the earlier bug left them at
+    ~0, unusable in log-space optimization). There is no upper cap: the
+    household-count loss target governs how much weight clones ultimately carry.
+    """
 
     weights = np.asarray(weights, dtype=np.float64)
     household_is_puf_clone = np.asarray(household_is_puf_clone, dtype=bool)
@@ -154,12 +164,11 @@ def validate_clone_household_weight_share(
         raise ValueError(f"Year {year}: household_weight total must be positive")
 
     clone_share = float(weights[household_is_puf_clone].sum()) / total
-    if abs(clone_share - target_share) > abs_tolerance:
+    if clone_share < min_share:
         raise ValueError(
             f"Year {year}: PUF-clone household weight share "
-            f"{clone_share:.2%} differs from target {target_share:.2%} by "
-            f"{abs(clone_share - target_share):.2%}, exceeding "
-            f"{abs_tolerance:.2%} tolerance"
+            f"{clone_share:.2%} is below the {min_share:.2%} floor; clones are "
+            f"being starved of weight"
         )
 
     return clone_share
@@ -199,6 +208,41 @@ def validate_person_poverty_rate(
             f"expected range [{min_rate:.2%}, {max_rate:.2%}]"
         )
     return poverty_rate
+
+
+def validate_clone_diagnostics(
+    diagnostics: dict[str, float],
+    *,
+    min_household_weight_share_pct: float = MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT,
+    max_taxes_exceed_market_income_share_pct: float = (
+        MAX_PUF_CLONE_TAXES_EXCEED_MARKET_INCOME_SHARE_PCT
+    ),
+) -> None:
+    """Reject enhanced CPS artifacts where PUF support clones are starved.
+
+    Enforces a floor on clone household weight share (clones must keep at least
+    ``min_household_weight_share_pct`` of total weight, the earlier bug) plus a
+    data-quality bound on clones whose imputed taxes exceed market income. There
+    is no upper cap on weight share: the household-count loss target governs that.
+    """
+
+    clone_household_share = diagnostics["clone_household_weight_share_pct"]
+    if clone_household_share < min_household_weight_share_pct:
+        raise ValueError(
+            "PUF clone household weight share "
+            f"{clone_household_share:.1f}% is below the "
+            f"{min_household_weight_share_pct:.1f}% floor"
+        )
+
+    taxes_exceed_market_income_share = diagnostics[
+        "clone_taxes_exceed_market_income_share_pct"
+    ]
+    if taxes_exceed_market_income_share > max_taxes_exceed_market_income_share_pct:
+        raise ValueError(
+            "PUF clone taxes-exceed-market-income share "
+            f"{taxes_exceed_market_income_share:.1f}% exceeds "
+            f"{max_taxes_exceed_market_income_share_pct:.1f}%"
+        )
 
 
 def _to_numpy(value) -> np.ndarray:
@@ -351,17 +395,22 @@ def save_clone_diagnostics_report(
     end_year: int,
 ) -> tuple[Path, dict]:
     periods = list(range(start_year, end_year + 1))
+
+    def build_validated_payload():
+        period_to_diagnostics = {
+            period: build_clone_diagnostics_for_saved_dataset(
+                dataset_cls,
+                period,
+            )
+            for period in periods
+        }
+        for diagnostics in period_to_diagnostics.values():
+            validate_clone_diagnostics(diagnostics)
+        return build_clone_diagnostics_payload(period_to_diagnostics)
+
     output_path = refresh_clone_diagnostics_report(
         dataset_cls.file_path,
-        lambda: build_clone_diagnostics_payload(
-            {
-                period: build_clone_diagnostics_for_saved_dataset(
-                    dataset_cls,
-                    period,
-                )
-                for period in periods
-            }
-        ),
+        build_validated_payload,
     )
     diagnostics_payload = json.loads(output_path.read_text())
     return output_path, diagnostics_payload

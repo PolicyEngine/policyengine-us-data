@@ -42,6 +42,9 @@ except ImportError:
     torch = None
 
 
+HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE = 0.02
+
+
 def initialize_weight_priors(
     original_weights: np.ndarray,
     seed: int = 1456,
@@ -79,6 +82,48 @@ def initialize_weight_priors(
     priors[zero_mask] = positive_total * zero_weight_total_share / zero_mask.sum()
 
     return priors
+
+
+def validate_household_weight_total(
+    weights: np.ndarray,
+    *,
+    source_total: float,
+    year: int,
+    rel_tolerance: float = HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE,
+) -> float:
+    """Validate calibrated household weights against the source total."""
+
+    weights = np.asarray(weights)
+    if np.any(np.isnan(weights)):
+        raise ValueError(f"Year {year}: household_weight contains NaN values")
+    if np.any(weights < 0):
+        raise ValueError(f"Year {year}: household_weight contains negative values")
+
+    weighted_hh_count = float(np.sum(weights))
+    if not (1e8 <= weighted_hh_count <= 2e8):
+        raise ValueError(
+            f"Year {year}: weighted household count "
+            f"{weighted_hh_count:,.0f} outside expected range "
+            f"[100M, 200M]"
+        )
+
+    source_total = float(source_total)
+    if not np.isfinite(source_total) or source_total <= 0:
+        raise ValueError(
+            f"Year {year}: source household count total must be positive; "
+            f"got {source_total:,.0f}"
+        )
+
+    rel_error = abs(weighted_hh_count - source_total) / source_total
+    if rel_error > rel_tolerance:
+        raise ValueError(
+            f"Year {year}: weighted household count "
+            f"{weighted_hh_count:,.0f} differs from source household count "
+            f"{source_total:,.0f} by {rel_error:.2%}, exceeding "
+            f"{rel_tolerance:.2%} tolerance"
+        )
+
+    return weighted_hh_count
 
 
 def _to_numpy(value) -> np.ndarray:
@@ -639,6 +684,7 @@ class EnhancedCPS(Dataset):
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = initialize_weight_priors(original_weights.values)
+        source_household_count = float(np.sum(original_weights))
 
         bad_targets = [
             "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -688,25 +734,16 @@ class EnhancedCPS(Dataset):
             )
             data["household_weight"][year] = optimised_weights
 
-            # Validate dense weights
-            w = optimised_weights
-            if np.any(np.isnan(w)):
-                raise ValueError(f"Year {year}: household_weight contains NaN values")
-            if np.any(w < 0):
-                raise ValueError(
-                    f"Year {year}: household_weight contains negative values"
-                )
-            weighted_hh_count = float(np.sum(w))
-            if not (1e8 <= weighted_hh_count <= 2e8):
-                raise ValueError(
-                    f"Year {year}: weighted household count "
-                    f"{weighted_hh_count:,.0f} outside expected range "
-                    f"[100M, 200M]"
-                )
+            weighted_hh_count = validate_household_weight_total(
+                optimised_weights,
+                source_total=source_household_count,
+                year=year,
+            )
             logging.info(
                 f"Year {year}: weights validated — "
-                f"{weighted_hh_count:,.0f} weighted households, "
-                f"{int(np.sum(w > 0))} non-zero"
+                f"{weighted_hh_count:,.0f} weighted households "
+                f"vs {source_household_count:,.0f} source households, "
+                f"{int(np.sum(optimised_weights > 0))} non-zero"
             )
 
         if 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS:
@@ -824,9 +861,15 @@ class ReweightedCPS_2024(Dataset):
         data = sim.dataset.load_dataset()
         original_weights = sim.calculate("household_weight")
         original_weights = initialize_weight_priors(original_weights.values)
+        source_household_count = float(np.sum(original_weights))
         for year in [2024]:
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
             optimised_weights = reweight(original_weights, loss_matrix, targets_array)
+            validate_household_weight_total(
+                optimised_weights,
+                source_total=source_household_count,
+                year=year,
+            )
             data["household_weight"] = optimised_weights
 
         self.save_dataset(data)

@@ -8,6 +8,7 @@ prior mass.
 """
 
 import numpy as np
+import pytest
 
 from policyengine_us_data.utils.seed import set_seeds
 
@@ -56,3 +57,30 @@ def test_initialize_weight_priors_preserves_source_weight_total():
 
     np.testing.assert_allclose(priors.sum(), 100.0)
     np.testing.assert_allclose(priors, np.array([40.0, 10.0, 25.0, 25.0]))
+
+
+def test_validate_household_weight_total_accepts_close_total():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_household_weight_total,
+    )
+
+    total = validate_household_weight_total(
+        np.array([50_000_000.0, 96_000_000.0]),
+        source_total=145_000_000.0,
+        year=2024,
+    )
+
+    assert total == 146_000_000.0
+
+
+def test_validate_household_weight_total_rejects_inflated_total():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_household_weight_total,
+    )
+
+    with pytest.raises(ValueError, match="differs from source household count"):
+        validate_household_weight_total(
+            np.array([100_000_000.0, 86_900_000.0]),
+            source_total=145_000_000.0,
+            year=2024,
+        )

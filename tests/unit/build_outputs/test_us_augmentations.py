@@ -15,11 +15,9 @@ from policyengine_us_data.build_outputs.source_dataset import (
 from policyengine_us_data.build_outputs.us_augmentations import (
     US_ENTITY_POSTPROCESSOR_KEY,
     US_GEOGRAPHY_POSTPROCESSOR_KEY,
-    US_MEDICAID_COST_POSTPROCESSOR_KEY,
     US_TAKEUP_POSTPROCESSOR_KEY,
     USEntityPostProcessor,
     USGeographyPostProcessor,
-    USMedicaidCostPostProcessor,
     USTakeupPostProcessor,
     _build_reported_takeup_anchors,
     default_us_postprocessors,
@@ -142,13 +140,11 @@ def test_default_us_postprocessors_are_in_runtime_order():
         USEntityPostProcessor,
         USGeographyPostProcessor,
         USTakeupPostProcessor,
-        USMedicaidCostPostProcessor,
     )
     assert tuple(processor.spec.key for processor in postprocessors) == (
         US_ENTITY_POSTPROCESSOR_KEY,
         US_GEOGRAPHY_POSTPROCESSOR_KEY,
         US_TAKEUP_POSTPROCESSOR_KEY,
-        US_MEDICAID_COST_POSTPROCESSOR_KEY,
     )
     seen = set()
     for processor in postprocessors:
@@ -426,65 +422,3 @@ def test_us_takeup_postprocessor_rejects_unknown_takeup_results():
             payload=_geography_payload(),
             context=_context(),
         )
-
-
-def test_us_medicaid_cost_postprocessor_preserves_cloned_conditional_costs():
-    payload = (
-        USTakeupPostProcessor(
-            takeup_applier=lambda **kwargs: {
-                "takes_up_snap_if_eligible": np.array([True, False])
-            },
-        )
-        .apply(
-            payload=_geography_payload(),
-            context=_context(),
-        )
-        .payload
-    )
-    payload = H5Payload(
-        data={
-            **payload.data,
-            "medicaid_cost_if_enrolled": {
-                2024: np.array([100.0, 200.0, 300.0], dtype=np.float32)
-            },
-        },
-        time_period=payload.time_period,
-        entity_lengths=payload.entity_lengths,
-    )
-
-    result = USMedicaidCostPostProcessor().apply(payload=payload, context=_context())
-
-    assert result.payload.variable_entities["medicaid_cost_if_enrolled"] == "person"
-    np.testing.assert_array_equal(
-        result.data["medicaid_cost_if_enrolled"][2024],
-        np.array([100.0, 200.0, 300.0], dtype=np.float32),
-    )
-
-
-def test_us_medicaid_cost_postprocessor_clones_source_cost_without_reallocating():
-    class SourceVariableProvider:
-        def get_array(self, variable, period):
-            assert variable == "medicaid_cost_if_enrolled"
-            assert period == 2024
-            return np.array([10.0, 20.0, 30.0], dtype=np.float32)
-
-    context = _context()
-    context = replace(
-        context,
-        source=replace(
-            context.source,
-            input_variables=frozenset({"medicaid_cost_if_enrolled"}),
-            variable_provider=SourceVariableProvider(),
-        ),
-    )
-
-    result = USMedicaidCostPostProcessor().apply(
-        payload=_geography_payload(context),
-        context=context,
-    )
-
-    assert result.payload.variable_entities["medicaid_cost_if_enrolled"] == "person"
-    np.testing.assert_array_equal(
-        result.data["medicaid_cost_if_enrolled"][2024],
-        np.array([30.0, 10.0, 20.0], dtype=np.float32),
-    )

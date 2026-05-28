@@ -25,9 +25,6 @@ from policyengine_us_data.datasets.cps.cps import (
     derive_flsa_overtime_premium,
     load_take_up_rate,
 )
-from policyengine_us_data.datasets.cps.medicaid_cost import (
-    add_medicaid_cost_if_enrolled_to_time_period_data,
-)
 from policyengine_us_data.datasets.cps.takeup import prioritize_reported_recipients
 from policyengine_us_data.datasets.org import (
     ORG_IMPUTED_VARIABLES,
@@ -1170,10 +1167,6 @@ class ExtendedCPS(Dataset):
         new_data = self._impute_llc_eligibility_inputs(new_data, self.time_period)
         new_data = self._rename_imputed_to_inputs(new_data)
         new_data = self._reassign_housing_assistance_takeup_with_geography(
-            new_data,
-            self.time_period,
-        )
-        new_data = add_medicaid_cost_if_enrolled_to_time_period_data(
             new_data,
             self.time_period,
         )

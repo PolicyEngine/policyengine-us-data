@@ -994,17 +994,12 @@ def _run_qrf_imputation(
             else PUF_METADATA_MISSING_TOP_TAIL_VARIABLES
         )
         financial_columns = [
-            column
-            for column in candidate_columns
-            if column in frame.columns
+            column for column in candidate_columns if column in frame.columns
         ]
         if financial_columns:
-            forbes_person_mask |= (
-                low_weight_mask
-                & (
-                    frame[financial_columns].abs().max(axis=1).to_numpy()
-                    >= top_tail_threshold
-                )
+            forbes_person_mask |= low_weight_mask & (
+                frame[financial_columns].abs().max(axis=1).to_numpy()
+                >= top_tail_threshold
             )
     if len(forbes_person_mask) == len(puf_agi) and forbes_person_mask.any():
         if len(X_train_full) != len(forbes_person_mask) or len(X_train_override) != len(
@@ -1016,8 +1011,7 @@ def _run_qrf_imputation(
             )
         else:
             logger.info(
-                "Excluding %d %s person records from PUF QRF training "
-                "at threshold $%s",
+                "Excluding %d %s person records from PUF QRF training at threshold $%s",
                 int(forbes_person_mask.sum()),
                 top_tail_label,
                 f"{top_tail_threshold:,.0f}",

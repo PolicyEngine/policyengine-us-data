@@ -642,9 +642,7 @@ class TestForbesTrainingExclusion:
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
-    def test_qrf_training_keeps_non_forbes_top_tail_with_metadata(
-        self, monkeypatch
-    ):
+    def test_qrf_training_keeps_non_forbes_top_tail_with_metadata(self, monkeypatch):
         class FakeDataset:
             def load_dataset(self):
                 return {

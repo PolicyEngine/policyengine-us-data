@@ -1259,13 +1259,13 @@ def _add_household_count_target(loss_matrix, targets_list, sim, dataset, time_pe
 
         puf_clone_target = target * PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE
         cps_target = target - puf_clone_target
-        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET] = (
-            ~household_is_puf_clone
-        ).astype(np.float32)
+        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET] = (~household_is_puf_clone).astype(
+            np.float32
+        )
         targets_list.append(cps_target)
-        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET] = (
-            household_is_puf_clone
-        ).astype(np.float32)
+        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET] = (household_is_puf_clone).astype(
+            np.float32
+        )
         targets_list.append(puf_clone_target)
 
     return targets_list, loss_matrix

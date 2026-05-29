@@ -642,13 +642,70 @@ class TestForbesTrainingExclusion:
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
-    def test_qrf_training_keeps_non_forbes_top_tail_with_metadata(self, monkeypatch):
+    def test_qrf_training_filters_all_default_metadata_top_tail(self, monkeypatch):
         class FakeDataset:
             def load_dataset(self):
                 return {
                     "tax_unit_id": {2024: np.array([10, 20, 30])},
                     "person_tax_unit_id": {2024: np.array([10, 20, 30, 30])},
                     "forbes_unit_id": {2024: np.array([-1, -1, -1])},
+                    "forbes_rank": {2024: np.array([0, 0, 0])},
+                    "forbes_replicate_id": {2024: np.array([-1, -1, -1])},
+                }
+
+        class FakeMicrosimulation:
+            def __init__(self, dataset):
+                self.dataset = FakeDataset()
+
+            def calculate(self, variable, map_to=None):
+                assert map_to == "person"
+                assert variable == "adjusted_gross_income"
+                return pd.Series([10.0, 30_000_000.0, 20.0, 30.0])
+
+            def calculate_dataframe(self, columns):
+                frame = pd.DataFrame({"age": [40.0, 99.0, 50.0, 55.0]})
+                for column in columns:
+                    if column not in frame:
+                        frame[column] = 0.0
+                return frame[list(columns)]
+
+        train_frames = []
+
+        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+            train_frames.append(X_train.copy())
+            return {variable: np.zeros(len(X_test)) for variable in output_vars}
+
+        monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
+        monkeypatch.setattr(
+            puf_impute_module,
+            "_sequential_qrf",
+            fake_sequential_qrf,
+        )
+
+        data = {
+            predictor: {2024: np.array([0.0, 1.0])}
+            for predictor in DEMOGRAPHIC_PREDICTORS
+        }
+        _run_qrf_imputation(
+            data=data,
+            time_period=2024,
+            puf_dataset=object(),
+            dataset_path=None,
+        )
+
+        assert len(train_frames) == 2
+        assert all(len(frame) == 3 for frame in train_frames)
+        assert all(99.0 not in set(frame["age"]) for frame in train_frames)
+
+    def test_qrf_training_keeps_non_forbes_top_tail_with_metadata(self, monkeypatch):
+        class FakeDataset:
+            def load_dataset(self):
+                return {
+                    "tax_unit_id": {2024: np.array([10, 20, 30])},
+                    "person_tax_unit_id": {2024: np.array([10, 20, 30, 30])},
+                    "forbes_unit_id": {2024: np.array([-1, -1, 0])},
+                    "forbes_rank": {2024: np.array([0, 0, 1])},
+                    "forbes_replicate_id": {2024: np.array([-1, -1, 0])},
                 }
 
         class FakeMicrosimulation:
@@ -702,7 +759,7 @@ class TestForbesTrainingExclusion:
         )
 
         assert len(train_frames) == 2
-        assert all(len(frame) == 4 for frame in train_frames)
+        assert all(len(frame) == 2 for frame in train_frames)
         assert all(99.0 in set(frame["age"]) for frame in train_frames)
 
 

@@ -42,10 +42,10 @@ PUF_SUBSAMPLE_TARGET = 20_000
 PUF_TOP_PERCENTILE = 99.5
 FORBES_SYNTHETIC_FINANCIAL_THRESHOLD = 250_000_000
 PUF_METADATA_MISSING_TOP_TAIL_THRESHOLD = 10_000_000
-FORBES_METADATA_VARIABLES = (
-    "forbes_unit_id",
-    "forbes_replicate_id",
-    "forbes_rank",
+FORBES_METADATA_MARKER_THRESHOLDS = (
+    ("forbes_unit_id", 0),
+    ("forbes_replicate_id", 0),
+    ("forbes_rank", 1),
 )
 PUF_METADATA_MISSING_TOP_TAIL_VARIABLES = (
     "adjusted_gross_income",
@@ -1085,9 +1085,12 @@ def _has_forbes_metadata(
     """Return whether usable Forbes synthetic-record metadata is present."""
     if expected_length <= 0:
         return False
-    for variable in FORBES_METADATA_VARIABLES:
+    for variable, marker_threshold in FORBES_METADATA_MARKER_THRESHOLDS:
         values = _period_array(puf_data, variable, time_period)
-        if values is not None and len(values) == expected_length:
+        if values is None or len(values) != expected_length:
+            continue
+        values = np.asarray(values, dtype=float)
+        if np.any(values >= marker_threshold):
             return True
     return False
 
@@ -1106,11 +1109,7 @@ def _forbes_person_training_mask(
         return np.zeros(n_persons, dtype=bool)
 
     tax_unit_forbes = np.zeros(len(tax_unit_id), dtype=bool)
-    for variable, default_threshold in (
-        ("forbes_unit_id", 0),
-        ("forbes_replicate_id", 0),
-        ("forbes_rank", 1),
-    ):
+    for variable, default_threshold in FORBES_METADATA_MARKER_THRESHOLDS:
         values = _period_array(puf_data, variable, time_period)
         if values is None or len(values) != len(tax_unit_id):
             continue

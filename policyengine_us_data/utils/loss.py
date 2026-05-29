@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 import sqlite3
+from pathlib import Path
 
 from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
@@ -1206,7 +1207,10 @@ def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
 
 def _load_household_is_puf_clone(dataset, time_period):
     file_path = getattr(dataset, "file_path", None)
-    if file_path is None or not file_path.exists():
+    if file_path is None:
+        return None
+    file_path = Path(file_path)
+    if not file_path.exists():
         return None
 
     import h5py

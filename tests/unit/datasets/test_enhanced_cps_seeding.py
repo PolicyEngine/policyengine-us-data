@@ -123,7 +123,7 @@ def test_validate_person_poverty_rate_accepts_reasonable_rate():
             return 0.12
 
     class FakeSimulation:
-        def calc(self, variable, period, map_to):
+        def calculate(self, variable, period, map_to):
             assert variable == "person_in_poverty"
             assert period == 2024
             assert map_to == "person"
@@ -142,7 +142,7 @@ def test_validate_person_poverty_rate_rejects_implausible_rate():
             return 0.39
 
     class FakeSimulation:
-        def calc(self, variable, period, map_to):
+        def calculate(self, variable, period, map_to):
             assert variable == "person_in_poverty"
             assert period == 2024
             assert map_to == "person"

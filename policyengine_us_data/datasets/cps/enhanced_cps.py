@@ -189,7 +189,7 @@ def validate_person_poverty_rate(
     """Fail fast when calibrated weights imply an implausible poverty rate."""
 
     poverty_rate = float(
-        sim.calc("person_in_poverty", period=year, map_to="person").mean()
+        sim.calculate("person_in_poverty", period=year, map_to="person").mean()
     )
     if not np.isfinite(poverty_rate):
         raise ValueError(f"Year {year}: person poverty rate is not finite")

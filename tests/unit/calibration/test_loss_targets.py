@@ -509,6 +509,31 @@ def test_add_household_count_target_adds_clone_split_targets(tmp_path):
     )
 
 
+def test_add_household_count_target_accepts_string_dataset_path(tmp_path):
+    file_path = tmp_path / "extended_cps_2024.h5"
+    with h5py.File(file_path, "w") as h5_file:
+        group = h5_file.create_group("household_is_puf_clone")
+        group.create_dataset("2024", data=np.array([0, 1], dtype=np.int8))
+
+    targets, loss_matrix = _add_household_count_target(
+        pd.DataFrame(index=[101, 102]),
+        [],
+        _FakeHouseholdWeightSimulation([80.0, 20.0]),
+        SimpleNamespace(file_path=str(file_path)),
+        2024,
+    )
+
+    assert targets == [100.0, 50.0, 50.0]
+    np.testing.assert_array_equal(
+        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([1.0, 0.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([0.0, 1.0], dtype=np.float32),
+    )
+
+
 def test_build_loss_matrix_adds_household_count_target_before_reweighting():
     source = inspect.getsource(build_loss_matrix)
 

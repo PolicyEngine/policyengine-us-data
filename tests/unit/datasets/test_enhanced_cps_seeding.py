@@ -84,3 +84,69 @@ def test_validate_household_weight_total_rejects_inflated_total():
             source_total=145_000_000.0,
             year=2024,
         )
+
+
+def test_validate_clone_household_weight_share_accepts_target_share():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_clone_household_weight_share,
+    )
+
+    share = validate_clone_household_weight_share(
+        np.array([40_000_000.0, 10_000_000.0, 25_000_000.0, 25_000_000.0]),
+        np.array([False, False, True, True]),
+        year=2024,
+    )
+
+    assert share == pytest.approx(0.5)
+
+
+def test_validate_clone_household_weight_share_rejects_clone_dominance():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_clone_household_weight_share,
+    )
+
+    with pytest.raises(ValueError, match="PUF-clone household weight share"):
+        validate_clone_household_weight_share(
+            np.array([10_000_000.0, 10_000_000.0, 40_000_000.0, 40_000_000.0]),
+            np.array([False, False, True, True]),
+            year=2024,
+        )
+
+
+def test_validate_person_poverty_rate_accepts_reasonable_rate():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_person_poverty_rate,
+    )
+
+    class FakePoverty:
+        def mean(self):
+            return 0.12
+
+    class FakeSimulation:
+        def calc(self, variable, period, map_to):
+            assert variable == "person_in_poverty"
+            assert period == 2024
+            assert map_to == "person"
+            return FakePoverty()
+
+    assert validate_person_poverty_rate(FakeSimulation(), year=2024) == 0.12
+
+
+def test_validate_person_poverty_rate_rejects_implausible_rate():
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        validate_person_poverty_rate,
+    )
+
+    class FakePoverty:
+        def mean(self):
+            return 0.39
+
+    class FakeSimulation:
+        def calc(self, variable, period, map_to):
+            assert variable == "person_in_poverty"
+            assert period == 2024
+            assert map_to == "person"
+            return FakePoverty()
+
+    with pytest.raises(ValueError, match="person poverty rate"):
+        validate_person_poverty_rate(FakeSimulation(), year=2024)

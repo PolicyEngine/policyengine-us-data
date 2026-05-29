@@ -10,8 +10,11 @@ _LAZY_MODULES = (
 
 __all__ = [
     "ABSOLUTE_ERROR_SCALE_TARGETS",
+    "CPS_HOUSEHOLD_COUNT_TARGET",
     "HardConcrete",
     "HOUSEHOLD_COUNT_TARGET",
+    "PUF_CLONE_HOUSEHOLD_COUNT_TARGET",
+    "PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE",
     "build_loss_matrix",
     "get_target_error_normalisation",
     "get_target_loss_weights",

@@ -7,6 +7,7 @@ import pandas as pd
 from policyengine_us_data.utils import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
     HOUSEHOLD_COUNT_TARGET,
+    PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
     build_loss_matrix,
     get_target_error_normalisation,
     get_target_loss_weights,
@@ -43,6 +44,9 @@ except ImportError:
 
 
 HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE = 0.02
+PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE = 0.10
+PERSON_POVERTY_RATE_MIN = 0.05
+PERSON_POVERTY_RATE_MAX = 0.25
 
 
 def initialize_weight_priors(
@@ -124,6 +128,77 @@ def validate_household_weight_total(
         )
 
     return weighted_hh_count
+
+
+def validate_clone_household_weight_share(
+    weights: np.ndarray,
+    household_is_puf_clone: np.ndarray,
+    *,
+    year: int,
+    target_share: float = PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
+    abs_tolerance: float = PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE,
+) -> float:
+    """Validate that PUF-clone households do not dominate final weights."""
+
+    weights = np.asarray(weights, dtype=np.float64)
+    household_is_puf_clone = np.asarray(household_is_puf_clone, dtype=bool)
+    if len(weights) != len(household_is_puf_clone):
+        raise ValueError(
+            f"Year {year}: household_is_puf_clone length "
+            f"{len(household_is_puf_clone)} does not match household_weight "
+            f"length {len(weights)}"
+        )
+
+    total = float(weights.sum())
+    if total <= 0:
+        raise ValueError(f"Year {year}: household_weight total must be positive")
+
+    clone_share = float(weights[household_is_puf_clone].sum()) / total
+    if abs(clone_share - target_share) > abs_tolerance:
+        raise ValueError(
+            f"Year {year}: PUF-clone household weight share "
+            f"{clone_share:.2%} differs from target {target_share:.2%} by "
+            f"{abs(clone_share - target_share):.2%}, exceeding "
+            f"{abs_tolerance:.2%} tolerance"
+        )
+
+    return clone_share
+
+
+def _period_array_from_loaded_dataset(
+    data: dict,
+    variable_name: str,
+    period: int,
+) -> np.ndarray:
+    values_by_period = data[variable_name]
+    if period in values_by_period:
+        return values_by_period[period]
+    period_key = str(period)
+    if period_key in values_by_period:
+        return values_by_period[period_key]
+    raise KeyError(f"{variable_name}[{period}] not found in loaded dataset")
+
+
+def validate_person_poverty_rate(
+    sim,
+    *,
+    year: int,
+    min_rate: float = PERSON_POVERTY_RATE_MIN,
+    max_rate: float = PERSON_POVERTY_RATE_MAX,
+) -> float:
+    """Fail fast when calibrated weights imply an implausible poverty rate."""
+
+    poverty_rate = float(
+        sim.calc("person_in_poverty", period=year, map_to="person").mean()
+    )
+    if not np.isfinite(poverty_rate):
+        raise ValueError(f"Year {year}: person poverty rate is not finite")
+    if not (min_rate <= poverty_rate <= max_rate):
+        raise ValueError(
+            f"Year {year}: person poverty rate {poverty_rate:.2%} outside "
+            f"expected range [{min_rate:.2%}, {max_rate:.2%}]"
+        )
+    return poverty_rate
 
 
 def _to_numpy(value) -> np.ndarray:
@@ -733,16 +808,33 @@ class EnhancedCPS(Dataset):
                 seed=1456,
             )
             data["household_weight"][year] = optimised_weights
+            sim.set_input(
+                "household_weight",
+                year,
+                optimised_weights.astype(np.float32),
+            )
 
             weighted_hh_count = validate_household_weight_total(
                 optimised_weights,
                 source_total=source_household_count,
                 year=year,
             )
+            clone_household_share = validate_clone_household_weight_share(
+                optimised_weights,
+                _period_array_from_loaded_dataset(
+                    data,
+                    "household_is_puf_clone",
+                    year,
+                ),
+                year=year,
+            )
+            poverty_rate = validate_person_poverty_rate(sim, year=year)
             logging.info(
                 f"Year {year}: weights validated — "
                 f"{weighted_hh_count:,.0f} weighted households "
                 f"vs {source_household_count:,.0f} source households, "
+                f"{clone_household_share:.1%} PUF-clone household share, "
+                f"{poverty_rate:.1%} person poverty rate, "
                 f"{int(np.sum(optimised_weights > 0))} non-zero"
             )
 

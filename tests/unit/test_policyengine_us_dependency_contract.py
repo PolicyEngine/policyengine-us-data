@@ -39,3 +39,11 @@ def test_policyengine_us_defines_housing_income_limit_contract():
     ):
         variable = tax_benefit_system.variables[variable_name]
         assert variable.entity.key == "spm_unit"
+
+
+def test_policyengine_us_defines_formula_backed_medicaid_cost_if_enrolled():
+    tax_benefit_system = CountryTaxBenefitSystem()
+    variable = tax_benefit_system.variables["medicaid_cost_if_enrolled"]
+
+    assert variable.entity.key == "person"
+    assert getattr(variable, "formulas", None)

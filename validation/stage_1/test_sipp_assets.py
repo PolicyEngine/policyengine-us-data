@@ -43,6 +43,10 @@ def test_ecps_has_liquid_assets():
     - Total US household liquid assets: tens of trillions
     """
     from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.scf.fed_scf import SummarizedFedSCF_2022
+    from policyengine_us_data.utils.asset_imputation import (
+        add_scf_financial_asset_targets,
+    )
     from policyengine_us import Microsimulation
 
     sim = Microsimulation(dataset=EnhancedCPS_2024)
@@ -53,19 +57,29 @@ def test_ecps_has_liquid_assets():
     bonds = sim.calculate("bond_assets", map_to="household")
     total_liquid = bank + stocks + bonds
 
-    # Total should be in the tens of trillions. This is a broad corruption
-    # check; distributional tests below carry the tighter SCF-shape signal.
+    scf = SummarizedFedSCF_2022(require=True).load()
+    scf_asset_targets = add_scf_financial_asset_targets(scf)
+    scf_total = sum(
+        (scf[target].fillna(0) * scf["wgt"]).sum() for target in scf_asset_targets
+    )
+
+    # Total should be in the same broad order of magnitude as the SCF source
+    # columns used for the overlapping liquid-asset leaves. This remains a
+    # corruption check; distributional tests below carry the tighter shape
+    # signal.
     total = total_liquid.sum()
-    MINIMUM_TOTAL = 5e12  # $5 trillion floor
-    MAXIMUM_TOTAL = 40e12  # $40 trillion ceiling
+    MINIMUM_TOTAL = scf_total * 0.15
+    MAXIMUM_TOTAL = scf_total * 2.0
 
     assert total > MINIMUM_TOTAL, (
         f"Total liquid assets ${total / 1e12:.1f}T below "
-        f"minimum ${MINIMUM_TOTAL / 1e12:.0f}T"
+        f"minimum ${MINIMUM_TOTAL / 1e12:.1f}T "
+        f"based on SCF source total ${scf_total / 1e12:.1f}T"
     )
     assert total < MAXIMUM_TOTAL, (
         f"Total liquid assets ${total / 1e12:.1f}T above "
-        f"maximum ${MAXIMUM_TOTAL / 1e12:.0f}T"
+        f"maximum ${MAXIMUM_TOTAL / 1e12:.1f}T "
+        f"based on SCF source total ${scf_total / 1e12:.1f}T"
     )
 
 

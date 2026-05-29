@@ -171,6 +171,7 @@ def test_fetch_publication_scope_prints_requested_field(
     path.write_text(
         json.dumps(
             {
+                "run_id": "run-123",
                 "base_release_version": "1.73.0",
                 "release_bump": "minor",
                 "candidate_scope": "1.73.0-minor",
@@ -184,6 +185,35 @@ def test_fetch_publication_scope_prints_requested_field(
     module.main()
 
     assert capsys.readouterr().out.strip() == "1.73.0-minor"
+
+
+def test_fetch_publication_scope_prints_committed_run_id(
+    tmp_path,
+    monkeypatch,
+    capsys,
+):
+    module = _load_script(
+        ".github/scripts/fetch_publication_scope.py",
+        "fetch_publication_scope_run_id_script_test",
+    )
+    path = tmp_path / "publication_scope.json"
+    path.write_text(
+        json.dumps(
+            {
+                "run_id": "run-123",
+                "base_release_version": "1.73.0",
+                "release_bump": "minor",
+                "candidate_scope": "1.73.0-minor",
+                "would_release_as_at_build_time": "1.74.0",
+            }
+        )
+    )
+    monkeypatch.setattr(module, "PUBLICATION_SCOPE_PATH", path)
+    monkeypatch.setattr(sys, "argv", ["fetch_publication_scope.py", "run_id"])
+
+    module.main()
+
+    assert capsys.readouterr().out.strip() == "run-123"
 
 
 def test_fetch_publication_scope_exits_on_missing_field(
@@ -204,6 +234,19 @@ def test_fetch_publication_scope_exits_on_missing_field(
         module.main()
 
     assert "Publication scope file is missing required field" in capsys.readouterr().err
+
+
+def test_launch_pipeline_reuses_publication_scope_run_id():
+    workflow = (REPO_ROOT / ".github" / "workflows" / "push.yaml").read_text()
+    launch_pipeline = workflow.split("  launch-pipeline:", maxsplit=1)[1]
+
+    assert (
+        'export US_DATA_RUN_ID="$(python .github/scripts/fetch_publication_scope.py run_id)"'
+        in launch_pipeline
+    )
+    assert (
+        "US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}" not in launch_pipeline
+    )
 
 
 def test_fetch_release_version_prints_stable_version(tmp_path, monkeypatch, capsys):

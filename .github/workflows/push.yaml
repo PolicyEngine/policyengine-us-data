@@ -146,7 +146,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - lint
-      - run-context
       - data-release-version
     if: startsWith(github.event.head_commit.message, 'Update publication candidate')
     permissions:
@@ -157,9 +156,9 @@ jobs:
       - name: Dispatch pipeline workflow
         env:
           GH_TOKEN: ${{ github.token }}
-          US_DATA_RUN_ID: ${{ needs.run-context.outputs.run_id }}
           SOURCE_SHA: ${{ github.sha }}
         run: |
+          export US_DATA_RUN_ID="$(python .github/scripts/fetch_publication_scope.py run_id)"
           export CANDIDATE_VERSION="$(python .github/scripts/fetch_publication_scope.py candidate_scope)"
           export BASE_RELEASE_VERSION="$(python .github/scripts/fetch_publication_scope.py base_release_version)"
           export RELEASE_BUMP="$(python .github/scripts/fetch_publication_scope.py release_bump)"

@@ -13,6 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PUBLICATION_SCOPE_PATH = REPO_ROOT / ".github" / "publication_scope.json"
 VALID_FIELDS = frozenset(
     {
+        "run_id",
         "base_release_version",
         "release_bump",
         "candidate_scope",

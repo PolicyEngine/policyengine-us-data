@@ -1,6 +1,7 @@
 import inspect
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -14,11 +15,13 @@ from policyengine_us_data.utils.loss import (
     BEA_NIPA_DIRECT_SUM_TARGETS,
     BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT,
     BEA_WAGES_AND_SALARIES_LOSS_WEIGHT,
+    CPS_HOUSEHOLD_COUNT_TARGET,
     BLS_CE_TOTALS,
     HARD_CODED_TOTALS,
     HOUSEHOLD_COUNT_LOSS_WEIGHT,
     HOUSEHOLD_COUNT_TARGET,
     LOW_AGI_INVESTMENT_INCOME_SOI_VARIABLES,
+    PUF_CLONE_HOUSEHOLD_COUNT_TARGET,
     SOI_NEGATIVE_AGI_TARGETED_VARIABLES,
     TRANSFER_BALANCE_TARGETS,
     _add_bea_state_wage_targets,
@@ -174,6 +177,8 @@ def test_household_count_target_gets_higher_loss_weight():
     target_names = np.array(
         [
             HOUSEHOLD_COUNT_TARGET,
+            CPS_HOUSEHOLD_COUNT_TARGET,
+            PUF_CLONE_HOUSEHOLD_COUNT_TARGET,
             "nation/census/population_by_age/0",
         ]
     )
@@ -181,6 +186,8 @@ def test_household_count_target_gets_higher_loss_weight():
     weights = get_target_loss_weights(target_names)
 
     assert weights.tolist() == [
+        HOUSEHOLD_COUNT_LOSS_WEIGHT,
+        HOUSEHOLD_COUNT_LOSS_WEIGHT,
         HOUSEHOLD_COUNT_LOSS_WEIGHT,
         1.0,
     ]
@@ -464,12 +471,66 @@ def test_add_household_count_target_uses_source_weight_total():
         loss_matrix,
         [],
         _FakeHouseholdWeightSimulation([80.0, 20.0, 0.0, 0.0]),
+        SimpleNamespace(),
+        2024,
     )
 
     assert targets == [100.0]
     np.testing.assert_array_equal(
         loss_matrix[HOUSEHOLD_COUNT_TARGET].to_numpy(),
         np.ones(4, dtype=np.float32),
+    )
+
+
+def test_add_household_count_target_adds_clone_split_targets(tmp_path):
+    file_path = tmp_path / "extended_cps_2024.h5"
+    with h5py.File(file_path, "w") as h5_file:
+        group = h5_file.create_group("household_is_puf_clone")
+        group.create_dataset("2024", data=np.array([0, 0, 1, 1], dtype=np.int8))
+
+    loss_matrix = pd.DataFrame(index=[101, 102, 103, 104])
+
+    targets, loss_matrix = _add_household_count_target(
+        loss_matrix,
+        [],
+        _FakeHouseholdWeightSimulation([80.0, 20.0, 0.0, 0.0]),
+        SimpleNamespace(file_path=file_path),
+        2024,
+    )
+
+    assert targets == [100.0, 50.0, 50.0]
+    np.testing.assert_array_equal(
+        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([1.0, 1.0, 0.0, 0.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([0.0, 0.0, 1.0, 1.0], dtype=np.float32),
+    )
+
+
+def test_add_household_count_target_accepts_string_dataset_path(tmp_path):
+    file_path = tmp_path / "extended_cps_2024.h5"
+    with h5py.File(file_path, "w") as h5_file:
+        group = h5_file.create_group("household_is_puf_clone")
+        group.create_dataset("2024", data=np.array([0, 1], dtype=np.int8))
+
+    targets, loss_matrix = _add_household_count_target(
+        pd.DataFrame(index=[101, 102]),
+        [],
+        _FakeHouseholdWeightSimulation([80.0, 20.0]),
+        SimpleNamespace(file_path=str(file_path)),
+        2024,
+    )
+
+    assert targets == [100.0, 50.0, 50.0]
+    np.testing.assert_array_equal(
+        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([1.0, 0.0], dtype=np.float32),
+    )
+    np.testing.assert_array_equal(
+        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET].to_numpy(),
+        np.array([0.0, 1.0], dtype=np.float32),
     )
 
 

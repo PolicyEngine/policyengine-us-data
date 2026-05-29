@@ -7,6 +7,7 @@ import pandas as pd
 from policyengine_us_data.utils import (
     ABSOLUTE_ERROR_SCALE_TARGETS,
     HOUSEHOLD_COUNT_TARGET,
+    PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
     build_loss_matrix,
     get_target_error_normalisation,
     get_target_loss_weights,
@@ -40,6 +41,12 @@ try:
     import torch
 except ImportError:
     torch = None
+
+
+HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE = 0.02
+PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE = 0.10
+PERSON_POVERTY_RATE_MIN = 0.05
+PERSON_POVERTY_RATE_MAX = 0.25
 
 
 def initialize_weight_priors(
@@ -79,6 +86,119 @@ def initialize_weight_priors(
     priors[zero_mask] = positive_total * zero_weight_total_share / zero_mask.sum()
 
     return priors
+
+
+def validate_household_weight_total(
+    weights: np.ndarray,
+    *,
+    source_total: float,
+    year: int,
+    rel_tolerance: float = HOUSEHOLD_WEIGHT_TOTAL_REL_TOLERANCE,
+) -> float:
+    """Validate calibrated household weights against the source total."""
+
+    weights = np.asarray(weights)
+    if np.any(np.isnan(weights)):
+        raise ValueError(f"Year {year}: household_weight contains NaN values")
+    if np.any(weights < 0):
+        raise ValueError(f"Year {year}: household_weight contains negative values")
+
+    weighted_hh_count = float(np.sum(weights))
+    if not (1e8 <= weighted_hh_count <= 2e8):
+        raise ValueError(
+            f"Year {year}: weighted household count "
+            f"{weighted_hh_count:,.0f} outside expected range "
+            f"[100M, 200M]"
+        )
+
+    source_total = float(source_total)
+    if not np.isfinite(source_total) or source_total <= 0:
+        raise ValueError(
+            f"Year {year}: source household count total must be positive; "
+            f"got {source_total:,.0f}"
+        )
+
+    rel_error = abs(weighted_hh_count - source_total) / source_total
+    if rel_error > rel_tolerance:
+        raise ValueError(
+            f"Year {year}: weighted household count "
+            f"{weighted_hh_count:,.0f} differs from source household count "
+            f"{source_total:,.0f} by {rel_error:.2%}, exceeding "
+            f"{rel_tolerance:.2%} tolerance"
+        )
+
+    return weighted_hh_count
+
+
+def validate_clone_household_weight_share(
+    weights: np.ndarray,
+    household_is_puf_clone: np.ndarray,
+    *,
+    year: int,
+    target_share: float = PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE,
+    abs_tolerance: float = PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_TOLERANCE,
+) -> float:
+    """Validate that PUF-clone households do not dominate final weights."""
+
+    weights = np.asarray(weights, dtype=np.float64)
+    household_is_puf_clone = np.asarray(household_is_puf_clone, dtype=bool)
+    if len(weights) != len(household_is_puf_clone):
+        raise ValueError(
+            f"Year {year}: household_is_puf_clone length "
+            f"{len(household_is_puf_clone)} does not match household_weight "
+            f"length {len(weights)}"
+        )
+
+    total = float(weights.sum())
+    if total <= 0:
+        raise ValueError(f"Year {year}: household_weight total must be positive")
+
+    clone_share = float(weights[household_is_puf_clone].sum()) / total
+    if abs(clone_share - target_share) > abs_tolerance:
+        raise ValueError(
+            f"Year {year}: PUF-clone household weight share "
+            f"{clone_share:.2%} differs from target {target_share:.2%} by "
+            f"{abs(clone_share - target_share):.2%}, exceeding "
+            f"{abs_tolerance:.2%} tolerance"
+        )
+
+    return clone_share
+
+
+def _period_array_from_loaded_dataset(
+    data: dict,
+    variable_name: str,
+    period: int,
+) -> np.ndarray:
+    values_by_period = data[variable_name]
+    if period in values_by_period:
+        return values_by_period[period]
+    period_key = str(period)
+    if period_key in values_by_period:
+        return values_by_period[period_key]
+    raise KeyError(f"{variable_name}[{period}] not found in loaded dataset")
+
+
+def validate_person_poverty_rate(
+    sim,
+    *,
+    year: int,
+    min_rate: float = PERSON_POVERTY_RATE_MIN,
+    max_rate: float = PERSON_POVERTY_RATE_MAX,
+) -> float:
+    """Fail fast when calibrated weights imply an implausible poverty rate."""
+
+    poverty_rate = float(
+        sim.calculate("person_in_poverty", period=year, map_to="person").mean()
+    )
+    if not np.isfinite(poverty_rate):
+        raise ValueError(f"Year {year}: person poverty rate is not finite")
+    if not (min_rate <= poverty_rate <= max_rate):
+        raise ValueError(
+            f"Year {year}: person poverty rate {poverty_rate:.2%} outside "
+            f"expected range [{min_rate:.2%}, {max_rate:.2%}]"
+        )
+    return poverty_rate
 
 
 def _to_numpy(value) -> np.ndarray:
@@ -639,6 +759,7 @@ class EnhancedCPS(Dataset):
         data["household_weight"] = {}
         original_weights = sim.calculate("household_weight")
         original_weights = initialize_weight_priors(original_weights.values)
+        source_household_count = float(np.sum(original_weights))
 
         bad_targets = [
             "nation/irs/adjusted gross income/total/AGI in 10k-15k/taxable/Head of Household",
@@ -687,26 +808,34 @@ class EnhancedCPS(Dataset):
                 seed=1456,
             )
             data["household_weight"][year] = optimised_weights
+            sim.set_input(
+                "household_weight",
+                year,
+                optimised_weights.astype(np.float32),
+            )
 
-            # Validate dense weights
-            w = optimised_weights
-            if np.any(np.isnan(w)):
-                raise ValueError(f"Year {year}: household_weight contains NaN values")
-            if np.any(w < 0):
-                raise ValueError(
-                    f"Year {year}: household_weight contains negative values"
-                )
-            weighted_hh_count = float(np.sum(w))
-            if not (1e8 <= weighted_hh_count <= 2e8):
-                raise ValueError(
-                    f"Year {year}: weighted household count "
-                    f"{weighted_hh_count:,.0f} outside expected range "
-                    f"[100M, 200M]"
-                )
+            weighted_hh_count = validate_household_weight_total(
+                optimised_weights,
+                source_total=source_household_count,
+                year=year,
+            )
+            clone_household_share = validate_clone_household_weight_share(
+                optimised_weights,
+                _period_array_from_loaded_dataset(
+                    data,
+                    "household_is_puf_clone",
+                    year,
+                ),
+                year=year,
+            )
+            poverty_rate = validate_person_poverty_rate(sim, year=year)
             logging.info(
                 f"Year {year}: weights validated — "
-                f"{weighted_hh_count:,.0f} weighted households, "
-                f"{int(np.sum(w > 0))} non-zero"
+                f"{weighted_hh_count:,.0f} weighted households "
+                f"vs {source_household_count:,.0f} source households, "
+                f"{clone_household_share:.1%} PUF-clone household share, "
+                f"{poverty_rate:.1%} person poverty rate, "
+                f"{int(np.sum(optimised_weights > 0))} non-zero"
             )
 
         if 2025 in ACA_POST_CALIBRATION_PERSON_TARGETS:
@@ -824,9 +953,15 @@ class ReweightedCPS_2024(Dataset):
         data = sim.dataset.load_dataset()
         original_weights = sim.calculate("household_weight")
         original_weights = initialize_weight_priors(original_weights.values)
+        source_household_count = float(np.sum(original_weights))
         for year in [2024]:
             loss_matrix, targets_array = build_loss_matrix(self.input_dataset, year)
             optimised_weights = reweight(original_weights, loss_matrix, targets_array)
+            validate_household_weight_total(
+                optimised_weights,
+                source_total=source_household_count,
+                year=year,
+            )
             data["household_weight"] = optimised_weights
 
         self.save_dataset(data)

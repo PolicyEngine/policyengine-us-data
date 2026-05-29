@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import logging
 import sqlite3
+from pathlib import Path
 
 from policyengine_us_data.storage import CALIBRATION_FOLDER, STORAGE_FOLDER
 from policyengine_us_data.storage.calibration_targets.pull_soi_targets import (
@@ -83,7 +84,10 @@ BEA_NIPA_DIRECT_SUM_TARGETS = (
 BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT = 1_000.0
 BEA_WAGES_AND_SALARIES_LOSS_WEIGHT = 1_000.0
 HOUSEHOLD_COUNT_TARGET = "nation/source/household_count"
-HOUSEHOLD_COUNT_LOSS_WEIGHT = 1_000.0
+CPS_HOUSEHOLD_COUNT_TARGET = "nation/source/cps_household_count"
+PUF_CLONE_HOUSEHOLD_COUNT_TARGET = "nation/source/puf_clone_household_count"
+PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE = 0.5
+HOUSEHOLD_COUNT_LOSS_WEIGHT = 100_000.0
 
 CBO_INCOME_BY_SOURCE_TARGETS = [
     ("irs_employment_income", "employment_income"),
@@ -1201,7 +1205,31 @@ def _add_transfer_balance_targets(loss_matrix, targets_list, sim, time_period):
     return targets_list, loss_matrix
 
 
-def _add_household_count_target(loss_matrix, targets_list, sim):
+def _load_household_is_puf_clone(dataset, time_period):
+    file_path = getattr(dataset, "file_path", None)
+    if file_path is None:
+        return None
+    file_path = Path(file_path)
+    if not file_path.exists():
+        return None
+
+    import h5py
+
+    with h5py.File(file_path, "r") as h5_file:
+        if "household_is_puf_clone" not in h5_file:
+            return None
+        obj = h5_file["household_is_puf_clone"]
+        if isinstance(obj, h5py.Dataset):
+            return np.asarray(obj[...], dtype=bool)
+        period_key = str(time_period)
+        if period_key in obj:
+            return np.asarray(obj[period_key][...], dtype=bool)
+        if str(int(time_period)) in obj:
+            return np.asarray(obj[str(int(time_period))][...], dtype=bool)
+    return None
+
+
+def _add_household_count_target(loss_matrix, targets_list, sim, dataset, time_period):
     """Constrain total household weight to the source survey total."""
 
     household_weights = sim.calculate("household_weight").values
@@ -1223,6 +1251,27 @@ def _add_household_count_target(loss_matrix, targets_list, sim):
         dtype=np.float32,
     )
     targets_list.append(target)
+
+    household_is_puf_clone = _load_household_is_puf_clone(dataset, time_period)
+    if household_is_puf_clone is not None:
+        if len(household_is_puf_clone) != len(household_weights):
+            raise ValueError(
+                "PUF clone flag length mismatch: "
+                f"household_is_puf_clone has {len(household_is_puf_clone)} "
+                f"values but household_weight has {len(household_weights)} values"
+            )
+
+        puf_clone_target = target * PUF_CLONE_HOUSEHOLD_COUNT_TARGET_SHARE
+        cps_target = target - puf_clone_target
+        loss_matrix[CPS_HOUSEHOLD_COUNT_TARGET] = (~household_is_puf_clone).astype(
+            np.float32
+        )
+        targets_list.append(cps_target)
+        loss_matrix[PUF_CLONE_HOUSEHOLD_COUNT_TARGET] = (household_is_puf_clone).astype(
+            np.float32
+        )
+        targets_list.append(puf_clone_target)
+
     return targets_list, loss_matrix
 
 
@@ -1254,7 +1303,15 @@ def get_target_loss_weights(target_names):
     ) | np.char.startswith(target_names, "state/bea/wages_and_salaries/")
     weights[is_bea_direct_sum_target] = BEA_NIPA_DIRECT_SUM_LOSS_WEIGHT
     weights[is_bea_wage_target] = BEA_WAGES_AND_SALARIES_LOSS_WEIGHT
-    weights[target_names == HOUSEHOLD_COUNT_TARGET] = HOUSEHOLD_COUNT_LOSS_WEIGHT
+    household_count_targets = np.isin(
+        target_names,
+        [
+            HOUSEHOLD_COUNT_TARGET,
+            CPS_HOUSEHOLD_COUNT_TARGET,
+            PUF_CLONE_HOUSEHOLD_COUNT_TARGET,
+        ],
+    )
+    weights[household_count_targets] = HOUSEHOLD_COUNT_LOSS_WEIGHT
     return weights
 
 
@@ -1392,6 +1449,8 @@ def build_loss_matrix(dataset: type, time_period):
         loss_matrix,
         targets_array,
         sim,
+        dataset,
+        time_period,
     )
 
     # Census single-year age population projections

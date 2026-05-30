@@ -1434,11 +1434,15 @@ wheels = [
 [[package]]
 name = "microunit"
 version = "0.1.0"
-source = { git = "https://github.com/PolicyEngine/microunit?rev=d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1#d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/c1/6a8a1a1f7e90e41295e813808f170c71f0d20d36c6203722fd682d0a3387/microunit-0.1.0.tar.gz", hash = "sha256:a1e90f525e0a1a3921a3ed62ce291620bd45242f829cbd7892253dfff307eeb3", size = 21638, upload-time = "2026-05-30T18:51:35.59Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/cf/a38de31d10b1029923daa7f9271a78c965deb94519627f6dd4d9c3fbf359/microunit-0.1.0-py3-none-any.whl", hash = "sha256:1652fd43b57fb6fc803089d0da0fc4d28948d9e7d5e742e3327afd376e0a3060", size = 23581, upload-time = "2026-05-30T18:51:34.376Z" },
 ]
 
 [[package]]
@@ -2253,7 +2257,7 @@ requires-dist = [
     { name = "l0-python", marker = "extra == 'l0'" },
     { name = "microdf-python", specifier = ">=1.2.1" },
     { name = "microimpute", specifier = ">=2.1.0" },
-    { name = "microunit", git = "https://github.com/PolicyEngine/microunit?rev=d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1" },
+    { name = "microunit", specifier = ">=0.1.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },

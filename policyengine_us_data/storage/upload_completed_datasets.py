@@ -13,7 +13,11 @@ from policyengine_us_data.db.etl_national_targets import (
 )
 from policyengine_us_data.datasets import EnhancedCPS_2024
 from policyengine_us_data.datasets.cps.cps import CPS_2024
-from policyengine_us_data.datasets.cps.enhanced_cps import clone_diagnostics_path
+from policyengine_us_data.datasets.cps.enhanced_cps import (
+    MAX_PUF_CLONE_TAXES_EXCEED_MARKET_INCOME_SHARE_PCT,
+    MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT,
+    clone_diagnostics_path,
+)
 from policyengine_us_data.storage import STORAGE_FOLDER
 from policyengine_us_data.utils.data_upload import (
     cleanup_staging_hf,
@@ -666,6 +670,37 @@ def _clone_diagnostics_errors(diagnostics, *, context: str) -> list[str]:
             continue
         if not 0 <= float(value) <= 100:
             errors.append(f"{context} metric {metric} must be between 0 and 100.")
+
+    # Enforce the same clone-quality thresholds as the generation-time guard in
+    # ``enhanced_cps.validate_clone_diagnostics`` so a degraded Enhanced CPS
+    # artifact (PUF clones starved below the weight-share floor, or clones
+    # carrying taxes that wildly exceed their market income) cannot be
+    # published. These share fields are absent on some periods/older sidecars,
+    # so only enforce a bound when the field is present and finite.
+    weight_share = diagnostics.get("clone_household_weight_share_pct")
+    if (
+        isinstance(weight_share, (int, float))
+        and not isinstance(weight_share, bool)
+        and math.isfinite(float(weight_share))
+        and float(weight_share) < MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT
+    ):
+        errors.append(
+            f"{context}: PUF clone household weight share {weight_share}% "
+            f"below {MIN_PUF_CLONE_HOUSEHOLD_WEIGHT_SHARE_PCT}% floor"
+        )
+
+    clone_tax_share = diagnostics.get("clone_taxes_exceed_market_income_share_pct")
+    if (
+        isinstance(clone_tax_share, (int, float))
+        and not isinstance(clone_tax_share, bool)
+        and math.isfinite(float(clone_tax_share))
+        and float(clone_tax_share) > MAX_PUF_CLONE_TAXES_EXCEED_MARKET_INCOME_SHARE_PCT
+    ):
+        errors.append(
+            f"{context}: PUF clone taxes exceed market income share "
+            f"{clone_tax_share}% above "
+            f"{MAX_PUF_CLONE_TAXES_EXCEED_MARKET_INCOME_SHARE_PCT}% limit"
+        )
 
     return errors
 

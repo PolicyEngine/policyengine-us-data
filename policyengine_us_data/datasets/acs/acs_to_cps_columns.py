@@ -1,6 +1,6 @@
 """
 Map ACS PUMS person records onto the CPS-like columns consumed by
-``policyengine_us_data.datasets.cps.tax_unit_construction``.
+``microunit.construct_tax_units``.
 
 Column contract:
 

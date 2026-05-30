@@ -14,13 +14,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from policyengine_us_data.datasets.cps.tax_unit_construction import (
+from microunit import (
     POLICYENGINE_MODE,
     SUPPORTED_TAX_UNIT_CONSTRUCTION_MODES,
-    construct_tax_units,
-)
-from policyengine_us_data.datasets.cps.tax_unit_rule_helpers import (
     CPSRelationshipCode,
+    construct_tax_units,
     qualifying_child_age_test,
 )
 

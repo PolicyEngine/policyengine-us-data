@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from policyengine_core.data import Dataset
 
-from policyengine_us_data.datasets.cps.tax_unit_construction import construct_tax_units
+from microunit import construct_tax_units
 from policyengine_us_data.utils.soi import (
     compare_soi_replication_to_soi,
     get_soi,

@@ -1432,6 +1432,16 @@ wheels = [
 ]
 
 [[package]]
+name = "microunit"
+version = "0.1.0"
+source = { git = "https://github.com/PolicyEngine/microunit?rev=d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1#d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "pyyaml" },
+]
+
+[[package]]
 name = "mistune"
 version = "3.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2188,6 +2198,7 @@ dependencies = [
     { name = "google-cloud-storage" },
     { name = "microdf-python" },
     { name = "microimpute" },
+    { name = "microunit" },
     { name = "openpyxl" },
     { name = "pandas" },
     { name = "pip-system-certs" },
@@ -2242,6 +2253,7 @@ requires-dist = [
     { name = "l0-python", marker = "extra == 'l0'" },
     { name = "microdf-python", specifier = ">=1.2.1" },
     { name = "microimpute", specifier = ">=2.1.0" },
+    { name = "microunit", git = "https://github.com/PolicyEngine/microunit?rev=d3eccbbd33aa51f1c310bd6c2f37c9c3735beeb1" },
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pip-system-certs", specifier = ">=3.0" },

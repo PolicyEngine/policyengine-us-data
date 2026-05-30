@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import pandas as pd
 
+from microunit import POLICYENGINE_MODE, construct_tax_units
+
 from policyengine_us_data.datasets.acs.acs_to_cps_columns import (
     acs_person_to_cps_tax_unit_columns,
-)
-from policyengine_us_data.datasets.cps.tax_unit_construction import (
-    POLICYENGINE_MODE,
-    construct_tax_units,
 )
 
 

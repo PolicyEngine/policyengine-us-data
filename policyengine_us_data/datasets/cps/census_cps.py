@@ -5,9 +5,7 @@ from io import BytesIO
 from zipfile import ZipFile
 import pandas as pd
 from policyengine_us_data.storage import STORAGE_FOLDER
-from policyengine_us_data.datasets.cps.tax_unit_construction import (
-    construct_tax_units,
-)
+from microunit import construct_tax_units
 
 
 OPTIONAL_PERSON_COLUMNS = {

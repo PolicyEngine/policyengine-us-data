@@ -66,6 +66,22 @@ def test_ecps_poverty_rate_reasonable(ecps_sim):
     )
 
 
+def test_ecps_puf_clone_diagnostics_reasonable(ecps_sim):
+    from policyengine_us_data.datasets.cps import EnhancedCPS_2024
+    from policyengine_us_data.datasets.cps.enhanced_cps import (
+        build_clone_diagnostics_for_simulation,
+        validate_clone_diagnostics,
+    )
+
+    diagnostics = build_clone_diagnostics_for_simulation(
+        ecps_sim,
+        dataset_path=EnhancedCPS_2024.file_path,
+        period=2024,
+    )
+
+    validate_clone_diagnostics(diagnostics)
+
+
 def test_ecps_income_tax_positive(ecps_sim):
     total = ecps_sim.calculate("income_tax").sum()
     assert total > 1e12, f"income_tax sum is {total:.2e}, expected > 1T."

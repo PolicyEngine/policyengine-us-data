@@ -9,20 +9,26 @@ from policyengine_us_data.datasets.cps.enhanced_cps import (
     compute_clone_diagnostics_summary,
     clone_diagnostics_path,
     initialize_weight_priors,
+    PUF_CLONE_PRIOR_TOTAL_SHARE,
     refresh_clone_diagnostics_report,
     save_clone_diagnostics_report,
+    validate_clone_diagnostics,
 )
 
 
-def test_initialize_weight_priors_gives_zero_weight_records_balanced_mass():
+def test_initialize_weight_priors_gives_zero_weight_records_support_mass():
     weights = np.array([1_500.0, 0.0, 625.0, 0.0], dtype=np.float64)
 
     priors = initialize_weight_priors(weights, seed=123)
 
     assert np.all(priors > 0)
     assert priors.sum() == pytest.approx(weights.sum())
-    assert priors[[0, 2]].sum() == pytest.approx(weights.sum() / 2)
-    assert priors[[1, 3]].sum() == pytest.approx(weights.sum() / 2)
+    assert priors[[1, 3]].sum() == pytest.approx(
+        weights.sum() * PUF_CLONE_PRIOR_TOTAL_SHARE
+    )
+    assert priors[[0, 2]].sum() == pytest.approx(
+        weights.sum() * (1 - PUF_CLONE_PRIOR_TOTAL_SHARE)
+    )
     assert priors[1] == pytest.approx(priors[3])
     assert priors[0] / priors[2] == pytest.approx(weights[0] / weights[2])
 
@@ -42,6 +48,15 @@ def test_initialize_weight_priors_is_reproducible():
     priors_b = initialize_weight_priors(weights, seed=77)
 
     np.testing.assert_allclose(priors_a, priors_b)
+
+
+def test_initialize_weight_priors_honors_configured_zero_weight_share():
+    weights = np.array([80.0, 20.0, 0.0, 0.0])
+
+    priors = initialize_weight_priors(weights, zero_weight_total_share=0.5)
+
+    np.testing.assert_allclose(priors.sum(), 100.0)
+    np.testing.assert_allclose(priors, np.array([40.0, 10.0, 25.0, 25.0]))
 
 
 def test_compute_clone_diagnostics_summary():
@@ -68,6 +83,49 @@ def test_compute_clone_diagnostics_summary():
     assert diagnostics["clone_taxes_exceed_market_income_share_pct"] == pytest.approx(
         37.5
     )
+
+
+def test_validate_clone_diagnostics_accepts_support_clone_share():
+    validate_clone_diagnostics(
+        {
+            "clone_household_weight_share_pct": 10.0,
+            "clone_taxes_exceed_market_income_share_pct": 5.0,
+        }
+    )
+
+
+def test_validate_clone_diagnostics_rejects_clone_starvation():
+    with pytest.raises(ValueError, match="floor"):
+        validate_clone_diagnostics(
+            {
+                "clone_household_weight_share_pct": 2.0,
+                "clone_taxes_exceed_market_income_share_pct": 5.0,
+            }
+        )
+
+
+def test_validate_clone_diagnostics_accepts_high_share_no_cap():
+    # No upper cap on clone weight share (the household-count loss target governs
+    # it); a high share with healthy tax quality must pass.
+    validate_clone_diagnostics(
+        {
+            "clone_household_weight_share_pct": 81.3,
+            "clone_taxes_exceed_market_income_share_pct": 5.0,
+        }
+    )
+
+
+def test_validate_clone_diagnostics_rejects_clone_tax_pathology():
+    with pytest.raises(
+        ValueError,
+        match="PUF clone taxes-exceed-market-income share",
+    ):
+        validate_clone_diagnostics(
+            {
+                "clone_household_weight_share_pct": 10.0,
+                "clone_taxes_exceed_market_income_share_pct": 66.6,
+            }
+        )
 
 
 def test_build_clone_diagnostics_for_simulation_maps_household_weights(
@@ -201,7 +259,11 @@ def test_save_clone_diagnostics_report_writes_fresh_payload(tmp_path, monkeypatc
 
     monkeypatch.setattr(
         "policyengine_us_data.datasets.cps.enhanced_cps.build_clone_diagnostics_for_saved_dataset",
-        lambda dataset_cls, period: {"clone_person_weight_share_pct": float(period)},
+        lambda dataset_cls, period: {
+            "clone_person_weight_share_pct": float(period),
+            "clone_household_weight_share_pct": 10.0,
+            "clone_taxes_exceed_market_income_share_pct": 5.0,
+        },
     )
 
     output_path, payload = save_clone_diagnostics_report(
@@ -213,8 +275,39 @@ def test_save_clone_diagnostics_report_writes_fresh_payload(tmp_path, monkeypatc
     assert output_path == clone_diagnostics_path(DummyDataset.file_path)
     assert payload == {
         "periods": {
-            "2024": {"clone_person_weight_share_pct": 2024.0},
-            "2025": {"clone_person_weight_share_pct": 2025.0},
+            "2024": {
+                "clone_person_weight_share_pct": 2024.0,
+                "clone_household_weight_share_pct": 10.0,
+                "clone_taxes_exceed_market_income_share_pct": 5.0,
+            },
+            "2025": {
+                "clone_person_weight_share_pct": 2025.0,
+                "clone_household_weight_share_pct": 10.0,
+                "clone_taxes_exceed_market_income_share_pct": 5.0,
+            },
         }
     }
     assert output_path.exists()
+
+
+def test_save_clone_diagnostics_report_rejects_bad_clone_payload(tmp_path, monkeypatch):
+    class DummyDataset:
+        file_path = tmp_path / "enhanced_cps_2024.h5"
+
+    DummyDataset.file_path.write_text("placeholder")
+
+    monkeypatch.setattr(
+        "policyengine_us_data.datasets.cps.enhanced_cps.build_clone_diagnostics_for_saved_dataset",
+        lambda dataset_cls, period: {
+            "clone_person_weight_share_pct": 1.0,
+            "clone_household_weight_share_pct": 2.0,
+            "clone_taxes_exceed_market_income_share_pct": 5.0,
+        },
+    )
+
+    with pytest.raises(ValueError, match="PUF clone household weight share"):
+        save_clone_diagnostics_report(
+            DummyDataset,
+            start_year=2024,
+            end_year=2024,
+        )

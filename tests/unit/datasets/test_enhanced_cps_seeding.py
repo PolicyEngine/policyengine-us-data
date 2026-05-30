@@ -3,7 +3,7 @@
 Earlier versions used global ``np.random.normal(1, 0.1, ...)`` jitter before
 ``reweight()`` reseeded the optimizer. Current code routes both dense CPS
 weighting paths through ``initialize_weight_priors()``, which preserves positive
-survey weight shape and gives zero-weight clone records deterministic uniform
+survey weight shape and gives zero-weight clone records deterministic support
 prior mass.
 """
 
@@ -86,11 +86,13 @@ def test_validate_household_weight_total_rejects_inflated_total():
         )
 
 
-def test_validate_clone_household_weight_share_accepts_target_share():
+def test_validate_clone_household_weight_share_accepts_healthy_share():
     from policyengine_us_data.datasets.cps.enhanced_cps import (
         validate_clone_household_weight_share,
     )
 
+    # A high clone share is fine: there is no upper cap (the loss target governs
+    # how much weight clones carry); the guard only enforces a floor.
     share = validate_clone_household_weight_share(
         np.array([40_000_000.0, 10_000_000.0, 25_000_000.0, 25_000_000.0]),
         np.array([False, False, True, True]),
@@ -100,14 +102,15 @@ def test_validate_clone_household_weight_share_accepts_target_share():
     assert share == pytest.approx(0.5)
 
 
-def test_validate_clone_household_weight_share_rejects_clone_dominance():
+def test_validate_clone_household_weight_share_rejects_clone_starvation():
     from policyengine_us_data.datasets.cps.enhanced_cps import (
         validate_clone_household_weight_share,
     )
 
-    with pytest.raises(ValueError, match="PUF-clone household weight share"):
+    # Clones starved to ~2.4% of weight (below the 5% floor) must fail.
+    with pytest.raises(ValueError, match="floor"):
         validate_clone_household_weight_share(
-            np.array([10_000_000.0, 10_000_000.0, 40_000_000.0, 40_000_000.0]),
+            np.array([80_000_000.0, 80_000_000.0, 2_000_000.0, 2_000_000.0]),
             np.array([False, False, True, True]),
             year=2024,
         )

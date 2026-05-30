@@ -160,6 +160,14 @@ class CensusCPS(Dataset):
         person: pd.DataFrame,
         mode: str | None = None,
     ) -> pd.DataFrame:
+        # The raw Census ASEC TAX_ID (a documented filing-unit grouping) is NOT
+        # used as our tax unit. We build tax units ourselves with
+        # construct_tax_units() (default mode "policyengine", which applies PE
+        # filing/dependency rules) and overwrite TAX_ID with that assignment
+        # below. The original Census value is preserved as CENSUS_TAX_ID so it
+        # stays available as the ground-truth baseline our construction is
+        # validated against (see validation/cps_tax_unit_validation.py) and is a
+        # required raw-schema column (see _validate_raw_cps_schema in cps.py).
         person["CENSUS_TAX_ID"] = person["TAX_ID"]
         mode = mode or self.tax_unit_construction_mode
         constructed_person, tax_unit_df = construct_tax_units(
@@ -167,6 +175,7 @@ class CensusCPS(Dataset):
             year=self.time_period,
             mode=mode,
         )
+        # Replace Census TAX_ID with our constructed tax-unit assignment.
         person["TAX_ID"] = constructed_person["TAX_ID"].values
         return tax_unit_df[["TAX_ID"]]
 

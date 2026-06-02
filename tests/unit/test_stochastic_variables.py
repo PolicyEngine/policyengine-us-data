@@ -37,6 +37,10 @@ class TestTakeUpRateParameters:
         rate = load_take_up_rate("aca", 2022)
         assert 0 < rate <= 1
 
+    def test_chip_rate_preserves_current_default_for_2023_pipeline(self):
+        rate = load_take_up_rate("chip", 2023)
+        assert rate == 1.0
+
     def test_head_start_rate_loads(self):
         rate = load_take_up_rate("head_start", 2022)
         assert 0 < rate <= 1

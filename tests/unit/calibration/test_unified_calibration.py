@@ -416,6 +416,17 @@ class TestApplyBlockTakeupToArrays:
             assert spec["variable"] in result
             assert result[spec["variable"]].dtype == bool
 
+    def test_chip_takeup_loads_for_2023_pipeline_year(self):
+        args = self._make_arrays(4, 2, 1, 1)
+        result = apply_block_takeup_to_arrays(
+            *args,
+            time_period=2023,
+            takeup_filter=["takes_up_chip_if_eligible"],
+        )
+
+        assert len(result["takes_up_chip_if_eligible"]) == 8
+        assert result["takes_up_chip_if_eligible"].all()
+
     def test_correct_entity_counts(self):
         args = self._make_arrays(20, 10, 4, 3)
         result = apply_block_takeup_to_arrays(

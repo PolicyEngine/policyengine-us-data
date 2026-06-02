@@ -9,4 +9,4 @@ metadata:
 # Keep the current PolicyEngine-US default behavior until state-specific CHIP
 # rates are derived from the new CMS enrollment targets and modeled eligibility.
 values:
-  2024-01-01: 1.0
+  2018-01-01: 1.0

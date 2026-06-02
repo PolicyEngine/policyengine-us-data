@@ -38,9 +38,11 @@ from policyengine_us_data.utils.loss import (
     _add_ssi_recipient_targets,
     _add_transfer_balance_targets,
     _cbo_program_target_value,
+    _get_chip_national_enrollment_target,
     _get_medicaid_national_targets,
     _get_aca_national_targets,
     _load_aca_spending_and_enrollment_targets,
+    _load_chip_enrollment_targets,
     _load_medicaid_enrollment_targets,
     _should_skip_soi_agi_row,
     _should_skip_soi_taxability_row,
@@ -262,6 +264,26 @@ def test_medicaid_national_targets_use_2026_enrollment():
     assert data_year == 2026
     assert enrollment == 68_022_529
     assert spending == pytest.approx(1_000_645_800_000.0001)
+
+
+def test_chip_targets_roll_forward_to_2026():
+    targets, data_year = _load_chip_enrollment_targets(2026)
+
+    assert data_year == 2026
+    assert len(targets) == 51
+    assert int(targets["enrollment"].sum()) == 7_241_058
+
+
+def test_chip_targets_fall_back_to_earliest_available_year():
+    _, data_year = _load_chip_enrollment_targets(2023)
+    assert data_year == 2024
+
+
+def test_chip_national_target_uses_2026_enrollment():
+    enrollment, data_year = _get_chip_national_enrollment_target(2026)
+
+    assert data_year == 2026
+    assert enrollment == 7_241_058
 
 
 class _FakeArrayResult:

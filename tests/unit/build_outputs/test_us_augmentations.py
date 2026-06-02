@@ -175,6 +175,9 @@ def test_build_reported_takeup_anchors_uses_present_period():
         "has_medicaid_health_coverage_at_interview": {
             2024: np.array([False, True, False])
         },
+        "reported_has_chip_health_coverage_at_interview": {
+            2024: np.array([False, False, True])
+        },
         "receives_housing_assistance": {
             2024: np.array([True, False]),
         },
@@ -189,6 +192,10 @@ def test_build_reported_takeup_anchors_uses_present_period():
     np.testing.assert_array_equal(
         anchors["takes_up_medicaid_if_eligible"],
         np.array([False, True, False]),
+    )
+    np.testing.assert_array_equal(
+        anchors["takes_up_chip_if_eligible"],
+        np.array([False, False, True]),
     )
     np.testing.assert_array_equal(
         anchors["takes_up_housing_assistance_if_eligible"],

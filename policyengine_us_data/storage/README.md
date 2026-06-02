@@ -42,6 +42,12 @@
   • Location: https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360?conditions%5B0%5D%5Boperator%5D=%3D&conditions%5B0%5D%5Bproperty%5D=reporting_period&conditions%5B0%5D%5Bvalue%5D=202512&conditions%5B1%5D%5Boperator%5D=%3D&conditions%5B1%5D%5Bproperty%5D=preliminary_or_updated&conditions%5B1%5D%5Bvalue%5D=U
   • Notes: Uses `total_medicaid_enrollment`, not combined Medicaid and CHIP enrollment.
 
+- **chip_enrollment_2024.csv, chip_enrollment_2025.csv, chip_enrollment_2026.csv**
+  • Source: Medicaid.gov performance indicator dataset, Applications, Eligibility, and Enrollment Data
+  • Date: December 2024 final reports, December 2025 final reports, and January 2026 preliminary reports
+  • Location: https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360
+  • Notes: Uses `total_chip_enrollment`, not combined Medicaid and CHIP enrollment. The 2026 file mirrors the reporting period and preliminary status used by `medicaid_enrollment_2026.csv`.
+
 - **district_mapping.csv**
   • Source: created by the script `policyengine_us/storage/calibration_targets/make_district_mapping.py`
   • Notes: this script is not part of `make data` because of the length of time it takes to run and the

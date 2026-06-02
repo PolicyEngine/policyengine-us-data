@@ -197,11 +197,13 @@ def validate_demographic_strata(session):
     # because CD-level survey data is disabled pending 119th Congress
     # district code remapping (see etl_medicaid.py TODO).
     # the national medicaid target actually uses the `medicaid` (expense) variable
+    # chip_enrolled has national and state targets but no district targets.
     expected_counts = {
         "age": 18 * 488,
         "adjusted_gross_income": 9 * 488,
         "snap": 1 * 488,
         "medicaid_enrolled": 1 * 51,
+        "chip_enrolled": 1 * 52,
         "eitc_child_count": 4 * 488,
     }
 

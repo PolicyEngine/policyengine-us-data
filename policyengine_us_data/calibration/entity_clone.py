@@ -143,6 +143,13 @@ def _build_reported_takeup_anchors(data: dict, time_period: int) -> dict:
             "has_medicaid_health_coverage_at_interview"
         ][time_period].astype(bool)
     if (
+        "reported_has_chip_health_coverage_at_interview" in data
+        and time_period in data["reported_has_chip_health_coverage_at_interview"]
+    ):
+        reported_anchors["takes_up_chip_if_eligible"] = data[
+            "reported_has_chip_health_coverage_at_interview"
+        ][time_period].astype(bool)
+    if (
         "receives_housing_assistance" in data
         and time_period in data["receives_housing_assistance"]
     ):

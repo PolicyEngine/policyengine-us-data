@@ -74,6 +74,9 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
                 "reported_has_subsidized_marketplace_health_coverage_at_interview": np.array(
                     [False, False]
                 ),
+                "reported_has_chip_health_coverage_at_interview": np.array(
+                    [False, False]
+                ),
                 "has_medicaid_health_coverage_at_interview": np.array([False, False]),
                 "employment_income": np.array([20_000.0, 0.0], dtype=np.float32),
                 "age": np.array([40, 66], dtype=np.int32),
@@ -104,6 +107,7 @@ def test_add_takeup_removes_temporary_source_anchors_from_saved_h5(
         "snap": 1.0,
         "aca": 0.0,
         "medicaid": {"CA": 0.0},
+        "chip": 1.0,
         "head_start": 0.0,
         "early_head_start": 0.0,
         "ssi": 1.0,

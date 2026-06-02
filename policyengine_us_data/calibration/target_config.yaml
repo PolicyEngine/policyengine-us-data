@@ -45,6 +45,12 @@ include:
   - variable: person_count
     geo_level: national
     domain_variable: medicaid_enrolled
+  - variable: person_count
+    geo_level: state
+    domain_variable: chip_enrolled
+  - variable: person_count
+    geo_level: national
+    domain_variable: chip_enrolled
   # REMOVED: is_pregnant — 100% unachievable across all 51 state geos
   - variable: snap
     geo_level: state

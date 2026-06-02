@@ -579,6 +579,7 @@ def add_takeup(self):
     snap_rate = load_take_up_rate("snap", self.time_period)
     aca_rate = load_take_up_rate("aca", self.time_period)
     medicaid_rates_by_state = load_take_up_rate("medicaid", self.time_period)
+    chip_rate = load_take_up_rate("chip", self.time_period)
     head_start_rate = load_take_up_rate("head_start", self.time_period)
     early_head_start_rate = load_take_up_rate("early_head_start", self.time_period)
     ssi_rate = load_take_up_rate("ssi", self.time_period)
@@ -635,6 +636,14 @@ def add_takeup(self):
         medicaid_rate_by_person,
         reported_mask=data["has_medicaid_health_coverage_at_interview"],
         group_keys=person_states,
+    )
+
+    # CHIP: preserve current full-takeup default while anchoring CPS reporters.
+    rng = seeded_rng("takes_up_chip_if_eligible")
+    data["takes_up_chip_if_eligible"] = assign_takeup_with_reported_anchors(
+        rng.random(n_persons),
+        chip_rate,
+        reported_mask=data["reported_has_chip_health_coverage_at_interview"],
     )
 
     # Head Start

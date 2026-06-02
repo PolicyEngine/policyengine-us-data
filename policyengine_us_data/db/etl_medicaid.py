@@ -129,6 +129,61 @@ def transform_administrative_medicaid_data(state_admin_df, year):
     return state_df[["ucgid_str", "medicaid_enrollment"]]
 
 
+def transform_administrative_chip_data(state_admin_df, year):
+    reporting_period = year * 100 + 12
+    print(f"Reporting period is {reporting_period}")
+    state_df = state_admin_df.loc[
+        (state_admin_df["Reporting Period"] == reporting_period)
+        & (state_admin_df["Final Report"] == "Y"),
+        [
+            "State Abbreviation",
+            "Reporting Period",
+            "Total CHIP Enrollment",
+        ],
+    ].copy()
+
+    state_df["FIPS"] = state_df["State Abbreviation"].map(STATE_ABBREV_TO_FIPS)
+
+    state_df = state_df.rename(columns={"Total CHIP Enrollment": "chip_enrollment"})
+
+    problem_states = state_df[state_df["chip_enrollment"].isna()][
+        "State Abbreviation"
+    ].tolist()
+
+    if problem_states:
+        print(
+            f"Warning: States with missing CHIP enrollment in {reporting_period}: "
+            f"{problem_states}"
+        )
+        print("Attempting to use most recent non-zero values...")
+
+        for state_abbrev in problem_states:
+            state_history = state_admin_df[
+                (state_admin_df["State Abbreviation"] == state_abbrev)
+                & (state_admin_df["Final Report"] == "Y")
+                & (state_admin_df["Total CHIP Enrollment"] > 0)
+                & (state_admin_df["Reporting Period"] < reporting_period)
+            ].sort_values("Reporting Period", ascending=False)
+
+            if not state_history.empty:
+                fallback_value = state_history.iloc[0]["Total CHIP Enrollment"]
+                fallback_period = state_history.iloc[0]["Reporting Period"]
+                print(
+                    f"  {state_abbrev}: Using {fallback_value:,.0f} "
+                    f"from period {fallback_period}"
+                )
+                state_df.loc[
+                    state_df["State Abbreviation"] == state_abbrev,
+                    "chip_enrollment",
+                ] = fallback_value
+            else:
+                print(f"  {state_abbrev}: No historical data found, keeping 0")
+
+    state_df["ucgid_str"] = "0400000US" + state_df["FIPS"].astype(str)
+
+    return state_df[["ucgid_str", "chip_enrollment"]]
+
+
 def transform_survey_medicaid_data(cd_survey_df):
     cd_df = cd_survey_df[
         ["GEO_ID", "state", "congressional district", "S2704_C02_006E"]
@@ -145,7 +200,7 @@ def transform_survey_medicaid_data(cd_survey_df):
     return cd_df[["ucgid_str", "medicaid_enrollment"]]
 
 
-def load_medicaid_data(long_state, long_cd, year):
+def load_medicaid_data(long_state, long_cd, year, long_chip_state=None):
     DATABASE_URL = f"sqlite:///{STORAGE_FOLDER / 'calibration' / 'policy_data.db'}"
     engine = create_engine(DATABASE_URL)
 
@@ -174,6 +229,30 @@ def load_medicaid_data(long_state, long_cd, year):
             "national": nat_stratum.stratum_id,
             "state": {},
         }
+
+        if long_chip_state is not None:
+            nat_chip_stratum = Stratum(
+                parent_stratum_id=geo_strata["national"],
+                notes="National CHIP Enrolled",
+            )
+            nat_chip_stratum.constraints_rel = [
+                StratumConstraint(
+                    constraint_variable="chip_enrolled",
+                    operation="==",
+                    value="True",
+                ),
+            ]
+            nat_chip_stratum.targets_rel.append(
+                Target(
+                    variable="person_count",
+                    period=year,
+                    value=long_chip_state["chip_enrollment"].sum(),
+                    active=True,
+                    source="CMS CHIP",
+                )
+            )
+            session.add(nat_chip_stratum)
+            session.flush()
 
         # State -------------------
         for _, row in long_state.iterrows():
@@ -214,6 +293,40 @@ def load_medicaid_data(long_state, long_cd, year):
             session.add(new_stratum)
             session.flush()
             medicaid_stratum_lookup["state"][state_fips] = new_stratum.stratum_id
+
+        if long_chip_state is not None:
+            for _, row in long_chip_state.iterrows():
+                geo_info = parse_ucgid(row["ucgid_str"])
+                state_fips = geo_info["state_fips"]
+                parent_stratum_id = geo_strata["state"][state_fips]
+
+                new_stratum = Stratum(
+                    parent_stratum_id=parent_stratum_id,
+                    notes=f"State FIPS {state_fips} CHIP Enrolled",
+                )
+                new_stratum.constraints_rel = [
+                    StratumConstraint(
+                        constraint_variable="state_fips",
+                        operation="==",
+                        value=str(state_fips),
+                    ),
+                    StratumConstraint(
+                        constraint_variable="chip_enrolled",
+                        operation="==",
+                        value="True",
+                    ),
+                ]
+                new_stratum.targets_rel.append(
+                    Target(
+                        variable="person_count",
+                        period=year,
+                        value=row["chip_enrollment"],
+                        active=True,
+                        source="CMS CHIP",
+                    )
+                )
+                session.add(new_stratum)
+                session.flush()
 
         # District -------------------
         if long_cd is None:
@@ -291,9 +404,15 @@ def main():
 
     # Transform -------------------
     long_state = transform_administrative_medicaid_data(state_admin_df, year)
+    long_chip_state = transform_administrative_chip_data(state_admin_df, year)
 
     # Load (state admin only, no CD survey) ---
-    load_medicaid_data(long_state, long_cd=None, year=year)
+    load_medicaid_data(
+        long_state,
+        long_cd=None,
+        year=year,
+        long_chip_state=long_chip_state,
+    )
 
 
 if __name__ == "__main__":

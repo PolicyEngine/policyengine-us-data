@@ -67,6 +67,12 @@ SIMPLE_TAKEUP_VARS = [
         "target": "medicaid",
     },
     {
+        "variable": "takes_up_chip_if_eligible",
+        "entity": "person",
+        "rate_key": "chip",
+        "target": "chip",
+    },
+    {
         "variable": "takes_up_tanf_if_eligible",
         "entity": "spm_unit",
         "rate_key": "tanf",

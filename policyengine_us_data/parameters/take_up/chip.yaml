@@ -1,0 +1,12 @@
+description: Percentage of people who enroll in CHIP, if eligible.
+metadata:
+  label: CHIP takeup rate
+  unit: /1
+  period: year
+  reference:
+    - title: CMS Medicaid and CHIP enrollment data
+      href: https://data.medicaid.gov/dataset/6165f45b-ca93-5bb5-9d06-db29c692a360
+# Keep the current PolicyEngine-US default behavior until state-specific CHIP
+# rates are derived from the new CMS enrollment targets and modeled eligibility.
+values:
+  2024-01-01: 1.0

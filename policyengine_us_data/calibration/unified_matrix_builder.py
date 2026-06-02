@@ -2801,6 +2801,14 @@ class UnifiedMatrixBuilder:
                         "has_medicaid_health_coverage_at_interview"
                     ][period_key][...].astype(bool)
                 if (
+                    "reported_has_chip_health_coverage_at_interview" in f
+                    and period_key
+                    in f["reported_has_chip_health_coverage_at_interview"]
+                ):
+                    reported_takeup_anchors["takes_up_chip_if_eligible"] = f[
+                        "reported_has_chip_health_coverage_at_interview"
+                    ][period_key][...].astype(bool)
+                if (
                     "receives_housing_assistance" in f
                     and period_key in f["receives_housing_assistance"]
                 ):

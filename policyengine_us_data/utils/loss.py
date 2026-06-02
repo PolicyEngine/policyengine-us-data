@@ -568,6 +568,12 @@ def _load_medicaid_enrollment_targets(
     return _load_yeared_target_csv("medicaid_enrollment", requested_year)
 
 
+def _load_chip_enrollment_targets(
+    requested_year: int,
+) -> tuple[pd.DataFrame, int]:
+    return _load_yeared_target_csv("chip_enrollment", requested_year)
+
+
 def _get_aca_national_targets(requested_year: int) -> tuple[float, float, int]:
     targets, data_year = _load_aca_spending_and_enrollment_targets(requested_year)
     aca_ptc_state = _load_aca_ptc_state_targets(requested_year)
@@ -605,6 +611,11 @@ def _get_medicaid_national_targets(requested_year: int) -> tuple[float, float, i
         enrollment_target,
         data_year,
     )
+
+
+def _get_chip_national_enrollment_target(requested_year: int) -> tuple[float, int]:
+    targets, data_year = _load_chip_enrollment_targets(requested_year)
+    return float(targets["enrollment"].sum()), data_year
 
 
 def _skip_unverified_target(value) -> bool:
@@ -1557,6 +1568,20 @@ def build_loss_matrix(dataset: type, time_period):
     loss_matrix[label] = sim.map_result(on_medicaid, "person", "household")
     targets_array.append(medicaid_enrollment_target)
 
+    # 3. CHIP Enrollment
+    chip_enrollment_target, _ = _get_chip_national_enrollment_target(time_period)
+    label = "nation/hhs/chip_enrollment"
+    on_chip = (
+        sim.calculate(
+            "chip_enrolled",
+            map_to="person",
+            period=time_period,
+        ).values
+        > 0
+    ).astype(int)
+    loss_matrix[label] = sim.map_result(on_chip, "person", "household")
+    targets_array.append(chip_enrollment_target)
+
     # National ACA Spending
     aca_spending_target, aca_enrollment_target, _ = _get_aca_national_targets(
         time_period
@@ -1915,6 +1940,34 @@ def build_loss_matrix(dataset: type, time_period):
         logging.info(
             f"Targeting Medicaid enrollment for {row['state']} "
             f"with target {row['enrollment']:.0f}k"
+        )
+
+    # CHIP enrollment by state
+
+    chip_enrollment_by_state, _ = _load_chip_enrollment_targets(time_period)
+
+    has_chip = sim.calculate(
+        "chip_enrolled", map_to="person", period=time_period
+    ).values
+    is_chip_eligible = sim.calculate(
+        "is_chip_eligible", map_to="person", period=time_period
+    ).values
+    is_enrolled = has_chip & is_chip_eligible
+
+    for _, row in chip_enrollment_by_state.iterrows():
+        in_state = state_person == row["state"]
+        in_state_enrolled = in_state & is_enrolled
+
+        label = f"state/hhs/chip_enrollment/{row['state'].lower()}"
+        loss_matrix[label] = sim.map_result(in_state_enrolled, "person", "household")
+        if any(loss_matrix[label].isna()):
+            raise ValueError(f"Missing values for {label}")
+
+        targets_array.append(row["enrollment"])
+
+        logging.info(
+            f"Targeting CHIP enrollment for {row['state']} "
+            f"with target {row['enrollment']:.0f}"
         )
 
     # State 10-year age targets

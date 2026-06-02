@@ -483,6 +483,11 @@ class TestLoadTargetConfig:
         assert {
             "variable": "person_count",
             "geo_level": "national",
+            "domain_variable": "chip_enrolled",
+        } in include_rules
+        assert {
+            "variable": "person_count",
+            "geo_level": "national",
             "domain_variable": "medicaid",
         } not in include_rules
 

@@ -14,6 +14,12 @@ gate that fails loudly if a required column is missing or all-zero -- the
 recurring failure mode where a build step quietly drops a column (e.g. the
 extended-CPS step dropping ``social_security_retirement``).
 
+The recorded ``sha256`` is provenance only: byte-level integrity of the
+download is already guaranteed by ``hf_hub_download`` against the Hub's content
+hash, so the hash here is for audit/traceability, not an independent integrity
+check. The gate this module adds is about *content* -- the required columns
+being present and non-zero, which the Hub hash cannot tell you.
+
 Typical use::
 
     from policyengine_us_data.utils.production_baseline import (
@@ -48,11 +54,18 @@ VERSION_ENV_VAR = "POLICYENGINE_US_DATA_ECPS_VERSION"
 #: a column" failure -- most recently ``social_security_retirement`` vanishing
 #: in the extended-CPS step, which left the published comparison baseline 64%
 #: short on total Social Security. Extend as new must-have inputs are added.
+#:
+#: Only the *robustly-populated* Social Security components are gated.
+#: ``social_security_retirement`` and ``social_security_disability`` are always
+#: populated -- the imputation fallback ``_age_heuristic_ss_shares`` assigns
+#: both even when the QRF share model is unavailable -- so an all-zero value
+#: reliably means the column was dropped. ``social_security_survivors`` and
+#: ``social_security_dependents`` are sparse and stay zero under that fallback,
+#: so gating them would reject builds the pipeline intentionally allows; they
+#: are deliberately excluded.
 REQUIRED_NONZERO_COLUMNS: tuple[str, ...] = (
     "social_security_retirement",
     "social_security_disability",
-    "social_security_survivors",
-    "social_security_dependents",
     "employment_income_before_lsr",
 )
 
@@ -210,17 +223,33 @@ def resolve_production_ecps(
         BaselineIntegrityError: If ``verify`` is set and the gate fails.
     """
     from huggingface_hub import hf_hub_download
+    from huggingface_hub.errors import HfHubHTTPError
 
     revision = production_pin(version)
     token = token or os.environ.get("HUGGING_FACE_TOKEN")
-    local_path = hf_hub_download(
-        repo_id=repo,
-        repo_type="model",
-        filename=filename,
-        revision=revision,
-        token=token,
-        cache_dir=str(cache_dir) if cache_dir is not None else None,
-    )
+    try:
+        local_path = hf_hub_download(
+            repo_id=repo,
+            repo_type="model",
+            filename=filename,
+            revision=revision,
+            token=token,
+            cache_dir=str(cache_dir) if cache_dir is not None else None,
+        )
+    except (HfHubHTTPError, FileNotFoundError) as exc:
+        # RepositoryNotFoundError / RevisionNotFoundError /
+        # RemoteEntryNotFoundError / GatedRepoError all subclass HfHubHTTPError;
+        # LocalEntryNotFoundError (offline, uncached) is a FileNotFoundError.
+        # Turn any of them into a clear, actionable failure rather than an
+        # opaque Hub traceback.
+        raise BaselineIntegrityError(
+            f"Could not fetch the production eCPS '{filename}' at revision "
+            f"'{revision}' from '{repo}': {exc}. The pin defaults to the "
+            f"installed {PACKAGE_NAME} version, which may never have been "
+            f"published to Hugging Face (e.g. a local/dev/editable install). "
+            f"Set {VERSION_ENV_VAR} to a published revision (tag or commit), "
+            f"or install a released {PACKAGE_NAME}."
+        ) from exc
     checks: dict
     if verify:
         checks = assert_baseline_intact(local_path, required_nonzero_columns)

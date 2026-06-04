@@ -93,7 +93,14 @@ REQUIRED_GROUPS = ("household_weight",)
 # not formula outputs; they are source or imputed inputs used by model formulas.
 REQUIRED_VARIABLES_BY_FILENAME = {
     "enhanced_cps_2024.h5": (
+        # All four Social Security components must be present and non-zero.
+        # Only `retirement` was guarded before; a build that dropped one of
+        # the others (as the extended-CPS step once dropped `retirement`)
+        # would otherwise publish an eCPS that under-counts Social Security.
         "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents",
         "takes_up_snap_if_eligible",
         "takes_up_ssi_if_eligible",
         "takes_up_tanf_if_eligible",

@@ -1,0 +1,1 @@
+Production eCPS baseline resolver (`policyengine_us_data.utils.production_baseline`) that fetches the Hugging Face-published enhanced CPS pinned to the package version, records provenance, and fails loudly when a required column is missing or all-zero.

@@ -1,4 +1,4 @@
-.PHONY: all format lint test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
+.PHONY: all format lint test test-unit test-integration install download upload production-ecps docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -48,6 +48,9 @@ download:
 
 upload:
 	python -m policyengine_us_data.storage.upload_completed_datasets
+
+production-ecps:
+	python -m policyengine_us_data.utils.production_baseline --json
 
 docker:
 	docker buildx build --platform linux/amd64 . -t policyengine-us-data:latest

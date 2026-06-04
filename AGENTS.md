@@ -26,6 +26,24 @@ When adding, changing, or reviewing calibration target definitions, read
 When adding, changing, or reviewing donor-survey imputations, read
 `docs/engineering/skills/imputation.md`.
 
+## Weighting / population aggregates (CRITICAL)
+
+Never read or sum a weight array directly, and never report unweighted record
+counts or raw HDF5 column sums as population figures — both are wrong. To get any
+population aggregate from a dataset, load it as a `Microsimulation` and aggregate
+the result; microdf auto-weights with the household weight, so you never touch a
+weight:
+
+```python
+from policyengine_us import Microsimulation
+sim = Microsimulation(dataset=path)
+total      = sim.calculate("taxable_private_pension_income", 2024).sum()        # weighted $
+recipients = (sim.calculate("taxable_private_pension_income", 2024) > 0).sum()  # weighted count
+```
+
+If you ever must reference a weight at all, it is `household_weight` ONLY; the
+person/tax_unit/family/marital weights are derived and must never be used directly.
+
 ## Calibration targets
 
 Manually sourced national or local-file calibration targets must be registered

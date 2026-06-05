@@ -3,8 +3,10 @@
 This directory contains the implementation scaffold for benchmarking the
 `L0` calibration pipeline against:
 
-- `GREG` via R's `survey` package
-- `IPF` via R's `surveysd` package
+- `GREG` via the `svy` Python package (classical linear `cal.linear`)
+- `IPF` (raking) via the `svy` Python package
+
+Both run in-process; the benchmark has no R dependency.
 
 ## Experimental Setup
 
@@ -15,8 +17,8 @@ method adapters.
   a sparse target-by-unit matrix, the selected target table, and 
   initial .npy weights.
 - `IPF` is benchmarked from the same target selection, but it requires a
-  conversion step because `surveysd::ipf` consumes a microdata table plus
-  IPF constraints rather than a generic sparse linear system.
+  conversion step because raking consumes a microdata table plus categorical
+  margin constraints rather than a generic sparse linear system.
 - The intended benchmark tiers are:
   - a practical reduced-size comparison tier, used for like-for-like `L0`
     versus `GREG` runs that are small enough to execute routinely during
@@ -34,23 +36,25 @@ Methodologically, the benchmark treats the methods as related but not
 identical:
 
 - `L0` and `GREG` can consume arbitrary linear calibration targets.
-- `IPF` is most natural for count-style or indicator-style targets, and is
-  additionally limited to **at most two entity levels per run**. `surveysd::ipf`
-  has built-in handles only for the person/household pair via `conP` (row-level
-  constraints) and `conH` (constraints aggregated by `hid`); there is no
-  generalised mechanism for additional counted entities such as `tax_unit` or
-  `spm_unit`. The benchmark therefore restricts IPF to `person_count` and
-  `household_count` targets — together or alone — and drops other count
-  families (`tax_unit_count`, `spm_unit_count`, `family_count`,
-  `marital_unit_count`) at the count check with explicit diagnostics. Those
-  targets remain in the shared sparse system that L0 and GREG fit, so the
-  cross-method comparison on the IPF-feasible subset is still apples-to-apples
-  via `--score-on ipf_retained_authored`.
+- `IPF` is most natural for count-style or indicator-style targets, and the
+  `svy` raking engine operates on a **single entity scope per run** (one flat
+  frame of units, one row per unit). Each IPF run is therefore restricted to a
+  single count family via `method_options.ipf.count_variable` (default
+  `household_count`); the configured family's targets are converted to
+  categorical margins, and all other count families (`person_count`,
+  `tax_unit_count`, `spm_unit_count`, `family_count`, `marital_unit_count`) are
+  dropped at the count check with explicit diagnostics. Those targets remain in
+  the shared sparse system that L0 and GREG fit, so the cross-method comparison
+  on the IPF-feasible subset is still apples-to-apples via
+  `--score-on ipf_retained_authored`.
 
-  Producing a single weight vector that simultaneously satisfies targets at
-  three or more entity levels is not possible with classical IPF; running IPF
-  separately per scope and aggregating would give it more degrees of freedom
-  than L0 / GREG and would not be a like-for-like comparison.
+  Within its scope, the engine reproduces classical raking, including leaving
+  units outside a margin's targeted cells (e.g. units in untargeted
+  geographies) at their base weight — `svy` raking achieves this by padding
+  uncovered observed categories with their current weighted totals. Solving a
+  single weight vector jointly across multiple entity levels is the two-level
+  `conP`/`conH` regime that `svy` raking does not implement; such mixed-scope
+  bundles are rejected with a clear error rather than silently mis-counted.
 
 The core workflow is:
 
@@ -73,38 +77,24 @@ The core workflow is:
   unit and target metadata.
 - `benchmark_metrics.py`
   Common diagnostics and summary generation.
-- `runners/greg_runner.R`
-  R backend for `survey`-based GREG.
-- `runners/ipf_runner.R`
-  R backend for `surveysd`-based IPF.
-- `runners/read_npy.R`
-  Minimal `.npy` reader used by the R scripts.
+- `svy_engine.py`
+  In-process `svy` GREG and IPF (raking) engines.
 - `requirements-python.txt`
-  Python dependencies for the benchmarking scaffold.
-- `install_r_packages.R`
-  Installs the required R packages for the benchmark runners.
+  Python dependencies for the benchmarking scaffold (includes the `calibration`
+  extra, which provides `svy`).
 - `manifests/*.example.json`
   Example benchmark manifests.
 
 ## Environment Setup
 
-Python:
-
 ```bash
 pip install -r paper-l0/benchmarking/requirements-python.txt
-```
-
-R:
-
-```bash
-Rscript paper-l0/benchmarking/install_r_packages.R
 ```
 
 Or, from the repo root:
 
 ```bash
 make benchmarking-install-python
-make benchmarking-install-r
 ```
 
 ## Chosen Interchange Formats
@@ -136,8 +126,8 @@ external overrides are supplied. It reconstructs an IPF microdata table from:
 - the selected count-like targets and their stratum constraints
 
 The generated `unit_metadata.csv` is built for `person_count` and
-`household_count` targets only — the two entity levels `surveysd::ipf` supports
-natively via `conP` and `conH`. It expands cloned households to a person-level
+`household_count` targets — the person/household entity levels classical raking
+supports (a single run uses one scope). It expands cloned households to a person-level
 table when person targets are present, carries a repeated household
 `unit_index` so per-person weights collapse cleanly back to per-household, and
 adds one string-valued derived category column per declared bucket schema
@@ -208,8 +198,9 @@ weights. GREG and IPF are deterministic by construction.
 
 ### GREG and weight non-negativity
 
-The GREG runner uses linear-Δ calibration (`survey:::grake` with `cal.linear`,
-`bounds = (-Inf, Inf)`). This is classical GREG and routinely emits negative
+The GREG engine uses classical linear calibration (`svy`'s `calibrate` with
+`bounded=False`, numerically equivalent to R `survey::grake` with `cal.linear`
+and `bounds = (-Inf, Inf)`). This is classical GREG and routinely emits negative
 fitted weights — the trade-off for an exact, closed-form linear-system fit.
 L0 and IPF produce non-negative weights by construction. The benchmark records
 this as `negative_weight_share` in `compute_common_metrics`, and the paper
@@ -271,8 +262,9 @@ The IPF conversion is implemented in
 11. Write diagnostics (`dropped_targets`, retained-authored counts, derived
     complements, and any coherence issues) to
     `inputs/ipf_conversion_diagnostics.json`.
-12. Run `surveysd::ipf` once on the generated unit table and full validated
-    IPF target metadata.
+12. Run `svy` raking once on the generated unit table and full validated
+    IPF target metadata (single scope; uncovered categories padded to their
+    base totals so they are left untouched).
 13. Collapse the fitted IPF row weights back to one weight per shared
     benchmark `unit_index`, so the fitted result can be scored against the
     retained-authored sparse target subset used for the IPF benchmark.
@@ -294,17 +286,18 @@ Classical `IPF` does not start from that object. It expects:
 
 So the benchmark exporter translates selected count-style calibration targets
 into that IPF-friendly representation instead of trying to feed the sparse
-matrix directly into `surveysd::ipf`.
+matrix directly into the raking engine.
 
 ### IPF target metadata schema
 
-`ipf_runner.R` accepts one encoding: `categorical_margin`. One row per
-authored margin cell:
+The IPF engine (`fit_ipf_svy`) accepts one encoding: `categorical_margin`. One
+row per authored margin cell:
 
-- `scope`: `person` or `household`
+- `scope`: `person` or `household` (a single run uses one scope)
 - `target_type`: `categorical_margin`
 - `margin_id`: identifier for a margin block. Rows sharing a `margin_id` are
-  grouped into one `surveysd::ipf` constraint (via `xtabs`).
+  grouped into one raking control (one categorical margin; multi-variable
+  margins become a composite category column).
 - `variables`: pipe-separated variable names, e.g.
   `congressional_district_geoid|age_bracket`
 - `cell`: pipe-separated assignments, e.g.
@@ -312,7 +305,7 @@ authored margin cell:
 - `target_value`: numeric target
 
 Open subset systems are not exported. If a subset family cannot be closed from
-an authored parent total, it is dropped before the R call.
+an authored parent total, it is dropped before raking.
 
 ## Example Commands
 
@@ -364,10 +357,10 @@ fixed.
 | `tier2_scaling_largest.json` | 2 | L0, GREG, IPF | Largest coherent pre-production subset (no `max_targets` cap) |
 | `tier3_production.json` | 3 | L0, GREG, IPF | Least-filtered view; failures are reportable results |
 
-All Tier 2 / Tier 3 manifests set `method_options.ipf.return_na = true` so
-non-convergence surfaces NaN weights, which `ipf_runner.R` converts into a
-visible runtime error rather than a silent fitted-weight column. A bounded
-GREG variant is intentionally out of scope for the current benchmark.
+Non-convergence is treated as a reportable result: when `svy` raking fails to
+converge (or a bundle is mixed-scope) the engine raises, and the suite records a
+visible failed row rather than a silent fitted-weight column. A bounded GREG
+variant is intentionally out of scope for the current benchmark.
 
 ### One-shot orchestration
 

@@ -53,7 +53,9 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--package",
         type=Path,
-        default=Path("policyengine_us_data/storage/calibration/calibration_package.pkl"),
+        default=Path(
+            "policyengine_us_data/storage/calibration/calibration_package.pkl"
+        ),
     )
     parser.add_argument(
         "--dataset-path",

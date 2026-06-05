@@ -8,6 +8,7 @@
     },
     "ipf": {
       "bound": 10.0,
+      "count_variable": "household_count",
       "epsH": 0.01,
       "epsP": 0.0001,
       "household_id_col": "household_id",

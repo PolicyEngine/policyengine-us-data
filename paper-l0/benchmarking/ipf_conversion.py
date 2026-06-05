@@ -1181,6 +1181,35 @@ def _close_margin_blocks(
 # ---------------------------------------------------------------------------
 
 
+def _ipf_count_variable(manifest: BenchmarkManifest) -> Optional[str]:
+    """Return the single count family the IPF run is restricted to, if any.
+
+    `method_options.ipf.count_variable` restricts the IPF problem to one entity
+    scope (e.g. ``household_count``). This keeps each IPF run single-scope so it
+    can be solved by the in-process svy engine, which (unlike surveysd) cannot
+    do the two-level person+household conP/conH/meanHH loop. L0 and GREG are
+    unaffected — they still fit the full shared target set.
+    """
+    options = getattr(manifest, "method_options", None)
+    ipf_options = getattr(options, "ipf", None) if options is not None else None
+    if not ipf_options:
+        return None
+    value = ipf_options.get("count_variable")
+    if value is None:
+        return None
+    value = str(value)
+    if value not in _SCOPE_BY_VARIABLE:
+        raise IPFConversionError(
+            f"Unsupported IPF count_variable {value!r}; choose one of "
+            f"{sorted(_SCOPE_BY_VARIABLE)}.",
+            diagnostics={
+                "reason": "unsupported_count_variable",
+                "count_variable": value,
+            },
+        )
+    return value
+
+
 def build_ipf_inputs(
     package: Dict,
     manifest: BenchmarkManifest,
@@ -1280,6 +1309,30 @@ def build_ipf_inputs(
         }
         for _, row in dropped_non_count.iterrows()
     ]
+
+    # Restrict to a single count family (single scope) when configured, so the
+    # IPF problem stays solvable by the single-scope svy engine.
+    count_variable = _ipf_count_variable(manifest)
+    if count_variable is not None:
+        targets = targets.loc[
+            targets["variable"].astype(str) == count_variable
+        ].reset_index(drop=True)
+        if targets.empty:
+            raise IPFConversionError(
+                f"No '{count_variable}' targets remain after the single-scope "
+                "IPF count-family filter.",
+                diagnostics={
+                    "reason": "no_targets_for_count_variable",
+                    "count_variable": count_variable,
+                    "requested_target_count": int(len(filtered_targets)),
+                    "retained_authored_target_count": 0,
+                    "derived_complement_count": 0,
+                    "dropped_targets": {},
+                    "dropped_target_details": [],
+                    "margin_consistency_issues": [],
+                    "derived_complement_rows": [],
+                },
+            )
 
     stratum_constraints = _load_stratum_constraints(
         db_path=db_path,

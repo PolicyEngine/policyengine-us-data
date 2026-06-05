@@ -1,4 +1,4 @@
-.PHONY: all format lint test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch benchmarking-install-python benchmarking-install-r benchmarking-export benchmarking-run-l0 benchmarking-run-greg benchmarking-run-ipf
+.PHONY: all format lint test test-unit test-integration install download upload docker documentation data validate-data calibrate calibrate-build publish-local-area upload-calibration upload-dataset push-to-modal build-data-modal build-matrices calibrate-modal calibrate-modal-national calibrate-both stage-h5s stage-national-h5 stage-all-h5s pipeline validate-staging validate-staging-full upload-validation check-staging check-sanity clean build paper clean-paper presentations database database-refresh promote-dataset promote build-h5s validate-local refresh-soi-targets push-pr-branch benchmarking-install-python benchmarking-export benchmarking-run-l0 benchmarking-run-greg benchmarking-run-ipf
 
 SOI_SOURCE_YEAR ?= 2021
 SOI_TARGET_YEAR ?= 2023
@@ -44,9 +44,6 @@ install:
 
 benchmarking-install-python:
 	pip install -r paper-l0/benchmarking/requirements-python.txt
-
-benchmarking-install-r:
-	Rscript paper-l0/benchmarking/install_r_packages.R
 
 benchmarking-export:
 	python paper-l0/benchmarking/benchmark_cli.py export \

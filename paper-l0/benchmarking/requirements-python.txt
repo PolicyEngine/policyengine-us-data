@@ -1,2 +1,2 @@
--e ".[dev,l0]"
+-e ".[dev,l0,calibration]"
 PyYAML>=6.0

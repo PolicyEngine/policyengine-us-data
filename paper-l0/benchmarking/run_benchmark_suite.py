@@ -437,12 +437,18 @@ def main(argv=None) -> int:
     args.runs_dir.mkdir(parents=True, exist_ok=True)
     suite_df.to_csv(suite_csv, index=False)
     tier_paths = write_tier_summaries(suite_df, args.runs_dir)
-    print(json.dumps({
-        "suite_summary_csv": str(suite_csv),
-        "tier_summary_csvs": {tier: str(p) for tier, p in tier_paths.items()},
-        "n_rows": int(len(suite_df)),
-        "n_failures": int((suite_df["status"] == "failed").sum()),
-    }, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "suite_summary_csv": str(suite_csv),
+                "tier_summary_csvs": {tier: str(p) for tier, p in tier_paths.items()},
+                "n_rows": int(len(suite_df)),
+                "n_failures": int((suite_df["status"] == "failed").sum()),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
     return 0
 
 

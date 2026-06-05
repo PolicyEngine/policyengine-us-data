@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -26,17 +25,7 @@ from benchmark_metrics import (
     load_targets_csv,
     write_method_summary,
 )
-
-
-ROOT = Path(__file__).resolve().parent
-RUNNERS_DIR = ROOT / "runners"
-
-
-def _run_subprocess(cmd, cwd=None):
-    started = time.time()
-    proc = subprocess.run(cmd, cwd=cwd, check=False)
-    elapsed = time.time() - started
-    return proc, elapsed
+from svy_engine import fit_greg_svy, fit_ipf_svy
 
 
 def cmd_export(args):
@@ -114,77 +103,28 @@ def _run_l0(run_dir: Path, train_on: str = "shared_requested"):
 def _run_greg(run_dir: Path, train_on: str = "shared_requested"):
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
-    temp_csv = outputs / "_greg_weights.csv"
 
     with open(inputs / "benchmark_manifest.json") as f:
         manifest = json.load(f)
     options = manifest.get("method_options", {}).get("greg", {})
 
     targets_path, matrix_path, _ = _select_training_inputs(run_dir, train_on)
-    cmd = [
-        "Rscript",
-        str(RUNNERS_DIR / "greg_runner.R"),
-        str(matrix_path),
-        str(targets_path),
-        str(inputs / "initial_weights.npy"),
-        str(temp_csv),
-        str(int(options.get("maxit", 50))),
-        str(float(options.get("epsilon", 1e-7))),
-    ]
-    proc, elapsed = _run_subprocess(cmd)
-    if proc.returncode != 0:
-        raise RuntimeError(f"GREG runner failed with exit code {proc.returncode}")
+    started = time.time()
+    weights, _ = fit_greg_svy(
+        matrix_path=matrix_path,
+        targets_path=targets_path,
+        initial_weights_path=inputs / "initial_weights.npy",
+        options=options,
+    )
+    elapsed = time.time() - started
 
-    weights = pd.read_csv(temp_csv)["fitted_weight"].to_numpy(dtype=np.float64)
     weights_path = outputs / "fitted_weights.npy"
-    np.save(weights_path, weights)
-    temp_csv.unlink(missing_ok=True)
+    np.save(weights_path, weights.astype(np.float64))
     return weights_path, elapsed
 
 
-def _collapse_ipf_rows_to_unit_weights(
-    raw_weights: pd.DataFrame, n_units: int
-) -> np.ndarray:
-    """Validate a per-row IPF output and collapse it to a length-`n_units` vector.
-
-    surveysd::ipf with `meanHH = TRUE` guarantees every row that shares a
-    `unit_index` carries the same fitted weight; the spread check keeps that
-    assumption honest.
-    """
-    if "unit_index" not in raw_weights.columns:
-        raise RuntimeError("IPF runner output must include a unit_index column")
-    if raw_weights["unit_index"].isna().any():
-        raise RuntimeError("IPF runner output contains missing unit_index values")
-
-    raw_weights = raw_weights.copy()
-    raw_weights["unit_index"] = raw_weights["unit_index"].astype(np.int64)
-    if (raw_weights["unit_index"] < 0).any() or (
-        raw_weights["unit_index"] >= n_units
-    ).any():
-        raise RuntimeError("IPF runner output contains out-of-range unit_index values")
-
-    per_unit_spread = raw_weights.groupby("unit_index", sort=True)["fitted_weight"].agg(
-        lambda series: float(series.max() - series.min())
-    )
-    if (per_unit_spread > 1e-9).any():
-        raise RuntimeError(
-            "IPF runner produced inconsistent fitted weights within the same unit_index"
-        )
-
-    weights_by_unit = (
-        raw_weights.groupby("unit_index", sort=True)["fitted_weight"]
-        .first()
-        .reindex(np.arange(n_units, dtype=np.int64))
-    )
-    if weights_by_unit.isna().any():
-        raise RuntimeError(
-            "Aggregated IPF weights do not cover the full benchmark unit range"
-        )
-    return weights_by_unit.to_numpy(dtype=np.float64)
-
-
 def _run_ipf(run_dir: Path):
-    """Run one coherent IPF problem in a single `surveysd::ipf` call."""
+    """Run one coherent single-scope IPF problem in-process via the svy engine."""
     inputs = run_dir / "inputs"
     outputs = run_dir / "outputs"
 
@@ -202,55 +142,17 @@ def _run_ipf(run_dir: Path):
     if not unit_metadata_path.exists():
         raise FileNotFoundError("IPF run requires inputs/unit_metadata.csv.")
 
-    full_targets = pd.read_csv(target_metadata_path)
-    if full_targets.empty:
-        raise RuntimeError("IPF target metadata is empty; nothing to run.")
-    unit_metadata = pd.read_csv(unit_metadata_path)
-    if "unit_index" not in unit_metadata.columns:
-        raise RuntimeError("Unit metadata must include a unit_index column for IPF")
+    started = time.time()
+    weights, _ = fit_ipf_svy(
+        unit_metadata_path=unit_metadata_path,
+        ipf_target_metadata_path=target_metadata_path,
+        initial_weights_path=inputs / "initial_weights.npy",
+        options=options,
+    )
+    elapsed = time.time() - started
 
-    weight_col = str(options.get("weight_col", "base_weight"))
-    household_id_col = str(options.get("household_id_col", "household_id"))
-
-    initial_weights = np.load(inputs / "initial_weights.npy").astype(np.float64)
-    n_units = len(initial_weights)
-    unit_indices = unit_metadata["unit_index"].astype(np.int64).to_numpy()
-    if unit_indices.min() < 0 or unit_indices.max() >= n_units:
-        raise RuntimeError(
-            "Unit metadata unit_index values fall outside the initial weight vector"
-        )
-    temp_csv = outputs / "_ipf_weights.csv"
-    unit_with_weights = unit_metadata.copy()
-    unit_with_weights[weight_col] = initial_weights[unit_indices]
-    temp_unit_csv = outputs / "_ipf_unit_metadata.csv"
-    unit_with_weights.to_csv(temp_unit_csv, index=False)
-
-    return_na_flag = "true" if bool(options.get("return_na", False)) else "false"
-    cmd = [
-        "Rscript",
-        str(RUNNERS_DIR / "ipf_runner.R"),
-        str(temp_unit_csv),
-        str(target_metadata_path),
-        str(inputs / "initial_weights.npy"),
-        str(temp_csv),
-        str(int(options.get("max_iter", 200))),
-        str(float(options.get("bound", 10.0))),
-        str(float(options.get("epsP", 1e-6))),
-        str(float(options.get("epsH", 1e-2))),
-        household_id_col,
-        weight_col,
-        return_na_flag,
-    ]
-    proc, elapsed = _run_subprocess(cmd)
-    if proc.returncode != 0:
-        raise RuntimeError(f"IPF runner failed with exit code {proc.returncode}")
-
-    raw_weights = pd.read_csv(temp_csv)
-    current_weights = _collapse_ipf_rows_to_unit_weights(raw_weights, n_units)
     weights_path = outputs / "fitted_weights.npy"
-    np.save(weights_path, current_weights)
-    temp_csv.unlink(missing_ok=True)
-    temp_unit_csv.unlink(missing_ok=True)
+    np.save(weights_path, weights.astype(np.float64))
     return weights_path, elapsed
 
 

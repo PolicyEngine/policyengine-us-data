@@ -71,7 +71,7 @@ Steps 3 regional and national fits spawn concurrently (`regional_handle.spawn()`
 Default hyperparameters passed in `run_pipeline()`:
 
 - Regional: `beta=0.65`, `lambda_l0=1e-7`, `lambda_l2=1e-8`, 1,000 epochs, T4 GPU
-- National: `beta=0.65`, `lambda_l0=1e-4`, `lambda_l2=1e-12`, 4,000 epochs, T4 GPU
+- National: `beta=0.65`, `lambda_l0=0`, `lambda_l2=1e-12`, 4,000 epochs, T4 GPU
 
 ### Modal volumes
 

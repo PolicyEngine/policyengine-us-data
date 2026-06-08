@@ -30,7 +30,7 @@ def test_national_spec_tracks_current_lambda_l0() -> None:
     spec = fitted_weights_spec_for_scope("national")
 
     assert spec.hyperparameters.lambda_l0 == pytest.approx(NATIONAL_FIT_LAMBDA_L0)
-    assert spec.runtime_kwargs()["lambda_l0"] == pytest.approx(1e-4)
+    assert spec.runtime_kwargs()["lambda_l0"] == pytest.approx(0.0)
 
 
 def test_fit_parameter_identity_is_deterministic() -> None:

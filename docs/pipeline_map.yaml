@@ -1163,12 +1163,12 @@ stages:
   legacy_stage_id: '6'
   manifest_step_ids:
   - 03_fit_weights_national
-  description: Fit national log-weights for the national H5 output using the same L0 calibration machinery
+  description: Fit national log-weights for the national H5 output without an L0 penalty
   country: us
   groups:
   - id: run_calibration_fit_national
     label: run_calibration() national
-    description: 'National fit phase: initialize national weights, optimize sparse calibration weights, and emit national artifacts plus diagnostics'
+    description: 'National fit phase: initialize national weights, optimize unpenalized calibration weights, and emit national artifacts plus diagnostics'
     node_ids:
     - fit_spec_national
     - fit_artifacts_national
@@ -1200,11 +1200,11 @@ stages:
   - id: create_model_national
     label: Create National SparseCalibrationWeights
     node_type: process
-    description: National target scope with L0 HardConcrete gates
+    description: National target scope with lambda_l0=0
   - id: extract_national_weights
     label: Extract National Weights
     node_type: process
-    description: Deterministic gate threshold for national output weights
+    description: Deterministic national output weights
   - id: out_national_weights
     label: national_calibration_weights.npy
     node_type: artifact

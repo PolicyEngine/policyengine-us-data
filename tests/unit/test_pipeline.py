@@ -89,8 +89,8 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
     assert "num_matrix_workers" not in params
 
 
-def test_national_fit_lambda_matches_national_preset():
-    assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(1e-4)
+def test_national_fit_lambda_is_unpenalized():
+    assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(0.0)
 
 
 def test_try_reload_pipeline_volume_after_h5_builds_tolerates_modal_open_file():

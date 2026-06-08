@@ -61,11 +61,11 @@ at calibration time.
 
 ## Workflows
 
-### 0. Production L0-vs-legacy comparison
+### 0. Production fit-vs-legacy comparison
 
 Before retiring the legacy Enhanced CPS output, run the production pipeline and build a comparison
-report for the completed run. The report summarizes regional and national L0 calibration target
-errors, then compares the staged national `US.h5` against the staged legacy
+report for the completed run. The report summarizes regional L0 and national unpenalized
+calibration target errors, then compares the staged national `US.h5` against the staged legacy
 `enhanced_cps_2024.h5` for the same national aggregate variables used by
 `validate_national_h5`.
 
@@ -144,7 +144,7 @@ python -m policyengine_us_data.calibration.unified_calibration \
   --package-path storage/calibration/calibration_package.pkl \
   --epochs 2000 \
   --beta 0.65 \
-  --lambda-l0 1e-4 \
+  --lambda-l0 0 \
   --lambda-l2 1e-12 \
   --log-freq 500 \
   --target-config policyengine_us_data/calibration/target_config.yaml \
@@ -346,13 +346,12 @@ ORDER BY variable, geo_level;
 | `--db-path`      | `storage/calibration/policy_data.db`          | Path to target database                        |
 | `--output`       | `storage/calibration/calibration_weights.npy` | Weight output path                             |
 | `--puf-dataset`  | None                                          | Path to PUF h5 (enables PUF cloning)           |
-| `--preset`       | `local`                                       | L0 preset: `local` (1e-8) or `national` (1e-4) |
+| `--preset`       | `local`                                       | Fit preset: `local` L0 (1e-8) or unpenalized `national` |
 | `--lambda-l0`    | None                                          | Custom L0 penalty (overrides `--preset`)       |
 | `--epochs`       | 100                                           | Training epochs                                |
 | `--device`       | `cpu`                                         | `cpu` or `cuda`                                |
 | `--n-clones`     | 430                                           | Number of dataset clones                       |
 | `--seed`         | 42                                            | Random seed for geography assignment           |
-| `--national`     | False                                         | Use national preset (λ_L0=1e-4, ~50K records)  |
 | `--workers`      | 1                                             | Parallel workers for per-state precomputation  |
 | `--county-level` | False                                         | Include county-level targets (slower)          |
 
@@ -440,8 +439,8 @@ The three key hyperparameters control the tradeoff between target accuracy and s
   give harder on/off decisions.
 
 - **`lambda_l0`** (via `--preset` or `--lambda-l0`): Controls how many records survive. `1e-8`
-  (local preset) keeps millions of records for local-area analysis. `1e-4` (national preset) keeps
-  ~50K for the web app.
+  (local preset) keeps millions of records for local-area analysis. The national preset uses
+  `lambda_l0=0` so the national fit is unpenalized.
 
 - **`lambda_l2`**: Regularizes weight magnitudes. Larger values (1e-8) prevent any single record
   from having extreme weight. Smaller values (1e-12) allow more weight concentration.
@@ -454,10 +453,10 @@ For **local-area calibration** (millions of records):
 --lambda-l0 1e-8 --beta 0.65 --lambda-l2 1e-8 --epochs 500
 ```
 
-For **national web app** (~50K records):
+For **national calibration**:
 
 ```bash
---lambda-l0 1e-4 --beta 0.35 --lambda-l2 1e-12 --epochs 200
+--lambda-l0 0 --beta 0.65 --lambda-l2 1e-12 --epochs 4000
 ```
 
 ## Makefile Targets

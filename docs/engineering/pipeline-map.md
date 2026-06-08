@@ -492,7 +492,7 @@ Fit regional log-weights using L0 HardConcrete gates on GPU
 
 ### Substage 3b: Weight Fitting - National
 
-Fit national log-weights for the national H5 output using the same L0 calibration machinery
+Fit national log-weights for the national H5 output without an L0 penalty
 
 - Substage ID: `3b_weight_fitting_national`
 - Canonical stage: `3_fit_weights`

@@ -354,12 +354,13 @@ relaxation of the L0 norm that is differentiable and compatible with gradient-ba
 Each weight has an associated gate parameter; during training, gates are sampled from a stretched
 Hard Concrete distribution and thresholded to produce exact zeros.
 
-Two presets control the degree of sparsity:
+The local-area fit uses L0 regularization to control sparsity:
 
 - **Local preset** (λ_L0 = 1e-8): Retains 3–4 million records with nonzero weight. Used for building
   state and district H5 files where geographic detail matters.
-- **National preset** (λ_L0 = 1e-4): Retains approximately 50,000 records. Used for the national web
-  app dataset where fast computation is prioritized over geographic granularity.
+
+The national fit is unpenalized (`lambda_l0=0`) so it can prioritize target fit without L0-induced
+record sparsity.
 
 The optimizer is Adam with a learning rate of 0.15. The default epoch count is 100; production
 builds typically run 1000-1500 epochs to ensure convergence. Training runs on GPU (A100 or T4) via
@@ -386,7 +387,7 @@ python -m policyengine_us_data.calibration.unified_calibration \
     --package-path policyengine_us_data/storage/calibration/calibration_package.pkl \
     --epochs 4000 \
     --beta 0.65 \
-    --lambda-l0 1e-4 \
+    --lambda-l0 0 \
     --lambda-l2 1e-12 \
     --log-freq 500 \
     --target-config policyengine_us_data/calibration/target_config.yaml \

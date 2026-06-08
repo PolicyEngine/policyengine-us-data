@@ -4740,7 +4740,7 @@
     {
       "canonical_stage_id": "3_fit_weights",
       "canonical_stage_title": "Fit Weights",
-      "description": "Fit national log-weights for the national H5 output using the same L0 calibration machinery",
+      "description": "Fit national log-weights for the national H5 output without an L0 penalty",
       "edges": [
         {
           "edge_type": "data_flow",
@@ -4826,7 +4826,7 @@
       ],
       "groups": [
         {
-          "description": "National fit phase: initialize national weights, optimize sparse calibration weights, and emit national artifacts plus diagnostics",
+          "description": "National fit phase: initialize national weights, optimize unpenalized calibration weights, and emit national artifacts plus diagnostics",
           "id": "run_calibration_fit_national",
           "label": "run_calibration() national",
           "node_ids": [
@@ -4875,13 +4875,13 @@
           "node_type": "library"
         },
         {
-          "description": "National target scope with L0 HardConcrete gates",
+          "description": "National target scope with lambda_l0=0",
           "id": "create_model_national",
           "label": "Create National SparseCalibrationWeights",
           "node_type": "process"
         },
         {
-          "description": "Deterministic gate threshold for national output weights",
+          "description": "Deterministic national output weights",
           "id": "extract_national_weights",
           "label": "Extract National Weights",
           "node_type": "process"

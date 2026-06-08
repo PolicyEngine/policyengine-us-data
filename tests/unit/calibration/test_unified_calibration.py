@@ -41,6 +41,7 @@ from policyengine_us_data.calibration.clone_and_assign import (
     GeographyAssignment,
 )
 from policyengine_us_data.calibration.unified_calibration import (
+    PRESETS,
     _calibration_package_contract_parameters,
     _target_config_identity_for_metadata,
     check_package_staleness,
@@ -51,6 +52,11 @@ from policyengine_us_data.stage_contracts.calibration_package import (
 )
 
 TARGET_CONFIG_SHA256 = "sha256:" + "a" * 64
+
+
+def test_national_preset_has_no_l0_penalty():
+    assert PRESETS["national"] == pytest.approx(0.0)
+    assert PRESETS["local"] > 0
 
 
 def test_calibration_package_contract_parameters_track_effective_matrix_mode():

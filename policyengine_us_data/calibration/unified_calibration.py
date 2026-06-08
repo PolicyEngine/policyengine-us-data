@@ -11,9 +11,9 @@ Pipeline flow:
 
 Note: PUF cloning happens upstream in `extended_cps.py`, not here.
 
-Two presets control output size via L0 regularization:
+Two presets control fit behavior:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
-- national: L0=1e-4, ~50K records (for web app)
+- national: L0=0, unpenalized fit for the national dataset
 
 Usage:
     python -m policyengine_us_data.calibration.unified_calibration \\
@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 PRESETS = {
     "local": 1e-8,
-    "national": 1e-4,
+    "national": 0.0,
 }
 
 BETA = 0.35
@@ -308,7 +308,7 @@ def parse_args(argv=None):
         "--preset",
         choices=list(PRESETS.keys()),
         default=None,
-        help="L0 preset: local or national",
+        help="Fit preset: local uses L0; national is unpenalized",
     )
     parser.add_argument(
         "--lambda-l0",
@@ -1818,7 +1818,7 @@ def run_calibration(
             geography_info,
         )
 
-    # Step 7: L0 calibration
+    # Step 7: weight calibration
     targets = targets_df["value"].values
     # Temporarily disable grouped target loss until target precedence
     # and tolerance handling can make grouped fitting safe.

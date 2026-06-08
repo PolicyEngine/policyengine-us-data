@@ -215,7 +215,7 @@ calibrate-modal-national:
 	modal run --detach modal_app/remote_calibration_runner.py::main \
 		--branch $(BRANCH) --gpu $(NATIONAL_GPU) \
 		--epochs $(NATIONAL_EPOCHS) \
-		--beta 0.65 --lambda-l0 2e-2 --lambda-l2 1e-12 --log-freq 100 \
+		--beta 0.65 --lambda-l2 1e-12 --log-freq 100 \
 		--target-config policyengine_us_data/calibration/target_config.yaml \
 		--push-results --national
 

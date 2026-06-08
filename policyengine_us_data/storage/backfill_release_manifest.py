@@ -111,6 +111,7 @@ def build_backfilled_release_manifest(
     artifacts: Sequence[HfArtifactMetadata],
     model_package_version: str,
     core_package_version: str,
+    compatible_model_package_versions: Sequence[str] | None = None,
     compatible_core_package_versions: Sequence[str] | None = None,
     hf_repo_name: str = DEFAULT_HF_REPO_NAME,
     model_package_name: str = DEFAULT_MODEL_PACKAGE_NAME,
@@ -132,6 +133,9 @@ def build_backfilled_release_manifest(
             "name": DEFAULT_CORE_PACKAGE_NAME,
             "version": core_package_version,
         },
+        additional_compatible_specifiers=[
+            f"=={version}" for version in compatible_model_package_versions or ()
+        ],
         additional_core_compatible_specifiers=[
             f"=={version}" for version in compatible_core_package_versions or ()
         ],
@@ -221,6 +225,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--model-package-version", required=True)
     parser.add_argument("--core-package-version", required=True)
     parser.add_argument(
+        "--compatible-model-package-version",
+        action="append",
+        dest="compatible_model_package_versions",
+        default=[],
+        help=(
+            "Additional exact policyengine-us runtime version to certify as "
+            "compatible. Repeat for multiple versions. The build model remains "
+            "--model-package-version."
+        ),
+    )
+    parser.add_argument(
         "--compatible-core-package-version",
         action="append",
         dest="compatible_core_package_versions",
@@ -278,6 +293,7 @@ def main() -> int:
         artifacts=artifacts,
         model_package_version=args.model_package_version,
         core_package_version=args.core_package_version,
+        compatible_model_package_versions=args.compatible_model_package_versions,
         compatible_core_package_versions=args.compatible_core_package_versions,
         hf_repo_name=args.hf_repo_name,
         model_package_git_sha=args.model_package_git_sha,

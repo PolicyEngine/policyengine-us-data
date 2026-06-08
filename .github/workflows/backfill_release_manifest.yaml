@@ -16,6 +16,11 @@ on:
         description: "Exact policyengine-us version used with this data release"
         required: true
         type: string
+      compatible_model_package_versions:
+        description: "Optional newline-separated additional exact policyengine-us runtime versions to certify"
+        required: false
+        default: ""
+        type: string
       core_package_version:
         description: "Exact policyengine-core version used with this data release"
         required: true
@@ -107,6 +112,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           ARTIFACTS: ${{ inputs.artifacts }}
           MODEL_PACKAGE_VERSION: ${{ inputs.model_package_version }}
+          COMPATIBLE_MODEL_PACKAGE_VERSIONS: ${{ inputs.compatible_model_package_versions }}
           CORE_PACKAGE_VERSION: ${{ inputs.core_package_version }}
           COMPATIBLE_CORE_PACKAGE_VERSIONS: ${{ inputs.compatible_core_package_versions }}
           MODEL_PACKAGE_GIT_SHA: ${{ inputs.model_package_git_sha }}
@@ -153,6 +159,17 @@ jobs:
             --output "release_manifest-${VERSION}.json"
             "${artifact_args[@]}"
           )
+
+          while IFS= read -r model_version; do
+            if [ -z "${model_version}" ]; then
+              continue
+            fi
+            if [[ ! "${model_version}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+              echo "::error::Compatible model version must use x.y.z form, got '${model_version}'."
+              exit 1
+            fi
+            cmd+=(--compatible-model-package-version "${model_version}")
+          done <<< "${COMPATIBLE_MODEL_PACKAGE_VERSIONS}"
 
           while IFS= read -r core_version; do
             if [ -z "${core_version}" ]; then

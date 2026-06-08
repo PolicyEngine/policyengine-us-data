@@ -54,9 +54,69 @@ from policyengine_us_data.stage_contracts.calibration_package import (
 TARGET_CONFIG_SHA256 = "sha256:" + "a" * 64
 
 
-def test_national_preset_has_no_l0_penalty():
+def test_national_preset_disables_l0():
     assert PRESETS["national"] == pytest.approx(0.0)
     assert PRESETS["local"] > 0
+
+
+def test_zero_l0_uses_dense_fit_without_sparse_calibration_weights(monkeypatch):
+    from policyengine_us_data.calibration.unified_calibration import fit_l0_weights
+
+    class RaisingSparseCalibrationWeights:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("zero-L0 fit should not construct L0 gates")
+
+    monkeypatch.setattr(
+        sys.modules["l0.calibration"],
+        "SparseCalibrationWeights",
+        RaisingSparseCalibrationWeights,
+    )
+
+    weights = fit_l0_weights(
+        X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+        targets=np.array([1.0, 2.0], dtype=np.float64),
+        lambda_l0=0.0,
+        epochs=0,
+        device="cpu",
+        target_names=["target_a", "target_b"],
+        initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+    )
+
+    np.testing.assert_allclose(weights, np.array([1.0, 2.0]), rtol=1e-6)
+
+
+def test_zero_l0_dense_fit_logs_and_checkpoints(tmp_path):
+    import torch
+
+    from policyengine_us_data.calibration.unified_calibration import fit_l0_weights
+
+    log_path = tmp_path / "dense_log.csv"
+    checkpoint_path = tmp_path / "dense.checkpoint.pt"
+
+    weights = fit_l0_weights(
+        X_sparse=sp.csr_matrix(np.eye(2, dtype=np.float32)),
+        targets=np.array([2.0, 4.0], dtype=np.float64),
+        lambda_l0=0.0,
+        epochs=2,
+        device="cpu",
+        lambda_l2=0.0,
+        learning_rate=0.1,
+        log_freq=1,
+        log_path=str(log_path),
+        target_names=["target_a", "target_b"],
+        initial_weights=np.array([1.0, 2.0], dtype=np.float64),
+        checkpoint_path=str(checkpoint_path),
+    )
+
+    assert np.all(weights > 0)
+
+    log_lines = log_path.read_text().strip().splitlines()
+    assert len(log_lines) == 5
+    assert log_lines[0].startswith("target_name,estimate,target,epoch")
+
+    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    assert "log_weights" in checkpoint["model_state_dict"]
+    assert "alpha" not in checkpoint["model_state_dict"]
 
 
 def test_calibration_package_contract_parameters_track_effective_matrix_mode():

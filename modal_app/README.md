@@ -36,7 +36,7 @@ modal run modal_app/remote_calibration_runner.py --branch <branch> --epochs <n> 
 | `--full-pipeline` | `False` | Force full rebuild even if a package exists on the volume |
 | `--county-level` | `False` | Include county-level targets |
 | `--workers` | `8` | Number of parallel workers for matrix building |
-| `--national` | `False` | Run the national unpenalized fit instead of the local-area L0 fit |
+| `--national` | `False` | Run the national dense fit instead of the local-area L0 fit |
 | `--n-clones` | `430` | Number of geographic clones per household (used by `build_package`) |
 
 ### Examples
@@ -183,7 +183,7 @@ Loads pre-built matrices from Modal volume, fits calibration weights on GPU.
 | **Modal CLI (national preset)** | `make calibrate-modal-national BRANCH=<branch>` |
 | **Both presets** | `make calibrate-both BRANCH=<branch>` |
 
-`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically. `make calibrate-modal-national` adds `--national`, which sets `lambda_l0=0` for the national fit. `make calibrate-both` runs both in parallel.
+`make calibrate-modal` passes `--prebuilt-matrices --push-results` automatically. `make calibrate-modal-national` adds `--national`, which sets `lambda_l0=0` and disables L0/HardConcrete for the national dense fit. `make calibrate-both` runs both in parallel.
 
 Full example:
 ```

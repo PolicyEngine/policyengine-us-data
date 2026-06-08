@@ -89,7 +89,7 @@ def test_calibration_package_parameters_ignore_unused_matrix_options():
     assert "num_matrix_workers" not in params
 
 
-def test_national_fit_lambda_is_unpenalized():
+def test_national_fit_lambda_disables_l0():
     assert NATIONAL_FIT_LAMBDA_L0 == pytest.approx(0.0)
 
 

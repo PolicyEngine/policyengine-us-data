@@ -1,19 +1,19 @@
 """
-Unified L0 calibration pipeline.
+Unified calibration pipeline.
 
 Pipeline flow:
     1. Load CPS dataset -> get n_records
     2. Clone Nx, assign random geography (census block)
     3. (Optional) Source impute ACS/SIPP/SCF vars with state
     4. Build sparse calibration matrix (clone-by-clone)
-    5. L0-regularized optimization -> calibrated weights
+    5. Weight optimization -> calibrated weights
     6. Save weights, diagnostics, run config
 
 Note: PUF cloning happens upstream in `extended_cps.py`, not here.
 
 Two presets control fit behavior:
 - local: L0=1e-8, ~3-4M records (for local area dataset)
-- national: L0=0, unpenalized fit for the national dataset
+- national: L0 disabled, dense fit for the national dataset
 
 Usage:
     python -m policyengine_us_data.calibration.unified_calibration \\
@@ -308,7 +308,7 @@ def parse_args(argv=None):
         "--preset",
         choices=list(PRESETS.keys()),
         default=None,
-        help="Fit preset: local uses L0; national is unpenalized",
+        help="Fit preset: local uses L0; national disables L0 for a dense fit",
     )
     parser.add_argument(
         "--lambda-l0",
@@ -870,12 +870,308 @@ def compute_initial_weights(
     return initial_weights
 
 
+def _torch_sparse_from_scipy(X_sparse, *, device: str):
+    """Convert a SciPy sparse matrix to a coalesced torch COO tensor."""
+    import torch
+
+    X_coo = X_sparse.tocoo()
+    indices = np.vstack([X_coo.row, X_coo.col])
+    return torch.sparse_coo_tensor(
+        torch.as_tensor(indices, dtype=torch.long, device=device),
+        torch.as_tensor(X_coo.data, dtype=torch.float32, device=device),
+        size=X_coo.shape,
+        device=device,
+    ).coalesce()
+
+
+class _DenseCalibrationWeights:
+    """Positive dense calibration weights without HardConcrete gates."""
+
+    def __init__(
+        self,
+        initial_weights: np.ndarray,
+        *,
+        device: str,
+    ) -> None:
+        import torch
+
+        weights = torch.as_tensor(
+            initial_weights,
+            dtype=torch.float32,
+            device=device,
+        ).clamp_min(1e-12)
+        self.log_weights = torch.nn.Parameter(torch.log(weights))
+
+    def parameters(self):
+        return [self.log_weights]
+
+    def get_weights(self):
+        import torch
+
+        return torch.exp(self.log_weights)
+
+    def predict(self, M):
+        import torch
+
+        return torch.sparse.mm(M, self.get_weights().unsqueeze(1)).squeeze(1)
+
+    def state_dict(self):
+        return {"log_weights": self.log_weights.detach().clone()}
+
+    def load_state_dict(self, state_dict):
+        if "log_weights" not in state_dict:
+            raise ValueError(
+                "Dense calibration checkpoint is missing log_weights; "
+                "it may have been created by an L0 HardConcrete fit."
+            )
+        self.log_weights.data.copy_(state_dict["log_weights"].to(self.log_weights))
+
+
+def _dense_relative_loss(
+    y_pred,
+    targets,
+    *,
+    log_weights,
+    lambda_l2: float,
+    target_groups: Optional[np.ndarray],
+):
+    """Return dense calibration loss and relative errors."""
+    import torch
+
+    denom = torch.where(
+        torch.abs(targets) > 0,
+        torch.abs(targets),
+        torch.ones_like(targets),
+    )
+    rel_err = (y_pred - targets) / denom
+    squared = rel_err**2
+
+    if target_groups is None:
+        data_loss = torch.mean(squared)
+    else:
+        groups = torch.as_tensor(
+            target_groups,
+            dtype=torch.long,
+            device=squared.device,
+        )
+        group_losses = []
+        for group in torch.unique(groups):
+            group_losses.append(torch.mean(squared[groups == group]))
+        data_loss = torch.mean(torch.stack(group_losses))
+
+    if lambda_l2:
+        data_loss = data_loss + lambda_l2 * torch.mean(log_weights**2)
+    return data_loss, rel_err
+
+
+def fit_dense_weights(
+    X_sparse,
+    targets: np.ndarray,
+    epochs: int = DEFAULT_EPOCHS,
+    device: str = "cpu",
+    verbose_freq: Optional[int] = None,
+    lambda_l2: float = LAMBDA_L2,
+    learning_rate: float = LEARNING_RATE,
+    log_freq: int = None,
+    log_path: str = None,
+    target_names: list = None,
+    initial_weights: np.ndarray = None,
+    targets_df: "pd.DataFrame" = None,
+    achievable: np.ndarray = None,
+    target_groups: Optional[np.ndarray] = None,
+    checkpoint_state_dict: dict | None = None,
+    checkpoint_path: str = None,
+    checkpoint_signature: dict | None = None,
+    start_epoch: int = 0,
+) -> np.ndarray:
+    """Fit dense positive calibration weights without L0 gates."""
+    import time
+    import torch
+
+    n_total = X_sparse.shape[1]
+    if initial_weights is None:
+        initial_weights = compute_initial_weights(X_sparse, targets_df)
+
+    logger.info(
+        "Dense calibration: %d targets, %d features, "
+        "lambda_l2=%.1e, lr=%.3f, epochs=%d",
+        X_sparse.shape[0],
+        n_total,
+        lambda_l2,
+        learning_rate,
+        epochs,
+    )
+    if start_epoch > 0:
+        logger.info(
+            "Continuing dense calibration for %d additional epochs "
+            "(total after run: %d)",
+            epochs,
+            start_epoch + epochs,
+        )
+
+    model = _DenseCalibrationWeights(initial_weights, device=device)
+    if checkpoint_state_dict is not None:
+        model.load_state_dict(checkpoint_state_dict)
+
+    X_torch = _torch_sparse_from_scipy(X_sparse, device=device)
+    targets_t = torch.as_tensor(targets, dtype=torch.float32, device=device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+
+    if verbose_freq is None:
+        verbose_freq = max(1, epochs // 10)
+
+    enable_logging = (
+        log_freq is not None and log_path is not None and target_names is not None
+    )
+    if enable_logging:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        if start_epoch > 0 and Path(log_path).exists():
+            logger.info(
+                "Appending dense epoch log to %s from epoch %d",
+                log_path,
+                start_epoch,
+            )
+        else:
+            with open(log_path, "w") as f:
+                f.write(
+                    "target_name,estimate,target,epoch,"
+                    "error,rel_error,abs_error,"
+                    "rel_abs_error,loss,achievable\n"
+                )
+            logger.info(
+                "Dense epoch logging enabled: freq=%d, path=%s",
+                log_freq,
+                log_path,
+            )
+
+    def _step():
+        optimizer.zero_grad(set_to_none=True)
+        y_pred = model.predict(X_torch)
+        loss, _ = _dense_relative_loss(
+            y_pred,
+            targets_t,
+            log_weights=model.log_weights,
+            lambda_l2=lambda_l2,
+            target_groups=target_groups,
+        )
+        loss.backward()
+        optimizer.step()
+        return loss.detach()
+
+    def _snapshot():
+        with torch.no_grad():
+            y_pred = model.predict(X_torch).cpu().numpy()
+            weights_snap = model.get_weights().cpu().numpy()
+        return y_pred, weights_snap
+
+    t0 = time.time()
+    if enable_logging:
+        epochs_done = 0
+        while epochs_done < epochs:
+            chunk = min(log_freq, epochs - epochs_done)
+            last_loss = None
+            for _ in range(chunk):
+                last_loss = _step()
+
+            epochs_done += chunk
+            absolute_epoch = start_epoch + epochs_done
+            y_pred, weights_snap = _snapshot()
+
+            if checkpoint_path is not None:
+                save_fit_checkpoint(
+                    checkpoint_path,
+                    model,
+                    epochs_completed=absolute_epoch,
+                    signature=checkpoint_signature,
+                )
+
+            active_w = weights_snap[weights_snap > 0]
+            nz = len(active_w)
+            rel_errs = np.where(
+                np.abs(targets) > 0,
+                (y_pred - targets) / np.abs(targets),
+                y_pred - targets,
+            )
+            mean_err = np.mean(np.abs(rel_errs))
+            max_err = np.max(np.abs(rel_errs))
+            total_loss = np.sum(rel_errs**2)
+
+            last_loss_value = 0.0 if last_loss is None else float(last_loss)
+            print(
+                f"Epoch {absolute_epoch:4d}: "
+                f"mean_error={mean_err:.4%}, "
+                f"max_error={max_err:.1%}, "
+                f"total_loss={total_loss:.3f}, "
+                f"active={nz}/{n_total} (dense)\n"
+                f"         loss={last_loss_value:.6g}",
+                flush=True,
+            )
+
+            ach_flags = achievable if achievable is not None else [True] * len(targets)
+            with open(log_path, "a") as f:
+                for i in range(len(targets)):
+                    est = y_pred[i]
+                    tgt = targets[i]
+                    err = est - tgt
+                    rel_err = err / tgt if tgt != 0 else err
+                    abs_err = abs(err)
+                    rel_abs = abs(rel_err)
+                    loss = rel_err**2
+                    f.write(
+                        f'"{target_names[i]}",'
+                        f"{est},{tgt},{absolute_epoch},"
+                        f"{err},{rel_err},{abs_err},"
+                        f"{rel_abs},{loss},"
+                        f"{ach_flags[i]}\n"
+                    )
+
+            logger.info(
+                "Logged %d dense targets at epoch %d",
+                len(targets),
+                absolute_epoch,
+            )
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    else:
+        for epoch in range(epochs):
+            loss = _step()
+            absolute_epoch = start_epoch + epoch + 1
+            if absolute_epoch % verbose_freq == 0 or epoch == epochs - 1:
+                logger.info(
+                    "Dense epoch %d: loss=%.6g",
+                    absolute_epoch,
+                    float(loss),
+                )
+        if checkpoint_path is not None:
+            save_fit_checkpoint(
+                checkpoint_path,
+                model,
+                epochs_completed=start_epoch + epochs,
+                signature=checkpoint_signature,
+            )
+
+    elapsed = time.time() - t0
+    logger.info(
+        "Dense calibration done in %.1f min (%.1f sec/epoch)",
+        elapsed / 60,
+        elapsed / max(epochs, 1),
+    )
+
+    weights = model.get_weights().detach().cpu().numpy()
+    logger.info("Dense non-zero weights: %d / %d", (weights > 0).sum(), n_total)
+    return weights
+
+
 @pipeline_node(
     PipelineNode(
         id="fit_model",
-        label="Fit L0 Calibration Weights",
+        label="Fit Calibration Weights",
         node_type="library",
-        description="Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+        description=(
+            "Optimize calibration weights; positive lambda_l0 uses "
+            "HardConcrete gates, while lambda_l0 <= 0 uses a dense fit."
+        ),
         source_file="policyengine_us_data/calibration/unified_calibration.py",
         status="current",
         stability="moving",
@@ -907,12 +1203,13 @@ def fit_l0_weights(
     resume_from: str = None,
     checkpoint_path: str = None,
 ) -> np.ndarray:
-    """Fit L0-regularized calibration weights.
+    """Fit calibration weights, using L0 gates only for positive lambda_l0.
 
     Args:
         X_sparse: Sparse matrix (targets x records).
         targets: Target values array.
-        lambda_l0: L0 regularization strength.
+        lambda_l0: L0 regularization strength. Values <= 0 disable
+            L0/HardConcrete entirely and use a dense positive-weight fit.
         epochs: Training epochs.
         device: Torch device.
         verbose_freq: Print frequency. Defaults to 10%.
@@ -936,12 +1233,6 @@ def fit_l0_weights(
         Weight array of shape (n_records,).
     """
     import time
-
-    try:
-        from l0.calibration import SparseCalibrationWeights
-    except ImportError:
-        raise ImportError("l0-python required. Install: pip install l0-python")
-
     import torch
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
@@ -1008,6 +1299,33 @@ def fit_l0_weights(
                 resume_path,
                 start_epoch,
             )
+
+    if lambda_l0 <= 0:
+        return fit_dense_weights(
+            X_sparse=X_sparse,
+            targets=targets,
+            epochs=epochs,
+            device=device,
+            verbose_freq=verbose_freq,
+            lambda_l2=lambda_l2,
+            learning_rate=learning_rate,
+            log_freq=log_freq,
+            log_path=log_path,
+            target_names=target_names,
+            initial_weights=initial_weights,
+            targets_df=targets_df,
+            achievable=achievable,
+            target_groups=target_groups,
+            checkpoint_state_dict=checkpoint_state_dict,
+            checkpoint_path=checkpoint_path,
+            checkpoint_signature=checkpoint_signature,
+            start_epoch=start_epoch,
+        )
+
+    try:
+        from l0.calibration import SparseCalibrationWeights
+    except ImportError:
+        raise ImportError("l0-python required. Install: pip install l0-python")
 
     logger.info(
         "L0 calibration: %d targets, %d features, "

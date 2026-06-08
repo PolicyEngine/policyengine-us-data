@@ -359,8 +359,8 @@ The local-area fit uses L0 regularization to control sparsity:
 - **Local preset** (λ_L0 = 1e-8): Retains 3–4 million records with nonzero weight. Used for building
   state and district H5 files where geographic detail matters.
 
-The national fit is unpenalized (`lambda_l0=0`) so it can prioritize target fit without L0-induced
-record sparsity.
+The national fit disables L0 entirely (`lambda_l0=0`) and uses dense positive weights so it can
+prioritize target fit without HardConcrete gates or L0-induced record sparsity.
 
 The optimizer is Adam with a learning rate of 0.15. The default epoch count is 100; production
 builds typically run 1000-1500 epochs to ensure convergence. Training runs on GPU (A100 or T4) via

@@ -64,7 +64,7 @@ at calibration time.
 ### 0. Production fit-vs-legacy comparison
 
 Before retiring the legacy Enhanced CPS output, run the production pipeline and build a comparison
-report for the completed run. The report summarizes regional L0 and national unpenalized
+report for the completed run. The report summarizes regional L0 and national dense
 calibration target errors, then compares the staged national `US.h5` against the staged legacy
 `enhanced_cps_2024.h5` for the same national aggregate variables used by
 `validate_national_h5`.
@@ -346,7 +346,7 @@ ORDER BY variable, geo_level;
 | `--db-path`      | `storage/calibration/policy_data.db`          | Path to target database                        |
 | `--output`       | `storage/calibration/calibration_weights.npy` | Weight output path                             |
 | `--puf-dataset`  | None                                          | Path to PUF h5 (enables PUF cloning)           |
-| `--preset`       | `local`                                       | Fit preset: `local` L0 (1e-8) or unpenalized `national` |
+| `--preset`       | `local`                                       | Fit preset: `local` L0 (1e-8) or dense `national` |
 | `--lambda-l0`    | None                                          | Custom L0 penalty (overrides `--preset`)       |
 | `--epochs`       | 100                                           | Training epochs                                |
 | `--device`       | `cpu`                                         | `cpu` or `cuda`                                |
@@ -438,9 +438,9 @@ The three key hyperparameters control the tradeoff between target accuracy and s
   (0.5--0.8) give softer decisions and more exploration early in training. Lower values (0.2--0.4)
   give harder on/off decisions.
 
-- **`lambda_l0`** (via `--preset` or `--lambda-l0`): Controls how many records survive. `1e-8`
-  (local preset) keeps millions of records for local-area analysis. The national preset uses
-  `lambda_l0=0` so the national fit is unpenalized.
+- **`lambda_l0`** (via `--preset` or `--lambda-l0`): Controls whether the L0 HardConcrete
+  optimizer is used. Positive values such as `1e-8` (local preset) keep L0 active for local-area
+  analysis. `lambda_l0=0` disables L0 entirely and uses the dense national optimizer.
 
 - **`lambda_l2`**: Regularizes weight magnitudes. Larger values (1e-8) prevent any single record
   from having extreme weight. Smaller values (1e-12) allow more weight concentration.

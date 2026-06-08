@@ -469,7 +469,7 @@ Fit regional log-weights using L0 HardConcrete gates on GPU
 | `util_l0` l0-python | `utility` | `unknown` | `unknown` |  |
 | `util_pytorch` PyTorch | `utility` | `unknown` | `unknown` |  |
 | `init_weights` Compute Initial Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_initial_weights` |
-| `fit_model` Fit L0 Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
+| `fit_model` Fit Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
 
 #### Edges
 
@@ -492,7 +492,7 @@ Fit regional log-weights using L0 HardConcrete gates on GPU
 
 ### Substage 3b: Weight Fitting - National
 
-Fit national log-weights for the national H5 output without an L0 penalty
+Fit dense national log-weights for the national H5 output with L0 disabled
 
 - Substage ID: `3b_weight_fitting_national`
 - Canonical stage: `3_fit_weights`
@@ -507,16 +507,15 @@ Fit national log-weights for the national H5 output without an L0 penalty
 | `modal_gpu_national` Modal GPU Container | `external` | `unknown` | `unknown` |  |
 | `fit_spec_national` FittedWeightsSpec national | `library` | `unknown` | `unknown` |  |
 | `fit_artifacts_national` ScopedFitArtifacts national | `library` | `unknown` | `unknown` |  |
-| `create_model_national` Create National SparseCalibrationWeights | `process` | `unknown` | `unknown` |  |
+| `create_model_national` Create National DenseCalibrationWeights | `process` | `unknown` | `unknown` |  |
 | `extract_national_weights` Extract National Weights | `process` | `unknown` | `unknown` |  |
 | `out_national_weights` national_calibration_weights.npy | `artifact` | `unknown` | `unknown` |  |
 | `out_national_geo_s6` national_geography_assignment.npz | `artifact` | `unknown` | `unknown` |  |
 | `out_national_diag` national_unified_diagnostics.csv | `artifact` | `unknown` | `unknown` |  |
 | `out_national_config_s6` national_unified_run_config.json | `artifact` | `unknown` | `unknown` |  |
-| `util_l0_national` l0-python | `utility` | `unknown` | `unknown` |  |
 | `util_pytorch_national` PyTorch | `utility` | `unknown` | `unknown` |  |
 | `init_weights` Compute Initial Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.compute_initial_weights` |
-| `fit_model` Fit L0 Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
+| `fit_model` Fit Calibration Weights | `library` | `current` | `moving` | `policyengine_us_data.calibration.unified_calibration.fit_l0_weights` |
 
 #### Edges
 
@@ -534,7 +533,6 @@ Fit national log-weights for the national H5 output without an L0 penalty
 - `extract_national_weights` -> `out_national_geo_s6` `produces_artifact`
 - `fit_model` -> `out_national_diag` `produces_artifact`
 - `fit_model` -> `out_national_config_s6` `produces_artifact`
-- `util_l0_national` -> `create_model_national` `uses_utility`
 - `util_pytorch_national` -> `fit_model` `uses_utility`
 
 ## Stage 4: Build Outputs

@@ -19,7 +19,7 @@ def _target_body(target: str) -> str:
     return "\n".join(body)
 
 
-def test_calibrate_modal_national_uses_unpenalized_national_default() -> None:
+def test_calibrate_modal_national_uses_dense_national_default() -> None:
     body = _target_body("calibrate-modal-national")
 
     assert "--national" in body

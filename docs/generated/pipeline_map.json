@@ -4718,9 +4718,9 @@
             "calibration_weights.npy",
             "unified_diagnostics.csv"
           ],
-          "description": "Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+          "description": "Optimize calibration weights; positive lambda_l0 uses HardConcrete gates, while lambda_l0 <= 0 uses a dense fit.",
           "id": "fit_model",
-          "label": "Fit L0 Calibration Weights",
+          "label": "Fit Calibration Weights",
           "node_type": "library",
           "pathways": [
             "weight_fit"
@@ -4740,7 +4740,7 @@
     {
       "canonical_stage_id": "3_fit_weights",
       "canonical_stage_title": "Fit Weights",
-      "description": "Fit national log-weights for the national H5 output without an L0 penalty",
+      "description": "Fit dense national log-weights for the national H5 output with L0 disabled",
       "edges": [
         {
           "edge_type": "data_flow",
@@ -4815,18 +4815,13 @@
         },
         {
           "edge_type": "uses_utility",
-          "source": "util_l0_national",
-          "target": "create_model_national"
-        },
-        {
-          "edge_type": "uses_utility",
           "source": "util_pytorch_national",
           "target": "fit_model"
         }
       ],
       "groups": [
         {
-          "description": "National fit phase: initialize national weights, optimize unpenalized calibration weights, and emit national artifacts plus diagnostics",
+          "description": "National fit phase: initialize national weights, optimize dense calibration weights without HardConcrete gates, and emit national artifacts plus diagnostics",
           "id": "run_calibration_fit_national",
           "label": "run_calibration() national",
           "node_ids": [
@@ -4875,9 +4870,9 @@
           "node_type": "library"
         },
         {
-          "description": "National target scope with lambda_l0=0",
+          "description": "Dense positive log-weight model; lambda_l0=0 disables L0",
           "id": "create_model_national",
-          "label": "Create National SparseCalibrationWeights",
+          "label": "Create National DenseCalibrationWeights",
           "node_type": "process"
         },
         {
@@ -4909,12 +4904,6 @@
           "id": "out_national_config_s6",
           "label": "national_unified_run_config.json",
           "node_type": "artifact"
-        },
-        {
-          "description": "SparseCalibrationWeights - HardConcrete gates",
-          "id": "util_l0_national",
-          "label": "l0-python",
-          "node_type": "utility"
         },
         {
           "description": "Adam optimizer, autograd, CUDA",
@@ -4954,9 +4943,9 @@
             "calibration_weights.npy",
             "unified_diagnostics.csv"
           ],
-          "description": "Optimize sparse calibration weights with HardConcrete gates and diagnostics.",
+          "description": "Optimize calibration weights; positive lambda_l0 uses HardConcrete gates, while lambda_l0 <= 0 uses a dense fit.",
           "id": "fit_model",
-          "label": "Fit L0 Calibration Weights",
+          "label": "Fit Calibration Weights",
           "node_type": "library",
           "pathways": [
             "weight_fit"

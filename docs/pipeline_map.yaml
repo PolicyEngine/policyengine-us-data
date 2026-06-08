@@ -1163,12 +1163,12 @@ stages:
   legacy_stage_id: '6'
   manifest_step_ids:
   - 03_fit_weights_national
-  description: Fit national log-weights for the national H5 output without an L0 penalty
+  description: Fit dense national log-weights for the national H5 output with L0 disabled
   country: us
   groups:
   - id: run_calibration_fit_national
     label: run_calibration() national
-    description: 'National fit phase: initialize national weights, optimize unpenalized calibration weights, and emit national artifacts plus diagnostics'
+    description: 'National fit phase: initialize national weights, optimize dense calibration weights without HardConcrete gates, and emit national artifacts plus diagnostics'
     node_ids:
     - fit_spec_national
     - fit_artifacts_national
@@ -1198,9 +1198,9 @@ stages:
     node_type: library
     description: National fitted-weight artifact filenames and remote result mapping
   - id: create_model_national
-    label: Create National SparseCalibrationWeights
+    label: Create National DenseCalibrationWeights
     node_type: process
-    description: National target scope with lambda_l0=0
+    description: Dense positive log-weight model; lambda_l0=0 disables L0
   - id: extract_national_weights
     label: Extract National Weights
     node_type: process
@@ -1221,10 +1221,6 @@ stages:
     label: national_unified_run_config.json
     node_type: artifact
     description: National hyperparameters + SHA256 checksums
-  - id: util_l0_national
-    label: l0-python
-    node_type: utility
-    description: SparseCalibrationWeights - HardConcrete gates
   - id: util_pytorch_national
     label: PyTorch
     node_type: utility
@@ -1273,9 +1269,6 @@ stages:
   - source: fit_model
     target: out_national_config_s6
     edge_type: produces_artifact
-  - source: util_l0_national
-    target: create_model_national
-    edge_type: uses_utility
   - source: util_pytorch_national
     target: fit_model
     edge_type: uses_utility

@@ -273,9 +273,7 @@ class TestPufCloneDataset:
         data = _make_mock_data(n_persons=20, n_households=5)
         assert "partnership_income" not in data
         assert "s_corp_income" not in data
-        data["partnership_s_corp_income"] = {
-            2024: np.full(20, 123, dtype=np.float32)
-        }
+        data["partnership_s_corp_income"] = {2024: np.full(20, 123, dtype=np.float32)}
 
         partnership_predictions = np.arange(20, dtype=np.float32) + 100
         s_corp_predictions = np.arange(20, dtype=np.float32) + 200

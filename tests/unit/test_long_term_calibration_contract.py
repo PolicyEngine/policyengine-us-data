@@ -3301,7 +3301,9 @@ def test_compose_role_donor_rows_can_sanitize_all_clone_non_target_income():
         assert clone["taxable_private_pension_income__2024"] == pytest.approx(0.0)
         assert clone["partnership_income__2024"] == pytest.approx(0.0)
         assert clone["s_corp_income__2024"] == pytest.approx(0.0)
-        assert clone["partnership_self_employment_net_earnings__2024"] == pytest.approx(0.0)
+        assert clone["partnership_self_employment_net_earnings__2024"] == pytest.approx(
+            0.0
+        )
     assert older_clone["social_security_retirement__2024"] == pytest.approx(20_000.0)
     assert worker_clone["employment_income_before_lsr__2024"] == pytest.approx(50_000.0)
     assert (

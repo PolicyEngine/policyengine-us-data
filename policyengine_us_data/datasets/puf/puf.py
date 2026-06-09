@@ -251,10 +251,14 @@ def sample_exposure_scaled_beta(base, params, rng):
 
 def simulate_investment_qbi_income_from_puf(puf, *, rng):
     """Simulate qualified REIT/PTP and BDC income from observed exposures."""
+    partnership_s_corp_income = puf_column_values(
+        puf, "partnership_income"
+    ) + puf_column_values(puf, "s_corp_income")
+    if "partnership_income" not in puf and "s_corp_income" not in puf:
+        partnership_s_corp_income = puf_column_values(puf, "partnership_s_corp_income")
     exposure_bases = {
         "non_qualified_dividend_income": non_qualified_dividend_income_from_puf(puf),
-        "partnership_s_corp_income": puf_column_values(puf, "partnership_income")
-        + puf_column_values(puf, "s_corp_income"),
+        "partnership_s_corp_income": partnership_s_corp_income,
     }
 
     qualified_reit_and_ptp_income = np.zeros(len(puf), dtype=float)

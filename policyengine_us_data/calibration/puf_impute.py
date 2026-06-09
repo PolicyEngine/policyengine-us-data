@@ -58,7 +58,8 @@ PUF_METADATA_MISSING_TOP_TAIL_VARIABLES = (
     "non_sch_d_capital_gains",
     "long_term_capital_gains_on_collectibles",
     "unrecaptured_section_1250_gain",
-    "partnership_s_corp_income",
+    "partnership_income",
+    "s_corp_income",
     "self_employment_income",
     "sstb_self_employment_income",
     "rental_income",
@@ -68,6 +69,12 @@ PUF_METADATA_MISSING_TOP_TAIL_VARIABLES = (
     "estate_income",
     "charitable_cash_donations",
     "charitable_non_cash_donations",
+)
+
+FORMULAIC_BUSINESS_AGGREGATES_TO_DROP = frozenset(
+    {
+        "partnership_s_corp_income",
+    }
 )
 
 DEMOGRAPHIC_PREDICTORS = [
@@ -82,7 +89,8 @@ DEMOGRAPHIC_PREDICTORS = [
 
 IMPUTED_VARIABLES = [
     "employment_income",
-    "partnership_s_corp_income",
+    "partnership_income",
+    "s_corp_income",
     "social_security",
     "taxable_pension_income",
     "interest_deduction",
@@ -117,7 +125,7 @@ IMPUTED_VARIABLES = [
     "miscellaneous_income",
     "alimony_expense",
     "farm_income",
-    "partnership_se_income",
+    "partnership_self_employment_net_earnings",
     "alimony_income",
     "health_savings_account_ald",
     "non_sch_d_capital_gains",
@@ -148,7 +156,8 @@ SS_SUBCOMPONENTS = [
 ]
 
 OVERRIDDEN_IMPUTED_VARIABLES = [
-    "partnership_s_corp_income",
+    "partnership_income",
+    "s_corp_income",
     "interest_deduction",
     "unreimbursed_business_employee_expenses",
     "pre_tax_contributions",
@@ -589,6 +598,10 @@ def puf_clone_dataset(
 
     new_data = {}
     for variable, time_dict in data.items():
+        if variable in FORMULAIC_BUSINESS_AGGREGATES_TO_DROP:
+            logger.info("Dropping formulaic business aggregate: %s", variable)
+            continue
+
         if variable in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
             logger.info("Dropping PUF tax-output variable: %s", variable)
             continue

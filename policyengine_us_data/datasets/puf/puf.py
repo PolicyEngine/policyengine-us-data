@@ -253,9 +253,8 @@ def simulate_investment_qbi_income_from_puf(puf, *, rng):
     """Simulate qualified REIT/PTP and BDC income from observed exposures."""
     exposure_bases = {
         "non_qualified_dividend_income": non_qualified_dividend_income_from_puf(puf),
-        "partnership_s_corp_income": puf_column_values(
-            puf, "partnership_s_corp_income"
-        ),
+        "partnership_s_corp_income": puf_column_values(puf, "partnership_income")
+        + puf_column_values(puf, "s_corp_income"),
     }
 
     qualified_reit_and_ptp_income = np.zeros(len(puf), dtype=float)
@@ -673,6 +672,9 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
     s_corp_income = puf.E26190 - puf.E26180
     # Schedule E active partnership income
     partnership_income = puf.E25980 - puf.E25960
+    puf["s_corp_income"] = s_corp_income
+    puf["partnership_income"] = partnership_income
+    # Keep the combined value as an internal QBI simulation helper only.
     puf["partnership_s_corp_income"] = s_corp_income + partnership_income
     # Schedule F active farming operations
     puf["farm_operations_income"] = puf.E02100
@@ -737,7 +739,7 @@ def preprocess_puf(puf: pd.DataFrame) -> pd.DataFrame:
         - puf["E25960"].fillna(0)
     ) != 0
     partnership_se = np.where(has_partnership, gross_se - schedule_c_f_income, 0)
-    puf["partnership_se_income"] = partnership_se
+    puf["partnership_self_employment_net_earnings"] = partnership_se
 
     # --- Qualified Business Income Deduction (QBID) simulation ---
     puf = add_qbi_qualification_flags_to_puf(puf, seed=QBI_QUALIFICATION_SEED)
@@ -866,8 +868,9 @@ FINANCIAL_SUBSET = [
     "sstb_w2_wages_from_qualified_business",
     "sstb_unadjusted_basis_qualified_property",
     "deductible_mortgage_interest",
-    "partnership_s_corp_income",
-    "partnership_se_income",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
     "qualified_reit_and_ptp_income",
     "qualified_bdc_income",
     "attends_eligible_educational_institution_for_lifetime_learning_credit",
@@ -1005,6 +1008,8 @@ class PUF(Dataset):
             length = None
             for key in (
                 *QBI_SOURCE_NAMES,
+                "partnership_income",
+                "s_corp_income",
                 "sstb_self_employment_income",
                 "business_is_sstb",
                 "w2_wages_from_qualified_business",
@@ -1098,9 +1103,20 @@ class PUF(Dataset):
 
             source_arrays = {}
             for source in QBI_SOURCE_NAMES:
-                source_arrays[source] = self._values_from_file_or_overrides(
-                    file_handle, source, existing_overrides, length
-                ).astype(float)
+                if (
+                    source == "partnership_s_corp_income"
+                    and source not in file_handle
+                    and source not in existing_overrides
+                ):
+                    source_arrays[source] = self._values_from_file_or_overrides(
+                        file_handle, "partnership_income", existing_overrides, length
+                    ).astype(float) + self._values_from_file_or_overrides(
+                        file_handle, "s_corp_income", existing_overrides, length
+                    ).astype(float)
+                else:
+                    source_arrays[source] = self._values_from_file_or_overrides(
+                        file_handle, source, existing_overrides, length
+                    ).astype(float)
 
             source_arrays["self_employment_income"] = (
                 self._values_from_file_or_overrides(

@@ -239,7 +239,8 @@ def test_investment_qbi_is_scaled_to_observed_exposures(monkeypatch):
         {
             "qualified_dividend_income": [900.0, 0.0, 0.0],
             "non_qualified_dividend_income": [100.0, 0.0, 0.0],
-            "partnership_s_corp_income": [0.0, 200.0, 0.0],
+            "partnership_income": [0.0, 150.0, 0.0],
+            "s_corp_income": [0.0, 50.0, 0.0],
         }
     )
 
@@ -279,7 +280,10 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
             "self_employment_income", data=np.array([10_000.0, 0.0])
         )
         file_handle.create_dataset(
-            "partnership_s_corp_income", data=np.array([0.0, 20_000.0])
+            "partnership_income", data=np.array([0.0, 12_000.0])
+        )
+        file_handle.create_dataset(
+            "s_corp_income", data=np.array([0.0, 8_000.0])
         )
         for source in set(puf_module.QBI_SOURCE_NAMES) - {
             "self_employment_income",

@@ -12,6 +12,8 @@ from policyengine_us_data.calibration.puf_impute import (
     DEMOGRAPHIC_PREDICTORS,
     IMPUTED_VARIABLES,
     OVERRIDDEN_IMPUTED_VARIABLES,
+    PUF_WEIGHT_COLUMN,
+    REAL_HALF_INCOME_PREDICTORS,
     _forbes_person_training_mask,
     _impute_retirement_contributions,
     _impute_weeks_unemployed,
@@ -269,17 +271,22 @@ class TestPufCloneDataset:
         for var in PUF_REPORTED_CALCULATED_TAX_OUTPUT_VARIABLES:
             assert var not in result
 
-    def test_puf_only_variables_are_imputed_onto_cps_half(self, monkeypatch):
+    def test_puf_only_variables_use_separate_real_and_clone_draws(self, monkeypatch):
         data = _make_mock_data(n_persons=20, n_households=5)
         assert "partnership_s_corp_income" not in data
 
-        predictions = np.arange(20, dtype=np.float32) + 100
+        real_predictions = np.arange(20, dtype=np.float32) + 10
+        clone_predictions = np.arange(20, dtype=np.float32) + 100
         y_full = {var: np.ones(20, dtype=np.float32) for var in IMPUTED_VARIABLES}
-        y_full["partnership_s_corp_income"] = predictions
+        y_full["partnership_s_corp_income"] = clone_predictions
         y_full["employment_income"] = np.full(20, 999_999, dtype=np.float32)
+        y_real_full = {
+            var: np.ones(20, dtype=np.float32) * 2 for var in IMPUTED_VARIABLES
+        }
+        y_real_full["partnership_s_corp_income"] = real_predictions
 
         def fake_run_qrf_imputation(*args, **kwargs):
-            return y_full, {}
+            return y_full, {}, y_real_full, {}
 
         monkeypatch.setattr(
             puf_impute_module,
@@ -296,12 +303,49 @@ class TestPufCloneDataset:
         )
 
         partnership = result["partnership_s_corp_income"][2024]
-        np.testing.assert_array_equal(partnership[:20], predictions)
-        np.testing.assert_array_equal(partnership[20:], predictions)
+        np.testing.assert_array_equal(partnership[:20], real_predictions)
+        np.testing.assert_array_equal(partnership[20:], clone_predictions)
 
         employment = result["employment_income"][2024]
         np.testing.assert_array_equal(employment[:20], data["employment_income"][2024])
         np.testing.assert_array_equal(employment[20:], y_full["employment_income"])
+
+    def test_overridden_variables_use_separate_real_and_clone_draws(self, monkeypatch):
+        data = _make_mock_data(n_persons=20, n_households=5)
+        data["charitable_cash_donations"] = {2024: np.zeros(20, dtype=np.float32)}
+
+        y_full = {var: np.ones(20, dtype=np.float32) for var in IMPUTED_VARIABLES}
+        y_override = {
+            var: np.ones(20, dtype=np.float32) * 100
+            for var in OVERRIDDEN_IMPUTED_VARIABLES
+        }
+        y_real_override = {
+            var: np.ones(20, dtype=np.float32) * 10
+            for var in OVERRIDDEN_IMPUTED_VARIABLES
+        }
+        y_override["charitable_cash_donations"] = np.arange(20) + 1_000
+        y_real_override["charitable_cash_donations"] = np.arange(20) + 100
+
+        def fake_run_qrf_imputation(*args, **kwargs):
+            return y_full, y_override, {}, y_real_override
+
+        monkeypatch.setattr(
+            puf_impute_module,
+            "_run_qrf_imputation",
+            fake_run_qrf_imputation,
+        )
+
+        result = puf_clone_dataset(
+            data=data,
+            state_fips=np.array([1, 2, 36, 6, 48]),
+            time_period=2024,
+            puf_dataset=object(),
+            skip_qrf=False,
+        )
+
+        donations = result["charitable_cash_donations"][2024]
+        np.testing.assert_array_equal(donations[:20], np.arange(20) + 100)
+        np.testing.assert_array_equal(donations[20:], np.arange(20) + 1_000)
 
     def test_sstb_qbi_split_variables_imputed(self):
         expected = {
@@ -430,6 +474,8 @@ class TestForbesTrainingExclusion:
 
             def calculate(self, variable, map_to=None):
                 assert map_to == "person"
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 30_000_000.0, 20.0, 30.0])
 
@@ -442,7 +488,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -464,7 +517,7 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
@@ -486,6 +539,8 @@ class TestForbesTrainingExclusion:
                 assert map_to == "person"
                 if variable == "person_weight":
                     return pd.Series([100.0, 0.13, 100.0, 100.0])
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 1_000_000_000.0, 20.0, 30.0])
 
@@ -498,7 +553,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -520,7 +582,7 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
@@ -540,6 +602,8 @@ class TestForbesTrainingExclusion:
 
             def calculate(self, variable, map_to=None):
                 assert map_to == "person"
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 20.0, 30.0, 40.0])
 
@@ -562,7 +626,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -584,7 +655,7 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
@@ -604,6 +675,8 @@ class TestForbesTrainingExclusion:
 
             def calculate(self, variable, map_to=None):
                 assert map_to == "person"
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 30_000_000.0, 20.0, 30.0])
 
@@ -616,7 +689,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -638,7 +718,7 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
@@ -659,6 +739,8 @@ class TestForbesTrainingExclusion:
 
             def calculate(self, variable, map_to=None):
                 assert map_to == "person"
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 30_000_000.0, 20.0, 30.0])
 
@@ -671,7 +753,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -693,7 +782,7 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 3 for frame in train_frames)
         assert all(99.0 not in set(frame["age"]) for frame in train_frames)
 
@@ -714,6 +803,8 @@ class TestForbesTrainingExclusion:
 
             def calculate(self, variable, map_to=None):
                 assert map_to == "person"
+                if variable == "household_weight":
+                    return pd.Series([100.0, 100.0, 100.0, 100.0])
                 assert variable == "adjusted_gross_income"
                 return pd.Series([10.0, 20.0, 30.0, 40.0])
 
@@ -736,7 +827,14 @@ class TestForbesTrainingExclusion:
 
         train_frames = []
 
-        def fake_sequential_qrf(X_train, X_test, predictors, output_vars):
+        def fake_sequential_qrf(
+            X_train,
+            X_test,
+            predictors,
+            output_vars,
+            weight_col=None,
+            max_train_samples=None,
+        ):
             train_frames.append(X_train.copy())
             return {variable: np.zeros(len(X_test)) for variable in output_vars}
 
@@ -758,9 +856,99 @@ class TestForbesTrainingExclusion:
             dataset_path=None,
         )
 
-        assert len(train_frames) == 2
+        assert len(train_frames) == 4
         assert all(len(frame) == 2 for frame in train_frames)
         assert all(99.0 in set(frame["age"]) for frame in train_frames)
+
+
+def test_run_qrf_imputation_splits_weighted_real_half_from_clone_half(monkeypatch):
+    calls = []
+
+    class FakeDataset:
+        def load_dataset(self):
+            return {}
+
+    class FakeMicrosimulation:
+        def __init__(self, dataset):
+            self.dataset = FakeDataset()
+            self.tax_benefit_system = type(
+                "TBS",
+                (),
+                {
+                    "variables": {
+                        var: object()
+                        for var in DEMOGRAPHIC_PREDICTORS + REAL_HALF_INCOME_PREDICTORS
+                    }
+                },
+            )()
+
+        def calculate(self, variable, map_to=None):
+            if variable == "adjusted_gross_income":
+                return pd.Series([10_000.0, 50_000.0, 5_000_000.0])
+            if variable == "household_weight":
+                return pd.Series([40_000.0, 4_000.0, 20.0])
+            raise ValueError(variable)
+
+        def calculate_dataframe(self, columns):
+            n = 3
+            return pd.DataFrame(
+                {
+                    column: np.arange(n, dtype=np.float32) + i
+                    for i, column in enumerate(columns)
+                }
+            )
+
+    def fake_sequential_qrf(
+        X_train,
+        X_test,
+        predictors,
+        output_vars,
+        weight_col=None,
+        max_train_samples=None,
+    ):
+        calls.append(
+            {
+                "predictors": list(predictors),
+                "output_vars": list(output_vars),
+                "weight_col": weight_col,
+                "max_train_samples": max_train_samples,
+                "train_columns": list(X_train.columns),
+                "test_columns": list(X_test.columns),
+            }
+        )
+        return {
+            var: np.full(len(X_test), len(calls), dtype=np.float32)
+            for var in output_vars
+        }
+
+    monkeypatch.setattr("policyengine_us.Microsimulation", FakeMicrosimulation)
+    monkeypatch.setattr(
+        puf_impute_module,
+        "_sequential_qrf",
+        fake_sequential_qrf,
+    )
+
+    data = _make_mock_data(n_persons=3, n_households=1)
+    for var in REAL_HALF_INCOME_PREDICTORS:
+        data[var] = {2024: np.arange(3, dtype=np.float32)}
+
+    result = _run_qrf_imputation(
+        data=data,
+        time_period=2024,
+        puf_dataset="puf",
+        dataset_path="cps.h5",
+    )
+
+    assert len(result) == 4
+    assert calls[0]["weight_col"] is None
+    assert calls[1]["weight_col"] is None
+    assert calls[2]["weight_col"] == PUF_WEIGHT_COLUMN
+    assert calls[3]["weight_col"] == PUF_WEIGHT_COLUMN
+    assert calls[2]["max_train_samples"] == puf_impute_module.PUF_SUBSAMPLE_TARGET
+    assert PUF_WEIGHT_COLUMN in calls[2]["train_columns"]
+    assert "employment_income" in calls[2]["predictors"]
+    assert "employment_income" in calls[2]["test_columns"]
+    assert "employment_income" not in calls[2]["output_vars"]
 
 
 def test_retirement_imputation_uses_sstb_income_for_se_eligibility(monkeypatch):

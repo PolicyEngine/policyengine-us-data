@@ -4,7 +4,7 @@ metadata:
   unit: /1
   period: year
   reference:
-    - title: KFF "A Closer Look at the Remaining Uninsured Population Eligible for Medicaid and CHIP"
+    - title: KFF "Distribution of Eligibility for ACA Health Coverage Among the Remaining Uninsured"
       href: https://www.kff.org/affordable-care-act/state-indicator/distribution-of-eligibility-for-aca-coverage-among-the-remaining-uninsured/
     - title: CMS "2023 Marketplace Open Enrollment Period Public Use Files"
       href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2023-marketplace-open-enrollment-period-public-use-files
@@ -16,10 +16,19 @@ metadata:
       href: https://www.cms.gov/data-research/statistics-trends-reports/marketplace-products/2026-marketplace-open-enrollment-period-public-use-files
 values:
   2018-01-01: 0.672
-  # OEP APTC plan selections / (OEP APTC plan selections + 2023 tax-credit-eligible uninsured).
-  # KFF reports 8,163,000 uninsured people eligible for Marketplace tax credits in 2023.
-  # OEP APTC plan selections: 14,797,921 (2023), 19,743,689 (2024),
-  # 22,380,137 (2025), and 20,035,756 (2026).
+  # OEP APTC plan selections / (OEP APTC plan selections + tax-credit-eligible uninsured).
+  # Numerator: APTC plan selections summed from the CMS state-level OEP public
+  # use files: 14,797,921 (2023), 19,743,689 (2024), 22,380,137 (2025), and
+  # 20,035,756 (2026). Plan selections are used instead of effectuated
+  # enrollment so all four years come from the same source; effectuated
+  # enrollment for 2026 is not yet published.
+  # Denominator addend: KFF reports 8,163,000 uninsured people eligible for
+  # Marketplace tax credits, published for 2023 only. The same count is reused
+  # for 2024-2026, which likely understates take-up in those years because
+  # later enrollment growth draws people out of that uninsured pool.
+  # 2021-2022 stay on the 2018 baseline because the KFF denominator reflects
+  # the 2023 uninsured population (post-Medicaid-unwinding) and does not
+  # backcast to earlier years.
   2023-01-01: 0.644483
   2024-01-01: 0.707489
   2025-01-01: 0.732739

@@ -271,11 +271,15 @@ class TestPufCloneDataset:
 
     def test_puf_only_variables_are_imputed_onto_cps_half(self, monkeypatch):
         data = _make_mock_data(n_persons=20, n_households=5)
-        assert "partnership_s_corp_income" not in data
+        assert "partnership_income" not in data
+        assert "s_corp_income" not in data
+        data["partnership_s_corp_income"] = {2024: np.full(20, 123, dtype=np.float32)}
 
-        predictions = np.arange(20, dtype=np.float32) + 100
+        partnership_predictions = np.arange(20, dtype=np.float32) + 100
+        s_corp_predictions = np.arange(20, dtype=np.float32) + 200
         y_full = {var: np.ones(20, dtype=np.float32) for var in IMPUTED_VARIABLES}
-        y_full["partnership_s_corp_income"] = predictions
+        y_full["partnership_income"] = partnership_predictions
+        y_full["s_corp_income"] = s_corp_predictions
         y_full["employment_income"] = np.full(20, 999_999, dtype=np.float32)
 
         def fake_run_qrf_imputation(*args, **kwargs):
@@ -295,9 +299,15 @@ class TestPufCloneDataset:
             skip_qrf=False,
         )
 
-        partnership = result["partnership_s_corp_income"][2024]
-        np.testing.assert_array_equal(partnership[:20], predictions)
-        np.testing.assert_array_equal(partnership[20:], predictions)
+        assert "partnership_s_corp_income" not in result
+
+        partnership = result["partnership_income"][2024]
+        np.testing.assert_array_equal(partnership[:20], partnership_predictions)
+        np.testing.assert_array_equal(partnership[20:], partnership_predictions)
+
+        s_corp = result["s_corp_income"][2024]
+        np.testing.assert_array_equal(s_corp[:20], s_corp_predictions)
+        np.testing.assert_array_equal(s_corp[20:], s_corp_predictions)
 
         employment = result["employment_income"][2024]
         np.testing.assert_array_equal(employment[:20], data["employment_income"][2024])

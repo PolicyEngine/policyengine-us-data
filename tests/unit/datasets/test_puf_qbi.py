@@ -239,7 +239,8 @@ def test_investment_qbi_is_scaled_to_observed_exposures(monkeypatch):
         {
             "qualified_dividend_income": [900.0, 0.0, 0.0],
             "non_qualified_dividend_income": [100.0, 0.0, 0.0],
-            "partnership_s_corp_income": [0.0, 200.0, 0.0],
+            "partnership_income": [0.0, 150.0, 0.0],
+            "s_corp_income": [0.0, 50.0, 0.0],
         }
     )
 
@@ -271,6 +272,16 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
             params["ubia_simulation"]["capital_intensity_probabilities"][source] = 1.0
         for source in params["sstb_prob_map_by_source_name"]:
             params["sstb_prob_map_by_source_name"][source] = 0.0
+        params["reit_ptp_income_distribution"] = {
+            "partnership_s_corp_income": {
+                "probability_of_receiving": 1.0,
+                "beta_a": 1.0,
+                "beta_b": 1.0,
+                "scale": 0.0,
+                "shift": 0.25,
+            }
+        }
+        params["bdc_income_distribution"] = {}
 
     _set_qbi_params(monkeypatch, mutate)
     with h5py.File(DummyPUF.file_path, "w") as file_handle:
@@ -278,9 +289,8 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
         file_handle.create_dataset(
             "self_employment_income", data=np.array([10_000.0, 0.0])
         )
-        file_handle.create_dataset(
-            "partnership_s_corp_income", data=np.array([0.0, 20_000.0])
-        )
+        file_handle.create_dataset("partnership_income", data=np.array([0.0, 12_000.0]))
+        file_handle.create_dataset("s_corp_income", data=np.array([0.0, 8_000.0]))
         for source in set(puf_module.QBI_SOURCE_NAMES) - {
             "self_employment_income",
             "partnership_s_corp_income",
@@ -297,6 +307,9 @@ def test_puf_load_dataset_backfills_qbi_simulation_inputs(tmp_path, monkeypatch)
     assert "qualified_bdc_income" in arrays
     np.testing.assert_array_equal(arrays["business_is_sstb"], np.array([False, False]))
     assert np.all(arrays["unadjusted_basis_qualified_property"] > 0)
+    np.testing.assert_allclose(
+        arrays["qualified_reit_and_ptp_income"], np.array([0.0, 5_000.0])
+    )
 
 
 def test_puf_load_dataset_repairs_qbi_with_person_level_length(tmp_path, monkeypatch):

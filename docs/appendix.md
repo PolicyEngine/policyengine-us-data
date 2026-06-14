@@ -47,12 +47,13 @@ for iteration in range(5000):
 
 ### Table A1: Complete List of Imputed Variables
 
-#### Variables Imputed from IRS Public Use File (57 variables)
+#### Variables Imputed from IRS Public Use File (58 variables)
 
 **Income Variables:**
 
 - employment_income
-- partnership_s_corp_income
+- partnership_income
+- s_corp_income
 - social_security
 - taxable_pension_income
 - tax_exempt_pension_income
@@ -68,7 +69,7 @@ for iteration in range(5000):
 - estate_income
 - miscellaneous_income
 - farm_income
-- partnership_se_income
+- partnership_self_employment_net_earnings
 - alimony_income
 - farm_rent_income
 - non_sch_d_capital_gains

@@ -234,6 +234,38 @@ def rename_columns_to_match_cps(scf: dict, raw_data: pd.DataFrame) -> None:
             scf[pe_var] = raw_data[scf_var].fillna(0).values
 
 
+def _summarize_auto_loans(auto_df: pd.DataFrame) -> pd.DataFrame:
+    """Compute total auto loan balance and interest from raw SCF columns.
+
+    The SCF codes inapplicable car loans and rates with negative sentinels
+    (``-1``). The original ``auto_df[cols].replace(-1, 0, inplace=True)`` ran on
+    a column-slice copy and silently did nothing, so a real loan balance times a
+    ``-1`` rate sentinel (after the /10,000 scaling) produced a spurious negative
+    interest amount. Floor the raw balance and rate columns at zero first so only
+    genuine loans contribute.
+
+    Args:
+        auto_df: Raw SCF rows carrying the per-car balance and rate columns.
+
+    Returns:
+        A copy with ``auto_loan_balance`` and ``auto_loan_interest`` columns.
+    """
+    balance_cols = ["x2209", "x2309", "x2409", "x7158"]
+    rate_cols = ["x2219", "x2319", "x2419", "x7170"]
+    auto_df = auto_df.copy()
+    auto_df[balance_cols + rate_cols] = auto_df[balance_cols + rate_cols].clip(
+        lower=0
+    )
+    # Rate columns are stored scaled by 10,000; divide to a plain fraction.
+    auto_df[rate_cols] = auto_df[rate_cols] / 10_000
+    auto_df["auto_loan_balance"] = auto_df[balance_cols].sum(axis=1)
+    auto_df["auto_loan_interest"] = sum(
+        auto_df[bal] * auto_df[rate]
+        for bal, rate in zip(balance_cols, rate_cols)
+    )
+    return auto_df
+
+
 def add_auto_loan_interest(scf: dict, year: int) -> None:
     """Adds auto loan balance and interest to the summarized SCF dataset from the full SCF."""
     import requests
@@ -311,25 +343,11 @@ def add_auto_loan_interest(scf: dict, year: int) -> None:
                 f"Downloaded zip file is corrupt for year {year}"
             ) from e
 
-        # Process the interest data and add to final SCF dictionary
-        auto_df = df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS].copy()
-        auto_df[AUTO_LOAN_COLUMNS].replace(-1, 0, inplace=True)
-
-        # Interest rate columns are in percent * 10,000 format, we need to divide by 10,000 to leave them in percentage format
-        RATE_COLUMNS = ["x2219", "x2319", "x2419", "x7170"]
-        auto_df[RATE_COLUMNS] /= 10_000
-
-        # Calculate total auto loan balance (sum of all auto loan balance variables)
-        auto_df["auto_loan_balance"] = auto_df[
-            ["x2209", "x2309", "x2409", "x7158"]
-        ].sum(axis=1)
-
-        # Calculate total auto loan interest (sum of the amounts of each balance variable multiplied by its respective interest rate variable)
-        auto_df["auto_loan_interest"] = (
-            auto_df["x2209"] * auto_df["x2219"]
-            + auto_df["x2309"] * auto_df["x2319"]
-            + auto_df["x2409"] * auto_df["x2419"]
-            + auto_df["x7158"] * auto_df["x7170"]
+        # Process the interest data and add to final SCF dictionary. Negative
+        # "not applicable" sentinels in the raw balance/rate columns are floored
+        # to zero inside the helper before they can leak into the product.
+        auto_df = _summarize_auto_loans(
+            df[IDENTIFYER_COLUMNS + AUTO_LOAN_COLUMNS]
         )
 
         # Check if we have household identifiers (y1, yy1) in both datasets

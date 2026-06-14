@@ -1,0 +1,4 @@
+- bump: patch
+  changes:
+    fixed:
+      - Floor SCF auto loan balance and rate sentinels so auto_loan_interest is never negative.

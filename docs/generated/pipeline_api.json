@@ -1356,7 +1356,7 @@
     "docstring": "",
     "id": "impute_puf_demographics",
     "kind": "function",
-    "line": 474,
+    "line": 477,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.impute_missing_demographics"
@@ -1383,7 +1383,7 @@
     "docstring": "",
     "id": "impute_puf_pension",
     "kind": "function",
-    "line": 418,
+    "line": 421,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.impute_pension_contributions_to_puf"
@@ -3059,7 +3059,7 @@
     "docstring": "",
     "id": "preprocess_puf",
     "kind": "function",
-    "line": 633,
+    "line": 636,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.preprocess_puf"
@@ -3189,7 +3189,7 @@
     "docstring": "Run QRF imputation for PUF variables.\n\nStratified-subsamples PUF records (top 0.5% by AGI kept,\nrest randomly sampled to ~20K total), trains QRF, and\npredicts on CPS data.\n\nArgs:\n    data: CPS data dict.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path.\n    dataset_path: Path to CPS h5 for computing\n        demographic predictors via Microsimulation.\n\nReturns:\n    Tuple of (y_full_imputations, y_override_imputations)\n    as dicts of {variable: np.ndarray}.",
     "id": "puf_qrf_pass",
     "kind": "function",
-    "line": 927,
+    "line": 940,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._run_qrf_imputation"
@@ -3247,7 +3247,7 @@
     "docstring": "Clone CPS data 2x and impute PUF variables on one half.\n\nThe first half keeps CPS values when CPS reports the variable.\nVariables absent from CPS get PUF QRF predictions on both halves\nso positive-weight CPS rows can support those calibration targets.\nThe second half still gets full PUF QRF imputation and starts with\nhousehold weights set to zero.\n\nArgs:\n    data: CPS dataset dict {variable: {time_period: array}}.\n    state_fips: State FIPS per household, shape (n_households,).\n    block_geoid: Optional 15-character Census block GEOID per household.\n    cd_geoid: Optional congressional district GEOID per household.\n    county_fips: Optional 5-digit county FIPS per household.\n    time_period: Tax year.\n    puf_dataset: PUF dataset class or path for QRF training.\n        If None, skips QRF (same as skip_qrf=True).\n    skip_qrf: If True, skip QRF imputation (for testing).\n    dataset_path: Path to CPS h5 file (needed for QRF to\n        compute demographic predictors via Microsimulation).\n\nReturns:\n    New data dict with doubled records.",
     "id": "record_double",
     "kind": "function",
-    "line": 504,
+    "line": 513,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute.puf_clone_dataset"
@@ -3481,7 +3481,7 @@
     "docstring": "Impute retirement contributions for the PUF half using QRF.\n\nTrains on CPS data (which has realistic income-to-contribution\nrelationships) and predicts onto PUF clone records using\nPUF-imputed income as input features.\n\nNote: ``pre_tax_contributions`` is separately imputed from PUF\nvia OVERRIDDEN_IMPUTED_VARIABLES.  In PolicyEngine it is a\nformula (``adds`` of traditional_401k + traditional_403b + \u2026),\nso the stored value is only used when the formula is bypassed.\nA future improvement could reconcile or drop the stored\npre_tax_contributions in favour of the formula sum.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Dict mapping retirement variable names to imputed arrays.\n    Returns all-zeros on QRF failure.",
     "id": "retire_impute",
     "kind": "function",
-    "line": 798,
+    "line": 811,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_retirement_contributions"
@@ -3697,7 +3697,7 @@
     "docstring": "Simulate two Section 199A guard-rail quantities for every record\n  - W-2 wages paid by the business\n  - Unadjusted basis immediately after acquisition (UBIA) of property\n\nParameters\n----------\npuf : pandas.DataFrame\n    Must contain the income columns created in your preprocessing block.\nseed : int, optional\n    For reproducible random draws.\ndiagnostics : bool, default True\n    Print high-level checks after the simulation runs.\n\nReturns\n-------\nw2_wages : 1-D NumPy array\nubia     : 1-D NumPy array",
     "id": "simulate_qbi",
     "kind": "function",
-    "line": 314,
+    "line": 317,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.datasets.puf.puf.simulate_w2_and_ubia_from_puf"
@@ -3784,7 +3784,7 @@
     "docstring": "Predict SS sub-components for PUF half from demographics.\n\nThe CPS-PUF link is statistical (not identity-based), so the\npaired CPS record's sub-component split is just one noisy draw.\nA QRF trained on all CPS SS recipients gives a better expected\nprediction by pooling across the full training set.\n\nFor all PUF records with positive social_security, this function\npredicts shares via QRF (falling back to an age heuristic) and\nscales them to match the imputed total. PUF records with zero\nSS get all sub-components cleared to zero.\n\nModifies ``data`` in place. Only the PUF half (indices\nn_cps .. 2*n_cps) is changed.\n\nArgs:\n    data: Dataset dict {variable: {time_period: array}}.\n    n_cps: Number of records in the CPS half.\n    time_period: Tax year key into data dicts.",
     "id": "ss_reconcile",
     "kind": "function",
-    "line": 436,
+    "line": 445,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute.reconcile_ss_subcomponents"
@@ -4574,7 +4574,7 @@
     "docstring": "Impute weeks_unemployed for the PUF half using QRF.\n\nUses CPS as training data and imputed PUF demographics as\ntest data, preserving the joint distribution of weeks with\nunemployment compensation.\n\nArgs:\n    data: CPS data dict.\n    puf_imputations: Dict of PUF-imputed variable arrays.\n    time_period: Tax year.\n    dataset_path: Path to CPS h5 for Microsimulation.\n\nReturns:\n    Array of imputed weeks for PUF half.",
     "id": "weeks_impute",
     "kind": "function",
-    "line": 690,
+    "line": 703,
     "metadata": {
       "api_refs": [
         "policyengine_us_data.calibration.puf_impute._impute_weeks_unemployed"

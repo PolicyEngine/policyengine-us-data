@@ -41,11 +41,27 @@ jobs:
     needs: check-fork
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+      - name: Check whether dependency freshness is relevant
+        id: freshness-scope
+        run: |
+          changed_files="$(git diff --name-only origin/${{ github.base_ref }}...HEAD)"
+          echo "$changed_files"
+          if echo "$changed_files" | grep -Eq '^(pyproject\.toml|uv\.lock|policyengine_us_data/|modal_app/|tests/|scripts/|\.github/scripts/check_policyengine_us_dependency\.py)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Require current PolicyEngine US dependency
+        if: steps.freshness-scope.outputs.run == 'true'
         run: python .github/scripts/check_policyengine_us_dependency.py --mode fail
+      - name: Skip dependency freshness for docs-only change
+        if: steps.freshness-scope.outputs.run != 'true'
+        run: echo "Skipping PolicyEngine US freshness check; no runtime or dependency files changed."
 
   lint:
     runs-on: ubuntu-latest

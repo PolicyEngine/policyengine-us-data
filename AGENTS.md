@@ -2,6 +2,14 @@
 
 These instructions apply repository-wide.
 
+## Repository status
+
+`policyengine-us-data` is now a legacy/reference pipeline. Do not add new
+production target surfaces, publication paths, or data-generation features here
+unless the change is explicitly required for compatibility with an existing
+release. Migrate new work to PolicyEngine/populace and Ledger source facts, with
+certification owned by policyengine.py.
+
 ## Skills system
 
 Canonical AI-facing engineering skills live under `docs/engineering/skills/`.

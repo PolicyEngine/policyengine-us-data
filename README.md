@@ -1,5 +1,15 @@
 # PolicyEngine US Data
 
+> **Legacy data pipeline.** New US microdata construction, calibration, source
+> fact loading, diagnostics, and certified release work should happen in
+> [PolicyEngine/populace](https://github.com/PolicyEngine/populace) and the
+> Ledger source-fact repository, then be certified through
+> [policyengine.py](https://github.com/PolicyEngine/policyengine.py). This
+> repository remains available for historical Enhanced CPS reproduction,
+> compatibility maintenance, and migration reference while downstream imports are
+> retired. Do not start new build or target-surface work here unless it is
+> explicitly needed to preserve an existing release.
+
 ## Installation
 
 While it is possible to install via PyPi:
@@ -40,6 +50,16 @@ The following SSA data sources are used in this project:
 ## Pipeline Overview
 
 PolicyEngine constructs its representative household datasets through a multi-step pipeline. Public survey data is merged, stratified, and cloned to geographic variants per household. Each clone is simulated through PolicyEngine US with stochastic take-up, then calibrated via L0-regularized optimization against administrative targets at the national, state, and congressional district levels, producing geographically representative datasets.
+
+This section documents the legacy implementation. The live replacement path is:
+
+```text
+Ledger source facts -> Populace build/calibration -> certified bundle -> policyengine.py release
+```
+
+New calibration targets should be represented as Ledger facts and consumed by
+Populace. Do not add new hard-coded target values or new production publication
+paths to this repository.
 
 The Enhanced CPS (`make data-legacy`) produces a national-only calibrated dataset. For the current geography-specific pipeline, see [docs/calibration.md](docs/calibration.md).
 

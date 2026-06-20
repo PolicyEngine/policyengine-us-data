@@ -1,5 +1,11 @@
 # Reproduction Guide for Enhanced CPS Dataset
 
+> **Historical reproduction guide.** These instructions reproduce older Enhanced
+> CPS artifacts from `policyengine-us-data`. They are not the current
+> certification path for new PolicyEngine US microdata. New builds should use
+> Populace with Ledger source facts and should be promoted only through the
+> `policyengine.py` release contract.
+
 This guide provides step-by-step instructions for reproducing the Enhanced CPS dataset and validation results. For more details on the production of geography-specific datasets (including states, congressional districts and some cities, visit our [documentation](https://policyengine.github.io/policyengine-us-data/)).
 
 ## Prerequisites

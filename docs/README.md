@@ -1,5 +1,14 @@
 # Documentation
 
+> **Legacy documentation.** This site describes the historical
+> `policyengine-us-data` pipeline. Current US data construction and calibration
+> work should be implemented in
+> [PolicyEngine/populace](https://github.com/PolicyEngine/populace), using
+> Ledger source facts and certification through
+> [policyengine.py](https://github.com/PolicyEngine/policyengine.py). Keep these
+> pages available for reproducing and auditing older Enhanced CPS releases, but
+> do not treat them as the current production path.
+
 This project uses [MyST Markdown](https://mystmd.org/) for documentation.
 
 ## Building Locally

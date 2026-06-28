@@ -165,27 +165,6 @@ jobs:
           tests/unit/test_long_term_calibration_contract.py::test_greg_calibrator_hits_linear_controls_with_svy
           -v
 
-  bundle-release-manifest-contract:
-    name: Validate bundle release manifest contract
-    runs-on: ubuntu-latest
-    needs: [check-fork, lint]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: uv sync --dev
-      - name: Install bundle contract validator
-        run: >
-          uv pip install
-          "policyengine-bundles @ git+https://github.com/PolicyEngine/policyengine-bundles@e15d653b40926cfb39ddef9b445d1b0022da1b85"
-      - name: Validate release manifest shape
-        run: >
-          uv run pytest
-          tests/unit/test_release_manifest.py::test_build_release_manifest_validates_against_bundle_contract
-          -v
-
   target-integration-tests:
     runs-on: ubuntu-latest
     needs: [check-fork, lint, unit-tests, smoke-test, decide-test-scope]

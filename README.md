@@ -1,5 +1,10 @@
 # PolicyEngine US Data
 
+> [!IMPORTANT]
+> **This repository is archived.** [Populace](https://github.com/PolicyEngine/populace) is its replacement and has been the certified US dataset in [policyengine.py](https://github.com/PolicyEngine/policyengine.py) since June 2026. New data work happens in Populace ([tracking issue](https://github.com/PolicyEngine/populace/issues/204)); calibration targets live in [Ledger](https://github.com/PolicyEngine/ledger); per-release diagnostics are on the [calibration dashboard](https://calibration-diagnostics.vercel.app/populace).
+>
+> Published artifacts (PyPI releases and Hugging Face/GCS datasets) remain available unchanged for reproducibility; they are frozen and will not receive fixes. Known data-quality issues in the final Enhanced CPS releases are documented in [this advisory](https://github.com/PolicyEngine/policyengine.py/discussions/429).
+
 > **Legacy data pipeline.** New US microdata construction, calibration, source
 > fact loading, diagnostics, and certified release work should happen in
 > [PolicyEngine/populace](https://github.com/PolicyEngine/populace) and the
